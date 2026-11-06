@@ -54,6 +54,8 @@ var (
 
 // JournalServiceClient is a client for the office.v1.JournalService service.
 type JournalServiceClient interface {
+	// AppendEntry adds an entry. It is idempotent by command_id: a repeated request returns the
+	// stored entry with duplicate set.
 	AppendEntry(context.Context, *v1.AppendEntryRequest) (*v1.AppendEntryResponse, error)
 	// ListEntries returns entries with an ID greater than after_entry_id, oldest first.
 	ListEntries(context.Context, *v1.ListEntriesRequest) (*v1.ListEntriesResponse, error)
@@ -67,6 +69,8 @@ func NewJournalServiceClient(client *connect.Client) JournalServiceClient {
 
 // JournalServiceHandler is an implementation of the office.v1.JournalService service.
 type JournalServiceHandler interface {
+	// AppendEntry adds an entry. It is idempotent by command_id: a repeated request returns the
+	// stored entry with duplicate set.
 	AppendEntry(context.Context, *v1.AppendEntryRequest) (*v1.AppendEntryResponse, error)
 	// ListEntries returns entries with an ID greater than after_entry_id, oldest first.
 	ListEntries(context.Context, *v1.ListEntriesRequest) (*v1.ListEntriesResponse, error)

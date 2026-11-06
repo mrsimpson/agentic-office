@@ -167,6 +167,26 @@ the details. In short:
 - Registered keys are stored in `<data-dir>/identity.json`. Tokens are kept in memory only, so
   clients authenticate again after a restart of the server.
 
+### Journal
+
+The journal (`server/journal`) is implemented. The package comment in `server/journal/doc.go` has
+the details. In short:
+
+- An entry has a kind (`decision`, `task`, `minutes`, `note`), a text, an optional session ID, the
+  author and the author's kind (`human` or `agent`). The server takes the author and the kind
+  from the access token: `author_participant_id` must be the participant of the token. A stage
+  link cannot use the journal.
+- `AppendEntry` is idempotent by `command_id`. Command IDs that start with `office/` are reserved
+  for the server.
+- `ListEntries` returns entries after the cursor `after_entry_id`, oldest first, filtered by kind
+  and session. It returns at most `limit` entries (default 100, at most 1000). To read the next
+  page, pass the ID of the last entry.
+- **Minutes at the end of a session.** `EndSession` stores the text of the last
+  `minutes.updated` event as a `minutes` entry of the session, then writes `session.ended`. Its
+  author is the participant who wrote that version. A session without minutes, or with blank
+  minutes, stores nothing. What "confirmed minutes" means is still open (#22).
+- The journal is stored in `<data-dir>/journal.jsonl`, so it survives a restart of the server.
+
 ## Server setup
 
 All files of the server are in its data directory, by default `~/.config/agentic-office/server`
@@ -176,6 +196,7 @@ All files of the server are in its data directory, by default `~/.config/agentic
 |---|---|
 | `admins` | Admin keys. You write it by hand. |
 | `identity.json` | Registered participants and keys. The server writes it. |
+| `journal.jsonl` | Journal entries, one JSON object per line in the form of the API. The server appends to it. |
 | `tls.crt`, `tls.key` | TLS certificate and key. The server creates a self-signed pair if neither exists. |
 
 ### First admin
@@ -267,9 +288,20 @@ office meeting leave               # or: office meeting end (for everyone)
 
 Other session commands: `meeting pause | resume`, `utterance retract <event-id> | --last`,
 `signal turn-end | silence-long --duration D | addressed --participant P --utterance ID`,
-`stage link`. Journal and artifact commands (`journal append | list`, `slides render`,
-`artifact get`) exist, but the server does not implement those services yet: they fail with
-the code `unimplemented`.
+`stage link`.
+
+**The journal:**
+
+```sh
+office journal append --kind decision "We ship on Friday."
+office journal append --kind minutes --file minutes.md --session weekly
+office journal list --kind decision --after 10 --limit 20
+office journal list --session weekly    # also the minutes stored when "weekly" ended
+```
+
+`journal append` links the entry to a session only with an explicit `--session`. The artifact
+commands (`slides render`, `artifact get`) exist, but the server does not implement that service
+yet: they fail with the code `unimplemented`.
 
 **The local log** is `<runtime dir>/<session>/<participant>.jsonl` (directories 0700, file 0600):
 one compact JSON line per event (`core/eventlog`), with the dotted type and the event ID as a
@@ -424,7 +456,7 @@ tool names.
 | `stage_show` (artifactId), `stage_link` | `stage show`, `stage link` |
 | `slides_render` (title and slides, markdown, or file) | `slides render` |
 | `artifact_get` (id, out) | `artifact get` |
-| `journal_append` (kind, text), `journal_list` | `journal append`, `journal list` |
+| `journal_append` (kind, text, session), `journal_list` (kind, session, afterEntryId, limit) | `journal append`, `journal list` |
 | `whoami` | `whoami` |
 
 Session tools take an optional `session`. The default is `--session` or `OFFICE_SESSION`, else the
@@ -433,8 +465,8 @@ only session this participant joined from this machine.
 **Results.** Each tool returns one JSON object, as text and as structured content, in the same
 shape as the CLI's `--json` output (see [Machine-readable output](#machine-readable-output---json)).
 Errors set `isError` and return `{"error":{"code","message"}}`. Arguments that do not match the
-input schema of a tool are `usage` errors. Journal and artifact tools fail with `unimplemented`
-until the server has those services.
+input schema of a tool are `usage` errors. Artifact tools fail with `unimplemented` until the
+server has that service.
 
 **The log.** `meeting_join` returns `logPath`. The replicator runs inside the MCP process, so the
 replication lives as long as that process: it stops when the client closes the connection, when
@@ -471,7 +503,8 @@ through its interfaces:
 - `tests/contract/stub_example_test.go` shows a test against a stub service.
 - `tests/contract/mcp_test.go` starts `office mcp` and talks to it over stdio with the MCP Go SDK
   client: every tool and its result, the log path that receives the events of all participants,
-  errors for bad input, server errors and unimplemented services, and that no writer is left
+  errors for bad input, server errors and the unimplemented artifact service, the journal, and
+  that no writer is left
   when the MCP process closes or is killed. `tests/e2e/mcp_test.go`: an agent works only through
   MCP and follows its log with the `tail -f | grep` filter from the tool description.
 - `tests/contract/cli_test.go` and `replicator_test.go` run the real `office` binary and check

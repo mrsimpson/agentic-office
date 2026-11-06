@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"slices"
+	"strings"
 	"sync"
 
 	"connectrpc.com/connect/v2"
@@ -44,10 +45,23 @@ func (denyAll) Caller(context.Context) (Caller, error) {
 	return Caller{}, connect.NewError(connect.CodeUnauthenticated, "no token check configured")
 }
 
+// Journal is the part of the journal API (if-journal-api) that the session needs: it stores the
+// minutes when a session ends (rs-session-ends). journal.Service implements it.
+type Journal interface {
+	// Record appends an entry. It is idempotent by the command ID of the entry: a repeated call
+	// returns the stored entry and true.
+	Record(ctx context.Context, e *officev1.JournalEntry) (*officev1.JournalEntry, bool, error)
+}
+
+// MinutesCommandPrefix starts the command ID of the minutes entry that the session writes into
+// the journal. The rest is the command ID of the EndSession command.
+const MinutesCommandPrefix = "office/session-end/"
+
 // Service implements the session commands and the session stream.
 type Service struct {
-	store Store
-	auth  Authorizer
+	store   Store
+	auth    Authorizer
+	journal Journal
 
 	mu       sync.Mutex
 	sessions map[string]*state
@@ -55,13 +69,14 @@ type Service struct {
 
 var _ officev1connect.SessionServiceHandler = (*Service)(nil)
 
-// New returns a Service that keeps its logs in store. If auth is nil, every call fails with
-// Unauthenticated.
-func New(store Store, auth Authorizer) *Service {
+// New returns a Service that keeps its logs in store and stores the minutes of ended sessions in
+// journal. If auth is nil, every call fails with Unauthenticated. If journal is nil, the minutes
+// are not stored.
+func New(store Store, auth Authorizer, journal Journal) *Service {
 	if auth == nil {
 		auth = denyAll{}
 	}
-	return &Service{store: store, auth: auth, sessions: map[string]*state{}}
+	return &Service{store: store, auth: auth, journal: journal, sessions: map[string]*state{}}
 }
 
 // state is what the service knows about one session. It is derived from the log only, so it can
@@ -73,6 +88,7 @@ type state struct {
 	ended        bool
 	participants map[string]*participant
 	utterances   map[uint32]*utterance // utterance.final event ID -> utterance
+	minutes      *officev1.Event       // the last minutes.updated event
 }
 
 type participant struct {
@@ -110,6 +126,8 @@ func (st *state) apply(ev *officev1.Event) {
 		if u := st.utterances[p.UtteranceRetracted.GetUtteranceEventId()]; u != nil {
 			u.retracted = true
 		}
+	case *officev1.Event_MinutesUpdated:
+		st.minutes = ev
 	case *officev1.Event_SessionEnded:
 		st.ended = true
 	}
@@ -496,15 +514,26 @@ func (s *Service) ShowArtifact(ctx context.Context, req *officev1.ShowArtifactRe
 	return &officev1.ShowArtifactResponse{Result: res}, nil
 }
 
-// EndSession appends session.ended. After it, every new command fails with FailedPrecondition;
-// a repeated command_id still returns its stored event. Any participant can end the session
-// for now: roles are open (#14). Storing the minutes in the journal (rs-session-ends) comes
-// with the journal (#10).
+// EndSession stores the confirmed minutes in the journal and then appends session.ended
+// (rs-session-ends). After it, every new command fails with FailedPrecondition; a repeated
+// command_id still returns its stored event. Any participant can end the session for now: roles
+// are open (#14).
+//
+// The confirmed minutes are the text of the last minutes.updated event: ending the session
+// confirms it. There is no separate confirm step yet (#22). The journal entry has
+// kind minutes, the session ID, and as author the participant who wrote that last version, with
+// the kind it joined with. If the session has no minutes, or the last text is blank, nothing is
+// stored. The command ID of the entry is MinutesCommandPrefix plus the command ID of EndSession,
+// so a repeated EndSession does not store the minutes twice. If the journal fails, the session
+// does not end and EndSession fails with Internal; the client can repeat it.
 func (s *Service) EndSession(ctx context.Context, req *officev1.EndSessionRequest) (*officev1.EndSessionResponse, error) {
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.SessionEnded},
-		build: func(*state, Caller) (*officev1.Event, error) {
+		build: func(st *state, _ Caller) (*officev1.Event, error) {
+			if err := s.storeMinutes(ctx, st, req); err != nil {
+				return nil, err
+			}
 			return &officev1.Event{Payload: &officev1.Event_SessionEnded{SessionEnded: &officev1.SessionEnded{}}}, nil
 		},
 	}, false)
@@ -512,6 +541,30 @@ func (s *Service) EndSession(ctx context.Context, req *officev1.EndSessionReques
 		return nil, err
 	}
 	return &officev1.EndSessionResponse{Result: res}, nil
+}
+
+// storeMinutes writes the last minutes of the session into the journal. The caller holds st.mu.
+func (s *Service) storeMinutes(ctx context.Context, st *state, req *officev1.EndSessionRequest) error {
+	if s.journal == nil || st.minutes == nil {
+		return nil
+	}
+	text := st.minutes.GetMinutesUpdated().GetText()
+	if strings.TrimSpace(text) == "" {
+		return nil
+	}
+	author := st.minutes.GetActorParticipantId()
+	var kind officev1.ParticipantKind
+	if pt := st.participants[author]; pt != nil {
+		kind = pt.joined.GetParticipantJoined().GetKind()
+	}
+	_, _, err := s.journal.Record(ctx, &officev1.JournalEntry{
+		CommandId: MinutesCommandPrefix + req.GetCommandId(), Kind: officev1.EntryKind_ENTRY_KIND_MINUTES,
+		Text: text, AuthorParticipantId: author, AuthorKind: kind, SessionId: req.GetSessionId(),
+	})
+	if err != nil {
+		return connect.NewError(connect.CodeInternal, "store the minutes in the journal: "+err.Error())
+	}
+	return nil
 }
 
 // Subscribe sends every event after the cursor, then live events. It returns after it has sent

@@ -50,7 +50,7 @@ Meeting:
 Artifacts and journal:
   slides render <deck.json | deck.md>
   artifact get <id> [--out FILE]
-  journal append --kind decision|task|minutes|note <text>
+  journal append --kind decision|task|minutes|note <text> | --file F
   journal list [--kind K] [--after N] [--limit N]
 
 MCP:

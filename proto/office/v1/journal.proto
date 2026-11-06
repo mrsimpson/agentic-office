@@ -7,10 +7,13 @@ syntax = "proto3";
 package office.v1;
 
 import "google/protobuf/timestamp.proto";
+import "office/v1/common.proto";
 
 option go_package = "github.com/mrsimpson/agentic-office/core/api/office/v1;officev1";
 
 service JournalService {
+  // AppendEntry adds an entry. It is idempotent by command_id: a repeated request returns the
+  // stored entry with duplicate set.
   rpc AppendEntry(AppendEntryRequest) returns (AppendEntryResponse);
   // ListEntries returns entries with an ID greater than after_entry_id, oldest first.
   rpc ListEntries(ListEntriesRequest) returns (ListEntriesResponse);
@@ -25,6 +28,7 @@ enum EntryKind {
 }
 
 message JournalEntry {
+  // id grows by one with every entry and starts at 1.
   uint32 id = 1;
   EntryKind kind = 2;
   string text = 3;
@@ -34,13 +38,19 @@ message JournalEntry {
   string session_id = 5;
   google.protobuf.Timestamp time = 6;
   string command_id = 7;
+  // author_kind tells whether the author is a human or an agent, at the time of writing.
+  ParticipantKind author_kind = 8;
 }
 
 message AppendEntryRequest {
+  // command_id is created by the client. A repeated request with the same command_id has no
+  // extra effect.
   string command_id = 1;
   EntryKind kind = 2;
   string text = 3;
+  // author_participant_id must be the participant of the access token.
   string author_participant_id = 4;
+  // session_id links the entry to a meeting session. Optional.
   string session_id = 5;
 }
 
@@ -53,7 +63,9 @@ message ListEntriesRequest {
   uint32 after_entry_id = 1;
   // kind filters by kind. Unspecified returns all kinds.
   EntryKind kind = 2;
+  // session_id filters by session. Empty returns entries of all sessions and without a session.
   string session_id = 3;
+  // limit is the largest number of entries in the response. 0 means the server's default.
   uint32 limit = 4;
 }
 

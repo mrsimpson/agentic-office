@@ -25,6 +25,9 @@
 //     PermissionDenied; no valid token is Unauthenticated.
 //   - Signals (turn.end, silence.long, addressed) come only from clients through SubmitSignal.
 //     The session checks them but does not create signals itself. See SubmitSignal and #14.
+//   - EndSession stores the confirmed minutes in the journal through the Journal interface
+//     (if-journal-api, rs-session-ends), then writes session.ended. For now the confirmed minutes
+//     are the text of the last minutes.updated event (#22). See EndSession.
 //   - Subscribe closes the stream after it has sent session.ended. It ends the stream with
 //     Unauthenticated when the token of the caller expires or is revoked.
 package session

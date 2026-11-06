@@ -84,15 +84,18 @@ func (EntryKind) EnumDescriptor() ([]byte, []int) {
 
 type JournalEntry struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	Id    uint32                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Kind  EntryKind              `protobuf:"varint,2,opt,name=kind,proto3,enum=office.v1.EntryKind" json:"kind,omitempty"`
-	Text  string                 `protobuf:"bytes,3,opt,name=text,proto3" json:"text,omitempty"`
+	// id grows by one with every entry and starts at 1.
+	Id   uint32    `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Kind EntryKind `protobuf:"varint,2,opt,name=kind,proto3,enum=office.v1.EntryKind" json:"kind,omitempty"`
+	Text string    `protobuf:"bytes,3,opt,name=text,proto3" json:"text,omitempty"`
 	// author_participant_id is the human or agent who wrote the entry.
 	AuthorParticipantId string `protobuf:"bytes,4,opt,name=author_participant_id,json=authorParticipantId,proto3" json:"author_participant_id,omitempty"`
 	// session_id is set if the entry comes from a meeting session.
-	SessionId     string                 `protobuf:"bytes,5,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	Time          *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=time,proto3" json:"time,omitempty"`
-	CommandId     string                 `protobuf:"bytes,7,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
+	SessionId string                 `protobuf:"bytes,5,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	Time      *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=time,proto3" json:"time,omitempty"`
+	CommandId string                 `protobuf:"bytes,7,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
+	// author_kind tells whether the author is a human or an agent, at the time of writing.
+	AuthorKind    ParticipantKind `protobuf:"varint,8,opt,name=author_kind,json=authorKind,proto3,enum=office.v1.ParticipantKind" json:"author_kind,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -176,15 +179,26 @@ func (x *JournalEntry) GetCommandId() string {
 	return ""
 }
 
+func (x *JournalEntry) GetAuthorKind() ParticipantKind {
+	if x != nil {
+		return x.AuthorKind
+	}
+	return ParticipantKind_PARTICIPANT_KIND_UNSPECIFIED
+}
+
 type AppendEntryRequest struct {
-	state               protoimpl.MessageState `protogen:"open.v1"`
-	CommandId           string                 `protobuf:"bytes,1,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
-	Kind                EntryKind              `protobuf:"varint,2,opt,name=kind,proto3,enum=office.v1.EntryKind" json:"kind,omitempty"`
-	Text                string                 `protobuf:"bytes,3,opt,name=text,proto3" json:"text,omitempty"`
-	AuthorParticipantId string                 `protobuf:"bytes,4,opt,name=author_participant_id,json=authorParticipantId,proto3" json:"author_participant_id,omitempty"`
-	SessionId           string                 `protobuf:"bytes,5,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// command_id is created by the client. A repeated request with the same command_id has no
+	// extra effect.
+	CommandId string    `protobuf:"bytes,1,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
+	Kind      EntryKind `protobuf:"varint,2,opt,name=kind,proto3,enum=office.v1.EntryKind" json:"kind,omitempty"`
+	Text      string    `protobuf:"bytes,3,opt,name=text,proto3" json:"text,omitempty"`
+	// author_participant_id must be the participant of the access token.
+	AuthorParticipantId string `protobuf:"bytes,4,opt,name=author_participant_id,json=authorParticipantId,proto3" json:"author_participant_id,omitempty"`
+	// session_id links the entry to a meeting session. Optional.
+	SessionId     string `protobuf:"bytes,5,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *AppendEntryRequest) Reset() {
@@ -308,9 +322,11 @@ type ListEntriesRequest struct {
 	state        protoimpl.MessageState `protogen:"open.v1"`
 	AfterEntryId uint32                 `protobuf:"varint,1,opt,name=after_entry_id,json=afterEntryId,proto3" json:"after_entry_id,omitempty"`
 	// kind filters by kind. Unspecified returns all kinds.
-	Kind          EntryKind `protobuf:"varint,2,opt,name=kind,proto3,enum=office.v1.EntryKind" json:"kind,omitempty"`
-	SessionId     string    `protobuf:"bytes,3,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	Limit         uint32    `protobuf:"varint,4,opt,name=limit,proto3" json:"limit,omitempty"`
+	Kind EntryKind `protobuf:"varint,2,opt,name=kind,proto3,enum=office.v1.EntryKind" json:"kind,omitempty"`
+	// session_id filters by session. Empty returns entries of all sessions and without a session.
+	SessionId string `protobuf:"bytes,3,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	// limit is the largest number of entries in the response. 0 means the server's default.
+	Limit         uint32 `protobuf:"varint,4,opt,name=limit,proto3" json:"limit,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -421,7 +437,7 @@ var File_office_v1_journal_proto protoreflect.FileDescriptor
 
 const file_office_v1_journal_proto_rawDesc = "" +
 	"\n" +
-	"\x17office/v1/journal.proto\x12\toffice.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xfe\x01\n" +
+	"\x17office/v1/journal.proto\x12\toffice.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x16office/v1/common.proto\"\xbb\x02\n" +
 	"\fJournalEntry\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x12(\n" +
 	"\x04kind\x18\x02 \x01(\x0e2\x14.office.v1.EntryKindR\x04kind\x12\x12\n" +
@@ -431,7 +447,9 @@ const file_office_v1_journal_proto_rawDesc = "" +
 	"session_id\x18\x05 \x01(\tR\tsessionId\x12.\n" +
 	"\x04time\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\x12\x1d\n" +
 	"\n" +
-	"command_id\x18\a \x01(\tR\tcommandId\"\xc4\x01\n" +
+	"command_id\x18\a \x01(\tR\tcommandId\x12;\n" +
+	"\vauthor_kind\x18\b \x01(\x0e2\x1a.office.v1.ParticipantKindR\n" +
+	"authorKind\"\xc4\x01\n" +
 	"\x12AppendEntryRequest\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12(\n" +
@@ -483,23 +501,25 @@ var file_office_v1_journal_proto_goTypes = []any{
 	(*ListEntriesRequest)(nil),    // 4: office.v1.ListEntriesRequest
 	(*ListEntriesResponse)(nil),   // 5: office.v1.ListEntriesResponse
 	(*timestamppb.Timestamp)(nil), // 6: google.protobuf.Timestamp
+	(ParticipantKind)(0),          // 7: office.v1.ParticipantKind
 }
 var file_office_v1_journal_proto_depIdxs = []int32{
 	0, // 0: office.v1.JournalEntry.kind:type_name -> office.v1.EntryKind
 	6, // 1: office.v1.JournalEntry.time:type_name -> google.protobuf.Timestamp
-	0, // 2: office.v1.AppendEntryRequest.kind:type_name -> office.v1.EntryKind
-	1, // 3: office.v1.AppendEntryResponse.entry:type_name -> office.v1.JournalEntry
-	0, // 4: office.v1.ListEntriesRequest.kind:type_name -> office.v1.EntryKind
-	1, // 5: office.v1.ListEntriesResponse.entries:type_name -> office.v1.JournalEntry
-	2, // 6: office.v1.JournalService.AppendEntry:input_type -> office.v1.AppendEntryRequest
-	4, // 7: office.v1.JournalService.ListEntries:input_type -> office.v1.ListEntriesRequest
-	3, // 8: office.v1.JournalService.AppendEntry:output_type -> office.v1.AppendEntryResponse
-	5, // 9: office.v1.JournalService.ListEntries:output_type -> office.v1.ListEntriesResponse
-	8, // [8:10] is the sub-list for method output_type
-	6, // [6:8] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	7, // 2: office.v1.JournalEntry.author_kind:type_name -> office.v1.ParticipantKind
+	0, // 3: office.v1.AppendEntryRequest.kind:type_name -> office.v1.EntryKind
+	1, // 4: office.v1.AppendEntryResponse.entry:type_name -> office.v1.JournalEntry
+	0, // 5: office.v1.ListEntriesRequest.kind:type_name -> office.v1.EntryKind
+	1, // 6: office.v1.ListEntriesResponse.entries:type_name -> office.v1.JournalEntry
+	2, // 7: office.v1.JournalService.AppendEntry:input_type -> office.v1.AppendEntryRequest
+	4, // 8: office.v1.JournalService.ListEntries:input_type -> office.v1.ListEntriesRequest
+	3, // 9: office.v1.JournalService.AppendEntry:output_type -> office.v1.AppendEntryResponse
+	5, // 10: office.v1.JournalService.ListEntries:output_type -> office.v1.ListEntriesResponse
+	9, // [9:11] is the sub-list for method output_type
+	7, // [7:9] is the sub-list for method input_type
+	7, // [7:7] is the sub-list for extension type_name
+	7, // [7:7] is the sub-list for extension extendee
+	0, // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_office_v1_journal_proto_init() }
@@ -507,6 +527,7 @@ func file_office_v1_journal_proto_init() {
 	if File_office_v1_journal_proto != nil {
 		return
 	}
+	file_office_v1_common_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

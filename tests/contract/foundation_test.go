@@ -17,7 +17,8 @@ import (
 
 // The office server mounts every service of chapter 5 that crosses a process boundary.
 // Services without an implementation answer with "unimplemented", not "not found".
-// The meeting session and identity are implemented; session_test.go and identity_test.go cover them.
+// The meeting session, identity and journal are implemented; session_test.go, identity_test.go and
+// journal_test.go cover them.
 func TestServerMountsEveryInterface(t *testing.T) {
 	srv := contracttest.StartServer(t, nil)
 	c := srv.Admin(t)
@@ -29,11 +30,10 @@ func TestServerMountsEveryInterface(t *testing.T) {
 	if _, err := c.Identity.CreateStageLink(ctx, &officev1.CreateStageLinkRequest{SessionId: "s", CommandId: "c"}); err != nil {
 		t.Errorf("auth API: %v", err)
 	}
+	if _, err := c.Journal.ListEntries(ctx, &officev1.ListEntriesRequest{}); err != nil {
+		t.Errorf("journal API: %v", err)
+	}
 	calls := map[string]func() error{
-		"journal API": func() error {
-			_, err := c.Journal.ListEntries(ctx, &officev1.ListEntriesRequest{})
-			return err
-		},
 		"artifact API": func() error {
 			_, err := c.Artifact.GetArtifact(ctx, &officev1.GetArtifactRequest{Id: "slides/1"})
 			return err
@@ -95,7 +95,20 @@ func TestPlainHTTPWithJSON(t *testing.T) {
 		t.Fatalf("join: status %d, body %s", status, body)
 	}
 
-	status, body = post("/office.v1.JournalService/ListEntries", token, `{}`)
+	status, body = post("/office.v1.JournalService/AppendEntry", token,
+		`{"commandId":"c","kind":"ENTRY_KIND_DECISION","text":"We ship.","authorParticipantId":"admin"}`)
+	var entry struct {
+		Entry struct {
+			ID   int    `json:"id"`
+			Kind string `json:"kind"`
+		} `json:"entry"`
+	}
+	if err := json.Unmarshal(body, &entry); err != nil || status != http.StatusOK || entry.Entry.ID != 1 ||
+		entry.Entry.Kind != "ENTRY_KIND_DECISION" {
+		t.Fatalf("journal append: status %d, body %s", status, body)
+	}
+
+	status, body = post("/office.v1.ArtifactService/GetArtifact", token, `{"id":"slides/1"}`)
 	if err := json.Unmarshal(body, &e); err != nil || e.Code != "unimplemented" {
 		t.Fatalf("status %d, body %s: want a Connect error with code unimplemented", status, body)
 	}

@@ -162,6 +162,12 @@ func TestAgentThroughMCP(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
+	// The agent finds the minutes of the meeting in the journal.
+	j := call("journal_list", map[string]any{"kind": "minutes", "session": sid})
+	if es, _ := j["entries"].([]any); len(es) != 1 ||
+		es[0].(map[string]any)["text"] != "Ada asked about the budget. Bot: agreed last week." {
+		t.Fatalf("minutes in the journal: %v", j)
+	}
 	if err := cs.Close(); err != nil {
 		t.Fatalf("close: %v", err)
 	}

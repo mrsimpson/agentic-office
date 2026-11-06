@@ -119,6 +119,21 @@ func TestTwoCLIParticipants(t *testing.T) {
 	if string(ab) != string(bb) {
 		t.Fatal("the two local logs differ")
 	}
+
+	// The minutes are in the journal (rs-session-ends), next to a decision of the agent.
+	office(bot, "journal", "append", "--kind", "decision", "--session", sid, "Budget agreed.")
+	list := office(ada, "journal", "list", "--session", sid)
+	entries, _ := list["entries"].([]any)
+	if len(entries) != 2 {
+		t.Fatalf("journal of the session: %v", list)
+	}
+	m, _ := entries[0].(map[string]any)
+	d, _ := entries[1].(map[string]any)
+	if m["kind"] != "ENTRY_KIND_MINUTES" || m["text"] != "Ada asked for the budget. Bot showed slides/1." ||
+		m["authorParticipantId"] != "bot" || m["authorKind"] != "PARTICIPANT_KIND_AGENT" ||
+		d["kind"] != "ENTRY_KIND_DECISION" || d["authorParticipantId"] != "bot" {
+		t.Fatalf("journal of the session: %v", list)
+	}
 }
 
 func zombie(pid int) bool {

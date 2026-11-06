@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -473,8 +474,7 @@ func TestMCPErrors(t *testing.T) {
 	// Errors of the server keep their Connect code.
 	s.fails("permission_denied", "utterance_retract", map[string]any{"eventId": adaUtt.GetId()})
 
-	// The artifact and journal services are not implemented by the server yet: a clear error,
-	// not a mock result.
+	// The artifact service is not implemented by the server yet: a clear error, not a mock result.
 	deck := filepath.Join(t.TempDir(), "deck.md")
 	if err := os.WriteFile(deck, []byte("# Budget\n\n## Plan\n- one\n- two\nsay this\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -487,8 +487,6 @@ func TestMCPErrors(t *testing.T) {
 		{"slides_render", map[string]any{"markdown": "# Budget\n## Plan\n- one\n"}},
 		{"slides_render", map[string]any{"file": deck}},
 		{"artifact_get", map[string]any{"id": "slides/1"}},
-		{"journal_append", map[string]any{"kind": "decision", "text": "We ship."}},
-		{"journal_list", nil},
 	}
 	for _, u := range unimplemented {
 		s.fails("unimplemented", u.tool, u.args)
@@ -513,6 +511,57 @@ func TestMCPErrors(t *testing.T) {
 		t.Fatalf("no_key message: %q", msg)
 	}
 	s2.fails("no_key", "whoami", nil)
+}
+
+// TestMCPJournal: journal_append and journal_list against the real journal, and the minutes that
+// meeting_end stores in it.
+func TestMCPJournal(t *testing.T) {
+	m := newMachine(t)
+	bot := m.user("bot", "Bot", "agent")
+	ada := m.user("ada", "Ada", "human")
+	s := startMCP(t, bot)
+
+	v := s.ok("journal_append", map[string]any{"kind": "decision", "text": "We ship."})
+	e, _ := v["entry"].(map[string]any)
+	if v["duplicate"] != false || e["id"] != float64(1) || e["kind"] != "ENTRY_KIND_DECISION" ||
+		e["authorParticipantId"] != "bot" || e["authorKind"] != "PARTICIPANT_KIND_AGENT" || e["sessionId"] != nil {
+		t.Fatalf("journal_append: %v", v)
+	}
+	ada.ok("journal", "append", "--kind", "task", "--session", "s1", "Ada writes the plan.")
+	s.ok("journal_append", map[string]any{"kind": "note", "text": "A note.", "session": "s1"})
+
+	ids := func(args map[string]any) string {
+		t.Helper()
+		var got []string
+		for _, e := range entriesOf(t, s.ok("journal_list", args)) {
+			got = append(got, fmt.Sprint(e["id"]))
+		}
+		return strings.Join(got, ",")
+	}
+	for _, c := range []struct {
+		args map[string]any
+		want string
+	}{
+		{nil, "1,2,3"},
+		{map[string]any{"kind": "task"}, "2"},
+		{map[string]any{"session": "s1"}, "2,3"},
+		{map[string]any{"afterEntryId": 1, "limit": 1}, "2"},
+		{map[string]any{"afterEntryId": 3}, ""},
+	} {
+		if got := ids(c.args); got != c.want {
+			t.Fatalf("journal_list %v: %s, want %s", c.args, got, c.want)
+		}
+	}
+
+	// The minutes of the session go into the journal when it ends.
+	sid := newSession()
+	s.ok("meeting_join", map[string]any{"session": sid})
+	s.ok("minutes_update", map[string]any{"text": "Final: we ship"})
+	s.ok("meeting_end", nil)
+	got := entriesOf(t, s.ok("journal_list", map[string]any{"session": sid, "kind": "minutes"}))
+	if len(got) != 1 || got[0]["text"] != "Final: we ship" || got[0]["authorParticipantId"] != "bot" {
+		t.Fatalf("minutes of the session: %v", got)
+	}
 }
 
 // TestMCPWithCLIReplicator: if "office meeting join" already runs a replicator for the same
