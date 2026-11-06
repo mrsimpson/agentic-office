@@ -114,7 +114,13 @@ func TestTwoCLIParticipants(t *testing.T) {
 	if code != 0 || !strings.Contains(html, "<h2>Costs</h2>") || !strings.Contains(html, "<li>Rent: 4,000 EUR</li>") {
 		t.Fatalf("artifact get: exit %d, %q, %q", code, html, errOut)
 	}
+	// The stage of the session, opened with the link from the CLI, shows the slides, the raised
+	// hand and the minutes, and then the end of the session.
+	stage := openStage(t, srv, office(ada, "stage", "link")["url"].(string))
+	stage.waitFor(t, "slides, hand and minutes on the stage", `<iframe`, `data-artifact="slides/1"`,
+		`data-participant="bot"`, `Ada asked for the budget.`)
 	office(ada, "meeting", "end")
+	stage.waitFor(t, "the end on the stage", `data-status="ended"`, "event: end")
 
 	for _, pid := range []int{adaRep, botRep} {
 		deadline := time.Now().Add(10 * time.Second)

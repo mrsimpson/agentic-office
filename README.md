@@ -163,7 +163,7 @@ the details. In short:
   and renews the token before it expires; `auth.Bearer` attaches it to every Connect call.
 - `CreateStageLink` returns a read-only link `https://<server>/stage/<session>?token=<token>`
   for one session. Its token only allows `Subscribe` for that session. It lives 24 hours
-  (`-stage-link-ttl`). The stage page itself comes with #12.
+  (`-stage-link-ttl`). Open it in a browser to see the stage (below).
 - Registered keys are stored in `<data-dir>/identity.json`. Tokens are kept in memory only, so
   clients authenticate again after a restart of the server.
 
@@ -206,6 +206,23 @@ The artifact tools (`server/artifacts`) render slides. The package comment in
   every artifact. A stage link cannot use the artifact API: the stage renders on the server.
 - The meeting session does not check that a shown artifact exists.
 - Artifacts are stored in `<data-dir>/artifacts.jsonl`, so they survive a restart of the server.
+
+### Stage
+
+The stage (`server/stage`) is the web page of one session for the screen share. The package
+comment in `server/stage/doc.go` has the details. In short:
+
+- Create a link with `office stage link` (or `CreateStageLink`) and open it in a browser. Share
+  that browser window in the meeting tool.
+- The page shows the shown artifact, the recent contributions, all participants with their
+  capture status (captured, paused, not captured, left; agents are marked "agent"), the raised
+  hands and the running minutes. Retracted contributions disappear. Large text, white on black.
+- It is rendered on the server and updated live through server-sent events
+  (`/stage/<session>/events?token=…`). There is no frontend build and nothing is loaded from
+  outside. A shown artifact is embedded in a sandboxed iframe.
+- A hand stays raised until its participant speaks, raises it again or leaves (#24).
+- Without a valid stage link for the session, the page fails with 401 (no, unknown or expired
+  token) or 403 (a participant token, or a link for another session) and shows no session data.
 
 ## Server setup
 

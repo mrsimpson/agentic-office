@@ -1,7 +1,7 @@
 // Command office-server runs the office server (bb-office-server).
 //
-// All services are mounted. Every call needs an access token from the identity block, except
-// GetChallenge and ExchangeChallenge. The server speaks only TLS. The meeting session keeps its
+// All services are mounted, and the stage at /stage/<session>?token=<stage link token>. Every call
+// needs an access token from the identity block, except GetChallenge and ExchangeChallenge. The server speaks only TLS. The meeting session keeps its
 // logs in memory; the journal and the artifact tools keep their data in files.
 //
 // Files in the data directory (-data-dir):
@@ -31,12 +31,14 @@ import (
 
 	"connectrpc.com/connect/v2"
 	"connectrpc.com/connect/v2/connecthttp"
+	"connectrpc.com/connect/v2/connectinprocess"
 
 	"github.com/mrsimpson/agentic-office/core/api/office/v1/officev1connect"
 	"github.com/mrsimpson/agentic-office/server/artifacts"
 	"github.com/mrsimpson/agentic-office/server/identity"
 	"github.com/mrsimpson/agentic-office/server/journal"
 	"github.com/mrsimpson/agentic-office/server/session"
+	"github.com/mrsimpson/agentic-office/server/stage"
 )
 
 func defaultDataDir() string {
@@ -136,6 +138,15 @@ func main() {
 	officev1connect.RegisterArtifactServiceHandler(cs, arts)
 	mux := http.NewServeMux()
 	connecthttp.Mount(mux, cs)
+	// The stage subscribes in-process through the token check, with the token of the link.
+	mux.Handle(stage.PathPrefix, stage.New(stage.Options{
+		Session: connectinprocess.New(cs),
+		StageSession: func(token string) (string, error) {
+			c, err := ids.CheckToken(token)
+			return c.StageSessionID, err
+		},
+		Artifacts: arts,
+	}))
 
 	p := new(http.Protocols)
 	p.SetHTTP1(true)
