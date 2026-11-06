@@ -246,7 +246,9 @@ type ears struct {
 	p    *contracttest.Process
 	mu   sync.Mutex
 	view []map[string]any
-	seen map[int]time.Time // stderr line index -> when the test saw it
+	// viewAt is when the test read each line of view.
+	viewAt []time.Time
+	seen   map[int]time.Time // stderr line index -> when the test saw it
 }
 
 func (m *meeting) startEars(env []string, args ...string) *ears {
@@ -271,7 +273,7 @@ func (m *meeting) startEars(env []string, args ...string) *ears {
 			var v map[string]any
 			if json.Unmarshal([]byte(l), &v) == nil {
 				e.mu.Lock()
-				e.view = append(e.view, v)
+				e.view, e.viewAt = append(e.view, v), append(e.viewAt, time.Now())
 				e.mu.Unlock()
 			}
 		}

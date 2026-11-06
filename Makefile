@@ -13,7 +13,7 @@ export LIBRARY_PATH := $(WHISPER_BUILD)/src:$(WHISPER_BUILD)/ggml/src
 # Models of the ears: a multilingual Whisper model and the Silero VAD model.
 MODEL_DIR ?= $(or $(XDG_DATA_HOME),$(HOME)/.local/share)/agentic-office/models
 
-.PHONY: all build test e2e lint generate whisper models clean
+.PHONY: all build test e2e quality lint generate whisper models clean
 all: build
 
 build:
@@ -30,6 +30,16 @@ test: build
 e2e: build
 	$(GO) vet -tags e2e ./tests/e2e/...
 	OFFICE_BIN_DIR=$(BIN) $(GO) test -tags e2e -count=1 -v ./tests/e2e/...
+
+# Quality scenario tests (tests/e2e/quality_test.go) with the lengths of the scenarios: 30 minutes
+# of speech and a network drop of 60 s. make e2e runs the same tests shorter.
+QS_SPEECH_DURATION ?= 30m
+QS_DROP_DURATION ?= 60s
+quality: build
+	{ OFFICE_BIN_DIR=$(BIN) QS_SPEECH_DURATION=$(QS_SPEECH_DURATION) QS_DROP_DURATION=$(QS_DROP_DURATION) \
+		$(GO) test -tags e2e -count=1 -v -timeout 90m -run '^TestQuality' ./tests/e2e/... 2>&1; \
+		echo $$? > $(BIN)/quality.exit; } | tee $(BIN)/quality.log
+	@echo "== quality scenarios (also in $(BIN)/quality.log)"; grep '^QS ' $(BIN)/quality.log; exit $$(cat $(BIN)/quality.exit)
 
 lint:
 	buf lint

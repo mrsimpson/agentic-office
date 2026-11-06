@@ -55,6 +55,7 @@ without make, export them as in the Makefile.
 | `make build` | Builds all packages and the binaries `bin/office-server` and `bin/office` (needs whisper.cpp) |
 | `make test` | Runs `go vet` and the contract tests (`tests/contract/`) |
 | `make e2e` | Runs the end-to-end tests with real processes (`tests/e2e/`, build tag `e2e`); the ears tests need the models and are skipped without them |
+| `make quality` | Runs only the quality scenario tests with the lengths of the scenarios (30 minutes of speech, a 60 s network drop; about 35 minutes) and lists their numbers |
 | `make lint` | Checks the Protobuf contracts with `buf lint` |
 | `make generate` | Regenerates `core/api/` from `proto/` |
 
@@ -93,7 +94,8 @@ client/               Building blocks of the participant client
 cmd/office-server/    Binary of the office server
 cmd/office/           Binary of the participant client (CLI, replicator, ears and MCP server)
 tests/contract/       Contract tests, one file per building block
-tests/e2e/            End-to-end tests
+tests/e2e/            End-to-end tests, also of the quality scenarios
+docs/testing/         Manual tests (the headset test)
 ```
 
 ## Contracts
@@ -564,5 +566,18 @@ through its interfaces:
   records the plaintext. Every recorded byte must decode as a known RPC request
   (`contracttest.DecodeRequests`) with no unknown fields and no long field except the
   transcripts. The tests print the measured times and byte counts (`go test -v`).
+- `tests/e2e/quality_test.go` tests the quality scenarios of chapter 10 of the architecture.
+  `TestQualitySpeech` lets Ada speak the test sentences in a loop through the decrypting proxy,
+  with a bot that follows its log and an open stage. Its subtests are named after the scenarios:
+  `qs-no-raw-audio`, `qs-transcript-to-log` (maximum < 200 ms), `qs-speech-to-log`
+  (p95 ≤ 1.5 s) and `qs-sender-sees-status` (`sent` and `retracted` in the gateway view, and the
+  capture status on the stage, each ≤ 1 s). `TestQualityResumeAfterDrop/qs-resume-after-drop`
+  cuts Ada's network while she speaks and the bot writes: 0 lost and 0 duplicate events, and
+  Ada's local log is complete ≤ 2 s after the network is back. Each scenario prints a line that
+  starts with `QS <scenario>` (`grep '^QS '`). Two variables set the lengths:
+  `QS_SPEECH_DURATION` (default `60s`) and `QS_DROP_DURATION` (default `10s`). `make quality` sets
+  them to `30m` and `60s`, for example `make quality QS_SPEECH_DURATION=5m`.
+- The manual headset test (`qs-manual-headset`) is a checklist:
+  [`docs/testing/manual-headset-test.md`](docs/testing/manual-headset-test.md).
 - The harness uses the binaries in `$OFFICE_BIN_DIR` (the Makefile sets it). Without it, the
   harness builds them with `go build`, so `go test ./tests/contract/...` also works.
