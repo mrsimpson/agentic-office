@@ -70,8 +70,9 @@ mitigation: Headset required (con-headset-only); echo cancellation, voice print 
 ## Maturity of Connect RPC
 
 Connect RPC is a CNCF sandbox project. connect-go is stable. connect-python is still 0.x and was
-renamed recently. The stable status of connect-es v2 must be checked. There is no official Rust
-implementation. Few large adopters are publicly known.
+renamed recently. The stable status of connect-es v2 must be checked. connect-rust became an official
+implementation in 2026-08; it passes the full conformance suite but is still 0.x. Few large
+adopters are publicly known.
 
 ```arc42
 :::risk

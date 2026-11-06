@@ -25,6 +25,7 @@ proposed it and it still needs confirmation.
 | agent inference | Resume by cursor, idempotent commands with client IDs, ears queue utterances while offline | ch.5, ch.6 rs-network-drop, ch.8, ch.9 dec-idempotent-commands | medium | OPEN: confirm; drop duration and catch-up metric |
 | agent inference | All four goals have priority high; the order is stated in the text (arc42 expects 3–5 high goals) | ch.10 | medium | — |
 | agent inference, web research 2026-11-06 | Connect RPC for commands and stream; maturity: CNCF sandbox since 2024-04, connect-go v2 stable, connect-python 0.11 | ch.5, ch.9 dec-connect-rpc, ch.11 risk-connect-maturity | medium | OPEN: confirm; check connect-es v2 status |
+| buf.build/blog/connect-rust-joins-the-connect-project (2026-08-26) | connect-rust is official, 0.9.x pre-1.0, full conformance, all four RPC types, axum/hyper/tower, in production at Anthropic | ch.9 dec-languages, ch.11 risk-connect-maturity | high | — |
 | Maintainer, review 2 (message cut off: "Rust, golang?") | Record the language choice and its risk | ch.9 dec-languages | medium | OPEN: Go or Rust? Agent proposes Go |
 | agent inference | Data protection risks (retraction, consent) | ch.11 | medium | OPEN: clarify with data protection |
 | — | Server operation (self-hosted or cloud), persistence | ch.7 | — | OPEN: not discussed yet |

@@ -214,8 +214,9 @@ easy to install. **Proposal:** **Go** for the server and the whole participant c
 server, log replicator, ears). **TypeScript** only for the stage in the browser. **Reasons:**
 connect-go is stable; there is an official MCP SDK for Go; Go builds one static binary for the CLI;
 whisper.cpp has Go bindings, so the ears do not need Python. **Considered:** **Rust** has strong
-Whisper bindings (whisper-rs) and fits real-time audio well, but there is no official Connect
-implementation for Rust. **Python** for the ears (faster-whisper) is the most common choice for
+Whisper bindings (whisper-rs) and fits real-time audio well. Since 2026-08, connect-rust is an
+official Connect implementation (contributed by Anthropic, passes the full conformance suite, in
+production at Anthropic), but it is still 0.x and its API may change. **Python** for the ears (faster-whisper) is the most common choice for
 Whisper, but connect-python is not stable yet.
 
 ```arc42
