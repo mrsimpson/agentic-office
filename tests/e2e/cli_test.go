@@ -1,0 +1,132 @@
+//go:build e2e
+
+package e2e
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"syscall"
+	"testing"
+	"time"
+
+	officev1 "github.com/mrsimpson/agentic-office/core/api/office/v1"
+	"github.com/mrsimpson/agentic-office/core/auth"
+	"github.com/mrsimpson/agentic-office/core/contracttest"
+	"github.com/mrsimpson/agentic-office/core/eventlog"
+	"github.com/mrsimpson/agentic-office/core/events"
+)
+
+// TestTwoCLIParticipants: a human and an agent on one machine join a session with the office
+// CLI. The agent reacts to what it reads in its local log, only with CLI commands. Both local
+// logs end with session.ended and are equal.
+func TestTwoCLIParticipants(t *testing.T) {
+	srv := contracttest.StartServer(t, nil)
+	runtime := filepath.Join(t.TempDir(), "run")
+	envFor := func(key string) []string {
+		return []string{"OFFICE_SERVER=" + srv.URL, "OFFICE_CA_CERT=" + srv.CertFile, "OFFICE_KEY=" + key,
+			"OFFICE_RUNTIME_DIR=" + runtime, "OFFICE_SESSION=", "OFFICE_JSON="}
+	}
+	office := func(env []string, args ...string) map[string]any {
+		t.Helper()
+		out, errOut, code := contracttest.Run(t, "office", env, append(args, "--json")...)
+		var v map[string]any
+		if code != 0 || json.Unmarshal([]byte(out), &v) != nil {
+			t.Fatalf("office %v: exit %d, %q, %q", args, code, out, errOut)
+		}
+		return v
+	}
+	adminKey := filepath.Join(t.TempDir(), "admin.pem")
+	if err := auth.WriteKey(adminKey, srv.AdminKey); err != nil {
+		t.Fatal(err)
+	}
+	admin := envFor(adminKey)
+	user := func(pid, name, kind string) []string {
+		env := envFor(filepath.Join(t.TempDir(), pid+".pem"))
+		k := office(env, "key", "create")
+		office(admin, "admin", "key", "register", pid, k["publicKey"].(string), "--name", name, "--kind", kind)
+		return env
+	}
+	ada, bot := user("ada", "Ada", "human"), user("bot", "Bot", "agent")
+
+	const sid = "weekly"
+	join := func(env []string) (string, int) {
+		v := office(env, "meeting", "join", sid)
+		pid := int(v["replicatorPid"].(float64))
+		t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
+		return v["logPath"].(string), pid
+	}
+	adaLog, adaRep := join(ada)
+	botLog, botRep := join(bot)
+
+	read := func(path string) []*officev1.Event {
+		b, _ := os.ReadFile(path)
+		var out []*officev1.Event
+		for _, l := range strings.SplitAfter(string(b), "\n") {
+			if ev, err := eventlog.UnmarshalLine([]byte(l)); strings.HasSuffix(l, "\n") && err == nil {
+				out = append(out, ev)
+			}
+		}
+		return out
+	}
+	waitFor := func(path, what string, match func(*officev1.Event) bool) *officev1.Event {
+		t.Helper()
+		deadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) {
+			for _, ev := range read(path) {
+				if match(ev) {
+					return ev
+				}
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		t.Fatalf("timeout waiting for %s in %s", what, path)
+		return nil
+	}
+
+	office(ada, "say", "Bot, can you show the budget?")
+	office(ada, "signal", "turn-end")
+	// The agent follows its log and wakes up on turn.end.
+	turn := waitFor(botLog, "turn.end", func(ev *officev1.Event) bool { return ev.GetType() == events.TurnEnd })
+	if turn.GetTurnEnd().GetParticipantId() != "ada" {
+		t.Fatalf("turn.end of %q", turn.GetTurnEnd().GetParticipantId())
+	}
+	office(bot, "hand", "raise", "--topic", "budget")
+	office(bot, "stage", "show", "slides/1")
+	office(bot, "minutes", "update", "Ada asked for the budget. Bot showed slides/1.")
+	waitFor(adaLog, "hand.raised of bot", func(ev *officev1.Event) bool {
+		return ev.GetType() == events.HandRaised && ev.GetHandRaised().GetParticipantId() == "bot"
+	})
+	office(ada, "meeting", "end")
+
+	for _, pid := range []int{adaRep, botRep} {
+		deadline := time.Now().Add(10 * time.Second)
+		for syscall.Kill(pid, 0) == nil && !zombie(pid) {
+			if time.Now().After(deadline) {
+				t.Fatalf("replicator %d did not stop after session.ended", pid)
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+	a, b := read(adaLog), read(botLog)
+	if len(a) == 0 || len(a) != len(b) || a[len(a)-1].GetType() != events.SessionEnded {
+		t.Fatalf("logs: ada %d lines, bot %d lines", len(a), len(b))
+	}
+	ab, _ := os.ReadFile(adaLog)
+	bb, _ := os.ReadFile(botLog)
+	if string(ab) != string(bb) {
+		t.Fatal("the two local logs differ")
+	}
+}
+
+func zombie(pid int) bool {
+	b, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
+	if err != nil {
+		return true
+	}
+	s := string(b)
+	i := strings.LastIndexByte(s, ')')
+	return i > 0 && i+2 < len(s) && s[i+2] == 'Z'
+}

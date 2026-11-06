@@ -18,6 +18,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -93,6 +94,8 @@ func moduleRoot(t testing.TB) string {
 type Process struct {
 	Cmd    *exec.Cmd
 	Stdout *bufio.Reader
+	// Stdin is the standard input of the process, for example to send keys.
+	Stdin io.WriteCloser
 
 	mu     sync.Mutex
 	stderr bytes.Buffer
@@ -105,18 +108,28 @@ func Start(t testing.TB, name string, env []string, args ...string) *Process {
 	t.Helper()
 	cmd := exec.Command(Binary(t, name), args...)
 	cmd.Env = append(os.Environ(), env...)
-	stdout, err := cmd.StdoutPipe()
+	// An own pipe for stdout, not StdoutPipe: Wait closes the pipes it created, and output that
+	// the test has not read yet would be lost when the process exits.
+	stdout, stdoutW, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
 	}
+	cmd.Stdout = stdoutW
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := cmd.Start(); err != nil {
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
 		t.Fatal(err)
 	}
-	p := &Process{Cmd: cmd, Stdout: bufio.NewReader(stdout), done: make(chan struct{})}
+	err = cmd.Start()
+	stdoutW.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { stdout.Close() })
+	p := &Process{Cmd: cmd, Stdout: bufio.NewReader(stdout), Stdin: stdin, done: make(chan struct{})}
 	go func() {
 		buf := make([]byte, 4096)
 		for {
@@ -341,12 +354,18 @@ func StartFake(t testing.TB, register func(*connect.Server)) string {
 // Run runs a binary to completion and returns stdout, stderr and the exit code.
 func Run(t testing.TB, name string, env []string, args ...string) (string, string, int) {
 	t.Helper()
+	return RunStdin(t, name, env, nil, args...)
+}
+
+// RunStdin is Run with a standard input.
+func RunStdin(t testing.TB, name string, env []string, stdin io.Reader, args ...string) (string, string, int) {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, Binary(t, name), args...)
 	cmd.Env = append(os.Environ(), env...)
 	var out, errb bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &errb
+	cmd.Stdout, cmd.Stderr, cmd.Stdin = &out, &errb, stdin
 	err := cmd.Run()
 	var ee *exec.ExitError
 	if err != nil && !errors.As(err, &ee) {

@@ -78,6 +78,7 @@ server/               Building blocks of the office server
   artifacts/          Artifact tools: slides
   stage/              Stage: web view of a session
 client/               Building blocks of the participant client
+  participant/        Shared client core of the CLI and the MCP server
   cli/                office CLI
   mcp/                MCP server
   replicator/         Log replicator: local copy of the session log
@@ -181,10 +182,11 @@ an optional display name:
 ada            hGs7aXk0n1V6lH1d3mFzWQ0bX2j7zv8nq3C4oD5pE6A=  Ada Lovelace
 ```
 
-1. Create a key pair on your device with `core/auth` (the `office` CLI gets key commands with #7).
+1. Create a key pair on your device: `office key create` prints the public key.
 2. Write the public key into `admins` on the server host.
 3. Start or restart the server. It reads the file at start.
-4. Authenticate with your key; your token may now register the keys of the other participants.
+4. Authenticate with your key; your token may now register the keys of the other participants
+   with `office admin key register` (see [Participant client](#participant-client-office-cli)).
 
 To remove an admin, delete the line and restart. Admin keys cannot be revoked through the API.
 
@@ -210,6 +212,116 @@ bin/office-server -tls-cert /etc/office/fullchain.pem -tls-key /etc/office/privk
 - `-public-url` is the address in stage links. It defaults to `https://<listen address>`.
 - The server reads the certificate at start. Restart it after you renew the certificate.
 
+## Participant client (office CLI)
+
+`bin/office` is the participant client for humans and agents (`bb-cli`, `bb-replicator`). The
+MCP server (#9) will offer the same features; both build on the shared core in
+`client/participant` (`dec-cli-and-mcp`). Run `office help` for all commands.
+
+### First start
+
+```sh
+office key create                  # creates ~/.config/agentic-office/client/key.pem, prints the public key
+# an admin registers it:
+office admin key register ada <public-key> --name "Ada Lovelace" --kind human
+office whoami                      # authenticates and prints "ada"
+```
+
+`office key show` prints the public key and key ID again. `office admin key revoke <key-id>`
+removes a key. Only admin keys may register and revoke (see [First admin](#first-admin)).
+
+### Configuration
+
+Every command takes these flags. The environment variables set the defaults.
+
+| Flag | Variable | Default |
+|---|---|---|
+| `--server` | `OFFICE_SERVER` | `https://127.0.0.1:8740` |
+| `--ca-cert` | `OFFICE_CA_CERT` | `~/.config/agentic-office/client/server.crt` if it exists, else the system roots |
+| `--key` | `OFFICE_KEY` | `~/.config/agentic-office/client/key.pem` |
+| `--runtime-dir` | `OFFICE_RUNTIME_DIR` | `$XDG_RUNTIME_DIR/agentic-office`, else `/tmp/agentic-office-<uid>` |
+| `--session` | `OFFICE_SESSION` | the only session this participant joined on this machine |
+| `--json` | `OFFICE_JSON=1` | off |
+
+For a self-signed server, copy its `tls.crt` to `~/.config/agentic-office/client/server.crt`.
+Several participants on one machine (for example a human and an agent) use one key file each.
+
+### Join a meeting and read the log
+
+```sh
+LOG=$(office meeting join weekly)  # returns at once and prints the path of the local log
+tail -f "$LOG" | grep --line-buffered '"type":"turn.end"\|"type":"addressed"'
+office say "I can summarize that."
+office hand raise --topic budget
+office stage show slides/42
+office minutes update --file minutes.md
+office meeting leave               # or: office meeting end (for everyone)
+```
+
+Other session commands: `meeting pause | resume`, `utterance retract <event-id> | --last`,
+`signal turn-end | silence-long --duration D | addressed --participant P --utterance ID`,
+`stage link`. Journal and artifact commands (`journal append | list`, `slides render`,
+`artifact get`) exist, but the server does not implement those services yet: they fail with
+the code `unimplemented`.
+
+**The local log** is `<runtime dir>/<session>/<participant>.jsonl` (directories 0700, file 0600):
+one compact JSON line per event (`core/eventlog`), with the dotted type and the event ID as a
+number. It is append-only: a retraction is a new `utterance.retracted` line. The runtime
+directory also holds the join state (`<participant>.join`, the stored join command ID, so a
+restarted client is the same participant), the PID of the replicator (`<participant>.pid`) and
+its output (`<participant>.replicator.log`). Session and participant IDs that are not safe as
+file names are encoded as `=` plus base64url.
+
+**How join runs the replicator.** The replicator is its own process (`office replicator run`).
+It holds a lock on the log file, so there is at most one per session and participant; a second
+`join` reuses it. After a crash it cuts an incomplete last line and resumes after the last
+complete line; after a network drop it reconnects with a backoff.
+
+- `office meeting join <session>` starts the replicator **detached** and returns as soon as the
+  log file is open. This suits agents whose shell ends after each command. The detached
+  replicator stops after `session.ended` or when the participant leaves.
+- `office meeting join <session> --foreground` prints the path and stays. The replicator is its
+  child and stops when `join` ends, also when it is killed. Use it when the caller runs the
+  command as a background task, or with `&` in a shell that stays open.
+- Run `office meeting join` again to restart a replicator that was killed. It resumes the file.
+- While the server is unreachable, a replicator keeps trying. To stop a detached one without
+  leaving, kill the PID in `<participant>.pid`.
+- Local logs stay until the runtime directory is cleaned (at logout for `$XDG_RUNTIME_DIR`).
+  The retention rule is still open (`concept-transparency`).
+
+### Gateway view
+
+`office meeting view` shows your own utterances with their status (`final`, `sent`,
+`retracted`) and whether you are paused. It is a filtered view of the local log
+(`dec-gateway-cli`) and prints one line per change. Keys: `p` pauses or resumes, `r` retracts the
+last sent sentence, `q` quits. It ends with the session.
+
+`office meeting join <session> --mic` (or `--wav FILE`) joins as captured, runs the ears and
+shows the gateway view. The ears come with #8; until then, `--mic` and `--wav` fail with the
+code `unimplemented`.
+
+### Machine-readable output (`--json`)
+
+With `--json` (or `OFFICE_JSON=1`), a command prints **exactly one JSON object on one line** on
+stdout, also when it fails. Agents can pipe it to `jq`.
+
+- Field names are camelCase, like the canonical JSON of the contracts.
+- An event is in the same form as its line in the local log.
+- A session command prints `{"event": {…}, "duplicate": false}`.
+- `meeting join` prints `{"sessionId", "participantId", "logPath", "replicatorPid", "event",
+  "duplicate"}`.
+- On failure: `{"error": {"code": "permission_denied", "message": "…"}}`. The code is the
+  Connect code of the server (`invalid_argument`, `not_found`, `failed_precondition`,
+  `unimplemented`, …) or a code of the CLI: `usage`, `no_key`, `no_session`, `error`.
+- `meeting view --json` prints one JSON object per change, for example
+  `{"utterance":{"eventId":12,"commandId":"…","text":"…","status":"sent"}}`, `{"paused":true}`,
+  `{"ended":true}`.
+
+Without `--json`, a session command prints `event <id> <type>`; `join` and `meeting log` print the
+path only. Errors go to stderr.
+
+Exit codes: `0` success, `1` error (also from the server), `2` usage error.
+
 ## Tests
 
 We write no unit tests (`dec-contract-tests`). Every building block is tested as a black box
@@ -221,5 +333,7 @@ through its interfaces:
   participant and returns authenticated clients. It never imports the package that
   implements the block.
 - `tests/contract/stub_example_test.go` shows a test against a stub service.
+- `tests/contract/cli_test.go` and `replicator_test.go` run the real `office` binary and check
+  its output and the local log it leaves, including kills of the replicator and torn lines.
 - The harness uses the binaries in `$OFFICE_BIN_DIR` (the Makefile sets it). Without it, the
   harness builds them with `go build`, so `go test ./tests/contract/...` also works.
