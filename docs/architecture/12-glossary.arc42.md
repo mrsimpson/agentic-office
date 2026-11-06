@@ -143,3 +143,15 @@ title: Journal
 definition: The memory of the team (decisions, tasks, minutes), with the origin of each entry
 :::
 ```
+
+## Actor
+
+Who authenticates against the office.
+
+```arc42
+:::glossary-term
+id: term-actor
+title: Actor
+definition: A participant with its own key pair; every human device and every agent is one actor
+:::
+```

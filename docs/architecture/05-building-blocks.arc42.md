@@ -11,7 +11,7 @@ human or agent.
 id: bb-overview
 view: building-block
 notation: mermaid
-aliases: bb_server=bb-office-server, bb_session=bb-session-service, bb_journal=bb-journal, bb_artifacts=bb-artifact-service, bb_stage=bb-stage, bb_client=bb-participant-client, bb_cli=bb-cli, bb_mcp=bb-mcp, bb_replicator=bb-replicator, bb_ears=bb-ears
+aliases: bb_identity=bb-identity, bb_server=bb-office-server, bb_session=bb-session-service, bb_journal=bb-journal, bb_artifacts=bb-artifact-service, bb_stage=bb-stage, bb_client=bb-participant-client, bb_cli=bb-cli, bb_mcp=bb-mcp, bb_replicator=bb-replicator, bb_ears=bb-ears
 :::
 ```
 
@@ -28,6 +28,7 @@ flowchart LR
         bb_journal[Journal]
         bb_artifacts[Artifact tools]
         bb_stage[Stage]
+        bb_identity[Identity]
     end
     bb_cli -->|if-session-commands| bb_session
     bb_mcp -->|if-session-commands| bb_session
@@ -41,6 +42,10 @@ flowchart LR
     bb_mcp -->|if-journal-api| bb_journal
     bb_session -->|if-journal-api| bb_journal
     bb_cli -->|if-local-log| bb_replicator
+    bb_cli -->|if-auth-api| bb_identity
+    bb_mcp -->|if-auth-api| bb_identity
+    bb_ears -->|if-auth-api| bb_identity
+    bb_session -->|if-token-check| bb_identity
 ```
 
 ## Office server
@@ -70,8 +75,8 @@ id: bb-session-service
 title: Meeting session
 technology: Go / connect-go
 parent: bb-office-server
-implements: concept-event-log, concept-participant-model
-requires: if-journal-api
+implements: concept-event-log, concept-participant-model, concept-identity
+requires: if-journal-api, if-token-check
 :::
 ```
 
@@ -107,7 +112,7 @@ protocol: Connect RPC, server streaming (proposed, dec-connect-rpc)
 ### Journal
 
 The memory of the team: decisions, tasks, minutes and notes. Each entry records its origin: who,
-human or agent, and on whose behalf. When a session ends, the confirmed minutes are stored here.
+human or agent. When a session ends, the confirmed minutes are stored here.
 
 ```arc42
 :::building-block
@@ -191,6 +196,51 @@ protocol: HTTPS (browser)
 :::
 ```
 
+### Identity
+
+Knows all participants and their public keys. Each participant, human or agent, is its own actor
+with its own Ed25519 key pair. The client creates the key pair locally and sends only the public
+key. In the first stage, a new public key is registered by hand when we meet the person
+(issue #2 describes a real enrollment flow). Identity issues short-lived access tokens and creates
+read-only links for the stage.
+
+```arc42
+:::building-block
+id: bb-identity
+title: Identity
+technology: Go
+parent: bb-office-server
+implements: concept-identity
+:::
+```
+
+#### Auth API
+
+Challenge and response: the client asks for a challenge, signs it with its private key and gets a
+short-lived access token that is bound to its key. Also: create a read-only stage link.
+
+```arc42
+:::interface
+id: if-auth-api
+title: Auth API
+provider: bb-identity
+protocol: Connect RPC, unary (proposed, dec-connect-rpc)
+:::
+```
+
+#### Token check
+
+Other server parts check access tokens here and learn which participant a token belongs to.
+
+```arc42
+:::interface
+id: if-token-check
+title: Token check
+provider: bb-identity
+protocol: In-process Go call
+:::
+```
+
 ## Participant client
 
 Runs locally on every participant's computer and is the same for humans and agents. It contains
@@ -218,7 +268,7 @@ id: bb-cli
 title: office CLI
 technology: Go, single binary
 parent: bb-participant-client
-requires: if-session-commands, if-artifact-api, if-journal-api, if-local-log
+requires: if-session-commands, if-artifact-api, if-journal-api, if-local-log, if-auth-api
 implements: concept-read-file-write-tools
 :::
 ```
@@ -248,7 +298,7 @@ id: bb-mcp
 title: MCP server
 technology: Go / official MCP Go SDK
 parent: bb-participant-client
-requires: if-session-commands, if-artifact-api, if-journal-api
+requires: if-session-commands, if-artifact-api, if-journal-api, if-auth-api
 implements: concept-read-file-write-tools
 :::
 ```
@@ -311,7 +361,7 @@ id: bb-ears
 title: Ears
 parent: bb-participant-client
 technology: Go / whisper.cpp via cgo bindings / VAD (OPEN: for example Silero via ONNX)
-requires: if-session-commands
+requires: if-session-commands, if-auth-api
 implements: concept-edge-transcription
 :::
 ```

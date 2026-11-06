@@ -230,3 +230,26 @@ date: 2026-11-06
 addresses: risk-connect-maturity, risk-whisper-latency, qg-performance
 :::
 ```
+
+## Local key pairs, one actor per agent
+
+**Context:** Participants and agents must prove who they are. We want no secrets stored on the
+server. **Decision:** Every participant, including every agent, has its own Ed25519 key pair,
+created locally. Only the public key is sent to the server. In the first stage, keys are registered
+by hand at first contact. Agents act as themselves, not on behalf of a human.
+**Proposed details:** challenge and response with a short-lived access token bound to the key;
+read-only stage links; several keys per participant. **Consequences:** No shared secrets; agents
+need only a key file. Enrollment needs a manual step for now (issue #2). **Considered:** OIDC with
+an existing identity provider (standard, but heavy for a small team); mTLS with client certificates
+(strong, but certificate management and awkward in the browser); static API tokens (secret on the
+server, no binding to a device); passkeys (good for humans in the browser, not for CLI and agents).
+
+```arc42
+:::decision
+id: dec-auth-keypair
+title: Local Ed25519 key pairs, one actor per agent
+status: accepted
+date: 2026-11-06
+addresses: qg-confidentiality, con-privacy-law
+:::
+```

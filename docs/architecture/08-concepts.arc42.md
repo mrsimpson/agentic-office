@@ -103,3 +103,33 @@ title: Transparency and consent
 category: privacy
 :::
 ```
+
+## Identity and access
+
+**Actors and keys.** Every participant is its own actor with its own Ed25519 key pair: each human
+device and each agent. The key pair is created locally. Only the public key leaves the device. An
+agent does not act on behalf of a human; it acts as itself.
+
+**First contact.** In the first stage, we trust a new public key because we meet the person. An
+admin registers the key by hand. A real enrollment flow is issue #2.
+
+**Authentication.** Challenge and response: the client signs a challenge from the server and gets
+an access token that lives about 15 minutes and is bound to its key. Every call carries the token.
+All connections use TLS.
+
+**Stage.** A browser has no key. Identity creates a read-only link with a token that only allows
+viewing the stage of one session.
+
+**Revocation.** Each participant can have several keys (several devices). An admin can remove a
+key; tokens bound to it stop working when they expire, at the latest.
+
+**Out of scope for the first stage:** acting on behalf of someone else (delegation), self-service
+enrollment (issue #2), encryption of stored data (OPEN).
+
+```arc42
+:::concept
+id: concept-identity
+title: Identity and access with local key pairs
+category: security
+:::
+```

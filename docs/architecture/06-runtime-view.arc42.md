@@ -121,6 +121,22 @@ sequenceDiagram
     bb_session-->>bb_replicator: missed events, then live
 ```
 
+## Participant authenticates
+
+Before its first call, a client (CLI, MCP server or ears) asks Identity for a challenge. It signs
+the challenge with its private key and gets a short-lived access token. It sends the token with
+every call. The session checks the token and knows the participant. Shortly before the token
+expires, the client repeats the steps. This also happens after a network drop.
+
+```arc42
+:::runtime-scenario
+id: rs-authenticate
+title: Participant authenticates with its key
+trigger: First call of a client, or the access token is about to expire
+involves: bb-cli, bb-mcp, bb-ears, bb-identity, bb-session-service
+:::
+```
+
 ## Agent raises its hand and shows an artifact
 
 The agent renders a slide through the CLI and raises its hand on the stage. When it gets the

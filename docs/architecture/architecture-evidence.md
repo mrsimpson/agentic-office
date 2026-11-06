@@ -28,5 +28,9 @@ proposed it and it still needs confirmation.
 | buf.build/blog/connect-rust-joins-the-connect-project (2026-08-26) | connect-rust is official, 0.9.x pre-1.0, full conformance, all four RPC types, axum/hyper/tower, in production at Anthropic | ch.9 dec-languages, ch.11 risk-connect-maturity | high | — |
 | Maintainer, review 3 | Everything in Go, one toolchain in the monorepo | ch.5 technology, ch.9 dec-languages, AGENTS.md | high | — |
 | agent inference | Stage rendered by Go templates with server-sent events, no TypeScript | ch.5 bb-stage, ch.9 dec-languages | medium | OPEN: confirm |
+| Maintainer, review 4 | Local key pair, public key sent to the server | ch.8 concept-identity, ch.9 dec-auth-keypair | high | — |
+| Maintainer, review 4 | First contact out of scope: we meet the person; enrollment flow as issue #2 | ch.8 concept-identity | high | — |
+| Maintainer, review 4 | Every agent is its own actor with its own key; acting on behalf is out of scope | ch.8, ch.9 dec-auth-keypair, ch.12 term-actor | high | — |
+| agent inference | Challenge and response, short-lived token bound to the key, read-only stage link, several keys per participant, TLS | ch.5 bb-identity, ch.6 rs-authenticate, ch.8 concept-identity | medium | OPEN: confirm |
 | agent inference | Data protection risks (retraction, consent) | ch.11 | medium | OPEN: clarify with data protection |
 | — | Server operation (self-hosted or cloud), persistence | ch.7 | — | OPEN: not discussed yet |

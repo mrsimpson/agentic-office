@@ -29,6 +29,7 @@ architecture-beta
     service bb-journal(database)[Journal] in dn-office-host
     service bb-artifact-service(server)[Artifact tools] in dn-office-host
     service bb-stage(internet)[Stage] in dn-office-host
+    service bb-identity(server)[Identity] in dn-office-host
     bb-ears:R --> L:bb-session-service
     bb-replicator:R --> L:bb-session-service
     bb-mcp:L --> R:bb-session-service
@@ -88,6 +89,6 @@ id: dn-office-host
 title: Office server
 type: server
 parent: env-mvp
-hosts: bb-session-service, bb-journal, bb-artifact-service, bb-stage
+hosts: bb-session-service, bb-journal, bb-artifact-service, bb-stage, bb-identity
 :::
 ```
