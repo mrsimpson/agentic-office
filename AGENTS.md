@@ -26,6 +26,18 @@ Guidance for agents working in this repository.
   tests). Use only the provided interfaces; do not reach into the inside of a block. End-to-end
   tests combine real blocks. See `dec-contract-tests`.
 
+## Workflow
+
+- All work is tracked in GitHub issues in `mrsimpson/agentic-office`. One issue per work package.
+  The first stage is tracked in one epic issue with sub-issues.
+- Work on one issue at a time, in the order of the epic. Commit with `Closes #<n>` and push to
+  `main` only when the build and all tests pass.
+- When you hit a problem during implementation (a bug, a gap in the architecture, a blocked
+  dependency), open a new issue yourself: describe the problem, what you tried, and what you need.
+  Link it to the issue you were working on. Then continue with other work if you can.
+- Do not change accepted architecture decisions on your own. If the code shows that the
+  architecture is wrong or incomplete, open an issue with the label `architecture`.
+
 ## Architecture documentation
 
 - The architecture lives in `docs/architecture/` as arc42 chapters (`*.arc42.md`).
