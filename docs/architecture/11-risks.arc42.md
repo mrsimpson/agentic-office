@@ -29,14 +29,14 @@ mitigation: Capture only participants with a client; show capture status on the 
 
 ## Whisper too slow on laptops
 
-Local Whisper without a GPU may be too slow for real time.
+Local Whisper without a GPU may be too slow for real time. Go garbage collection could add jitter to audio frame processing.
 
 ```arc42
 :::risk
 id: risk-whisper-latency
 title: Local transcription too slow
 severity: medium
-mitigation: Smaller models, whisper.cpp with quantisation; measure before choosing hardware
+mitigation: Smaller models, whisper.cpp with quantisation; measure before choosing hardware; in the first ears prototype, measure the jitter per audio frame (p99 and maximum) including Go garbage collection; if echo cancellation later needs tighter timing, build it as a small Rust or C component behind a clear interface
 :::
 ```
 
