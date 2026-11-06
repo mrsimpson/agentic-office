@@ -1,0 +1,80 @@
+// Identity: auth API (if-auth-api), concept-identity, dec-auth-keypair.
+//
+// Every participant has its own Ed25519 key pair, created locally. Only the public key is sent.
+// A client gets a challenge, signs it with its private key and receives a short-lived access token
+// bound to its key. Keys are registered by hand by an admin in the first stage.
+syntax = "proto3";
+
+package office.v1;
+
+import "google/protobuf/timestamp.proto";
+import "office/v1/common.proto";
+
+option go_package = "github.com/mrsimpson/agentic-office/core/api/office/v1;officev1";
+
+service IdentityService {
+  // GetChallenge returns a one-time challenge for a registered public key.
+  rpc GetChallenge(GetChallengeRequest) returns (GetChallengeResponse);
+  // ExchangeChallenge checks the signature and returns an access token bound to the key.
+  rpc ExchangeChallenge(ExchangeChallengeRequest) returns (ExchangeChallengeResponse);
+  // CreateStageLink returns a read-only link to the stage of one session.
+  rpc CreateStageLink(CreateStageLinkRequest) returns (CreateStageLinkResponse);
+
+  // Admin commands.
+  rpc RegisterKey(RegisterKeyRequest) returns (RegisterKeyResponse);
+  rpc RevokeKey(RevokeKeyRequest) returns (RevokeKeyResponse);
+}
+
+message GetChallengeRequest {
+  // public_key is the raw 32-byte Ed25519 public key.
+  bytes public_key = 1;
+}
+
+message GetChallengeResponse {
+  bytes challenge = 1;
+  google.protobuf.Timestamp expires_at = 2;
+}
+
+message ExchangeChallengeRequest {
+  bytes public_key = 1;
+  bytes challenge = 2;
+  // signature is the Ed25519 signature of the challenge.
+  bytes signature = 3;
+}
+
+message ExchangeChallengeResponse {
+  string access_token = 1;
+  google.protobuf.Timestamp expires_at = 2;
+  // participant_id is the identity the key belongs to.
+  string participant_id = 3;
+}
+
+message CreateStageLinkRequest {
+  string command_id = 1;
+  string session_id = 2;
+}
+
+message CreateStageLinkResponse {
+  string url = 1;
+  google.protobuf.Timestamp expires_at = 2;
+}
+
+message RegisterKeyRequest {
+  string command_id = 1;
+  // participant_id is the identity the key belongs to. A participant can have several keys.
+  string participant_id = 2;
+  string display_name = 3;
+  ParticipantKind kind = 4;
+  bytes public_key = 5;
+}
+
+message RegisterKeyResponse {
+  string key_id = 1;
+}
+
+message RevokeKeyRequest {
+  string command_id = 1;
+  string key_id = 2;
+}
+
+message RevokeKeyResponse {}

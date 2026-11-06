@@ -1,0 +1,21 @@
+// Common types shared by all office interfaces.
+syntax = "proto3";
+
+package office.v1;
+
+option go_package = "github.com/mrsimpson/agentic-office/core/api/office/v1;officev1";
+
+// ParticipantKind tells humans and agents apart (concept-participant-model).
+enum ParticipantKind {
+  PARTICIPANT_KIND_UNSPECIFIED = 0;
+  PARTICIPANT_KIND_HUMAN = 1;
+  PARTICIPANT_KIND_AGENT = 2;
+}
+
+// Modality is the channel of an utterance. Human speech is voice; typed remarks and agent
+// contributions are text.
+enum Modality {
+  MODALITY_UNSPECIFIED = 0;
+  MODALITY_VOICE = 1;
+  MODALITY_TEXT = 2;
+}
