@@ -45,7 +45,7 @@ func TestExampleAgainstStubSession(t *testing.T) {
 	url := contracttest.StartFake(t, func(cs *connect.Server) {
 		officev1connect.RegisterSessionServiceHandler(cs, &stubSession{byCmd: map[string]*officev1.JoinResponse{}})
 	})
-	c := contracttest.NewClients(url)
+	c := contracttest.NewClients(url, nil)
 	ctx := context.Background()
 	req := &officev1.JoinRequest{SessionId: "demo", CommandId: ids.NewCommandID(), DisplayName: "agent",
 		Kind: officev1.ParticipantKind_PARTICIPANT_KIND_AGENT}

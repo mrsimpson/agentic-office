@@ -1,17 +1,30 @@
 // Command office-server runs the office server (bb-office-server).
 //
-// All services are mounted. The meeting session keeps its logs in memory. Services that are not
-// implemented yet answer every call with the Connect code "unimplemented".
+// All services are mounted. Every call needs an access token from the identity block, except
+// GetChallenge and ExchangeChallenge. The server speaks only TLS. The meeting session keeps its
+// logs in memory. Services that are not implemented yet answer every call with the Connect code
+// "unimplemented".
+//
+// Files in the data directory (-data-dir):
+//
+//	admins       admin keys, written by hand (see identity.LoadAdmins)
+//	identity.json registered participants and keys, written by the server
+//	tls.crt      TLS certificate; created self-signed if neither it nor tls.key exists
+//	tls.key      TLS private key
 package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"flag"
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -19,17 +32,77 @@ import (
 	"connectrpc.com/connect/v2/connecthttp"
 
 	"github.com/mrsimpson/agentic-office/core/api/office/v1/officev1connect"
+	"github.com/mrsimpson/agentic-office/server/identity"
 	"github.com/mrsimpson/agentic-office/server/session"
 )
 
+func defaultDataDir() string {
+	if d, err := os.UserConfigDir(); err == nil {
+		return filepath.Join(d, "agentic-office", "server")
+	}
+	return "office-server-data"
+}
+
 func main() {
 	addr := flag.String("addr", "127.0.0.1:8740", "listen address (port 0 picks a free port)")
+	dataDir := flag.String("data-dir", defaultDataDir(), "directory for admin keys, registered keys and the TLS certificate")
+	certFile := flag.String("tls-cert", "", "TLS certificate (PEM, may include the chain); default <data-dir>/tls.crt")
+	keyFile := flag.String("tls-key", "", "TLS private key (PEM); default <data-dir>/tls.key")
+	hostname, _ := os.Hostname()
+	tlsHosts := flag.String("tls-hosts", "localhost,127.0.0.1,::1,"+hostname, "host names and IPs of a new self-signed certificate")
+	adminsFile := flag.String("admins", "", "admin key file; default <data-dir>/admins")
+	publicURL := flag.String("public-url", "", "base URL of the server in stage links; default https://<listen address>")
+	tokenTTL := flag.Duration("token-ttl", 15*time.Minute, "lifetime of access tokens")
+	stageTTL := flag.Duration("stage-link-ttl", 24*time.Hour, "lifetime of stage links")
 	flag.Parse()
+	or := func(v, def string) string {
+		if v != "" {
+			return v
+		}
+		return filepath.Join(*dataDir, def)
+	}
 
-	cs := connect.NewServer()
-	// No token check yet (#6): session.New uses session.AllowAll.
-	officev1connect.RegisterSessionServiceHandler(cs, session.New(session.NewMemoryStore(), nil))
-	officev1connect.RegisterIdentityServiceHandler(cs, officev1connect.UnimplementedIdentityServiceHandler{})
+	cert, created, err := loadOrCreateCert(or(*certFile, "tls.crt"), or(*keyFile, "tls.key"), strings.Split(*tlsHosts, ","))
+	if err != nil {
+		log.Fatal(err)
+	}
+	if created {
+		log.Printf("created a self-signed TLS certificate %s for %s", or(*certFile, "tls.crt"), *tlsHosts)
+	}
+	log.Printf("TLS certificate %s sha256 %s", or(*certFile, "tls.crt"), fingerprint(cert))
+
+	admins, err := identity.LoadAdmins(or(*adminsFile, "admins"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	if len(admins) == 0 {
+		log.Printf("no admin keys in %s: nobody can register keys", or(*adminsFile, "admins"))
+	}
+
+	ln, err := net.Listen("tcp", *addr)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if *publicURL == "" {
+		*publicURL = "https://" + ln.Addr().String()
+	}
+	ids, err := identity.New(identity.Options{TokenTTL: *tokenTTL, StageLinkTTL: *stageTTL, PublicURL: *publicURL,
+		StateFile: filepath.Join(*dataDir, "identity.json"), Admins: admins})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	cs := connect.NewServer(ids.Interceptor())
+	officev1connect.RegisterSessionServiceHandler(cs, session.New(session.NewMemoryStore(), session.AuthorizerFunc(
+		func(ctx context.Context) (session.Caller, error) {
+			c, ok := identity.CallerFrom(ctx)
+			if !ok {
+				return session.Caller{}, connect.NewError(connect.CodeUnauthenticated, "no access token")
+			}
+			return session.Caller{ParticipantID: c.ParticipantID, DisplayName: c.DisplayName, Kind: c.Kind,
+				StageSessionID: c.StageSessionID, Done: c.Done}, nil
+		})))
+	officev1connect.RegisterIdentityServiceHandler(cs, ids)
 	officev1connect.RegisterJournalServiceHandler(cs, officev1connect.UnimplementedJournalServiceHandler{})
 	officev1connect.RegisterArtifactServiceHandler(cs, officev1connect.UnimplementedArtifactServiceHandler{})
 	mux := http.NewServeMux()
@@ -37,14 +110,11 @@ func main() {
 
 	p := new(http.Protocols)
 	p.SetHTTP1(true)
-	p.SetUnencryptedHTTP2(true)
-	ln, err := net.Listen("tcp", *addr)
-	if err != nil {
-		log.Fatal(err)
-	}
+	p.SetHTTP2(true)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	srv := &http.Server{Handler: mux, Protocols: p, ReadHeaderTimeout: 10 * time.Second,
+		TLSConfig: &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12},
 		// Open session streams end when the server stops.
 		BaseContext: func(net.Listener) context.Context { return ctx }}
 	go func() {
@@ -54,8 +124,8 @@ func main() {
 		_ = srv.Shutdown(shutdown)
 	}()
 	// Tests and scripts read this line to learn the address.
-	log.Printf("office-server listening on http://%s", ln.Addr())
-	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	log.Printf("office-server listening on https://%s", ln.Addr())
+	if err := srv.ServeTLS(ln, "", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
 	log.Printf("office-server stopped")

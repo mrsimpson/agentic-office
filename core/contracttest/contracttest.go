@@ -4,6 +4,10 @@
 // contract) and talks to it only through its provided interfaces. It must not import the
 // packages that implement the block.
 //
+// StartServer starts a real office-server with TLS (a self-signed certificate in a temporary data
+// directory) and an admin key. Server.Participant registers a key for a test participant and
+// returns an Actor with authenticated clients; Server.Anonymous returns clients without a token.
+//
 // Binaries are taken from $OFFICE_BIN_DIR (set by the Makefile). If it is not set, the harness
 // builds them once per test binary with "go build".
 package contracttest
@@ -12,6 +16,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -28,7 +33,10 @@ import (
 	"connectrpc.com/connect/v2"
 	"connectrpc.com/connect/v2/connecthttp"
 
+	officev1 "github.com/mrsimpson/agentic-office/core/api/office/v1"
 	"github.com/mrsimpson/agentic-office/core/api/office/v1/officev1connect"
+	"github.com/mrsimpson/agentic-office/core/auth"
+	"github.com/mrsimpson/agentic-office/core/ids"
 )
 
 var (
@@ -177,19 +185,121 @@ func (p *Process) WaitStderr(t testing.TB, re *regexp.Regexp, timeout time.Durat
 	return ""
 }
 
-var listening = regexp.MustCompile(`listening on (http://\S+)`)
+var listening = regexp.MustCompile(`listening on (https://\S+)`)
 
-// Server is a running office-server.
+// AdminID is the participant ID of the admin that StartServer creates.
+const AdminID = "admin"
+
+// Server is a running office-server with TLS and an admin key.
 type Server struct {
 	*Process
 	URL string
+	// DataDir is the data directory of the server.
+	DataDir string
+	// CertFile is the self-signed TLS certificate of the server. Clients trust it.
+	CertFile string
+	// AdminKey is the private key of the admin (participant AdminID).
+	AdminKey ed25519.PrivateKey
 }
 
-// StartServer starts office-server on a free port and waits until it listens.
+// StartServer starts office-server on a free port and waits until it listens. It creates a data
+// directory with an admin key. args are extra flags, for example "-token-ttl", "2s".
 func StartServer(t testing.TB, env []string, args ...string) *Server {
 	t.Helper()
-	p := Start(t, "office-server", env, append([]string{"-addr", "127.0.0.1:0"}, args...)...)
-	return &Server{Process: p, URL: p.WaitStderr(t, listening, 10*time.Second)}
+	dir := t.TempDir()
+	key, err := auth.NewKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := AdminID + " " + auth.FormatPublicKey(auth.PublicKey(key)) + " Test Admin\n"
+	if err := os.WriteFile(filepath.Join(dir, "admins"), []byte(line), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return StartServerIn(t, dir, key, env, args...)
+}
+
+// StartServerIn starts office-server with an existing data directory, for example to restart a
+// server. adminKey is the key of AdminID in the admin file of dir.
+func StartServerIn(t testing.TB, dir string, adminKey ed25519.PrivateKey, env []string, args ...string) *Server {
+	t.Helper()
+	p := Start(t, "office-server", env, append([]string{"-addr", "127.0.0.1:0", "-data-dir", dir}, args...)...)
+	return &Server{Process: p, URL: p.WaitStderr(t, listening, 10*time.Second), DataDir: dir,
+		CertFile: filepath.Join(dir, "tls.crt"), AdminKey: adminKey}
+}
+
+// HTTPClient returns an HTTP client that trusts the certificate of the server.
+func (s *Server) HTTPClient(t testing.TB) *http.Client {
+	t.Helper()
+	hc, err := auth.HTTPClient(s.CertFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return hc
+}
+
+// Anonymous returns clients without a token.
+func (s *Server) Anonymous(t testing.TB) Clients {
+	return NewClients(s.URL, s.HTTPClient(t))
+}
+
+// WithToken returns clients that send a fixed token, for example the token of a stage link.
+func (s *Server) WithToken(t testing.TB, token string) Clients {
+	return NewClients(s.URL, s.HTTPClient(t), auth.StaticToken(token))
+}
+
+// Actor is a participant with its own key and authenticated clients.
+type Actor struct {
+	Clients
+	ParticipantID string
+	Key           ed25519.PrivateKey
+	KeyID         string
+	Tokens        *auth.TokenSource
+}
+
+// WithKey returns an actor that authenticates with key. The key must be registered.
+func (s *Server) WithKey(t testing.TB, key ed25519.PrivateKey) *Actor {
+	t.Helper()
+	hc := s.HTTPClient(t)
+	ts := auth.NewTokenSource(NewClients(s.URL, hc).Identity, key)
+	a := &Actor{Clients: NewClients(s.URL, hc, auth.Bearer(ts)), Key: key,
+		KeyID: auth.KeyID(auth.PublicKey(key)), Tokens: ts}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	pid, err := ts.ParticipantID(ctx)
+	if err != nil {
+		t.Fatalf("authenticate key %s: %v", a.KeyID, err)
+	}
+	a.ParticipantID = pid
+	return a
+}
+
+// Admin returns the admin actor.
+func (s *Server) Admin(t testing.TB) *Actor { return s.WithKey(t, s.AdminKey) }
+
+// RegisterKey registers key for a participant as the admin and returns the key ID.
+func (s *Server) RegisterKey(t testing.TB, participantID, displayName string, kind officev1.ParticipantKind, key ed25519.PrivateKey) string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	res, err := s.Admin(t).Identity.RegisterKey(ctx, &officev1.RegisterKeyRequest{CommandId: ids.NewCommandID(),
+		ParticipantId: participantID, DisplayName: displayName, Kind: kind, PublicKey: auth.PublicKey(key)})
+	if err != nil {
+		t.Fatalf("register key of %s: %v", participantID, err)
+	}
+	return res.GetKeyId()
+}
+
+// Participant registers a new key for a participant and returns the authenticated actor. The
+// participant is created if it is new; participantID can be called several times (several
+// keys of one participant).
+func (s *Server) Participant(t testing.TB, participantID, displayName string, kind officev1.ParticipantKind) *Actor {
+	t.Helper()
+	key, err := auth.NewKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.RegisterKey(t, participantID, displayName, kind, key)
+	return s.WithKey(t, key)
 }
 
 // Clients holds a Connect client for every office interface.
@@ -200,10 +310,13 @@ type Clients struct {
 	Artifact officev1connect.ArtifactServiceClient
 }
 
-// NewClients returns clients for baseURL. They use the Connect protocol over HTTP/1.1.
-func NewClients(baseURL string) Clients {
-	hc := &http.Client{Transport: http.DefaultTransport.(*http.Transport).Clone()}
-	c := connect.NewClient(connecthttp.NewTransport(hc, baseURL))
+// NewClients returns clients for baseURL that use hc (nil: a new default client) and the
+// interceptors, for example auth.Bearer. They use the Connect protocol.
+func NewClients(baseURL string, hc *http.Client, interceptors ...connect.ClientInterceptor) Clients {
+	if hc == nil {
+		hc = &http.Client{Transport: http.DefaultTransport.(*http.Transport).Clone()}
+	}
+	c := connect.NewClient(connecthttp.NewTransport(hc, baseURL), interceptors...)
 	return Clients{
 		Session:  officev1connect.NewSessionServiceClient(c),
 		Identity: officev1connect.NewIdentityServiceClient(c),

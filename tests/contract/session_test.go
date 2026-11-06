@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -17,22 +18,50 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	officev1 "github.com/mrsimpson/agentic-office/core/api/office/v1"
+	"github.com/mrsimpson/agentic-office/core/api/office/v1/officev1connect"
 	"github.com/mrsimpson/agentic-office/core/contracttest"
 	"github.com/mrsimpson/agentic-office/core/events"
 	"github.com/mrsimpson/agentic-office/core/ids"
 )
 
-// meeting is one session on a fresh office-server.
+// meeting is one session on a fresh office-server. Every participant has its own key and
+// clients; reader is a participant that only subscribes.
 type meeting struct {
-	t   *testing.T
-	c   contracttest.Clients
-	sid string
+	t      *testing.T
+	srv    *contracttest.Server
+	sid    string
+	actors map[string]*contracttest.Actor
+	reader *contracttest.Actor
 }
 
 func newMeeting(t *testing.T) *meeting {
 	t.Helper()
 	srv := contracttest.StartServer(t, nil)
-	return &meeting{t: t, c: contracttest.NewClients(srv.URL), sid: "s-" + ids.NewCommandID()}
+	return &meeting{t: t, srv: srv, sid: "s-" + ids.NewCommandID(), actors: map[string]*contracttest.Actor{},
+		reader: srv.Participant(t, "reader", "Reader", officev1.ParticipantKind_PARTICIPANT_KIND_AGENT)}
+}
+
+// participantID turns a display name into a participant ID, for example "writer 1" -> "writer-1".
+func participantID(name string) string {
+	return strings.ToLower(strings.ReplaceAll(name, " ", "-"))
+}
+
+// register registers a participant without joining and returns its actor.
+func (m *meeting) register(name string, kind officev1.ParticipantKind) *contracttest.Actor {
+	m.t.Helper()
+	a := m.srv.Participant(m.t, participantID(name), name, kind)
+	m.actors[a.ParticipantID] = a
+	return a
+}
+
+// s returns the session client of a participant.
+func (m *meeting) s(pid string) officev1connect.SessionServiceClient {
+	m.t.Helper()
+	a := m.actors[pid]
+	if a == nil {
+		m.t.Fatalf("no actor for participant %q", pid)
+	}
+	return a.Session
 }
 
 func (m *meeting) ctx() context.Context {
@@ -43,8 +72,8 @@ func (m *meeting) ctx() context.Context {
 
 func (m *meeting) join(name string, kind officev1.ParticipantKind) string {
 	m.t.Helper()
-	res, err := m.c.Session.Join(m.ctx(), &officev1.JoinRequest{SessionId: m.sid, CommandId: ids.NewCommandID(),
-		DisplayName: name, Kind: kind})
+	res, err := m.register(name, kind).Session.Join(m.ctx(), &officev1.JoinRequest{SessionId: m.sid,
+		CommandId: ids.NewCommandID(), DisplayName: name, Kind: kind})
 	if err != nil {
 		m.t.Fatalf("join %s: %v", name, err)
 	}
@@ -53,7 +82,7 @@ func (m *meeting) join(name string, kind officev1.ParticipantKind) string {
 
 func (m *meeting) say(pid, text string) *officev1.Event {
 	m.t.Helper()
-	res, err := m.c.Session.SubmitUtterance(m.ctx(), m.utterance(pid, text))
+	res, err := m.s(pid).SubmitUtterance(m.ctx(), m.utterance(pid, text))
 	if err != nil {
 		m.t.Fatalf("say %q: %v", text, err)
 	}
@@ -68,7 +97,7 @@ func (m *meeting) utterance(pid, text string) *officev1.SubmitUtteranceRequest {
 // readAll subscribes after cursor and reads until the stream ends (after session.ended).
 func (m *meeting) readAll(cursor uint32) []*officev1.Event {
 	m.t.Helper()
-	st, err := m.c.Session.Subscribe(m.ctx(), &officev1.SubscribeRequest{SessionId: m.sid, AfterEventId: cursor})
+	st, err := m.reader.Session.Subscribe(m.ctx(), &officev1.SubscribeRequest{SessionId: m.sid, AfterEventId: cursor})
 	if err != nil {
 		m.t.Fatal(err)
 	}
@@ -91,7 +120,7 @@ func (m *meeting) read(cursor uint32, n int) []*officev1.Event {
 	m.t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	st, err := m.c.Session.Subscribe(ctx, &officev1.SubscribeRequest{SessionId: m.sid, AfterEventId: cursor})
+	st, err := m.reader.Session.Subscribe(ctx, &officev1.SubscribeRequest{SessionId: m.sid, AfterEventId: cursor})
 	if err != nil {
 		m.t.Fatal(err)
 	}
@@ -109,7 +138,7 @@ func (m *meeting) read(cursor uint32, n int) []*officev1.Event {
 
 func (m *meeting) end(pid string) *officev1.Event {
 	m.t.Helper()
-	res, err := m.c.Session.EndSession(m.ctx(), &officev1.EndSessionRequest{SessionId: m.sid,
+	res, err := m.s(pid).EndSession(m.ctx(), &officev1.EndSessionRequest{SessionId: m.sid,
 		CommandId: ids.NewCommandID(), ParticipantId: pid})
 	if err != nil {
 		m.t.Fatalf("end session: %v", err)
@@ -141,25 +170,28 @@ func wantCode(t *testing.T, what string, err error, code connect.Code) {
 	}
 }
 
+// The participant ID in a session is the participant of the access token. A participant joins
+// once: a repeated join, with the same or a new command_id, returns the first join.
 func TestSessionJoinIsIdempotent(t *testing.T) {
 	m := newMeeting(t)
-	req := &officev1.JoinRequest{SessionId: m.sid, CommandId: ids.NewCommandID(), DisplayName: "Ada",
+	ada := m.register("Ada", officev1.ParticipantKind_PARTICIPANT_KIND_HUMAN)
+	req := &officev1.JoinRequest{SessionId: m.sid, CommandId: ids.NewCommandID(), DisplayName: "Ada L.",
 		Kind: officev1.ParticipantKind_PARTICIPANT_KIND_HUMAN, Captured: true}
-	first, err := m.c.Session.Join(m.ctx(), req)
+	first, err := ada.Session.Join(m.ctx(), req)
 	if err != nil {
 		t.Fatal(err)
 	}
 	ev := first.GetResult().GetEvent()
 	pj := ev.GetParticipantJoined()
-	if first.GetResult().GetDuplicate() || first.GetParticipantId() == "" || ev.GetId() != 1 ||
+	if first.GetResult().GetDuplicate() || first.GetParticipantId() != ada.ParticipantID || ev.GetId() != 1 ||
 		ev.GetType() != events.ParticipantJoined || ev.GetCommandId() != req.GetCommandId() ||
 		ev.GetActorParticipantId() != first.GetParticipantId() || pj.GetParticipantId() != first.GetParticipantId() ||
-		pj.GetDisplayName() != "Ada" || pj.GetKind() != req.GetKind() || !pj.GetCaptured() {
+		pj.GetDisplayName() != "Ada L." || pj.GetKind() != req.GetKind() || !pj.GetCaptured() {
 		t.Fatalf("first join: %v", first)
 	}
 
 	// A client that restarts and sends the same join again stays the same participant.
-	again, err := m.c.Session.Join(m.ctx(), req)
+	again, err := ada.Session.Join(m.ctx(), req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,12 +199,27 @@ func TestSessionJoinIsIdempotent(t *testing.T) {
 		!proto.Equal(again.GetResult().GetEvent(), ev) {
 		t.Fatalf("repeated join: got %v, want the same participant and event as %v", again, first)
 	}
-
-	other := m.join("Bot", officev1.ParticipantKind_PARTICIPANT_KIND_AGENT)
-	if other == first.GetParticipantId() {
-		t.Fatal("a new join command_id must create a new participant")
+	// A second client of the same participant (another key, a new command_id) gets the same join.
+	second := m.srv.Participant(t, ada.ParticipantID, "", officev1.ParticipantKind_PARTICIPANT_KIND_UNSPECIFIED)
+	other, err := second.Session.Join(m.ctx(), &officev1.JoinRequest{SessionId: m.sid, CommandId: ids.NewCommandID()})
+	if err != nil || !other.GetResult().GetDuplicate() || !proto.Equal(other.GetResult().GetEvent(), ev) {
+		t.Fatalf("join of a second key: got %v, %v, want the first join with duplicate set", other, err)
 	}
-	m.end(other)
+
+	// Without display_name and kind, the registered ones are used. A wrong kind is rejected.
+	bot := m.register("Bot", officev1.ParticipantKind_PARTICIPANT_KIND_AGENT)
+	_, err = bot.Session.Join(m.ctx(), &officev1.JoinRequest{SessionId: m.sid, CommandId: ids.NewCommandID(),
+		Kind: officev1.ParticipantKind_PARTICIPANT_KIND_HUMAN})
+	wantCode(t, "join with a kind that is not the registered one", err, connect.CodePermissionDenied)
+	res, err := bot.Session.Join(m.ctx(), &officev1.JoinRequest{SessionId: m.sid, CommandId: ids.NewCommandID()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bj := res.GetResult().GetEvent().GetParticipantJoined(); res.GetParticipantId() != bot.ParticipantID ||
+		bj.GetDisplayName() != "Bot" || bj.GetKind() != officev1.ParticipantKind_PARTICIPANT_KIND_AGENT {
+		t.Fatalf("join without name and kind: %v", res)
+	}
+	m.end(bot.ParticipantID)
 	log := m.readAll(0)
 	checkLog(t, m.sid, log)
 	if len(log) != 3 {
@@ -186,7 +233,6 @@ func TestSessionCommandsAreIdempotent(t *testing.T) {
 	ada := m.join("Ada", officev1.ParticipantKind_PARTICIPANT_KIND_HUMAN)
 	bot := m.join("Bot", officev1.ParticipantKind_PARTICIPANT_KIND_AGENT)
 	said := m.say(ada, "Bot, what is the budget?")
-	s := m.c.Session
 	cmd := func() string { return ids.NewCommandID() }
 	sid := m.sid
 
@@ -216,51 +262,51 @@ func TestSessionCommandsAreIdempotent(t *testing.T) {
 
 	calls := []call{
 		{"submit utterance", events.UtteranceFinal, func(ctx context.Context) (*officev1.CommandResult, error) {
-			r, err := s.SubmitUtterance(ctx, utt)
+			r, err := m.s(utt.GetParticipantId()).SubmitUtterance(ctx, utt)
 			return r.GetResult(), err
 		}},
 		{"retract utterance", events.UtteranceRetracted, func(ctx context.Context) (*officev1.CommandResult, error) {
-			r, err := s.RetractUtterance(ctx, retract)
+			r, err := m.s(retract.GetParticipantId()).RetractUtterance(ctx, retract)
 			return r.GetResult(), err
 		}},
 		{"turn.end", events.TurnEnd, func(ctx context.Context) (*officev1.CommandResult, error) {
-			r, err := s.SubmitSignal(ctx, turn)
+			r, err := m.s(turn.GetParticipantId()).SubmitSignal(ctx, turn)
 			return r.GetResult(), err
 		}},
 		{"silence.long", events.SilenceLong, func(ctx context.Context) (*officev1.CommandResult, error) {
-			r, err := s.SubmitSignal(ctx, silence)
+			r, err := m.s(silence.GetParticipantId()).SubmitSignal(ctx, silence)
 			return r.GetResult(), err
 		}},
 		{"addressed", events.Addressed, func(ctx context.Context) (*officev1.CommandResult, error) {
-			r, err := s.SubmitSignal(ctx, addressed)
+			r, err := m.s(addressed.GetParticipantId()).SubmitSignal(ctx, addressed)
 			return r.GetResult(), err
 		}},
 		{"pause", events.ParticipantPaused, func(ctx context.Context) (*officev1.CommandResult, error) {
-			r, err := s.Pause(ctx, pause)
+			r, err := m.s(pause.GetParticipantId()).Pause(ctx, pause)
 			return r.GetResult(), err
 		}},
 		{"resume", events.ParticipantResumed, func(ctx context.Context) (*officev1.CommandResult, error) {
-			r, err := s.Resume(ctx, resume)
+			r, err := m.s(resume.GetParticipantId()).Resume(ctx, resume)
 			return r.GetResult(), err
 		}},
 		{"raise hand", events.HandRaised, func(ctx context.Context) (*officev1.CommandResult, error) {
-			r, err := s.RaiseHand(ctx, hand)
+			r, err := m.s(hand.GetParticipantId()).RaiseHand(ctx, hand)
 			return r.GetResult(), err
 		}},
 		{"update minutes", events.MinutesUpdated, func(ctx context.Context) (*officev1.CommandResult, error) {
-			r, err := s.UpdateMinutes(ctx, minutes)
+			r, err := m.s(minutes.GetParticipantId()).UpdateMinutes(ctx, minutes)
 			return r.GetResult(), err
 		}},
 		{"show artifact", events.ArtifactShown, func(ctx context.Context) (*officev1.CommandResult, error) {
-			r, err := s.ShowArtifact(ctx, show)
+			r, err := m.s(show.GetParticipantId()).ShowArtifact(ctx, show)
 			return r.GetResult(), err
 		}},
 		{"leave", events.ParticipantLeft, func(ctx context.Context) (*officev1.CommandResult, error) {
-			r, err := s.Leave(ctx, leave)
+			r, err := m.s(leave.GetParticipantId()).Leave(ctx, leave)
 			return r.GetResult(), err
 		}},
 		{"end session", events.SessionEnded, func(ctx context.Context) (*officev1.CommandResult, error) {
-			r, err := s.EndSession(ctx, end)
+			r, err := m.s(end.GetParticipantId()).EndSession(ctx, end)
 			return r.GetResult(), err
 		}},
 	}
@@ -304,14 +350,12 @@ func TestSessionRejectsInvalidCommands(t *testing.T) {
 	m := newMeeting(t)
 	ada := m.join("Ada", officev1.ParticipantKind_PARTICIPANT_KIND_HUMAN)
 	bot := m.join("Bot", officev1.ParticipantKind_PARTICIPANT_KIND_AGENT)
-	s, ctx, sid, cmd := m.c.Session, m.ctx(), m.sid, ids.NewCommandID
+	s, ctx, sid, cmd := m.s(ada), m.ctx(), m.sid, ids.NewCommandID
 
 	_, err := s.Join(ctx, &officev1.JoinRequest{CommandId: cmd(), DisplayName: "X", Kind: officev1.ParticipantKind_PARTICIPANT_KIND_HUMAN})
 	wantCode(t, "join without session_id", err, connect.CodeInvalidArgument)
 	_, err = s.Join(ctx, &officev1.JoinRequest{SessionId: sid, DisplayName: "X", Kind: officev1.ParticipantKind_PARTICIPANT_KIND_HUMAN})
 	wantCode(t, "join without command_id", err, connect.CodeInvalidArgument)
-	_, err = s.Join(ctx, &officev1.JoinRequest{SessionId: sid, CommandId: cmd(), DisplayName: "X"})
-	wantCode(t, "join without kind", err, connect.CodeInvalidArgument)
 
 	_, err = s.SubmitUtterance(ctx, &officev1.SubmitUtteranceRequest{CommandId: cmd(), ParticipantId: ada, Text: "x", Modality: officev1.Modality_MODALITY_TEXT})
 	wantCode(t, "utterance without session_id", err, connect.CodeInvalidArgument)
@@ -323,7 +367,7 @@ func TestSessionRejectsInvalidCommands(t *testing.T) {
 	wantCode(t, "utterance without text", err, connect.CodeInvalidArgument)
 	_, err = s.RaiseHand(ctx, &officev1.RaiseHandRequest{SessionId: sid, CommandId: cmd()})
 	wantCode(t, "raise hand without participant_id", err, connect.CodeInvalidArgument)
-	_, err = s.ShowArtifact(ctx, &officev1.ShowArtifactRequest{SessionId: sid, CommandId: cmd(), ParticipantId: bot})
+	_, err = s.ShowArtifact(ctx, &officev1.ShowArtifactRequest{SessionId: sid, CommandId: cmd(), ParticipantId: ada})
 	wantCode(t, "show artifact without artifact_id", err, connect.CodeInvalidArgument)
 	_, err = s.SubmitSignal(ctx, &officev1.SubmitSignalRequest{SessionId: sid, CommandId: cmd(), ParticipantId: ada})
 	wantCode(t, "signal without signal", err, connect.CodeInvalidArgument)
@@ -335,8 +379,17 @@ func TestSessionRejectsInvalidCommands(t *testing.T) {
 		wantCode(t, "subscribe without session_id", err, connect.CodeInvalidArgument)
 	}
 
+	// participant_id must be the participant of the token.
 	_, err = s.SubmitUtterance(ctx, m.utterance("nobody", "x"))
-	wantCode(t, "utterance of an unknown participant", err, connect.CodeNotFound)
+	wantCode(t, "utterance with the participant_id of nobody", err, connect.CodePermissionDenied)
+	_, err = s.SubmitUtterance(ctx, m.utterance(bot, "x"))
+	wantCode(t, "utterance with the participant_id of someone else", err, connect.CodePermissionDenied)
+	_, err = s.EndSession(ctx, &officev1.EndSessionRequest{SessionId: sid, CommandId: cmd(), ParticipantId: bot})
+	wantCode(t, "end with the participant_id of someone else", err, connect.CodePermissionDenied)
+	// A registered participant who did not join is not a participant of the session.
+	outsider := m.register("Outsider", officev1.ParticipantKind_PARTICIPANT_KIND_HUMAN)
+	_, err = outsider.Session.SubmitUtterance(ctx, m.utterance(outsider.ParticipantID, "x"))
+	wantCode(t, "utterance of a participant who did not join", err, connect.CodeNotFound)
 	_, err = s.SubmitUtterance(ctx, &officev1.SubmitUtteranceRequest{SessionId: "other-" + sid, CommandId: cmd(),
 		ParticipantId: ada, Text: "x", Modality: officev1.Modality_MODALITY_TEXT})
 	wantCode(t, "utterance in a session the participant did not join", err, connect.CodeNotFound)
@@ -359,13 +412,13 @@ func TestSessionRejectsInvalidCommands(t *testing.T) {
 	wantCode(t, "command_id reused for another command", err, connect.CodeAlreadyExists)
 	reused := proto.Clone(used).(*officev1.SubmitUtteranceRequest)
 	reused.ParticipantId = bot
-	_, err = s.SubmitUtterance(ctx, reused)
+	_, err = m.s(bot).SubmitUtterance(ctx, reused)
 	wantCode(t, "command_id reused by another participant", err, connect.CodeAlreadyExists)
 
-	if _, err := s.Leave(ctx, &officev1.LeaveRequest{SessionId: sid, CommandId: cmd(), ParticipantId: bot}); err != nil {
+	if _, err := m.s(bot).Leave(ctx, &officev1.LeaveRequest{SessionId: sid, CommandId: cmd(), ParticipantId: bot}); err != nil {
 		t.Fatal(err)
 	}
-	_, err = s.RaiseHand(ctx, &officev1.RaiseHandRequest{SessionId: sid, CommandId: cmd(), ParticipantId: bot})
+	_, err = m.s(bot).RaiseHand(ctx, &officev1.RaiseHandRequest{SessionId: sid, CommandId: cmd(), ParticipantId: bot})
 	wantCode(t, "command of a participant who left", err, connect.CodeFailedPrecondition)
 
 	// Rejected commands leave no trace in the log.
@@ -383,10 +436,10 @@ func TestSessionRetractionIsANewEvent(t *testing.T) {
 	ada := m.join("Ada", officev1.ParticipantKind_PARTICIPANT_KIND_HUMAN)
 	bot := m.join("Bot", officev1.ParticipantKind_PARTICIPANT_KIND_AGENT)
 	said := m.say(ada, "The budget is ten million.")
-	s, ctx, sid := m.c.Session, m.ctx(), m.sid
+	s, ctx, sid := m.s(ada), m.ctx(), m.sid
 
 	before := m.read(0, 3)
-	_, err := s.RetractUtterance(ctx, &officev1.RetractUtteranceRequest{SessionId: sid, CommandId: ids.NewCommandID(),
+	_, err := m.s(bot).RetractUtterance(ctx, &officev1.RetractUtteranceRequest{SessionId: sid, CommandId: ids.NewCommandID(),
 		ParticipantId: bot, UtteranceEventId: said.GetId()})
 	wantCode(t, "retract someone else's utterance", err, connect.CodePermissionDenied)
 	_, err = s.RetractUtterance(ctx, &officev1.RetractUtteranceRequest{SessionId: sid, CommandId: ids.NewCommandID(),
@@ -430,12 +483,12 @@ func TestSessionResumeFromCursor(t *testing.T) {
 	written := make(chan error, 1)
 	go func() {
 		for i := range total {
-			if _, err := m.c.Session.SubmitUtterance(context.Background(), m.utterance(ada, fmt.Sprint(i))); err != nil {
+			if _, err := m.s(ada).SubmitUtterance(context.Background(), m.utterance(ada, fmt.Sprint(i))); err != nil {
 				written <- err
 				return
 			}
 		}
-		_, err := m.c.Session.EndSession(context.Background(), &officev1.EndSessionRequest{SessionId: m.sid,
+		_, err := m.s(ada).EndSession(context.Background(), &officev1.EndSessionRequest{SessionId: m.sid,
 			CommandId: ids.NewCommandID(), ParticipantId: ada})
 		written <- err
 	}()
@@ -446,7 +499,7 @@ func TestSessionResumeFromCursor(t *testing.T) {
 	chunks := []int{1, 7, 50, 3, 120, 2}
 	for i := 0; ; i++ {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		st, err := m.c.Session.Subscribe(ctx, &officev1.SubscribeRequest{SessionId: m.sid, AfterEventId: cursor})
+		st, err := m.reader.Session.Subscribe(ctx, &officev1.SubscribeRequest{SessionId: m.sid, AfterEventId: cursor})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -486,7 +539,7 @@ func TestSessionResumeFromCursor(t *testing.T) {
 	}
 
 	// A cursor beyond the last event is an error, not an endless wait.
-	st, err := m.c.Session.Subscribe(m.ctx(), &officev1.SubscribeRequest{SessionId: m.sid, AfterEventId: cursor + 5})
+	st, err := m.reader.Session.Subscribe(m.ctx(), &officev1.SubscribeRequest{SessionId: m.sid, AfterEventId: cursor + 5})
 	if err == nil {
 		defer st.Close()
 		_, err = st.Receive()
@@ -499,12 +552,12 @@ func TestSessionEnded(t *testing.T) {
 	m := newMeeting(t)
 	ada := m.join("Ada", officev1.ParticipantKind_PARTICIPANT_KIND_HUMAN)
 	said := m.utterance(ada, "Goodbye")
-	if _, err := m.c.Session.SubmitUtterance(m.ctx(), said); err != nil {
+	if _, err := m.s(ada).SubmitUtterance(m.ctx(), said); err != nil {
 		t.Fatal(err)
 	}
 
 	// A live subscriber waits at the end of the log.
-	live, err := m.c.Session.Subscribe(m.ctx(), &officev1.SubscribeRequest{SessionId: m.sid, AfterEventId: 2})
+	live, err := m.reader.Session.Subscribe(m.ctx(), &officev1.SubscribeRequest{SessionId: m.sid, AfterEventId: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -519,11 +572,11 @@ func TestSessionEnded(t *testing.T) {
 		t.Fatalf("live subscriber after session.ended: want end of stream, got %v", err)
 	}
 
-	s, ctx, sid, cmd := m.c.Session, m.ctx(), m.sid, ids.NewCommandID
+	s, ctx, sid, cmd := m.s(ada), m.ctx(), m.sid, ids.NewCommandID
 	_, err = s.SubmitUtterance(ctx, m.utterance(ada, "too late"))
 	wantCode(t, "utterance after the end", err, connect.CodeFailedPrecondition)
-	_, err = s.Join(ctx, &officev1.JoinRequest{SessionId: sid, CommandId: cmd(), DisplayName: "Late",
-		Kind: officev1.ParticipantKind_PARTICIPANT_KIND_HUMAN})
+	late := m.register("Late", officev1.ParticipantKind_PARTICIPANT_KIND_HUMAN)
+	_, err = late.Session.Join(ctx, &officev1.JoinRequest{SessionId: sid, CommandId: cmd()})
 	wantCode(t, "join after the end", err, connect.CodeFailedPrecondition)
 	_, err = s.EndSession(ctx, &officev1.EndSessionRequest{SessionId: sid, CommandId: cmd(), ParticipantId: ada})
 	wantCode(t, "end twice", err, connect.CodeFailedPrecondition)
@@ -560,7 +613,7 @@ func TestSessionConcurrentSubscribers(t *testing.T) {
 		rwg.Go(func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			st, err := m.c.Session.Subscribe(ctx, &officev1.SubscribeRequest{SessionId: m.sid})
+			st, err := m.reader.Session.Subscribe(ctx, &officev1.SubscribeRequest{SessionId: m.sid})
 			if err != nil {
 				t.Error(err)
 				return
@@ -584,7 +637,7 @@ func TestSessionConcurrentSubscribers(t *testing.T) {
 	for w := range writers {
 		wwg.Go(func() {
 			for i := range perWriter {
-				if _, err := m.c.Session.SubmitUtterance(context.Background(), m.utterance(pids[w], fmt.Sprint(w, "/", i))); err != nil {
+				if _, err := m.s(pids[w]).SubmitUtterance(context.Background(), m.utterance(pids[w], fmt.Sprint(w, "/", i))); err != nil {
 					t.Error(err)
 					return
 				}

@@ -6,7 +6,6 @@ import (
 	"sync"
 
 	"connectrpc.com/connect/v2"
-	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	officev1 "github.com/mrsimpson/agentic-office/core/api/office/v1"
@@ -14,16 +13,36 @@ import (
 	"github.com/mrsimpson/agentic-office/core/events"
 )
 
-// Authorizer decides if a caller may act in a session. participantID is empty for Join and
-// Subscribe. The token check (if-token-check, #6) plugs in here.
-type Authorizer interface {
-	Authorize(ctx context.Context, sessionID, participantID string) error
+// Caller is who makes a call, as the token check (if-token-check) learned it from the token.
+type Caller struct {
+	// ParticipantID is the identity of the caller. It is also the participant ID in the session.
+	ParticipantID string
+	DisplayName   string
+	Kind          officev1.ParticipantKind
+	// StageSessionID is set for the read-only token of a stage link. Such a caller may only
+	// subscribe to this session.
+	StageSessionID string
+	// Done is closed when the token expires or is revoked. An open stream ends then. Nil means
+	// never.
+	Done <-chan struct{}
 }
 
-// AllowAll is the Authorizer until the token check exists (#6). It allows every call.
-type AllowAll struct{}
+// Authorizer returns the caller of a call. It fails with Unauthenticated if the call carries no
+// valid token. In office-server it reads the result of the identity token check.
+type Authorizer interface {
+	Caller(ctx context.Context) (Caller, error)
+}
 
-func (AllowAll) Authorize(context.Context, string, string) error { return nil }
+// AuthorizerFunc is a function that is an Authorizer.
+type AuthorizerFunc func(ctx context.Context) (Caller, error)
+
+func (f AuthorizerFunc) Caller(ctx context.Context) (Caller, error) { return f(ctx) }
+
+type denyAll struct{}
+
+func (denyAll) Caller(context.Context) (Caller, error) {
+	return Caller{}, connect.NewError(connect.CodeUnauthenticated, "no token check configured")
+}
 
 // Service implements the session commands and the session stream.
 type Service struct {
@@ -36,10 +55,11 @@ type Service struct {
 
 var _ officev1connect.SessionServiceHandler = (*Service)(nil)
 
-// New returns a Service that keeps its logs in store. If auth is nil, AllowAll is used.
+// New returns a Service that keeps its logs in store. If auth is nil, every call fails with
+// Unauthenticated.
 func New(store Store, auth Authorizer) *Service {
 	if auth == nil {
-		auth = AllowAll{}
+		auth = denyAll{}
 	}
 	return &Service{store: store, auth: auth, sessions: map[string]*state{}}
 }
@@ -56,6 +76,7 @@ type state struct {
 }
 
 type participant struct {
+	joined *officev1.Event // the participant.joined event of the current membership
 	left   bool
 	paused bool
 }
@@ -70,7 +91,7 @@ func (st *state) apply(ev *officev1.Event) {
 	st.lastID = ev.GetId()
 	switch p := ev.GetPayload().(type) {
 	case *officev1.Event_ParticipantJoined:
-		st.participants[p.ParticipantJoined.GetParticipantId()] = &participant{}
+		st.participants[p.ParticipantJoined.GetParticipantId()] = &participant{joined: ev}
 	case *officev1.Event_ParticipantLeft:
 		if pt := st.participants[p.ParticipantLeft.GetParticipantId()]; pt != nil {
 			pt.left = true
@@ -130,16 +151,18 @@ func precondition(msg string) error {
 type command struct {
 	sessionID     string
 	commandID     string
-	participantID string // empty for join
+	participantID string // empty for join: the participant of the token joins
 	// types are the event types this command can create. A repeated command_id must match one.
 	types []string
-	build func(st *state) (*officev1.Event, error)
+	// check, if set, checks the command against the caller before anything else.
+	check func(Caller) error
+	build func(st *state, c Caller) (*officev1.Event, error)
 }
 
 // run carries out a command once (dec-idempotent-commands).
 //
-// Order of checks: required fields, authorisation, repeated command_id, end of session,
-// participant, then the checks of the command itself.
+// Order of checks: required fields, caller (token, participant_id), repeated command_id, end of
+// session, participant, then the checks of the command itself.
 func (s *Service) run(ctx context.Context, c command, isJoin bool) (*officev1.CommandResult, error) {
 	if c.sessionID == "" {
 		return nil, invalid("session_id is required")
@@ -150,8 +173,23 @@ func (s *Service) run(ctx context.Context, c command, isJoin bool) (*officev1.Co
 	if !isJoin && c.participantID == "" {
 		return nil, invalid("participant_id is required")
 	}
-	if err := s.auth.Authorize(ctx, c.sessionID, c.participantID); err != nil {
+	caller, err := s.auth.Caller(ctx)
+	if err != nil {
 		return nil, err
+	}
+	if caller.ParticipantID == "" {
+		return nil, connect.NewError(connect.CodePermissionDenied, "a stage link cannot send commands")
+	}
+	if isJoin {
+		c.participantID = caller.ParticipantID
+	} else if c.participantID != caller.ParticipantID {
+		return nil, connect.NewError(connect.CodePermissionDenied,
+			"participant_id must be the participant of the access token")
+	}
+	if c.check != nil {
+		if err := c.check(caller); err != nil {
+			return nil, err
+		}
 	}
 	st, err := s.lock(c.sessionID)
 	if err != nil {
@@ -164,7 +202,7 @@ func (s *Service) run(ctx context.Context, c command, isJoin bool) (*officev1.Co
 		return nil, connect.NewError(connect.CodeInternal, "read session log: "+err.Error())
 	}
 	if prev != nil {
-		if !slices.Contains(c.types, prev.GetType()) || (!isJoin && prev.GetActorParticipantId() != c.participantID) {
+		if !slices.Contains(c.types, prev.GetType()) || prev.GetActorParticipantId() != c.participantID {
 			return nil, connect.NewError(connect.CodeAlreadyExists,
 				"command_id was already used for another command")
 		}
@@ -173,8 +211,14 @@ func (s *Service) run(ctx context.Context, c command, isJoin bool) (*officev1.Co
 	if st.ended {
 		return nil, precondition("the session has ended")
 	}
-	if !isJoin {
-		pt := st.participants[c.participantID]
+	pt := st.participants[c.participantID]
+	if isJoin {
+		// A participant joins once. Another join while it is in the session (for example from a
+		// second client of the same participant) returns the first join.
+		if pt != nil && !pt.left {
+			return &officev1.CommandResult{Event: pt.joined, Duplicate: true}, nil
+		}
+	} else {
 		if pt == nil {
 			return nil, notFound("participant_id is not a participant of this session")
 		}
@@ -182,15 +226,13 @@ func (s *Service) run(ctx context.Context, c command, isJoin bool) (*officev1.Co
 			return nil, precondition("the participant has left the session")
 		}
 	}
-	ev, err := c.build(st)
+	ev, err := c.build(st, caller)
 	if err != nil {
 		return nil, err
 	}
 	ev.SessionId = c.sessionID
 	ev.CommandId = c.commandID
-	if ev.ActorParticipantId == "" {
-		ev.ActorParticipantId = c.participantID
-	}
+	ev.ActorParticipantId = c.participantID
 	ev.Type = events.TypeOf(ev)
 	ev.Time = timestamppb.Now()
 	ev, err = s.store.Append(c.sessionID, ev)
@@ -224,22 +266,26 @@ func knownUtterance(st *state, id uint32) (*utterance, error) {
 	return u, nil
 }
 
+// Join adds the participant of the access token to the session. display_name defaults to the
+// registered name. kind is optional; if set, it must be the registered kind.
 func (s *Service) Join(ctx context.Context, req *officev1.JoinRequest) (*officev1.JoinResponse, error) {
-	if req.GetDisplayName() == "" {
-		return nil, invalid("display_name is required")
-	}
-	if req.GetKind() == officev1.ParticipantKind_PARTICIPANT_KIND_UNSPECIFIED {
-		return nil, invalid("kind is required")
-	}
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(),
 		types: []string{events.ParticipantJoined},
-		build: func(*state) (*officev1.Event, error) {
-			pid := uuid.Must(uuid.NewV7()).String()
+		check: func(c Caller) error {
+			if k := req.GetKind(); k != officev1.ParticipantKind_PARTICIPANT_KIND_UNSPECIFIED && k != c.Kind {
+				return connect.NewError(connect.CodePermissionDenied, "kind is not the registered kind of the participant")
+			}
+			return nil
+		},
+		build: func(_ *state, c Caller) (*officev1.Event, error) {
+			name := req.GetDisplayName()
+			if name == "" {
+				name = c.DisplayName
+			}
 			return &officev1.Event{
-				ActorParticipantId: pid,
 				Payload: &officev1.Event_ParticipantJoined{ParticipantJoined: &officev1.ParticipantJoined{
-					ParticipantId: pid, DisplayName: req.GetDisplayName(), Kind: req.GetKind(),
+					ParticipantId: c.ParticipantID, DisplayName: name, Kind: c.Kind,
 					Captured: req.GetCaptured(),
 				}},
 			}, nil
@@ -248,7 +294,6 @@ func (s *Service) Join(ctx context.Context, req *officev1.JoinRequest) (*officev
 	if err != nil {
 		return nil, err
 	}
-	// The participant ID is part of the stored event, so a repeated join returns the same one.
 	return &officev1.JoinResponse{
 		ParticipantId: res.GetEvent().GetParticipantJoined().GetParticipantId(), Result: res,
 	}, nil
@@ -258,7 +303,7 @@ func (s *Service) Leave(ctx context.Context, req *officev1.LeaveRequest) (*offic
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.ParticipantLeft},
-		build: func(*state) (*officev1.Event, error) {
+		build: func(*state, Caller) (*officev1.Event, error) {
 			return &officev1.Event{Payload: &officev1.Event_ParticipantLeft{
 				ParticipantLeft: &officev1.ParticipantLeft{ParticipantId: req.GetParticipantId()}}}, nil
 		},
@@ -279,7 +324,7 @@ func (s *Service) SubmitUtterance(ctx context.Context, req *officev1.SubmitUtter
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.UtteranceFinal},
-		build: func(*state) (*officev1.Event, error) {
+		build: func(*state, Caller) (*officev1.Event, error) {
 			return &officev1.Event{Payload: &officev1.Event_UtteranceFinal{UtteranceFinal: &officev1.UtteranceFinal{
 				ParticipantId: req.GetParticipantId(), Text: req.GetText(), Modality: req.GetModality(),
 				TranscribedAt: req.GetTranscribedAt(),
@@ -299,7 +344,7 @@ func (s *Service) RetractUtterance(ctx context.Context, req *officev1.RetractUtt
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.UtteranceRetracted},
-		build: func(st *state) (*officev1.Event, error) {
+		build: func(st *state, _ Caller) (*officev1.Event, error) {
 			u, err := knownUtterance(st, req.GetUtteranceEventId())
 			if err != nil {
 				return nil, err
@@ -338,7 +383,7 @@ func (s *Service) SubmitSignal(ctx context.Context, req *officev1.SubmitSignalRe
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.TurnEnd, events.SilenceLong, events.Addressed},
-		build: func(st *state) (*officev1.Event, error) {
+		build: func(st *state, _ Caller) (*officev1.Event, error) {
 			switch sig := req.GetSignal().(type) {
 			case *officev1.SubmitSignalRequest_TurnEnd:
 				if err := knownParticipant(st, sig.TurnEnd.GetParticipantId(), "turn_end.participant_id"); err != nil {
@@ -369,7 +414,7 @@ func (s *Service) Pause(ctx context.Context, req *officev1.PauseRequest) (*offic
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.ParticipantPaused},
-		build: func(st *state) (*officev1.Event, error) {
+		build: func(st *state, _ Caller) (*officev1.Event, error) {
 			if st.participants[req.GetParticipantId()].paused {
 				return nil, precondition("the participant is already paused")
 			}
@@ -387,7 +432,7 @@ func (s *Service) Resume(ctx context.Context, req *officev1.ResumeRequest) (*off
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.ParticipantResumed},
-		build: func(st *state) (*officev1.Event, error) {
+		build: func(st *state, _ Caller) (*officev1.Event, error) {
 			if !st.participants[req.GetParticipantId()].paused {
 				return nil, precondition("the participant is not paused")
 			}
@@ -405,7 +450,7 @@ func (s *Service) RaiseHand(ctx context.Context, req *officev1.RaiseHandRequest)
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.HandRaised},
-		build: func(*state) (*officev1.Event, error) {
+		build: func(*state, Caller) (*officev1.Event, error) {
 			return &officev1.Event{Payload: &officev1.Event_HandRaised{HandRaised: &officev1.HandRaised{
 				ParticipantId: req.GetParticipantId(), Topic: req.GetTopic()}}}, nil
 		},
@@ -420,7 +465,7 @@ func (s *Service) UpdateMinutes(ctx context.Context, req *officev1.UpdateMinutes
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.MinutesUpdated},
-		build: func(*state) (*officev1.Event, error) {
+		build: func(*state, Caller) (*officev1.Event, error) {
 			return &officev1.Event{Payload: &officev1.Event_MinutesUpdated{
 				MinutesUpdated: &officev1.MinutesUpdated{Text: req.GetText()}}}, nil
 		},
@@ -440,7 +485,7 @@ func (s *Service) ShowArtifact(ctx context.Context, req *officev1.ShowArtifactRe
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.ArtifactShown},
-		build: func(*state) (*officev1.Event, error) {
+		build: func(*state, Caller) (*officev1.Event, error) {
 			return &officev1.Event{Payload: &officev1.Event_ArtifactShown{
 				ArtifactShown: &officev1.ArtifactShown{ArtifactId: req.GetArtifactId()}}}, nil
 		},
@@ -459,7 +504,7 @@ func (s *Service) EndSession(ctx context.Context, req *officev1.EndSessionReques
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.SessionEnded},
-		build: func(*state) (*officev1.Event, error) {
+		build: func(*state, Caller) (*officev1.Event, error) {
 			return &officev1.Event{Payload: &officev1.Event_SessionEnded{SessionEnded: &officev1.SessionEnded{}}}, nil
 		},
 	}, false)
@@ -477,8 +522,12 @@ func (s *Service) Subscribe(ctx context.Context, req *officev1.SubscribeRequest,
 	if sid == "" {
 		return invalid("session_id is required")
 	}
-	if err := s.auth.Authorize(ctx, sid, ""); err != nil {
+	caller, err := s.auth.Caller(ctx)
+	if err != nil {
 		return err
+	}
+	if caller.StageSessionID != "" && caller.StageSessionID != sid {
+		return connect.NewError(connect.CodePermissionDenied, "the stage link is for another session")
 	}
 	cursor := req.GetAfterEventId()
 	st, err := s.lock(sid)
@@ -497,6 +546,11 @@ func (s *Service) Subscribe(ctx context.Context, req *officev1.SubscribeRequest,
 		return err
 	}
 	for {
+		select {
+		case <-caller.Done:
+			return connect.NewError(connect.CodeUnauthenticated, "access token expired or revoked")
+		default:
+		}
 		evs, wait, err := s.store.Read(sid, cursor)
 		if err != nil {
 			return connect.NewError(connect.CodeInternal, "read session log: "+err.Error())
@@ -517,6 +571,9 @@ func (s *Service) Subscribe(ctx context.Context, req *officev1.SubscribeRequest,
 		case <-ctx.Done():
 			// The client went away or the server stops. Either way the client may reconnect.
 			return connect.NewError(connect.CodeUnavailable, "stream closed before session.ended")
+		case <-caller.Done:
+			// The client authenticates again and resumes from its cursor (rs-authenticate).
+			return connect.NewError(connect.CodeUnauthenticated, "access token expired or revoked")
 		case <-wait:
 		}
 	}

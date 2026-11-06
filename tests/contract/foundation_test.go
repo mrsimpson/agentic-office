@@ -17,21 +17,19 @@ import (
 
 // The office server mounts every service of chapter 5 that crosses a process boundary.
 // Services without an implementation answer with "unimplemented", not "not found".
-// The meeting session is implemented; session_test.go covers it.
+// The meeting session and identity are implemented; session_test.go and identity_test.go cover them.
 func TestServerMountsEveryInterface(t *testing.T) {
 	srv := contracttest.StartServer(t, nil)
-	c := contracttest.NewClients(srv.URL)
+	c := srv.Admin(t)
 	ctx := context.Background()
 
-	if _, err := c.Session.Join(ctx, &officev1.JoinRequest{SessionId: "s", CommandId: "c", DisplayName: "Ada",
-		Kind: officev1.ParticipantKind_PARTICIPANT_KIND_HUMAN}); err != nil {
+	if _, err := c.Session.Join(ctx, &officev1.JoinRequest{SessionId: "s", CommandId: "c"}); err != nil {
 		t.Errorf("session commands: %v", err)
 	}
+	if _, err := c.Identity.CreateStageLink(ctx, &officev1.CreateStageLinkRequest{SessionId: "s", CommandId: "c"}); err != nil {
+		t.Errorf("auth API: %v", err)
+	}
 	calls := map[string]func() error{
-		"auth API": func() error {
-			_, err := c.Identity.GetChallenge(ctx, &officev1.GetChallengeRequest{})
-			return err
-		},
 		"journal API": func() error {
 			_, err := c.Journal.ListEntries(ctx, &officev1.ListEntriesRequest{})
 			return err
@@ -48,12 +46,22 @@ func TestServerMountsEveryInterface(t *testing.T) {
 	}
 }
 
-// Connect's own protocol is plain HTTP with JSON, so clients need no special library.
+// Connect's own protocol is plain HTTP with JSON over TLS, so clients need no special library.
+// The token goes into the Authorization header.
 func TestPlainHTTPWithJSON(t *testing.T) {
 	srv := contracttest.StartServer(t, nil)
-	post := func(path, body string) (int, []byte) {
+	hc := srv.HTTPClient(t)
+	post := func(path, token, body string) (int, []byte) {
 		t.Helper()
-		res, err := http.Post(srv.URL+path, "application/json", strings.NewReader(body))
+		req, err := http.NewRequest(http.MethodPost, srv.URL+path, strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		res, err := hc.Do(req)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -61,9 +69,18 @@ func TestPlainHTTPWithJSON(t *testing.T) {
 		b, _ := io.ReadAll(res.Body)
 		return res.StatusCode, b
 	}
+	var e struct{ Code string }
 
-	status, body := post("/office.v1.SessionService/Join",
-		`{"sessionId":"s","commandId":"c","displayName":"Ada","kind":"PARTICIPANT_KIND_HUMAN"}`)
+	status, body := post("/office.v1.SessionService/Join", "", `{"sessionId":"s","commandId":"c"}`)
+	if err := json.Unmarshal(body, &e); err != nil || status != http.StatusUnauthorized || e.Code != "unauthenticated" {
+		t.Fatalf("join without token: status %d, body %s", status, body)
+	}
+
+	token, err := srv.Admin(t).Tokens.Token(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, body = post("/office.v1.SessionService/Join", token, `{"sessionId":"s","commandId":"c"}`)
 	var join struct {
 		ParticipantID string `json:"participantId"`
 		Result        struct {
@@ -73,13 +90,12 @@ func TestPlainHTTPWithJSON(t *testing.T) {
 			} `json:"event"`
 		} `json:"result"`
 	}
-	if err := json.Unmarshal(body, &join); err != nil || status != http.StatusOK || join.ParticipantID == "" ||
+	if err := json.Unmarshal(body, &join); err != nil || status != http.StatusOK || join.ParticipantID != contracttest.AdminID ||
 		join.Result.Event.ID != 1 || join.Result.Event.Type != "participant.joined" {
 		t.Fatalf("join: status %d, body %s", status, body)
 	}
 
-	status, body = post("/office.v1.JournalService/ListEntries", `{}`)
-	var e struct{ Code string }
+	status, body = post("/office.v1.JournalService/ListEntries", token, `{}`)
 	if err := json.Unmarshal(body, &e); err != nil || e.Code != "unimplemented" {
 		t.Fatalf("status %d, body %s: want a Connect error with code unimplemented", status, body)
 	}
