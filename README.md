@@ -105,9 +105,26 @@ Rules that hold for all of them:
 - Connect's own protocol is plain HTTP with JSON. You can call any command with `curl`:
 
   ```sh
-  curl -H 'Content-Type: application/json' -d '{"sessionId":"demo","commandId":"…"}' \
+  curl -H 'Content-Type: application/json' \
+    -d '{"sessionId":"demo","commandId":"…","displayName":"Ada","kind":"PARTICIPANT_KIND_HUMAN"}' \
     http://127.0.0.1:8740/office.v1.SessionService/Join
   ```
+
+### Meeting session
+
+The meeting session (`server/session`) is implemented. It keeps its logs in memory, so a restart
+of the server loses all sessions. The package comment in `server/session/doc.go` has the details.
+In short:
+
+- A session exists as soon as someone joins or subscribes.
+- Missing fields fail with `invalid_argument`. Unknown participants or utterances fail with
+  `not_found`. Commands that do not fit the state fail with `failed_precondition`, for example
+  every new command after `session.ended`.
+- The session does not create signals itself. Clients submit `turn.end`, `silence.long` and
+  `addressed` with `SubmitSignal` (see issue #14).
+- `Subscribe` ends the stream after `session.ended`. A cursor beyond the last event fails with
+  `out_of_range`.
+- There is no token check yet (#6).
 
 ## Tests
 

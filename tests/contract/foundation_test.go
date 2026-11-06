@@ -17,25 +17,17 @@ import (
 
 // The office server mounts every service of chapter 5 that crosses a process boundary.
 // Services without an implementation answer with "unimplemented", not "not found".
+// The meeting session is implemented; session_test.go covers it.
 func TestServerMountsEveryInterface(t *testing.T) {
 	srv := contracttest.StartServer(t, nil)
 	c := contracttest.NewClients(srv.URL)
 	ctx := context.Background()
 
+	if _, err := c.Session.Join(ctx, &officev1.JoinRequest{SessionId: "s", CommandId: "c", DisplayName: "Ada",
+		Kind: officev1.ParticipantKind_PARTICIPANT_KIND_HUMAN}); err != nil {
+		t.Errorf("session commands: %v", err)
+	}
 	calls := map[string]func() error{
-		"session commands": func() error {
-			_, err := c.Session.Join(ctx, &officev1.JoinRequest{SessionId: "s", CommandId: "c"})
-			return err
-		},
-		"session stream": func() error {
-			st, err := c.Session.Subscribe(ctx, &officev1.SubscribeRequest{SessionId: "s"})
-			if err != nil {
-				return err
-			}
-			defer st.Close()
-			_, err = st.Receive()
-			return err
-		},
 		"auth API": func() error {
 			_, err := c.Identity.GetChallenge(ctx, &officev1.GetChallengeRequest{})
 			return err
@@ -59,16 +51,37 @@ func TestServerMountsEveryInterface(t *testing.T) {
 // Connect's own protocol is plain HTTP with JSON, so clients need no special library.
 func TestPlainHTTPWithJSON(t *testing.T) {
 	srv := contracttest.StartServer(t, nil)
-	res, err := http.Post(srv.URL+"/office.v1.SessionService/Join", "application/json",
-		strings.NewReader(`{"sessionId":"s","commandId":"c"}`))
-	if err != nil {
-		t.Fatal(err)
+	post := func(path, body string) (int, []byte) {
+		t.Helper()
+		res, err := http.Post(srv.URL+path, "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		b, _ := io.ReadAll(res.Body)
+		return res.StatusCode, b
 	}
-	defer res.Body.Close()
-	body, _ := io.ReadAll(res.Body)
+
+	status, body := post("/office.v1.SessionService/Join",
+		`{"sessionId":"s","commandId":"c","displayName":"Ada","kind":"PARTICIPANT_KIND_HUMAN"}`)
+	var join struct {
+		ParticipantID string `json:"participantId"`
+		Result        struct {
+			Event struct {
+				ID   int    `json:"id"`
+				Type string `json:"type"`
+			} `json:"event"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(body, &join); err != nil || status != http.StatusOK || join.ParticipantID == "" ||
+		join.Result.Event.ID != 1 || join.Result.Event.Type != "participant.joined" {
+		t.Fatalf("join: status %d, body %s", status, body)
+	}
+
+	status, body = post("/office.v1.JournalService/ListEntries", `{}`)
 	var e struct{ Code string }
 	if err := json.Unmarshal(body, &e); err != nil || e.Code != "unimplemented" {
-		t.Fatalf("status %d, body %s: want a Connect error with code unimplemented", res.StatusCode, body)
+		t.Fatalf("status %d, body %s: want a Connect error with code unimplemented", status, body)
 	}
 }
 
