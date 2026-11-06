@@ -1,0 +1,98 @@
+// Spike contract for the meeting session (dec-connect-rpc).
+// Commands are unary calls. The session stream is a server stream from a cursor.
+syntax = "proto3";
+
+package office.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/mrsimpson/agentic-office/gen/office/v1;officev1";
+
+service SessionService {
+  // Join adds a participant to a session. The session is created on first use (spike only).
+  rpc Join(JoinRequest) returns (JoinResponse);
+  // SubmitUtterance appends a final utterance. A repeated command_id returns the stored event.
+  rpc SubmitUtterance(SubmitUtteranceRequest) returns (SubmitUtteranceResponse);
+  // Subscribe sends every event with an ID greater than after_event_id, then live events.
+  rpc Subscribe(SubscribeRequest) returns (stream SubscribeResponse);
+}
+
+enum ParticipantKind {
+  PARTICIPANT_KIND_UNSPECIFIED = 0;
+  PARTICIPANT_KIND_HUMAN = 1;
+  PARTICIPANT_KIND_AGENT = 2;
+}
+
+enum Modality {
+  MODALITY_UNSPECIFIED = 0;
+  MODALITY_VOICE = 1;
+  MODALITY_TEXT = 2;
+}
+
+message JoinRequest {
+  string session_id = 1;
+  // command_id is created by the client, for example a UUIDv7 (dec-idempotent-commands).
+  string command_id = 2;
+  string display_name = 3;
+  ParticipantKind kind = 4;
+}
+
+message JoinResponse {
+  string participant_id = 1;
+  Event event = 2;
+}
+
+message SubmitUtteranceRequest {
+  string session_id = 1;
+  string command_id = 2;
+  string participant_id = 3;
+  string text = 4;
+  Modality modality = 5;
+  // Time when Whisper returned the text. Used to measure qs-transcript-to-log.
+  google.protobuf.Timestamp transcribed_at = 6;
+}
+
+message SubmitUtteranceResponse {
+  Event event = 1;
+  // duplicate is true if the command_id was already known and no new event was created.
+  bool duplicate = 2;
+}
+
+message SubscribeRequest {
+  string session_id = 1;
+  // after_event_id is the cursor: the ID of the last event the client has. 0 means from the start.
+  uint64 after_event_id = 2;
+}
+
+message SubscribeResponse {
+  Event event = 1;
+}
+
+message Event {
+  // id grows by one per event inside a session and starts at 1.
+  uint64 id = 1;
+  string session_id = 2;
+  // type is the event name, for example "utterance.final". It is repeated here so that
+  // grep and jq can filter lines without knowing the oneof field names.
+  string type = 3;
+  // time is when the server appended the event to the log.
+  google.protobuf.Timestamp time = 4;
+  string command_id = 5;
+  oneof payload {
+    ParticipantJoined participant_joined = 10;
+    UtteranceFinal utterance_final = 11;
+  }
+}
+
+message ParticipantJoined {
+  string participant_id = 1;
+  string display_name = 2;
+  ParticipantKind kind = 3;
+}
+
+message UtteranceFinal {
+  string participant_id = 1;
+  string text = 2;
+  Modality modality = 3;
+  google.protobuf.Timestamp transcribed_at = 4;
+}
