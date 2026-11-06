@@ -1,19 +1,14 @@
 package cli
 
 import (
-	"bufio"
-	"bytes"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
-
-	"google.golang.org/protobuf/encoding/protojson"
 
 	officev1 "github.com/mrsimpson/agentic-office/core/api/office/v1"
 
@@ -47,34 +42,12 @@ func cmdRetract(e *env, fs *flag.FlagSet) func([]string) error {
 			return usagef("usage: office utterance retract <event-id> | --last")
 		}
 		return e.sessionCommand(func(c *participant.Client, sid string) (*officev1.CommandResult, error) {
-			var id uint32
 			if *last {
-				pid, err := c.ParticipantID(e.ctx)
-				if err != nil {
-					return nil, err
-				}
-				p, err := c.Paths(sid, pid)
-				if err != nil {
-					return nil, err
-				}
-				evs, err := participant.ReadLog(p.Log)
-				if err != nil {
-					return nil, err
-				}
-				g := participant.NewGateway(pid)
-				for _, ev := range evs {
-					g.Apply(ev)
-				}
-				u := g.LastSent()
-				if u == nil {
-					return nil, errors.New("the local log has no own sentence to retract")
-				}
-				id = u.EventID
-			} else {
-				var err error
-				if id, err = parseEventID(args[0]); err != nil {
-					return nil, err
-				}
+				return c.RetractLast(e.ctx, sid)
+			}
+			id, err := parseEventID(args[0])
+			if err != nil {
+				return nil, err
 			}
 			return c.Retract(e.ctx, sid, id)
 		})
@@ -204,37 +177,13 @@ func cmdStageLink(e *env, fs *flag.FlagSet) func([]string) error {
 	}
 }
 
-// parseDeck reads a deck: JSON in the form of RenderSlidesRequest ({"title": …, "slides":
-// [{"title": …, "bullets": […], "notes": …}]}), or Markdown: "# " is the deck title, "## " starts
-// a slide, "- " or "* " is a bullet, other text becomes the notes of the slide.
+// parseDeck reads a deck file (see participant.ParseDeck).
 func parseDeck(path string, b []byte) (*officev1.RenderSlidesRequest, error) {
-	req := &officev1.RenderSlidesRequest{}
-	if strings.EqualFold(filepath.Ext(path), ".md") {
-		var cur *officev1.Slide
-		sc := bufio.NewScanner(bytes.NewReader(b))
-		for sc.Scan() {
-			line := strings.TrimSpace(sc.Text())
-			switch {
-			case strings.HasPrefix(line, "## "):
-				cur = &officev1.Slide{Title: strings.TrimSpace(line[3:])}
-				req.Slides = append(req.Slides, cur)
-			case strings.HasPrefix(line, "# "):
-				req.Title = strings.TrimSpace(line[2:])
-			case line == "":
-			case cur == nil:
-				return nil, fmt.Errorf("%s: text before the first slide (\"## title\")", path)
-			case strings.HasPrefix(line, "- "), strings.HasPrefix(line, "* "):
-				cur.Bullets = append(cur.Bullets, strings.TrimSpace(line[2:]))
-			default:
-				cur.Notes = strings.TrimSpace(cur.Notes + "\n" + line)
-			}
-		}
-		return req, sc.Err()
+	req, err := participant.ParseDeck(path, b)
+	if errors.Is(err, participant.ErrBadInput) {
+		return nil, usagef("%v", err)
 	}
-	if err := protojson.Unmarshal(b, req); err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
-	}
-	return req, nil
+	return req, err
 }
 
 func cmdSlidesRender(e *env, fs *flag.FlagSet) func([]string) error {
@@ -291,7 +240,7 @@ func cmdArtifactGet(e *env, fs *flag.FlagSet) func([]string) error {
 				e.printJSON(map[string]any{"artifactId": a.GetId(), "mediaType": a.GetMediaType(), "file": *out})
 			}
 		case e.json:
-			e.printJSON(map[string]any{"artifact": protoJSON(a)})
+			e.printJSON(map[string]any{"artifact": participant.MessageJSON(a)})
 		default:
 			_, err = e.stdout.Write(a.GetContent())
 			return err
@@ -301,19 +250,14 @@ func cmdArtifactGet(e *env, fs *flag.FlagSet) func([]string) error {
 }
 
 func parseEntryKind(s string) (officev1.EntryKind, error) {
-	if s == "" {
-		return officev1.EntryKind_ENTRY_KIND_UNSPECIFIED, nil
-	}
-	k, ok := officev1.EntryKind_value["ENTRY_KIND_"+strings.ToUpper(s)]
-	if !ok || k == 0 {
+	k, err := participant.ParseEntryKind(s)
+	if err != nil {
 		return 0, usagef("--kind must be decision, task, minutes or note, not %q", s)
 	}
-	return officev1.EntryKind(k), nil
+	return k, nil
 }
 
-func kindName(k officev1.EntryKind) string {
-	return strings.ToLower(strings.TrimPrefix(k.String(), "ENTRY_KIND_"))
-}
+func kindName(k officev1.EntryKind) string { return participant.KindName(k) }
 
 func cmdJournalAppend(e *env, fs *flag.FlagSet) func([]string) error {
 	kind := fs.String("kind", "", "decision, task, minutes or note")

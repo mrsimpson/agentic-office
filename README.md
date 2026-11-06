@@ -91,7 +91,7 @@ client/               Building blocks of the participant client
   replicator/         Log replicator: local copy of the session log
   ears/               Ears: local speech to text
 cmd/office-server/    Binary of the office server
-cmd/office/           Binary of the participant client (CLI, replicator and ears; later MCP)
+cmd/office/           Binary of the participant client (CLI, replicator, ears and MCP server)
 tests/contract/       Contract tests, one file per building block
 tests/e2e/            End-to-end tests
 ```
@@ -222,8 +222,8 @@ bin/office-server -tls-cert /etc/office/fullchain.pem -tls-key /etc/office/privk
 ## Participant client (office CLI)
 
 `bin/office` is the participant client for humans and agents (`bb-cli`, `bb-replicator`). The
-MCP server (#9) will offer the same features; both build on the shared core in
-`client/participant` (`dec-cli-and-mcp`). Run `office help` for all commands.
+MCP server (`office mcp`, see [MCP server](#mcp-server)) offers the same features; both build on
+the shared core in `client/participant` (`dec-cli-and-mcp`). Run `office help` for all commands.
 
 ### First start
 
@@ -377,6 +377,87 @@ path only. Errors go to stderr.
 
 Exit codes: `0` success, `1` error (also from the server), `2` usage error.
 
+## MCP server
+
+`office mcp` is a local MCP server on stdin and stdout (`bb-mcp`, `if-mcp`). An MCP client starts
+it as a command. It offers the features of the CLI as tools, for agents that use MCP instead of
+a shell. It takes the same flags and `OFFICE_*` variables as the CLI (see
+[Configuration](#configuration)); `--session` sets the default session of the tools. The key
+must exist and be registered first (`office key create`, then an admin registers it).
+
+Add it to Claude Code:
+
+```sh
+claude mcp add office -e OFFICE_KEY=$HOME/.config/agentic-office/agent/key.pem \
+  -e OFFICE_SERVER=https://office.example.org:8740 -- /path/to/bin/office mcp
+```
+
+Or in the JSON configuration of a client (for example `.mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "office": {
+      "command": "/path/to/bin/office",
+      "args": ["mcp"],
+      "env": { "OFFICE_KEY": "/home/me/.config/agentic-office/agent/key.pem",
+               "OFFICE_SERVER": "https://office.example.org:8740" }
+    }
+  }
+}
+```
+
+**Tools.** The names use `_` where the architecture writes `.` (`meeting_join` for
+`meeting.join`), because many clients and model APIs allow only letters, digits, `_` and `-` in
+tool names.
+
+| Tool | CLI command |
+|---|---|
+| `meeting_join` (session, name) | `meeting join` |
+| `meeting_log` | `meeting log` |
+| `meeting_leave`, `meeting_pause`, `meeting_resume`, `meeting_end` | `meeting leave`, `pause`, `resume`, `end` |
+| `utterance_say` (text) | `say` |
+| `utterance_retract` (eventId or last) | `utterance retract` |
+| `signal_turn_end`, `signal_silence_long`, `signal_addressed` | `signal …` |
+| `hand_raise` (topic) | `hand raise` |
+| `minutes_update` (text or file) | `minutes update` |
+| `stage_show` (artifactId), `stage_link` | `stage show`, `stage link` |
+| `slides_render` (title and slides, markdown, or file) | `slides render` |
+| `artifact_get` (id, out) | `artifact get` |
+| `journal_append` (kind, text), `journal_list` | `journal append`, `journal list` |
+| `whoami` | `whoami` |
+
+Session tools take an optional `session`. The default is `--session` or `OFFICE_SESSION`, else the
+only session this participant joined from this machine.
+
+**Results.** Each tool returns one JSON object, as text and as structured content, in the same
+shape as the CLI's `--json` output (see [Machine-readable output](#machine-readable-output---json)).
+Errors set `isError` and return `{"error":{"code","message"}}`. Arguments that do not match the
+input schema of a tool are `usage` errors. Journal and artifact tools fail with `unimplemented`
+until the server has those services.
+
+**The log.** `meeting_join` returns `logPath`. The replicator runs inside the MCP process, so the
+replication lives as long as that process: it stops when the client closes the connection, when
+the process ends or is killed, when you leave, or after `session.ended`. Call `meeting_join` again
+to restart it. If `office meeting join` already runs a replicator for the same participant,
+`meeting_join` reuses it and returns its PID. The agent follows the file, for example:
+
+```sh
+tail -n +1 -f "$LOG" | grep --line-buffered '"type":"turn.end"\|"type":"addressed"'
+jq -c 'select(.id > 41 and (.type == "utterance.final" or .type == "addressed"))' "$LOG"
+```
+
+The description of `meeting_join` and the server instructions explain this and the event types
+to the agent.
+
+**Not in the MCP server:**
+
+- Key and admin commands: set up the key with the CLI.
+- The gateway view and the ears: an agent has no microphone. Humans use `office meeting join --mic`.
+- A long-poll tool (`meeting.wait`, an open point of `concept-read-file-write-tools`): the
+  agent reads the file (`dec-log-as-file`). It can be added later without changing the other
+  tools.
+
 ## Tests
 
 We write no unit tests (`dec-contract-tests`). Every building block is tested as a black box
@@ -388,6 +469,11 @@ through its interfaces:
   participant and returns authenticated clients. It never imports the package that
   implements the block.
 - `tests/contract/stub_example_test.go` shows a test against a stub service.
+- `tests/contract/mcp_test.go` starts `office mcp` and talks to it over stdio with the MCP Go SDK
+  client: every tool and its result, the log path that receives the events of all participants,
+  errors for bad input, server errors and unimplemented services, and that no writer is left
+  when the MCP process closes or is killed. `tests/e2e/mcp_test.go`: an agent works only through
+  MCP and follows its log with the `tail -f | grep` filter from the tool description.
 - `tests/contract/cli_test.go` and `replicator_test.go` run the real `office` binary and check
   its output and the local log it leaves, including kills of the replicator and torn lines.
 - `tests/e2e/ears_test.go` runs the ears with the German test WAV (`tests/e2e/testdata/`): the

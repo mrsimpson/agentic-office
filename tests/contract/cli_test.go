@@ -620,8 +620,10 @@ func TestCLIGatewayView(t *testing.T) {
 		t.Fatal("view did not quit on q")
 	}
 
-	// The text form shows the status, and the view ends with the session.
-	view2 := contracttest.Start(t, "office", ada.env, "meeting", "view")
+	// The text form shows the status, and the view ends with the session. --session, because
+	// the end below can reach the local log before the view looks for the default session, and
+	// a session that ended is no longer the default.
+	view2 := contracttest.Start(t, "office", ada.env, "meeting", "view", "--session", sid)
 	got := make(chan string, 1)
 	go func() {
 		var all strings.Builder

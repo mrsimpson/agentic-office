@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,11 +13,8 @@ import (
 	"syscall"
 
 	"connectrpc.com/connect/v2"
-	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
 
 	officev1 "github.com/mrsimpson/agentic-office/core/api/office/v1"
-	"github.com/mrsimpson/agentic-office/core/eventlog"
 
 	"github.com/mrsimpson/agentic-office/client/participant"
 )
@@ -56,6 +52,9 @@ Artifacts and journal:
   artifact get <id> [--out FILE]
   journal append --kind decision|task|minutes|note <text>
   journal list [--kind K] [--after N] [--limit N]
+
+MCP:
+  mcp                                run the MCP server on stdin/stdout (for an MCP client; see README.md)
 
 Other:
   version                            print the version
@@ -115,6 +114,7 @@ func init() {
 		"journal append":      cmdJournalAppend,
 		"journal list":        cmdJournalList,
 		"replicator run":      cmdReplicatorRun,
+		"mcp":                 cmdMCP,
 	}
 }
 
@@ -264,19 +264,13 @@ func (e *env) printJSON(v any) {
 	fmt.Fprintf(e.stdout, "%s\n", b)
 }
 
-// eventJSON returns the event as in the local log: its canonical, compact JSON.
-func eventJSON(ev *officev1.Event) json.RawMessage {
-	line, err := eventlog.MarshalLine(ev)
-	if err != nil {
-		return json.RawMessage("null")
-	}
-	return json.RawMessage(strings.TrimRight(string(line), "\n"))
-}
+// eventJSON returns the event as in the local log.
+func eventJSON(ev *officev1.Event) json.RawMessage { return participant.EventJSON(ev) }
 
 // printResult prints the result of a session command.
 func (e *env) printResult(res *officev1.CommandResult) error {
 	if e.json {
-		e.printJSON(map[string]any{"event": eventJSON(res.GetEvent()), "duplicate": res.GetDuplicate()})
+		e.printJSON(participant.ResultJSON(res))
 		return nil
 	}
 	dup := ""
@@ -336,19 +330,4 @@ func cmdSimple(_ string, f func(*participant.Client, context.Context, string) (*
 	}
 }
 
-// protoJSON returns the canonical, compact JSON form of a message.
-func protoJSON(m proto.Message) json.RawMessage {
-	raw, err := protojson.Marshal(m)
-	if err != nil {
-		return json.RawMessage("null")
-	}
-	var b bytes.Buffer
-	if err := jsonCompact(&b, raw); err != nil {
-		return json.RawMessage("null")
-	}
-	return json.RawMessage(b.Bytes())
-}
-
-func jsonCompact(dst *bytes.Buffer, src []byte) error { return json.Compact(dst, src) }
-
-func entryJSON(en *officev1.JournalEntry) json.RawMessage { return protoJSON(en) }
+func entryJSON(en *officev1.JournalEntry) json.RawMessage { return participant.MessageJSON(en) }

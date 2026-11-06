@@ -1,7 +1,7 @@
 // Command office is the participant client (bb-participant-client): the office CLI, the log
-// replicator ("office replicator run", started by "office meeting join") and the ears
-// ("office meeting join --mic" or "--wav"). Later also the MCP server. See client/cli and
-// README.md.
+// replicator ("office replicator run", started by "office meeting join"), the ears
+// ("office meeting join --mic" or "--wav") and the MCP server ("office mcp", client/mcp). See
+// client/cli and README.md.
 //
 // The ears link whisper.cpp through cgo; build with "make build" (see README.md).
 package main

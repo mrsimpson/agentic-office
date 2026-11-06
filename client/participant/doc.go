@@ -15,6 +15,8 @@
 //     per participant (log, join state, PID file of the replicator).
 //   - ReadLog and FollowLog read the local session log (if-local-log) that client/replicator
 //     writes.
+//   - The shared shapes of output and input: EventJSON, MessageJSON and ResultJSON (the JSON
+//     of the CLI's --json and of the MCP tools), ParseDeck and ParseEntryKind.
 //   - Gateway: the state behind the gateway view (dec-gateway-cli): own utterances with their
 //     status, and whether the participant is paused. It is driven by the local log and, when the
 //     ears run (client/ears), by their local status.

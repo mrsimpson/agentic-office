@@ -16,6 +16,6 @@
 // --foreground the replicator is a child that stops when join ends (see replicator_proc.go).
 // "office meeting view" is the gateway view (dec-gateway-cli). The ears (client/ears) plug in
 // through CheckEars and StartEars, which cmd/office sets; "join --mic" or "--wav" runs them with
-// the gateway view. Without them, --mic and --wav fail with the code unimplemented. README.md
-// has the user documentation.
+// the gateway view. Without them, --mic and --wav fail with the code unimplemented. "office mcp"
+// runs the MCP server (client/mcp) on stdin and stdout. README.md has the user documentation.
 package cli
