@@ -246,9 +246,36 @@ stage); Python for the ears (connect-python is not stable).
 :::decision
 id: dec-languages-rust
 title: Rust for all components in one Cargo workspace
-status: accepted
+status: superseded
 date: 2026-11-06
 supersedes: dec-languages
+addresses: risk-connect-maturity, risk-whisper-latency, qg-performance
+:::
+```
+
+## Go for everything, one monorepo
+
+**Context:** The Rust decision (`dec-languages-rust`) was revised on the same day. The maintainer
+prefers Go. The goal stays the same: one toolchain in one monorepo. **Decision:** All parts are
+written in **Go**: server, CLI, MCP server, log replicator, ears and stage. They live in one
+monorepo with one shared core. The stage is rendered on the server with Go templates and gets live
+updates through server-sent events. It needs no TypeScript and no frontend build.
+**Reasons:** connect-go is stable (v2); there is an official MCP SDK for Go; Go builds one static
+binary for the CLI; whisper.cpp has Go bindings, so the ears need no Python.
+**Consequences:** One language, one build, shared types between all parts. The ears use whisper.cpp
+through cgo, so building the ears also needs a C/C++ compiler. Garbage collection pauses must stay
+small enough for real-time audio (to be measured, see `risk-whisper-latency`). Rich interaction in
+the browser would need a new decision. **Rejected:** Rust (official connect-rust, but still 0.x,
+slower development); Python for the ears (connect-python not stable); TypeScript for the stage
+(second toolchain).
+
+```arc42
+:::decision
+id: dec-languages-go
+title: Go for all parts in one monorepo
+status: accepted
+date: 2026-11-06
+supersedes: dec-languages-rust
 addresses: risk-connect-maturity, risk-whisper-latency, qg-performance
 :::
 ```

@@ -17,8 +17,9 @@ Guidance for agents working in this repository.
 
 ## Code
 
-- All components are written in **Rust** and live in one Cargo workspace in this repository
-  (see `dec-languages-rust` in `docs/architecture/09-decisions.arc42.md`).
+- All components are written in **Go** and live in this monorepo with one toolchain
+  (see `dec-languages-go` in `docs/architecture/09-decisions.arc42.md`). The only extra tool is the
+  C/C++ compiler that whisper.cpp needs through cgo.
 - Shared types and the protocol (Protobuf, Connect RPC) belong in the shared core, not in a
   single component.
 
