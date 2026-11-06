@@ -1,96 +1,126 @@
-# Qualitätsanforderungen
+# Quality Requirements
 
-Drei Qualitätsziele bestimmen die Architektur, in dieser Reihenfolge: Vertraulichkeit vor
-Performance vor Usability. Stehen sie im Konflikt, gewinnt das jeweils höher stehende Ziel.
-Eigenschaften wie „jeder Agent kann andocken“ sind Produktmerkmale und keine Qualitätsziele. Sie
-stehen in Lösungsstrategie und Entscheidungen.
+Four quality goals drive the architecture, in this order: confidentiality, then performance, then
+resumability, then usability. When two goals conflict, the one higher in the list wins. Properties
+like "any agent can connect" are product features, not quality goals. They are covered by the
+solution strategy and the decisions.
 
-## Vertraulichkeit
+## Confidentiality
 
-Gesprochenes ist besonders schützenswert (ISO 25010: Security / Confidentiality). Rohaudio darf
-das Gerät des Sprechers nicht verlassen, und erfasst wird nur, wer eingewilligt hat.
+Speech needs special protection (ISO 25010: security, confidentiality). Raw audio must not leave
+the speaker's device, and only people who consented are captured.
 
 ```arc42
 :::quality-goal
 id: qg-confidentiality
-title: Vertraulichkeit
+title: Confidentiality
 priority: high
 :::
 ```
 
 ## Performance
 
-Ein Agent soll im Gespräch innerhalb der natürlichen Pause nach einem Beitrag reagieren können
-(ISO 25010: Performance Efficiency / Time Behaviour). Dazu muss Gesagtes ohne spürbare
-Verzögerung im Session-Log stehen.
+An agent must be able to react within the natural pause after a contribution (ISO 25010:
+performance efficiency, time behaviour). For this, speech must reach the session log without
+noticeable delay.
 
 ```arc42
 :::quality-goal
 id: qg-performance
-title: Performance (Latenz)
+title: Performance (latency)
+priority: high
+:::
+```
+
+## Resumability
+
+Networks drop, especially on laptops in meetings (ISO 25010: reliability, recoverability). After a
+drop, every client continues where it stopped. No event is lost, and no event is stored or
+delivered twice.
+
+```arc42
+:::quality-goal
+id: qg-resumability
+title: Resumability after network drops
 priority: high
 :::
 ```
 
 ## Usability
 
-Teilnehmer sehen jederzeit, was von ihnen erfasst und gesendet wurde, und können eingreifen
-(ISO 25010: Usability, hier vor allem Transparenz und Steuerbarkeit).
+Participants see at all times what was captured and sent from them, and they can act on it
+(ISO 25010: usability, here mainly transparency and control).
 
 ```arc42
 :::quality-goal
 id: qg-usability
-title: Usability (Transparenz der Erfassung)
+title: Usability (transparency of capture)
 priority: high
 :::
 ```
 
-## Kein Rohaudio verlässt das Gerät
+## No raw audio leaves the device
 
-Das ist die Abnahmeprüfung für die Vertraulichkeit. In einem Testmeeting spricht ein Teilnehmer
-mit eingeschalteten Ohren, und der ausgehende Netzverkehr seines Clients wird mitgeschnitten,
-etwa über einen Proxy oder einen Paketmitschnitt. Wir prüfen, dass darin nur Text-Events
-vorkommen und keine Audiodaten.
+This is the acceptance test for confidentiality. In a test meeting, a participant speaks with the
+ears switched on. We record the outgoing network traffic of their client, for example with a proxy
+or a packet capture. We check that it contains only text events and no audio data.
 
 ```arc42
 :::quality-scenario
 id: qs-no-raw-audio
-title: Kein Rohaudio im ausgehenden Verkehr
+title: No raw audio in outgoing traffic
 quality: qg-confidentiality
-stimulus: Ein Teilnehmer spricht 30 Minuten mit --mic, ausgehender Verkehr wird mitgeschnitten
-response: Der Client sendet ausschließlich Text-Events und Metadaten
-metric: 0 Byte Audiodaten im Mitschnitt
+stimulus: A participant speaks for 30 minutes with --mic while outgoing traffic is recorded
+response: The client sends only text events and metadata
+metric: 0 bytes of audio data in the capture
 :::
 ```
 
-## Transkription bis Session-Log
+## From transcription to the session log
 
-Gemessen wird ab dem Ende der Transkription eines Satzes (Whisper liefert die finale Utterance)
-bis zu dem Zeitpunkt, an dem das Event im Session-Log steht. Die Laufzeit von VAD und Whisper ist
-darin nicht enthalten. Die hängt von der Hardware ab und wird getrennt betrachtet.
+We measure from the end of the transcription of a sentence (Whisper returns the final utterance)
+to the moment the event is in the session log. The time for VAD and Whisper is not included. It
+depends on the hardware and is looked at separately.
 
 ```arc42
 :::quality-scenario
 id: qs-transcript-to-log
-title: Ende der Transkription bis Event im Log
+title: End of transcription to event in the log
 quality: qg-performance
-stimulus: Whisper liefert eine finale Utterance
-response: utterance.final steht im Session-Log
-metric: < 200 ms (OPEN: p95 oder Maximum; Log des Servers oder lokale Replik)
+stimulus: Whisper returns a final utterance
+response: utterance.final is in the session log
+metric: < 200 ms (OPEN: p95 or maximum; server log or local replica)
 :::
 ```
 
-## Sprecher sieht, was gesendet wurde
+## Resume after a network drop
 
-Nach jedem Satz sieht der Sprecher den Status im Terminal.
+A participant's network drops in the middle of a meeting and comes back. While offline, the person
+keeps speaking. After the connection is back, the local log is complete again, and the queued
+utterances are in the session log in the right order.
+
+```arc42
+:::quality-scenario
+id: qs-resume-after-drop
+title: Resume after a network drop
+quality: qg-resumability
+stimulus: The network of a participant with --mic drops for 60 s (OPEN) and comes back
+response: Queued utterances are stored in order; the local log receives all missed events
+metric: 0 lost and 0 duplicate events; local log complete within 2 s after reconnect (OPEN)
+:::
+```
+
+## Speaker sees what was sent
+
+After every sentence, the speaker sees its status in the terminal.
 
 ```arc42
 :::quality-scenario
 id: qs-sender-sees-status
-title: Status eigener Sätze ist sichtbar
+title: Status of own sentences is visible
 quality: qg-usability
-stimulus: Ein Satz wird gesendet oder zurückgezogen
-response: Das Terminal zeigt den Status, die Bühne den Erfassungsstatus
-metric: Status sichtbar ≤ 1 s nach Bestätigung durch den Server (OPEN)
+stimulus: A sentence is sent or retracted
+response: The terminal shows the status; the stage shows the capture status
+metric: Status visible ≤ 1 s after the server confirms it (OPEN)
 :::
 ```

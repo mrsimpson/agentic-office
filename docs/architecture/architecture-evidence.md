@@ -1,26 +1,29 @@
-# Architektur-Evidenz
+# Architecture Evidence
 
-Quelle aller Fakten ist die Konzeptdiskussion vom 2026-11-06 (noch kein Code). „Nutzer“ heißt:
-ausdrücklich vom Initiator festgelegt. `agent inference` heißt: Vorschlag des Agenten, noch zu
-bestätigen.
+All facts come from the concept discussion on 2026-11-06 and the first review. There is no code
+yet. "Maintainer" means the initiator decided it explicitly. "agent inference" means the agent
+proposed it and it still needs confirmation.
 
-| Quelle | Abgeleiteter Fakt | Verwendet in | Konfidenz | Offene Frage / Entscheidung |
+| Source | Derived fact | Used in | Confidence | Open question / decision |
 | --- | --- | --- | --- | --- |
-| Nutzer, Runde 1 | Headless: Anwendung exponiert nur APIs (MCP, CLI) und Medien-Anschlüsse; Agent bringt die Intelligenz | ch.2 con-no-intelligence, ch.9 dec-headless-byoa | high | — |
-| Nutzer, Runde 2 | Whisper selbst anbinden; satzweise Events, Pause löst gründliche Verarbeitung aus | ch.8 concept-event-log, ch.9 dec-own-whisper | high | — |
-| agent inference | Schwellwerte 300–700 ms / 1,5–2 s / > 5 s | ch.8 concept-event-log | low | OPEN: Werte messen und festlegen |
-| Nutzer, Runde 3 | Mehrsprecher-Problem; bewusste Wahl, wem zugehört wird | ch.9 dec-local-single-ear, ch.11 risk-speaker-mode | high | — |
-| Nutzer, Runde 4–5 | Lokales Gateway transkribiert und sendet; Agent verbunden mit Server; Bühne per Screenshare | ch.3, ch.5 bb-ears, bb-stage, ch.9 dec-stage-screenshare | high | — |
-| Nutzer, Runde 6 | Zunächst nur Text, TTS später; Gateway als CLI, zeigt Aufgezeichnetes und Gesendetes | ch.9 dec-text-first, dec-gateway-cli | high | — |
-| Nutzer, Review 1 | Headset als Voraussetzung, kein Stimmabdruck, keine Echounterdrückung; Aufhebung als Issue #1 | ch.2 con-headset-only, ch.11 risk-speaker-mode | high | — |
-| Nutzer, Runde 7 | Trennung Live-Interaktion vs. Werkzeuge; Werkzeuge über MCP und CLI | ch.9 dec-cli-and-mcp | high | — |
-| Nutzer, Runde 8 | Agent startet Teilnahme; lokaler Socket repliziert Log; Agent erhält Dateipfad und tailt | ch.5 bb-replicator, if-local-log, ch.9 dec-log-as-file | high | — |
-| Nutzer, Runde 9 | Agent schreibt über Tools; „listen“ ist der falsche Begriff → join | ch.8 concept-read-file-write-tools | high | — |
-| Nutzer, Runde 10 | Menschen und Agenten nutzen gleiche CLI; Menschen werden zusätzlich transkribiert | ch.8 concept-participant-model, ch.9 dec-unified-participant | high | — |
-| agent inference | Protokolle HTTPS/JSON und WebSocket | ch.5 if-session-commands, if-session-stream | low | OPEN: getypte Alternative mit Streaming prüfen (z. B. Connect RPC) |
-| Nutzer, Review 1 | Keine Partials im Log | ch.9 dec-no-partials-in-log | high | — |
-| Nutzer, Review 1 | Qualitätsziele in Reihenfolge Vertraulichkeit, Performance, Usability; Interoperabilität ist ein Merkmal, kein Qualitätsziel | ch.1, ch.10 | high | — |
-| Nutzer, Review 1 | Latenz: Ende der Transkription bis Event im Log < 200 ms | ch.10 qs-transcript-to-log | high | OPEN: p95 oder Maximum; Server-Log oder lokale Replik |
-| agent inference | Alle drei Ziele priority high, Reihenfolge steht in der Prosa (arc42 erwartet 3–5 high) | ch.10 | medium | — |
-| agent inference | Datenschutz-Risiken (Rückzug, Einwilligung) | ch.11 | medium | OPEN: mit Datenschutz klären |
-| — | Server-Betrieb (Self-Hosting/Cloud), Persistenz, Programmiersprache | ch.7 | — | OPEN: nicht diskutiert |
+| Maintainer, round 1 | Headless: the application only exposes APIs (MCP, CLI) and media connectors; the agent brings the intelligence | ch.2 con-no-intelligence, ch.9 dec-headless-byoa | high | — |
+| Maintainer, round 2 | Connect Whisper ourselves; events per sentence; a pause triggers deeper processing | ch.8 concept-event-log, ch.9 dec-own-whisper | high | — |
+| agent inference | Thresholds 300–700 ms / 1.5–2 s / > 5 s | ch.8 concept-event-log | low | OPEN: measure and set the values |
+| Maintainer, round 3 | Several speakers are a problem; choose on purpose whom to listen to | ch.9 dec-local-single-ear, ch.11 risk-speaker-mode | high | — |
+| Maintainer, rounds 4–5 | A local gateway transcribes and sends; the agent connects to the server; the stage is shown by screen share | ch.3, ch.5 bb-ears, bb-stage, ch.9 dec-stage-screenshare | high | — |
+| Maintainer, round 6 | Text first, TTS later; the gateway is a CLI that shows what was recorded and sent | ch.9 dec-text-first, dec-gateway-cli | high | — |
+| Maintainer, round 7 | Live interaction and tools are separate; tools through MCP and CLI | ch.9 dec-cli-and-mcp | high | — |
+| Maintainer, round 8 | The agent starts taking part; a local socket replicates the log; the agent gets a file path and follows it | ch.5 bb-replicator, if-local-log, ch.9 dec-log-as-file | high | — |
+| Maintainer, round 9 | The agent writes through tools; "listen" is the wrong word, use join | ch.8 concept-read-file-write-tools | high | — |
+| Maintainer, round 10 | Humans and agents use the same CLI; humans are also transcribed | ch.8 concept-participant-model, ch.9 dec-unified-participant | high | — |
+| Maintainer, review 1 | Headset required, no voice print, no echo cancellation; lifting it is issue #1 | ch.2 con-headset-only, ch.11 risk-speaker-mode | high | — |
+| Maintainer, review 1 | No partials in the log | ch.9 dec-no-partials-in-log | high | — |
+| Maintainer, review 1 | Quality goals are ilities, not features; order: confidentiality, performance, usability | ch.1, ch.10 | high | — |
+| Maintainer, review 1 | Latency: end of transcription to event in the log < 200 ms | ch.10 qs-transcript-to-log | high | OPEN: p95 or maximum; server log or local replica |
+| Maintainer, review 2 | Resumability after network drops is a high-priority goal, before usability | ch.1, ch.10 qg-resumability | high | — |
+| Maintainer, review 2 | All architecture documents and artifacts in English, plain language per ISO 24495-1 | AGENTS.md | high | — |
+| agent inference | Resume by cursor, idempotent commands with client IDs, ears queue utterances while offline | ch.5, ch.6 rs-network-drop, ch.8, ch.9 dec-idempotent-commands | medium | OPEN: confirm; drop duration and catch-up metric |
+| agent inference | All four goals have priority high; the order is stated in the text (arc42 expects 3–5 high goals) | ch.10 | medium | — |
+| agent inference | Protocols HTTPS/JSON and WebSocket | ch.5 if-session-commands, if-session-stream | low | OPEN: evaluate a typed alternative with streaming (for example Connect RPC) |
+| agent inference | Data protection risks (retraction, consent) | ch.11 | medium | OPEN: clarify with data protection |
+| — | Server operation (self-hosted or cloud), persistence, programming language | ch.7 | — | OPEN: not discussed yet |

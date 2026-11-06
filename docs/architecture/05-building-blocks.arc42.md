@@ -1,10 +1,10 @@
-# Bausteinsicht
+# Building Block View
 
-Das System zerfällt auf oberster Ebene in zwei Teile: den **Office-Server**, der Sessions,
-Journal, Artefakte und die Bühne verwaltet, und den **Teilnehmer-Client**, der auf dem Rechner
-jedes Teilnehmers läuft (Mensch oder Agent).
+At the top level the system has two parts. The **office server** manages sessions, the journal,
+artifacts and the stage. The **participant client** runs on the computer of every participant,
+human or agent.
 
-## Überblick
+## Overview
 
 ```arc42
 :::diagram
@@ -17,17 +17,17 @@ aliases: bb_server=bb-office-server, bb_session=bb-session-service, bb_journal=b
 
 ```mermaid
 flowchart LR
-    subgraph bb_client [Teilnehmer-Client]
+    subgraph bb_client [Participant client]
         bb_cli[office CLI]
-        bb_mcp[MCP-Server]
-        bb_replicator[Log-Replikator]
-        bb_ears[Ohren]
+        bb_mcp[MCP server]
+        bb_replicator[Log replicator]
+        bb_ears[Ears]
     end
-    subgraph bb_server [Office-Server]
-        bb_session[Meeting-Session]
+    subgraph bb_server [Office server]
+        bb_session[Meeting session]
         bb_journal[Journal]
-        bb_artifacts[Artefakt-Werkzeuge]
-        bb_stage[Bühne]
+        bb_artifacts[Artifact tools]
+        bb_stage[Stage]
     end
     bb_cli -->|if-session-commands| bb_session
     bb_mcp -->|if-session-commands| bb_session
@@ -43,169 +43,168 @@ flowchart LR
     bb_cli -->|if-local-log| bb_replicator
 ```
 
-## Office-Server
+## Office server
 
-Der zentrale, headless Teil. Er hält den Zustand des Teams und der laufenden Meetings, stellt
-deterministische Werkzeuge bereit und rendert die Bühne. Er enthält kein LLM.
+The central, headless part. It holds the state of the team and of running meetings, offers
+deterministic tools and renders the stage. It contains no LLM.
 
 ```arc42
 :::building-block
 id: bb-office-server
-title: Office-Server
+title: Office server
 implements: concept-event-log, concept-participant-model
 :::
 ```
 
-### Meeting-Session
+### Meeting session
 
-Verwaltet Sessions und deren Teilnehmer. Nimmt Utterances der Ohren und Aktionen der Teilnehmer
-entgegen und schreibt alles in ein Event-Log pro Session, in das nur angehängt wird. Das Log
-wird ab einem Cursor an Abonnenten repliziert. Zusammengeführt wird nur nach Zeit, denn wer
-spricht, steht durch das Teilnehmer-Modell schon fest.
+Manages sessions and their participants. Accepts utterances from the ears and actions from
+participants, and writes everything to one append-only event log per session. Subscribers receive
+the log from a cursor onwards. Events are merged by time only: the participant model already says
+who spoke.
 
 ```arc42
 :::building-block
 id: bb-session-service
-title: Meeting-Session
+title: Meeting session
 parent: bb-office-server
 implements: concept-event-log, concept-participant-model
 requires: if-journal-api
 :::
 ```
 
-#### Session-Kommandos
+#### Session commands
 
-Synchrone Aufrufe mit sofortiger Rückmeldung: `join`, `leave`, `utterance.submit`,
-`utterance.retract`, `pause`, `hand.raise`, `minutes.update`, `stage.show`. Jeder erfolgreiche
-Aufruf erzeugt ein Event im Log.
+Synchronous calls that answer at once: `join`, `leave`, `utterance.submit`, `utterance.retract`,
+`pause`, `hand.raise`, `minutes.update`, `stage.show`. Each successful call creates one event in the
+log. Each call carries an ID created by the client, so a repeated call has no extra effect.
 
 ```arc42
 :::interface
 id: if-session-commands
-title: Session-Kommandos
+title: Session commands
 provider: bb-session-service
-protocol: HTTPS/JSON (OPEN: konkretes Protokoll)
+protocol: HTTPS/JSON (OPEN: typed protocol, for example Connect RPC)
 :::
 ```
 
-#### Session-Stream
+#### Session stream
 
-Liefert das Event-Log einer Session ab einem Cursor, danach live. Grundlage für die lokale
-Replikation und für die Bühne.
+Delivers the event log of a session from a cursor onwards, then live. This is the basis for local
+replication and for the stage. After a drop, the subscriber reconnects with its last event ID.
 
 ```arc42
 :::interface
 id: if-session-stream
-title: Session-Stream (Replikation ab Cursor)
+title: Session stream (replication from a cursor)
 provider: bb-session-service
-protocol: WebSocket (OPEN: alternativ SSE)
+protocol: WebSocket (OPEN: typed server streaming, for example Connect RPC)
 :::
 ```
 
 ### Journal
 
-Das Gedächtnis des Teams: Entscheidungen, Aufgaben, Minutes, Notizen, jeweils mit Herkunft
-(wer, Mensch oder Agent, in wessen Auftrag). Am Ende einer Session werden die bestätigten
-Minutes hier abgelegt.
+The memory of the team: decisions, tasks, minutes and notes. Each entry records its origin: who,
+human or agent, and on whose behalf. When a session ends, the confirmed minutes are stored here.
 
 ```arc42
 :::building-block
 id: bb-journal
-title: Journal (System of Record)
+title: Journal (system of record)
 parent: bb-office-server
 implements: concept-event-log
 :::
 ```
 
-#### Journal-API
+#### Journal API
 
-Lesen und Anhängen von Journal-Einträgen. OPEN: Abonnement als Datei analog zum Session-Log
-(`journal.listen`).
+Read journal entries and append new ones. OPEN: subscribe to the journal as a file, like the
+session log (`journal.listen`)?
 
 ```arc42
 :::interface
 id: if-journal-api
-title: Journal-API
+title: Journal API
 provider: bb-journal
 protocol: HTTPS/JSON
 :::
 ```
 
-### Artefakt-Werkzeuge
+### Artifact tools
 
-Zustandslose, deterministische Werkzeuge ohne Streaming: Folien aus einer strukturierten
-Beschreibung rendern, Business-Pläne rechnerisch prüfen (Konsistenz, Unit Economics,
-Vollständigkeit). Artefakte haben IDs (z. B. `slides/42`), über die die Bühne sie anzeigt.
+Stateless, deterministic tools without streaming. They render slides from a structured description
+and check business plans by calculation (consistency, unit economics, completeness). Artifacts have
+IDs (for example `slides/42`). The stage uses these IDs to show them.
 
 ```arc42
 :::building-block
 id: bb-artifact-service
-title: Artefakt-Werkzeuge
+title: Artifact tools
 parent: bb-office-server
 :::
 ```
 
-#### Artefakt-API
+#### Artifact API
 
-Erzeugen, Rendern, Prüfen und Abrufen von Artefakten.
+Create, render, check and fetch artifacts.
 
 ```arc42
 :::interface
 id: if-artifact-api
-title: Artefakt-API
+title: Artifact API
 provider: bb-artifact-service
 protocol: HTTPS/JSON
 :::
 ```
 
-### Bühne
+### Stage
 
-Eine Webseite pro Session, die im Meeting per Screenshare gezeigt wird. Sie zeigt laufende
-Minutes, Wortmeldungen, Artefakte und wer erfasst bzw. pausiert ist. Sie ist eine reine
-Sicht auf das Session-Log und hat keine eigene Logik.
+One web page per session, shown in the meeting by screen share. It shows the running minutes,
+raised hands, artifacts, and who is captured or paused. It is only a view of the session log and
+has no logic of its own.
 
 ```arc42
 :::building-block
 id: bb-stage
-title: Bühne
+title: Stage
 parent: bb-office-server
 requires: if-session-stream, if-artifact-api
 implements: concept-transparency
 :::
 ```
 
-#### Bühnen-Ansicht
+#### Stage view
 
-Browser-Ansicht einer Session, die per Link aufgerufen wird.
+A browser view of one session, opened by a link.
 
 ```arc42
 :::interface
 id: if-stage-web
-title: Bühnen-Ansicht
+title: Stage view
 provider: bb-stage
-protocol: HTTPS (Browser)
+protocol: HTTPS (browser)
 :::
 ```
 
-## Teilnehmer-Client
+## Participant client
 
-Läuft lokal bei jedem Teilnehmer und ist für Menschen und Agenten identisch. Er bündelt CLI,
-MCP-Server, Log-Replikator und optional die Ohren.
+Runs locally on every participant's computer and is the same for humans and agents. It contains
+the CLI, the MCP server, the log replicator and, optionally, the ears.
 
 ```arc42
 :::building-block
 id: bb-participant-client
-title: Teilnehmer-Client
+title: Participant client
 implements: concept-participant-model, concept-read-file-write-tools
 :::
 ```
 
 ### office CLI
 
-Der primäre Zugang für Menschen und Agenten mit Shell. `office meeting join <session> [--mic]`
-startet die Replikation und gibt den Log-Pfad aus. Mit `--mic` zeigt das Terminal die eigenen
-Utterances mit Status (partial → final → gesendet / zurückgezogen) und bietet Tasten zum
-Pausieren und Zurückziehen. Weitere Kommandos betreffen Artefakte, Bühne und Journal.
+The main access for humans and for agents with a shell. `office meeting join <session> [--mic]`
+starts the replication and prints the log path. With `--mic`, the terminal shows the user's own
+utterances with their status (partial → final → sent / retracted). Keys let the user pause and
+retract. Other commands cover artifacts, the stage and the journal.
 
 ```arc42
 :::building-block
@@ -219,7 +218,7 @@ implements: concept-read-file-write-tools
 
 #### CLI
 
-Shell-Kommandos mit maschinenlesbarer Ausgabe (OPEN: `--json`-Konvention).
+Shell commands with machine-readable output (OPEN: `--json` convention).
 
 ```arc42
 :::interface
@@ -230,93 +229,93 @@ protocol: Shell / stdout
 :::
 ```
 
-### MCP-Server
+### MCP server
 
-Lokaler MCP-Server (stdio) mit denselben Funktionen wie die CLI. `meeting.join` startet die
-Replikation und liefert den Pfad zur Log-Datei. Die Lebensdauer der Replikation ist an den
-MCP-Prozess gekoppelt.
+A local MCP server (stdio) with the same features as the CLI. `meeting.join` starts the
+replication and returns the path to the log file. The replication lives as long as the MCP
+process.
 
 ```arc42
 :::building-block
 id: bb-mcp
-title: MCP-Server
+title: MCP server
 parent: bb-participant-client
 requires: if-session-commands, if-artifact-api, if-journal-api
 implements: concept-read-file-write-tools
 :::
 ```
 
-#### MCP-Tools
+#### MCP tools
 
-Tools wie `meeting.join`, `meeting.leave`, `hand.raise`, `minutes.update`, `stage.show`,
+Tools such as `meeting.join`, `meeting.leave`, `hand.raise`, `minutes.update`, `stage.show`,
 `slides.render`, `plan.validate`, `journal.append`.
 
 ```arc42
 :::interface
 id: if-mcp
-title: MCP-Tools
+title: MCP tools
 provider: bb-mcp
 protocol: MCP (stdio)
 :::
 ```
 
-### Log-Replikator
+### Log replicator
 
-Ein lokaler Prozess, der eine Verbindung zum Session-Stream hält und jedes Event als Zeile an
-eine Datei anhängt (`/tmp/office/<session>.jsonl`, Rechte `0600`). Nach einem Abbruch setzt er
-ab der letzten Zeile wieder auf. Bei `session.ended` schreibt er die Schlusszeile und beendet sich.
-Stirbt sein Elternprozess, beendet er sich ebenfalls.
+A local process. It keeps a connection to the session stream and appends every event as one line to
+a file (`/tmp/office/<session>.jsonl`, permissions `0600`). After a drop, it reconnects and
+continues after the last line in the file. On `session.ended` it writes a final line and stops.
+It also stops when its parent process dies.
 
 ```arc42
 :::building-block
 id: bb-replicator
-title: Log-Replikator
+title: Log replicator
 parent: bb-participant-client
 requires: if-session-stream
 implements: concept-event-log, concept-read-file-write-tools
 :::
 ```
 
-#### Lokales Session-Log
+#### Local session log
 
-JSONL-Datei, in die nur angehängt wird, eine Zeile pro Event. Wird mit `tail -f`, `grep`
-und `jq` gelesen.
+An append-only JSONL file with one line per event. Read it with `tail -f`, `grep` and `jq`.
 
 ```arc42
 :::interface
 id: if-local-log
-title: Lokales Session-Log
+title: Local session log
 provider: bb-replicator
-protocol: JSONL-Datei (append-only)
+protocol: JSONL file (append-only)
 :::
 ```
 
-### Ohren
+### Ears
 
-Nur bei Menschen mit `--mic`. Pipeline: Mikrofon → VAD → Whisper (lokal) → Utterances an die
-Session. Im ersten Schritt nur mit Headset, ohne Stimmabdruck und ohne Echounterdrückung.
-Rohaudio verlässt das Gerät nicht.
+Only for humans with `--mic`. Pipeline: microphone → VAD → Whisper (local) → utterances to the
+session. The first stage needs a headset and has no voice print and no echo cancellation
+(`con-headset-only`). Raw audio never leaves the device. During a network drop, the ears keep
+transcribing and queue the utterances locally. They send them in order once the connection is back.
 
 ```arc42
 :::building-block
 id: bb-ears
-title: Ohren
+title: Ears
 parent: bb-participant-client
-technology: VAD (z. B. Silero) / faster-whisper oder whisper.cpp (OPEN)
+technology: VAD (for example Silero) / faster-whisper or whisper.cpp (OPEN)
 requires: if-session-commands
 implements: concept-edge-transcription
 :::
 ```
 
-#### Audio-Eingang
+#### Audio input
 
-Lokales Audiogerät des Teilnehmers (Headset).
+The participant's local audio device (headset).
 
 ```arc42
 :::interface
 id: if-audio-in
-title: Audio-Eingang
+title: Audio input
 provider: bb-ears
-protocol: lokales Audiogerät
+protocol: Local audio device
 :::
 ```

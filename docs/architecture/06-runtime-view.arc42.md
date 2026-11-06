@@ -1,16 +1,16 @@
-# Laufzeitsicht
+# Runtime View
 
-## Agent tritt einem Meeting bei
+## Agent joins a meeting
 
-Der Agent ruft `meeting.join` auf. Der MCP-Server meldet ihn als Teilnehmer an, startet den
-Log-Replikator und gibt den Dateipfad zurück. Der Agent verfolgt die Datei im Hintergrund und
-filtert auf die Events, bei denen er geweckt werden will (z. B. `turn.end`, `addressed`).
+The agent calls `meeting.join`. The MCP server registers it as a participant, starts the log
+replicator and returns the file path. The agent follows the file in the background. It filters for
+the events that should wake it up, for example `turn.end` and `addressed`.
 
 ```arc42
 :::runtime-scenario
 id: rs-agent-joins
-title: Agent tritt einem Meeting bei
-trigger: Agent ruft meeting.join auf
+title: Agent joins a meeting
+trigger: Agent calls meeting.join
 involves: bb-mcp, bb-session-service, bb-replicator
 :::
 ```
@@ -27,9 +27,9 @@ aliases: actor_agent=actor-agent, bb_mcp=bb-mcp, bb_session=bb-session-service, 
 ```mermaid
 sequenceDiagram
     participant actor_agent as Agent
-    participant bb_mcp as MCP-Server
-    participant bb_session as Meeting-Session
-    participant bb_replicator as Log-Replikator
+    participant bb_mcp as MCP server
+    participant bb_session as Meeting session
+    participant bb_replicator as Log replicator
     actor_agent->>bb_mcp: meeting.join(session)
     bb_mcp->>bb_session: join (kind=agent)
     bb_session-->>bb_mcp: participant id
@@ -40,17 +40,17 @@ sequenceDiagram
     actor_agent->>bb_replicator: tail -f path | filter
 ```
 
-## Mensch spricht
+## Human speaks
 
-Ein Mensch hat mit `--mic` beigetreten. Die Ohren erkennen ein Satzende, Whisper transkribiert
-lokal, und die Utterance wird gesendet. Die Session hängt sie ans Log an. Alle Replikatoren
-schreiben sie in ihre lokale Datei. Das Terminal des Sprechers zeigt den Status „gesendet“.
+A human joined with `--mic`. The ears detect the end of a sentence, Whisper transcribes it locally,
+and the utterance is sent. The session appends it to the log. Every replicator writes it to its
+local file. The speaker's terminal shows the status "sent".
 
 ```arc42
 :::runtime-scenario
 id: rs-human-speaks
-title: Mensch spricht, Agent erhält den Satz
-trigger: Satzende (VAD-Pause) im Headset-Signal
+title: Human speaks, agent receives the sentence
+trigger: End of sentence (VAD pause) in the headset signal
 involves: bb-ears, bb-session-service, bb-replicator, bb-cli
 :::
 ```
@@ -66,31 +66,71 @@ aliases: actor_human=actor-human, bb_ears=bb-ears, bb_session=bb-session-service
 
 ```mermaid
 sequenceDiagram
-    participant actor_human as Mensch
-    participant bb_ears as Ohren
-    participant bb_session as Meeting-Session
-    participant bb_replicator as Log-Replikator
+    participant actor_human as Human
+    participant bb_ears as Ears
+    participant bb_session as Meeting session
+    participant bb_replicator as Log replicator
     participant bb_cli as office CLI
-    actor_human->>bb_ears: spricht (Headset)
-    bb_ears->>bb_ears: VAD + Whisper (lokal)
-    bb_ears->>bb_session: utterance.submit (Text, modality=voice)
+    actor_human->>bb_ears: speaks (headset)
+    bb_ears->>bb_ears: VAD + Whisper (local)
+    bb_ears->>bb_session: utterance.submit (text, modality=voice)
     bb_session-->>bb_ears: event id
     bb_session-->>bb_replicator: utterance.final
-    bb_replicator->>bb_replicator: Zeile anhängen
-    bb_cli->>bb_replicator: liest eigene Events
-    bb_cli-->>actor_human: Status gesendet
+    bb_replicator->>bb_replicator: append line
+    bb_cli->>bb_replicator: read own events
+    bb_cli-->>actor_human: status sent
 ```
 
-## Agent meldet sich und zeigt ein Artefakt
+## Network drop and resume
 
-Der Agent rendert über die CLI eine Folie, meldet sich auf der Bühne und zeigt das Artefakt,
-sobald ihm das Wort erteilt wird. Die Bühne liest dieselben Events aus dem Session-Stream.
+The network of a participant drops for a while. The ears keep transcribing and queue utterances
+locally. The replicator loses the stream. When the network is back, the ears send the queued
+utterances in order. Each one carries its client ID, so nothing is stored twice. The replicator
+reconnects with the ID of its last line and receives everything it missed.
+
+```arc42
+:::runtime-scenario
+id: rs-network-drop
+title: Network drop and resume
+trigger: Network connection of a participant is lost and comes back
+involves: bb-ears, bb-session-service, bb-replicator
+:::
+```
+
+```arc42
+:::diagram
+id: seq-network-drop
+notation: mermaid-sequence
+scenario: rs-network-drop
+aliases: bb_ears=bb-ears, bb_session=bb-session-service, bb_replicator=bb-replicator
+:::
+```
+
+```mermaid
+sequenceDiagram
+    participant bb_ears as Ears
+    participant bb_session as Meeting session
+    participant bb_replicator as Log replicator
+    Note over bb_ears,bb_replicator: network drops
+    bb_ears->>bb_ears: queue utterances (text only)
+    bb_replicator->>bb_replicator: retry with backoff
+    Note over bb_ears,bb_replicator: network is back
+    bb_ears->>bb_session: utterance.submit (client id, in order)
+    bb_session-->>bb_ears: event id (existing id if already stored)
+    bb_replicator->>bb_session: subscribe(cursor=last line)
+    bb_session-->>bb_replicator: missed events, then live
+```
+
+## Agent raises its hand and shows an artifact
+
+The agent renders a slide through the CLI and raises its hand on the stage. When it gets the
+floor, it shows the artifact. The stage reads the same events from the session stream.
 
 ```arc42
 :::runtime-scenario
 id: rs-agent-shows-artifact
-title: Agent meldet sich und zeigt ein Artefakt
-trigger: Agent entscheidet nach turn.end, sich zu melden
+title: Agent raises its hand and shows an artifact
+trigger: Agent decides after turn.end to raise its hand
 involves: bb-cli, bb-artifact-service, bb-session-service, bb-stage, bb-replicator
 :::
 ```
@@ -108,48 +148,48 @@ aliases: actor_agent=actor-agent, bb_cli=bb-cli, bb_artifacts=bb-artifact-servic
 sequenceDiagram
     participant actor_agent as Agent
     participant bb_cli as office CLI
-    participant bb_artifacts as Artefakt-Werkzeuge
-    participant bb_session as Meeting-Session
-    participant bb_stage as Bühne
+    participant bb_artifacts as Artifact tools
+    participant bb_session as Meeting session
+    participant bb_stage as Stage
     actor_agent->>bb_cli: office slides render deck.md
     bb_cli->>bb_artifacts: render
     bb_artifacts-->>bb_cli: artifact slides/42
-    actor_agent->>bb_cli: office hand raise --topic Budget
+    actor_agent->>bb_cli: office hand raise --topic budget
     bb_cli->>bb_session: hand.raise
     bb_session-->>bb_stage: hand.raised
-    Note over bb_session: Moderator erteilt das Wort, Event addressed
+    Note over bb_session: the moderator gives the floor, event addressed
     actor_agent->>bb_cli: office stage show slides/42
     bb_cli->>bb_session: stage.show
     bb_session-->>bb_stage: artifact.shown
-    bb_stage->>bb_artifacts: Artefakt laden
+    bb_stage->>bb_artifacts: load artifact
 ```
 
-## Mensch zieht einen Satz zurück
+## Human retracts a sentence
 
-Der Mensch drückt `r` im Gateway-Terminal. Die CLI sendet `utterance.retract`. Das Log erhält ein
-neues Event `utterance.retracted` mit Referenz auf die ursprüngliche Utterance. Bestehende Zeilen
-werden nie umgeschrieben. Agenten und Bühne müssen das Event berücksichtigen.
+The human presses `r` in the gateway terminal. The CLI sends `utterance.retract`. The log gets a
+new event `utterance.retracted` that points to the original utterance. Existing lines are never
+rewritten. Agents and the stage must respect the event.
 
 ```arc42
 :::runtime-scenario
 id: rs-retract
-title: Mensch zieht einen Satz zurück
-trigger: Taste r im Gateway-Terminal
+title: Human retracts a sentence
+trigger: Key r in the gateway terminal
 involves: bb-cli, bb-session-service, bb-replicator, bb-stage
 :::
 ```
 
-## Session endet, Minutes ins Journal
+## Session ends, minutes go to the journal
 
-Die Moderation beendet die Session. Der protokollierende Agent schreibt die finalen Minutes.
-Die Session legt die bestätigten Minutes im Journal ab, schreibt `session.ended` ins Log, und
-die Replikatoren beenden sich.
+The moderator ends the session. The agent that keeps the minutes writes the final version. The
+session stores the confirmed minutes in the journal and writes `session.ended` to the log. The
+replicators stop.
 
 ```arc42
 :::runtime-scenario
 id: rs-session-ends
-title: Session endet, Minutes werden ins Journal übernommen
-trigger: Moderation beendet die Session
+title: Session ends, minutes go to the journal
+trigger: The moderator ends the session
 involves: bb-mcp, bb-cli, bb-session-service, bb-journal, bb-replicator
 :::
 ```

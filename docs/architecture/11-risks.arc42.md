@@ -1,67 +1,68 @@
-# Risiken und technische Schulden
+# Risks and Technical Debt
 
-## Zurückgezogenes bleibt beim Agenten
+## Retracted sentences stay with the agent
 
-Ein zurückgezogener Satz steht bereits in den lokalen Dateien und im Kontext der Agenten. Aus dem
-Kontext lässt er sich nicht „verlernen“.
+A retracted sentence is already in the local files and in the context of the agents. It cannot be
+removed from an agent's context.
 
 ```arc42
 :::risk
 id: risk-retraction-leak
-title: Zurückgezogene Sätze bleiben in Dateien und Agenten-Kontext
+title: Retracted sentences stay in files and in agent context
 severity: high
-mitigation: Optionale Haltefrist vor Veröffentlichung; Bereinigung lokaler Dateien bei Session-Ende; Agenten-Vertrag, retracted zu befolgen
+mitigation: Optional hold period before publishing; clean up local files when the session ends; agent contract to respect retracted events
 :::
 ```
 
-## Rechtliche Unsicherheit beim Mithören
+## Legal uncertainty about listening in
 
-Einwilligung, Aufbewahrung und der Umgang mit Personen ohne Client sind noch nicht geklärt.
+Consent, retention and how to handle people without a client are not settled yet.
 
 ```arc42
 :::risk
 id: risk-consent
-title: Einwilligung und Aufbewahrung ungeklärt
+title: Consent and retention not settled
 severity: high
-mitigation: Nur Teilnehmer mit Client erfassen; Erfassungsstatus auf der Bühne; Prüfung durch Datenschutz vor dem ersten Einsatz
+mitigation: Capture only participants with a client; show capture status on the stage; data protection review before first use
 :::
 ```
 
-## Whisper zu langsam auf Laptops
+## Whisper too slow on laptops
 
-Lokales Whisper ohne GPU kann zu langsam für Echtzeit sein.
+Local Whisper without a GPU may be too slow for real time.
 
 ```arc42
 :::risk
 id: risk-whisper-latency
-title: Lokale Transkription zu langsam
+title: Local transcription too slow
 severity: medium
-mitigation: Kleinere Modelle, whisper.cpp mit Quantisierung; Messung vor Festlegung der Hardware
+mitigation: Smaller models, whisper.cpp with quantisation; measure before choosing hardware
 :::
 ```
 
-## Agenten ohne Dateisystem
+## Agents without a file system
 
-Reine API-Agenten können keine lokale Datei verfolgen.
+Agents that only use an API cannot follow a local file.
 
 ```arc42
 :::risk
 id: risk-no-filesystem
-title: Agenten ohne gemeinsames Dateisystem
+title: Agents without a shared file system
 severity: medium
-mitigation: Long-Poll-Tool meeting.wait als Fallback
+mitigation: Long-poll tool meeting.wait as a fallback
 :::
 ```
 
-## Lautsprecher statt Headset
+## Loudspeakers instead of a headset
 
-Nutzt jemand Lautsprecher, landen die Stimmen anderer im eigenen Transkript, und Sätze erscheinen doppelt.
+If someone uses loudspeakers, other people's voices end up in their transcript, and sentences
+appear twice.
 
 ```arc42
 :::risk
 id: risk-speaker-mode
-title: Echo und Dopplungen im Lautsprecherbetrieb
+title: Echo and duplicates with loudspeakers
 severity: medium
-mitigation: Headset als Voraussetzung (con-headset-only); Echounterdrückung, Stimmabdruck und Deduplizierung in Issue #1
+mitigation: Headset required (con-headset-only); echo cancellation, voice print and deduplication in issue #1
 :::
 ```

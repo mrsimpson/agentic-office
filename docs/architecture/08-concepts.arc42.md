@@ -1,98 +1,105 @@
-# Querschnittliche Konzepte
+# Cross-cutting Concepts
 
-## Teilnehmer-Modell
+## Participant model
 
-Es gibt nur **Teilnehmer**. Jeder hat eine Identität, eine Art (`kind: human | agent`) und
-Rollen (z. B. Moderation, Protokoll, Bühnensteuerung). Rechte hängen an Rollen, nicht an der Art.
-Die Art bleibt sichtbar, weil die Bühne Agenten als Agenten kennzeichnet und weil nur Sprache
-eine Einwilligung zur Aufzeichnung braucht.
+There are only **participants**. Each participant has an identity, a kind (`kind: human | agent`)
+and roles, for example moderator, minute taker or stage control. Rights depend on roles, not on
+the kind. The kind stays visible for two reasons: the stage marks agents as agents, and only speech
+needs consent to be recorded.
 
-Eine Äußerung ist eine Äußerung: `utterance.final` trägt `modality: voice | text`. Gesprochenes
-eines Menschen ist `voice`, getippte Einwürfe und Wortmeldungen von Agenten sind `text`. Eine
-spätere Sprachausgabe vertont Text-Äußerungen, das Modell bleibt dabei gleich.
+An utterance is an utterance, whatever its channel. `utterance.final` carries
+`modality: voice | text`. Human speech is `voice`. Typed remarks and an agent's contributions are
+`text`. Later, speech output will voice text utterances, and the model stays the same.
 
 ```arc42
 :::concept
 id: concept-participant-model
-title: Einheitliches Teilnehmer-Modell
+title: One participant model
 category: domain
 :::
 ```
 
-## Event-Log mit Cursor
+## Event log with cursor
 
-Jede Session hat ein Log, in das nur angehängt wird. Jedes Event hat eine monoton steigende ID.
-Der Cursor ist die letzte gelesene ID bzw. die Zeilennummer in der lokalen Datei. Korrekturen
-und Rückzüge sind neue Events mit Referenz (`utterance.retracted`, `utterance.corrected`), nie
-Änderungen bestehender Einträge.
+Each session has an append-only log. Every event has an ID that only grows. The cursor is the last
+event ID a client has read, which is also the last line of the local file. Corrections and
+retractions are new events that point to the original (`utterance.retracted`,
+`utterance.corrected`). Existing entries never change.
 
-Event-Stufen (Richtwerte, pro Teilnehmer konfigurierbar):
+**Resuming after a network drop:**
 
-| Event | Auslöser |
+- Readers (replicator, stage) reconnect with their last event ID and receive every event after it.
+  Nothing is lost, and nothing arrives twice.
+- Writers (ears, CLI, MCP) give every command an ID that they create themselves. If they send a
+  command again after a drop, the server recognises the ID and returns the existing event.
+- The ears queue utterances locally while offline (text only) and send them in order.
+
+Event levels (guide values, configurable per participant):
+
+| Event | Trigger |
 |---|---|
-| `utterance.final` | Satzende, ca. 300–700 ms Stille |
-| `turn.end` | Sprecherwechsel, ca. 1,5–2 s Stille |
-| `silence.long` | > 5 s Stille |
-| `addressed` | Name eines Teilnehmers fällt |
-| `hand.raised`, `minutes.updated`, `artifact.shown` | Aktionen von Teilnehmern |
-| `participant.joined/left/paused`, `session.ended` | Lebenszyklus |
+| `utterance.final` | End of sentence, about 300–700 ms of silence |
+| `turn.end` | Change of speaker, about 1.5–2 s of silence |
+| `silence.long` | More than 5 s of silence |
+| `addressed` | A participant's name is mentioned |
+| `hand.raised`, `minutes.updated`, `artifact.shown` | Actions of participants |
+| `participant.joined/left/paused`, `session.ended` | Life cycle |
 
-Partials kommen nicht ins Log (`dec-no-partials-in-log`).
+Partials are not written to the log (`dec-no-partials-in-log`).
 
 ```arc42
 :::concept
 id: concept-event-log
-title: Session-Log mit Cursor, nur anhängen
+title: Append-only session log with cursor and resume
 category: integration
 :::
 ```
 
-## Lesen über die Datei, Schreiben über Tools
+## Read from the file, write through tools
 
-Teilnehmer lesen den Verlauf aus der lokal replizierten Datei, bei Agenten typischerweise als
-Hintergrundprozess mit Filter (`tail -f … | grep '"turn.end"\|"addressed"'`). Sie handeln über
-Tools (CLI/MCP), die sofort antworten und Eingaben prüfen. Jede Handlung erscheint danach im Log.
-Damit bestätigen Agenten ihre Aktionen selbst, und mehrere Agenten stimmen sich ab, ohne dass
-es dafür ein eigenes Protokoll braucht.
+Participants read what happens from the locally replicated file. Agents usually do this with a
+background process and a filter (`tail -f … | grep '"turn.end"\|"addressed"'`). They act through
+tools (CLI or MCP) that answer at once and check their input. Every action then appears in the log.
+So agents can confirm their own actions, and several agents can coordinate without a protocol of
+their own.
 
-Für Agenten ohne Dateisystem gibt es als Fallback ein Long-Poll-Tool (`meeting.wait`)
-(OPEN: im ersten Schritt nötig?).
+As a fallback for agents without a file system, there is a long-poll tool (`meeting.wait`)
+(OPEN: is it needed in the first stage?).
 
 ```arc42
 :::concept
 id: concept-read-file-write-tools
-title: Lesen über die Datei, Schreiben über Tools
+title: Read from the file, write through tools
 category: integration
 :::
 ```
 
-## Transkription am Rand
+## Transcription at the edge
 
-Jeder Mensch transkribiert lokal nur sich selbst. Rohaudio verlässt das Gerät nie, gesendet wird
-nur Text mit Metadaten. Mit Headset ergibt sich das Einzelohr von selbst. Lautsprecherbetrieb
-(Echounterdrückung, Stimmabdruck) und Raumohr (Sprechererkennung) folgen später.
-Stimmabdrücke sind biometrische Daten (Art. 9 DSGVO) und brauchen eine ausdrückliche Einwilligung.
+Each human transcribes only themselves, locally. Raw audio never leaves the device. Only text and
+metadata are sent. With a headset, the single ear comes for free. Use with loudspeakers (echo
+cancellation, voice print) and the room ear (speaker recognition) come later. Voice prints are
+biometric data (Art. 9 GDPR) and need explicit consent.
 
 ```arc42
 :::concept
 id: concept-edge-transcription
-title: Lokale Transkription, nur Text verlässt das Gerät
+title: Local transcription; only text leaves the device
 category: privacy
 :::
 ```
 
-## Transparenz und Einwilligung
+## Transparency and consent
 
-Wer erfasst wird, sieht in seinem Terminal jeden Satz mit Status und kann pausieren und
-zurückziehen. Die Bühne zeigt allen, wer erfasst, pausiert oder nicht erfasst ist. Wer keinen
-Client hat, wird nicht transkribiert. Lokale Log-Dateien haben Rechte `0600` und werden nach dem
-Ende der Session gemäß Aufbewahrungsregel bereinigt (OPEN: Regel festlegen, auch für
-zurückgezogene Sätze).
+People who are captured see every sentence with its status in their terminal. They can pause and
+retract. The stage shows everyone who is captured, paused or not captured. People without a client
+are not transcribed. Local log files have permissions `0600`. They are cleaned up after the session
+according to a retention rule (OPEN: define the rule, also for retracted sentences).
 
 ```arc42
 :::concept
 id: concept-transparency
-title: Transparenz und Einwilligung
+title: Transparency and consent
 category: privacy
 :::
 ```

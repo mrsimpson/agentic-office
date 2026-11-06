@@ -1,11 +1,11 @@
-# Verteilungssicht
+# Deployment View
 
-## Verteilungsüberblick
+## Deployment overview
 
-Im ersten Schritt gibt es eine Umgebung: einen Office-Server, die Rechner der menschlichen
-Teilnehmer und die Laufzeitumgebungen der Agenten. Agent und Teilnehmer-Client müssen sich ein
-Dateisystem teilen. CLI und Log-Replikator laufen auf beiden Client-Knoten, das Diagramm zeigt
-sie nur einmal (siehe `hosts` der Knoten). OPEN: Läuft der Server selbst gehostet oder in der Cloud?
+The first stage has one environment. It contains one office server, the computers of the human
+participants and the runtimes of the agents. An agent and its participant client must share a
+file system. The CLI and the log replicator run on both client nodes. The diagram shows them only
+once (see the `hosts` of each node). OPEN: is the server self-hosted or in the cloud?
 
 ```arc42
 :::diagram
@@ -17,74 +17,75 @@ notation: mermaid-architecture
 
 ```mermaid
 architecture-beta
-    group env-mvp(cloud)[Erste Ausbaustufe]
-    group dn-participant-laptop(server)[Teilnehmer-Rechner] in env-mvp
-    group dn-agent-runtime(server)[Agent-Laufzeit] in env-mvp
-    group dn-office-host(server)[Office-Server] in env-mvp
-    service bb-ears(disk)[Ohren] in dn-participant-laptop
+    group env-mvp(cloud)[First stage]
+    group dn-participant-laptop(server)[Participant computer] in env-mvp
+    group dn-agent-runtime(server)[Agent runtime] in env-mvp
+    group dn-office-host(server)[Office server] in env-mvp
+    service bb-ears(disk)[Ears] in dn-participant-laptop
     service bb-cli(server)[office CLI] in dn-participant-laptop
-    service bb-replicator(disk)[Log-Replikator] in dn-participant-laptop
-    service bb-mcp(server)[MCP-Server] in dn-agent-runtime
-    service bb-session-service(server)[Meeting-Session] in dn-office-host
+    service bb-replicator(disk)[Log replicator] in dn-participant-laptop
+    service bb-mcp(server)[MCP server] in dn-agent-runtime
+    service bb-session-service(server)[Meeting session] in dn-office-host
     service bb-journal(database)[Journal] in dn-office-host
-    service bb-artifact-service(server)[Artefakt-Werkzeuge] in dn-office-host
-    service bb-stage(internet)[Bühne] in dn-office-host
+    service bb-artifact-service(server)[Artifact tools] in dn-office-host
+    service bb-stage(internet)[Stage] in dn-office-host
     bb-ears:R --> L:bb-session-service
     bb-replicator:R --> L:bb-session-service
     bb-mcp:L --> R:bb-session-service
 ```
 
-## Erste Ausbaustufe
+## First stage
 
-Die Umgebung, in der das System zuerst im eigenen Team läuft.
+The environment in which the system first runs in our own team.
 
 ```arc42
 :::deployment-node
 id: env-mvp
-title: Erste Ausbaustufe
+title: First stage
 type: environment
 :::
 ```
 
-## Teilnehmer-Rechner
+## Participant computer
 
-Laptop eines Menschen mit Headset. Hier laufen CLI, Log-Replikator und Ohren mit lokalem
-Whisper. OPEN: Mindest-Hardware für Whisper in Echtzeit (CPU oder GPU, Modellgröße).
+The laptop of a human with a headset. It runs the CLI, the log replicator and the ears with local
+Whisper. OPEN: minimum hardware for real-time Whisper (CPU or GPU, model size).
 
 ```arc42
 :::deployment-node
 id: dn-participant-laptop
-title: Teilnehmer-Rechner
+title: Participant computer
 type: device
 parent: env-mvp
 hosts: bb-cli, bb-replicator, bb-ears
 :::
 ```
 
-## Agent-Laufzeit
+## Agent runtime
 
-Rechner oder Container, in dem der Agent läuft (z. B. Claude Code lokal oder in einer
-Cloud-Session). Hier laufen MCP-Server, CLI und Log-Replikator im selben Dateisystem wie der Agent.
+The computer or container in which the agent runs, for example Claude Code on a laptop or in a
+cloud session. It runs the MCP server, the CLI and the log replicator in the same file system as
+the agent.
 
 ```arc42
 :::deployment-node
 id: dn-agent-runtime
-title: Agent-Laufzeit
+title: Agent runtime
 type: container
 parent: env-mvp
 hosts: bb-mcp, bb-cli, bb-replicator
 :::
 ```
 
-## Office-Server
+## Office server
 
-Ein Server bzw. Container mit Meeting-Session, Journal, Artefakt-Werkzeugen und Bühne.
-OPEN: Persistenz (Datenbank, Git-basierte Ablage oder Hybrid).
+One server or container with the meeting session, the journal, the artifact tools and the stage.
+OPEN: persistence (database, Git-based storage or both).
 
 ```arc42
 :::deployment-node
 id: dn-office-host
-title: Office-Server
+title: Office server
 type: server
 parent: env-mvp
 hosts: bb-session-service, bb-journal, bb-artifact-service, bb-stage

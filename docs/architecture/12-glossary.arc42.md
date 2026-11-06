@@ -1,133 +1,145 @@
-# Glossar
+# Glossary
 
-## Teilnehmer
+## Participant
 
-Zentrale Rolle im System; Menschen und Agenten werden gleich behandelt.
+The central role in the system. Humans and agents are treated the same way.
 
 ```arc42
 :::glossary-term
 id: term-participant
-title: Teilnehmer
-definition: Mensch oder Agent in einer Session, mit Identität, Art (human/agent) und Rollen
+title: Participant
+definition: A human or an agent in a session, with an identity, a kind (human or agent) and roles
 :::
 ```
 
 ## Session
 
-Rahmen eines Meetings im Office.
+The frame of one meeting in the office.
 
 ```arc42
 :::glossary-term
 id: term-session
 title: Session
-definition: Ein Meeting im Office, mit eigenem Event-Log, Teilnehmern und Bühne
+definition: One meeting in the office, with its own event log, participants and stage
 :::
 ```
 
-## Session-Log
+## Session log
 
-Die gemeinsame Quelle der Wahrheit einer Session.
+The shared source of truth of a session.
 
 ```arc42
 :::glossary-term
 id: term-session-log
-title: Session-Log
-definition: Event-Log einer Session, in das nur angehängt wird; lokal als JSONL-Datei repliziert
+title: Session log
+definition: The append-only event log of a session; replicated locally as a JSONL file
+:::
+```
+
+## Cursor
+
+How a client knows where it stopped reading.
+
+```arc42
+:::glossary-term
+id: term-cursor
+title: Cursor
+definition: The ID of the last event a client has read; used to resume after a drop
 :::
 ```
 
 ## Utterance
 
-Grundeinheit des Gesagten bzw. Geschriebenen im Log.
+The basic unit of what is said or written in the log.
 
 ```arc42
 :::glossary-term
 id: term-utterance
-title: Utterance (Äußerung)
-definition: Ein abgeschlossener Beitrag eines Teilnehmers, gesprochen (voice) oder geschrieben (text)
+title: Utterance
+definition: One finished contribution of a participant, spoken (voice) or written (text)
 :::
 ```
 
-## Wortmeldung
+## Raised hand
 
-Wie sich Teilnehmer, insbesondere Agenten, ins Gespräch bringen.
+How participants, especially agents, ask to speak.
 
 ```arc42
 :::glossary-term
 id: term-hand-raise
-title: Wortmeldung
-definition: Signal eines Teilnehmers auf der Bühne, dass er etwas beitragen möchte; die Moderation erteilt das Wort
+title: Raised hand
+definition: A signal on the stage that a participant wants to contribute; the moderator gives the floor
 :::
 ```
 
-## Bühne
+## Stage
 
-Die sichtbare Präsenz des Office im Meeting.
+The visible presence of the office in the meeting.
 
 ```arc42
 :::glossary-term
 id: term-stage
-title: Bühne
-definition: Web-Ansicht einer Session (Minutes, Wortmeldungen, Artefakte, Erfassungsstatus), per Screenshare gezeigt
+title: Stage
+definition: The web view of a session (minutes, raised hands, artifacts, capture status), shown by screen share
 :::
 ```
 
-## Ohren
+## Ears
 
-Der Sinnesanschluss für Audio.
+The audio connector of the office.
 
 ```arc42
 :::glossary-term
 id: term-ears
-title: Ohren
-definition: Lokale Audio-Pipeline eines Menschen (VAD, Whisper), die nur Text sendet
+title: Ears
+definition: The local audio pipeline of a human (VAD, Whisper) that sends only text
 :::
 ```
 
-## Einzelohr
+## Single ear
 
-Hör-Modus der ersten Ausbaustufe.
+The listening mode of the first stage.
 
 ```arc42
 :::glossary-term
 id: term-single-ear
-title: Einzelohr
-definition: Hör-Modus, in dem nur der Besitzer des Geräts transkribiert wird
+title: Single ear
+definition: A listening mode in which only the owner of the device is transcribed
 :::
 ```
 
-## Raumohr
+## Room ear
 
-Erweiterung für Besprechungsräume.
+A later extension for meeting rooms.
 
 ```arc42
 :::glossary-term
 id: term-room-ear
-title: Raumohr
-definition: Späterer Hör-Modus für mehrere Sprecher an einem Mikrofon, mit Sprechererkennung
+title: Room ear
+definition: A later listening mode for several speakers at one microphone, with speaker recognition
 :::
 ```
 
-## Artefakt
+## Artifact
 
-Ergebnis der Werkzeug-Ebene.
+The result of the tool layer.
 
 ```arc42
 :::glossary-term
 id: term-artifact
-title: Artefakt
-definition: Ein von den Werkzeugen erzeugtes Ergebnis mit ID (z. B. Foliensatz, Plan-Prüfung), das auf der Bühne gezeigt werden kann
+title: Artifact
+definition: A result created by the tools, with an ID (for example a slide deck or a plan check), that can be shown on the stage
 :::
 ```
 
 ## Journal
 
-Das System of Record des Teams.
+The system of record of the team.
 
 ```arc42
 :::glossary-term
 id: term-journal
 title: Journal
-definition: Gedächtnis des Teams (Entscheidungen, Aufgaben, Minutes) mit Herkunftsangabe
+definition: The memory of the team (decisions, tasks, minutes), with the origin of each entry
 :::
 ```

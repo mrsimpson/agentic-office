@@ -1,46 +1,45 @@
-# Einführung und Ziele
+# Introduction and Goals
 
-## 1.1 Aufgabenstellung
+## 1.1 Requirements Overview
 
-Agentic Office ist ein **headless Office**: eine Anwendung, die ein Unternehmen bei
-Verwaltungsfragen unterstützt, ohne selbst „intelligent“ zu sein. Sie hält den Zustand
-des Teams fest (Journal, Entscheidungen, Minutes, Artefakte), stellt deterministische
-Werkzeuge bereit (Folien rendern, Business-Pläne rechnerisch prüfen) und öffnet Sinne
-in die reale Welt (zunächst Audio aus Meetings). Das Denken bringt der Agent mit
-(„Bring your own agent“).
+Agentic Office is a **headless office**. It helps a company with administrative work, but it is
+not "intelligent" itself. It keeps the team's state (journal, decisions, minutes, artifacts). It
+offers deterministic tools (render slides, check business plans by calculation). And it opens
+senses into the real world, starting with audio from meetings. The agent brings the thinking
+("bring your own agent").
 
-Agenten und Menschen sind dabei gleichberechtigte **Teilnehmer**. Beide nutzen dieselbe
-CLI bzw. denselben MCP-Server. Der einzige Unterschied: Menschen können zusätzlich ein
-Mikrofon einschalten, dann wird lokal transkribiert.
+Agents and humans are equal **participants**. Both use the same CLI or the same MCP server. There is
+one difference: humans can also switch on a microphone. Their speech is then transcribed locally.
 
-| Anwendungsfall | Kurzbeschreibung |
+| Use case | Summary |
 |---|---|
-| An einem Meeting teilnehmen | Mensch oder Agent tritt einer Session bei und erhält eine lokale Log-Datei, die laufend repliziert wird |
-| Gesprochenes erfassen | Lokales Whisper transkribiert nur den eigenen Sprecher (Headset) und sendet Text, kein Audio |
-| Mitschreiben und sich melden | Ein Agent führt Minutes, meldet sich per Text auf der Bühne und zeigt Artefakte |
-| Bühne zeigen | Eine Web-Ansicht des Servers wird per Screenshare in einem beliebigen Meeting-Tool gezeigt |
-| Artefakte erzeugen | Folien, Plan-Prüfungen und Journal-Einträge über CLI/MCP, ohne Streaming |
-| Transparenz | Jeder Teilnehmer sieht, was von ihm aufgezeichnet und gesendet wurde, und kann pausieren oder zurückziehen |
+| Join a meeting | A human or an agent joins a session and gets a local log file that is replicated continuously |
+| Capture speech | Local Whisper transcribes only the device owner (headset) and sends text, never audio |
+| Take minutes and raise a hand | An agent keeps the minutes, raises its hand on the stage and shows artifacts |
+| Show the stage | A web view of the server is shared by screen share in any meeting tool |
+| Create artifacts | Slides, plan checks and journal entries through CLI or MCP, without streaming |
+| Transparency | Every participant sees what was recorded and sent from them, and can pause or retract |
 
-Ausdrücklich **nicht** im ersten Schritt: Sprachausgabe (TTS), Video, Lautsprecherbetrieb,
-Besprechungsräume mit mehreren Sprechern an einem Mikrofon und eine Integration in Meeting-Tools.
+Explicitly **not** in the first stage: speech output (TTS), video, use with loudspeakers, meeting
+rooms with several speakers at one microphone, and integration into meeting tools.
 
-## 1.2 Qualitätsziele
+## 1.2 Quality Goals
 
-Die Qualitätsziele, in dieser Reihenfolge: **Vertraulichkeit** (Rohaudio verlässt das Gerät nie,
-erfasst wird nur, wer eingewilligt hat), **Performance** (Gesagtes steht ohne spürbare
-Verzögerung im Session-Log) und **Usability** (Teilnehmer sehen, was von ihnen erfasst wurde).
+The quality goals, in this order: **confidentiality** (raw audio never leaves the device, and only
+people who consented are captured), **performance** (speech reaches the session log without
+noticeable delay), **resumability** (after a network drop, everything continues without lost or
+duplicated events) and **usability** (participants see what was captured from them).
 
 See [10-quality-requirements.arc42.md](10-quality-requirements.arc42.md) for the complete
 quality catalog with priorities and measurable scenarios.
 
-## 1.3 Stakeholder
+## 1.3 Stakeholders
 
-| Rolle | Kontakt | Erwartungen |
+| Role | Contact | Expectations |
 |---|---|---|
-| Initiator / Produktverantwortung | Repo-Owner (OPEN: Name) | Tragfähiges Gesamtbild, früh benutzbar im eigenen Team |
-| Menschliche Meeting-Teilnehmer | Team | Kontrolle darüber, was erfasst wird; keine Reibung im gewohnten Meeting-Tool |
-| Agenten (z. B. Claude Code, eigene Agent-SDK-Agenten) | — | Einfache, dateibasierte Schnittstelle; keine Spezial-Features des Clients nötig |
-| Agenten-Entwickler | OPEN | Stabile CLI/MCP-Verträge, maschinenlesbares Event-Format |
-| Datenschutz (DSGVO, § 201 StGB) | OPEN | Einwilligung, Datensparsamkeit, Löschbarkeit, Nachvollziehbarkeit |
-| Betrieb | OPEN | Einfaches Self-Hosting des Servers (OPEN: Self-Hosting oder Cloud?) |
+| Initiator / product owner | Repository owner (OPEN: name) | A sound overall design that the own team can use early |
+| Human meeting participants | Team | Control over what is captured; no friction in the usual meeting tool |
+| Agents (for example Claude Code, custom Agent SDK agents) | — | A simple, file-based interface; no special client features needed |
+| Agent developers | OPEN | Stable CLI and MCP contracts, a machine-readable event format |
+| Data protection (GDPR, § 201 German Criminal Code) | OPEN | Consent, data minimisation, deletion, traceability |
+| Operations | OPEN | Easy self-hosting of the server (OPEN: self-hosted or cloud?) |

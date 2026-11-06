@@ -1,49 +1,56 @@
-# Lösungsstrategie
+# Solution Strategy
 
-Die Anwendung ist Zustand, Werkzeug und Sinnesorgan, aber kein Gehirn. Agenten und Menschen
-nehmen als gleichartige Teilnehmer teil. Sie lesen den Verlauf aus einer lokal replizierten
-Datei und handeln über CLI- oder MCP-Tools. Gesprochenes wird am Rand transkribiert, und die
-Präsenz im Meeting läuft über eine geteilte Bühne statt über eine Integration ins Meeting-Tool.
+The application is state, tools and senses, but not a brain. Agents and humans take part as
+participants of the same kind. They read what happens from a locally replicated file and act
+through CLI or MCP tools. Speech is transcribed at the edge. The office is present in the meeting
+through a shared stage, not through an integration into the meeting tool.
 
-| Qualitätsziel | Lösungsansatz |
+| Quality goal | Approach |
 |---|---|
-| Vertraulichkeit | Transkription lokal am Rand, nur Text verlässt das Gerät |
-| Performance | Gestufte Events ohne Partials; Log als lokal replizierte Datei; der Agent filtert selbst, worauf er reagiert |
-| Usability | Einheitliches Teilnehmer-Modell; jeder sieht seine eigenen Events; Bühne zeigt, wer erfasst wird |
+| Confidentiality | Transcription at the edge; only text leaves the device |
+| Performance | Staged events without partials; log as a locally replicated file; the agent filters what it reacts to |
+| Resumability | Append-only log with cursor; resume from the last known event; idempotent commands |
+| Usability | One participant model; everyone sees their own events; the stage shows who is captured |
 
 ```arc42
 :::solution-strategy
 id: strategy-architecture
-title: Headless Office mit dateibasierter Teilnahme und Transkription am Rand
-addresses: qg-confidentiality, qg-performance, qg-usability
+title: Headless office with file-based participation and transcription at the edge
+addresses: qg-confidentiality, qg-performance, qg-resumability, qg-usability
 :::
 ```
 
 ## Bring your own agent
 
-Jede inhaltliche Bewertung liegt beim Agenten. Die Anwendung speichert, rechnet, rendert,
-transkribiert und prüft gegen Regeln. So kann jeder Agent andocken, und die Anwendung bleibt
-deterministisch und testbar (siehe `dec-headless-byoa`).
+The agent makes every judgement about content. The application stores, calculates, renders,
+transcribes and checks against rules. So any agent can connect, and the application stays
+deterministic and testable (see `dec-headless-byoa`).
 
-## Lesen über die Datei, Schreiben über Tools
+## Read from the file, write through tools
 
-`join` liefert einen Pfad zu einer lokal replizierten JSONL-Datei. Der Agent liest sie mit
-Standardwerkzeugen und bestimmt seinen Takt über Filter. Handlungen laufen über Tools mit
-sofortiger Rückmeldung und erscheinen anschließend selbst im Log (siehe `dec-log-as-file`,
-`concept-read-file-write-tools`).
+`join` returns the path to a locally replicated JSONL file. The agent reads it with standard tools
+and sets its own pace with filters. Actions go through tools that answer at once. Every action then
+shows up in the log as well (see `dec-log-as-file`, `concept-read-file-write-tools`).
 
-## Ein Kern, zwei Adapter
+## Resume instead of restart
 
-Dieselbe Funktionalität steht über CLI und MCP bereit. Die CLI ist gleichrangig, denn Agenten mit
-Shell und Menschen nutzen sie gleichermaßen (siehe `dec-cli-and-mcp`).
+The log is append-only, and every event has an ID. After a network drop, every client continues
+from the last event it knows. Commands carry IDs that the client creates, so a repeated command
+does not create a second event (see `concept-event-log`, `dec-idempotent-commands`).
 
-## Transkription am Rand
+## One core, two adapters
 
-Jeder Mensch transkribiert lokal nur sich selbst (Headset). Wer spricht, ergibt sich aus dem
-Aufbau, ohne Sprechererkennung. Rohaudio verlässt das Gerät nicht (siehe `dec-local-single-ear`).
+The same features are available through the CLI and through MCP. The CLI is not an add-on: agents
+with a shell and humans both use it (see `dec-cli-and-mcp`).
 
-## Bühne per Screenshare
+## Transcription at the edge
 
-Statt Meeting-Tools zu integrieren, rendert der Server eine Bühne als Webseite, die jemand im
-Meeting teilt. Darüber zeigt sich der Agent: Wortmeldungen, Minutes, Artefakte
-(siehe `dec-stage-screenshare`).
+Each human transcribes only themselves, locally, with a headset. Who is speaking follows from the
+setup, without speaker recognition. Raw audio does not leave the device (see
+`dec-local-single-ear`).
+
+## Stage by screen share
+
+We do not integrate meeting tools. Instead, the server renders a stage as a web page, and someone
+shares it in the meeting. The agent shows itself there: raised hands, minutes, artifacts (see
+`dec-stage-screenshare`).

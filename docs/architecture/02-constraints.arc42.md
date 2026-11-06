@@ -1,76 +1,75 @@
-# Randbedingungen
+# Architecture Constraints
 
-## Datenschutz und Vertraulichkeit des Wortes
+## Data protection and confidentiality of speech
 
-Das Mithören in Meetings berührt die DSGVO und § 201 StGB (Vertraulichkeit des nicht
-öffentlich gesprochenen Wortes). Wer erfasst wird, muss eingewilligt haben und das
-erkennen können. Erfasste Inhalte brauchen Aufbewahrungs- und Löschregeln.
+Listening in meetings touches the GDPR and § 201 of the German Criminal Code (confidentiality of
+the spoken word). People who are captured must have consented, and they must be able to see that
+they are captured. Captured content needs retention and deletion rules.
 
 ```arc42
 :::constraint
 id: con-privacy-law
-title: DSGVO und § 201 StGB
+title: GDPR and § 201 German Criminal Code
 category: organizational
-source: Gesetzgebung (DE/EU)
+source: Legislation (DE/EU)
 :::
 ```
 
-## Agenten arbeiten rundenbasiert
+## Agents work in turns
 
-Heutige Agenten arbeiten in Runden (Turns). Standard-MCP-Clients reichen
-Server-Notifications in der Regel nicht an das Modell weiter, das Modell sieht nur
-Tool-Ergebnisse. Die Live-Anbindung darf daher nicht von Push-Fähigkeiten des Clients
-abhängen.
+Today's agents work in turns. Standard MCP clients usually do not pass server notifications on to
+the model. The model only sees tool results. So the live connection must not depend on push
+features of the client.
 
 ```arc42
 :::constraint
 id: con-turn-based-agents
-title: Agenten sind rundenbasiert, MCP-Push wird kaum unterstützt
+title: Agents work in turns; MCP push is rarely supported
 category: technical
-source: Verhalten gängiger Agent-Clients (Stand 2026)
+source: Behaviour of common agent clients (2026)
 :::
 ```
 
-## Keine Intelligenz in der Anwendung
+## No intelligence in the application
 
-Die Anwendung enthält kein LLM und trifft keine inhaltlichen Urteile. Sie speichert,
-rechnet, rendert, transkribiert und prüft gegen Regeln. Bewertung und Formulierung
-übernimmt der Agent. STT gilt als Umwandlung, nicht als Urteil.
+The application contains no LLM and makes no judgements about content. It stores, calculates,
+renders, transcribes and checks against rules. The agent does the judging and the wording.
+Speech-to-text counts as conversion, not as judgement.
 
 ```arc42
 :::constraint
 id: con-no-intelligence
-title: Keine eigene Intelligenz in der Anwendung
+title: No intelligence of its own in the application
 category: convention
-source: Produktvision
+source: Product vision
 :::
 ```
 
-## Headset als Voraussetzung für die Ohren
+## Headset required for the ears
 
-In der ersten Ausbaustufe gibt es weder Echounterdrückung noch Stimmabdruck. Nur mit Headset ist
-sichergestellt, dass die Ohren ausschließlich ihren Besitzer hören. Der Betrieb mit Lautsprechern
-ist nicht unterstützt. Die Aufhebung ist in Issue #1 beschrieben.
+The first stage has no echo cancellation and no voice print. Only a headset makes sure that the
+ears hear nothing but their owner. Use with loudspeakers is not supported. Issue #1 describes how
+to lift this constraint.
 
 ```arc42
 :::constraint
 id: con-headset-only
-title: Ohren nur mit Headset (keine Echounterdrückung, kein Stimmabdruck)
+title: Ears only with a headset (no echo cancellation, no voice print)
 category: technical
-source: Festlegung für die erste Ausbaustufe; Aufhebung in Issue #1
+source: Scope of the first stage; to be lifted by issue #1
 :::
 ```
 
-## Meeting-Tool ist gesetzt und beliebig
+## Any meeting tool, unchanged
 
-Teams nutzen ihr bestehendes Meeting-Tool (Zoom, Teams, Meet, Jitsi …). Das Office
-muss ohne Integration in diese Tools auskommen.
+Teams keep their meeting tool (Zoom, Teams, Meet, Jitsi …). The office must work without any
+integration into these tools.
 
 ```arc42
 :::constraint
 id: con-any-meeting-tool
-title: Beliebiges, unverändertes Meeting-Tool
+title: Any meeting tool, unchanged
 category: organizational
-source: Produktvision
+source: Product vision
 :::
 ```
