@@ -46,6 +46,21 @@ source: Produktvision
 :::
 ```
 
+## Headset als Voraussetzung für die Ohren
+
+In der ersten Ausbaustufe gibt es weder Echounterdrückung noch Stimmabdruck. Nur mit Headset ist
+sichergestellt, dass die Ohren ausschließlich ihren Besitzer hören. Der Betrieb mit Lautsprechern
+ist nicht unterstützt. Die Aufhebung ist in Issue #1 beschrieben.
+
+```arc42
+:::constraint
+id: con-headset-only
+title: Ohren nur mit Headset (keine Echounterdrückung, kein Stimmabdruck)
+category: technical
+source: Festlegung für die erste Ausbaustufe; Aufhebung in Issue #1
+:::
+```
+
 ## Meeting-Tool ist gesetzt und beliebig
 
 Teams nutzen ihr bestehendes Meeting-Tool (Zoom, Teams, Meet, Jitsi …). Das Office

@@ -27,9 +27,9 @@ Besprechungsräume mit mehreren Sprechern an einem Mikrofon und eine Integration
 
 ## 1.2 Qualitätsziele
 
-Die wichtigsten Qualitätsziele: Agenten jeder Art können andocken (Interoperabilität),
-Rohaudio verlässt das Gerät nie (Vertraulichkeit), Teilnehmer sehen, was erfasst wird
-(Transparenz), und der Agent reagiert im Gespräch rechtzeitig (Reaktionsfähigkeit).
+Die Qualitätsziele, in dieser Reihenfolge: **Vertraulichkeit** (Rohaudio verlässt das Gerät nie,
+erfasst wird nur, wer eingewilligt hat), **Performance** (Gesagtes steht ohne spürbare
+Verzögerung im Session-Log) und **Usability** (Teilnehmer sehen, was von ihnen erfasst wurde).
 
 See [10-quality-requirements.arc42.md](10-quality-requirements.arc42.md) for the complete
 quality catalog with priorities and measurable scenarios.

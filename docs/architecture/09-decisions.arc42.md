@@ -17,7 +17,7 @@ id: dec-headless-byoa
 title: Headless Office, Bring your own agent
 status: accepted
 date: 2026-11-06
-addresses: con-no-intelligence, qg-interoperability
+addresses: con-no-intelligence
 :::
 ```
 
@@ -34,7 +34,7 @@ id: dec-own-whisper
 title: Eigene STT-Pipeline mit Whisper und gestuften Events
 status: accepted
 date: 2026-11-06
-addresses: qg-responsiveness
+addresses: qg-performance
 :::
 ```
 
@@ -52,7 +52,7 @@ id: dec-local-single-ear
 title: Lokale Transkription pro Teilnehmer (Einzelohr, Headset)
 status: accepted
 date: 2026-11-06
-addresses: con-privacy-law, qg-privacy
+addresses: con-privacy-law, con-headset-only, qg-confidentiality
 :::
 ```
 
@@ -69,7 +69,7 @@ id: dec-stage-screenshare
 title: Bühne per Screenshare
 status: accepted
 date: 2026-11-06
-addresses: con-any-meeting-tool, qg-transparency
+addresses: con-any-meeting-tool, qg-usability
 :::
 ```
 
@@ -100,7 +100,7 @@ id: dec-gateway-cli
 title: Gateway als CLI
 status: accepted
 date: 2026-11-06
-addresses: qg-transparency
+addresses: qg-usability
 :::
 ```
 
@@ -119,7 +119,7 @@ id: dec-log-as-file
 title: Session-Log als lokal replizierte Datei
 status: accepted
 date: 2026-11-06
-addresses: con-turn-based-agents, qg-interoperability, qg-responsiveness
+addresses: con-turn-based-agents, qg-performance
 :::
 ```
 
@@ -135,7 +135,7 @@ id: dec-unified-participant
 title: Menschen und Agenten als gleichartige Teilnehmer
 status: accepted
 date: 2026-11-06
-addresses: qg-transparency, qg-interoperability
+addresses: qg-usability
 :::
 ```
 
@@ -151,21 +151,22 @@ id: dec-cli-and-mcp
 title: CLI und MCP aus einem gemeinsamen Kern
 status: accepted
 date: 2026-11-06
-addresses: qg-interoperability
+addresses: con-turn-based-agents
 :::
 ```
 
 ## Partials nicht ins Log
 
-**Vorschlag:** Vorläufige Transkripte (`partial`) werden nicht repliziert, nur finale
-Utterances und Signale. Das reduziert Rauschen und das Volumen der Datei.
+**Entscheidung:** Vorläufige Transkripte (`partial`) werden nicht repliziert, nur finale
+Utterances und Signale. **Folgen:** weniger Rauschen, kleinere Datei, kürzerer Weg ins Log.
+Wer Partials braucht, bekommt sie später über eine eigene Option.
 
 ```arc42
 :::decision
 id: dec-no-partials-in-log
 title: Keine Partials im Session-Log
-status: proposed
+status: accepted
 date: 2026-11-06
-addresses: qg-responsiveness
+addresses: qg-performance
 :::
 ```

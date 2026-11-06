@@ -62,6 +62,6 @@ Nutzt jemand Lautsprecher, landen die Stimmen anderer im eigenen Transkript, und
 id: risk-speaker-mode
 title: Echo und Dopplungen im Lautsprecherbetrieb
 severity: medium
-mitigation: Headset als Voraussetzung im ersten Schritt; später Echounterdrückung, Stimmabdruck, Deduplizierung
+mitigation: Headset als Voraussetzung (con-headset-only); Echounterdrückung, Stimmabdruck und Deduplizierung in Issue #1
 :::
 ```

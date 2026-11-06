@@ -37,7 +37,7 @@ Event-Stufen (Richtwerte, pro Teilnehmer konfigurierbar):
 | `hand.raised`, `minutes.updated`, `artifact.shown` | Aktionen von Teilnehmern |
 | `participant.joined/left/paused`, `session.ended` | Lebenszyklus |
 
-Partials kommen nicht ins Log (OPEN: optional als eigene Datei).
+Partials kommen nicht ins Log (`dec-no-partials-in-log`).
 
 ```arc42
 :::concept

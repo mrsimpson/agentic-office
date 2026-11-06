@@ -7,16 +7,15 @@ Präsenz im Meeting läuft über eine geteilte Bühne statt über eine Integrati
 
 | Qualitätsziel | Lösungsansatz |
 |---|---|
-| Interoperabilität | Bring your own agent; Log als Datei; ein Kern, Adapter für CLI und MCP |
 | Vertraulichkeit | Transkription lokal am Rand, nur Text verlässt das Gerät |
-| Transparenz | Einheitliches Teilnehmer-Modell; jeder sieht seine eigenen Events; Bühne zeigt, wer erfasst wird |
-| Reaktionsfähigkeit | Gestufte Events (Satzende, Sprecherwechsel); der Agent filtert selbst, worauf er reagiert |
+| Performance | Gestufte Events ohne Partials; Log als lokal replizierte Datei; der Agent filtert selbst, worauf er reagiert |
+| Usability | Einheitliches Teilnehmer-Modell; jeder sieht seine eigenen Events; Bühne zeigt, wer erfasst wird |
 
 ```arc42
 :::solution-strategy
 id: strategy-architecture
 title: Headless Office mit dateibasierter Teilnahme und Transkription am Rand
-addresses: qg-interoperability, qg-privacy, qg-transparency, qg-responsiveness
+addresses: qg-confidentiality, qg-performance, qg-usability
 :::
 ```
 

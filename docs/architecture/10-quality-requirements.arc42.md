@@ -1,85 +1,82 @@
 # Qualitätsanforderungen
 
-Die Ziele leiten sich aus der Konzeptdiskussion ab. Prioritäten und Metriken sind Vorschläge
-(OPEN: bestätigen).
-
-## Interoperabilität
-
-Jeder Agent mit Shell oder MCP soll ohne spezielle Client-Features teilnehmen können.
-
-```arc42
-:::quality-goal
-id: qg-interoperability
-title: Interoperabilität mit beliebigen Agenten
-priority: high
-:::
-```
+Drei Qualitätsziele bestimmen die Architektur, in dieser Reihenfolge: Vertraulichkeit vor
+Performance vor Usability. Stehen sie im Konflikt, gewinnt das jeweils höher stehende Ziel.
+Eigenschaften wie „jeder Agent kann andocken“ sind Produktmerkmale und keine Qualitätsziele. Sie
+stehen in Lösungsstrategie und Entscheidungen.
 
 ## Vertraulichkeit
 
-Gesprochenes ist besonders schützenswert. Rohaudio darf das Gerät des Sprechers nicht verlassen,
-erfasst wird nur, wer eingewilligt hat.
+Gesprochenes ist besonders schützenswert (ISO 25010: Security / Confidentiality). Rohaudio darf
+das Gerät des Sprechers nicht verlassen, und erfasst wird nur, wer eingewilligt hat.
 
 ```arc42
 :::quality-goal
-id: qg-privacy
-title: Vertraulichkeit des gesprochenen Wortes
+id: qg-confidentiality
+title: Vertraulichkeit
 priority: high
 :::
 ```
 
-## Transparenz
+## Performance
 
-Jeder Teilnehmer sieht, was von ihm erfasst wurde und was die Agenten daraus machen.
+Ein Agent soll im Gespräch innerhalb der natürlichen Pause nach einem Beitrag reagieren können
+(ISO 25010: Performance Efficiency / Time Behaviour). Dazu muss Gesagtes ohne spürbare
+Verzögerung im Session-Log stehen.
 
 ```arc42
 :::quality-goal
-id: qg-transparency
-title: Transparenz der Erfassung
+id: qg-performance
+title: Performance (Latenz)
 priority: high
 :::
 ```
 
-## Reaktionsfähigkeit
+## Usability
 
-Ein Agent soll im Gespräch rechtzeitig reagieren können, also innerhalb der natürlichen Pause
-nach einem Beitrag.
+Teilnehmer sehen jederzeit, was von ihnen erfasst und gesendet wurde, und können eingreifen
+(ISO 25010: Usability, hier vor allem Transparenz und Steuerbarkeit).
 
 ```arc42
 :::quality-goal
-id: qg-responsiveness
-title: Reaktionsfähigkeit im Gespräch
-priority: medium
+id: qg-usability
+title: Usability (Transparenz der Erfassung)
+priority: high
 :::
 ```
 
-## Neuer Agent dockt an
+## Kein Rohaudio verlässt das Gerät
 
-Ein Agent, der das System nicht kennt, soll nur mit CLI-Hilfe teilnehmen können.
-
-```arc42
-:::quality-scenario
-id: qs-new-agent
-title: Neuer Agent nimmt ohne Spezial-Client teil
-quality: qg-interoperability
-stimulus: Ein Agent mit Shell erhält nur Session-Code und office --help
-response: Er tritt bei, verfolgt das Log und meldet sich auf der Bühne
-metric: Gelingt ohne MCP-Push und ohne Code-Änderung am Agenten (OPEN: Zeitbudget)
-:::
-```
-
-## Kein Rohaudio im Netz
-
-Während eines Meetings mit eingeschalteten Ohren wird der Netzverkehr des Clients geprüft.
+Das ist die Abnahmeprüfung für die Vertraulichkeit. In einem Testmeeting spricht ein Teilnehmer
+mit eingeschalteten Ohren, und der ausgehende Netzverkehr seines Clients wird mitgeschnitten,
+etwa über einen Proxy oder einen Paketmitschnitt. Wir prüfen, dass darin nur Text-Events
+vorkommen und keine Audiodaten.
 
 ```arc42
 :::quality-scenario
 id: qs-no-raw-audio
-title: Kein Rohaudio verlässt das Gerät
-quality: qg-privacy
-stimulus: Mensch spricht 30 Minuten mit --mic
-response: Nur Text-Events werden gesendet
-metric: 0 Byte Audiodaten im ausgehenden Verkehr
+title: Kein Rohaudio im ausgehenden Verkehr
+quality: qg-confidentiality
+stimulus: Ein Teilnehmer spricht 30 Minuten mit --mic, ausgehender Verkehr wird mitgeschnitten
+response: Der Client sendet ausschließlich Text-Events und Metadaten
+metric: 0 Byte Audiodaten im Mitschnitt
+:::
+```
+
+## Transkription bis Session-Log
+
+Gemessen wird ab dem Ende der Transkription eines Satzes (Whisper liefert die finale Utterance)
+bis zu dem Zeitpunkt, an dem das Event im Session-Log steht. Die Laufzeit von VAD und Whisper ist
+darin nicht enthalten. Die hängt von der Hardware ab und wird getrennt betrachtet.
+
+```arc42
+:::quality-scenario
+id: qs-transcript-to-log
+title: Ende der Transkription bis Event im Log
+quality: qg-performance
+stimulus: Whisper liefert eine finale Utterance
+response: utterance.final steht im Session-Log
+metric: < 200 ms (OPEN: p95 oder Maximum; Log des Servers oder lokale Replik)
 :::
 ```
 
@@ -91,24 +88,9 @@ Nach jedem Satz sieht der Sprecher den Status im Terminal.
 :::quality-scenario
 id: qs-sender-sees-status
 title: Status eigener Sätze ist sichtbar
-quality: qg-transparency
+quality: qg-usability
 stimulus: Ein Satz wird gesendet oder zurückgezogen
 response: Das Terminal zeigt den Status, die Bühne den Erfassungsstatus
 metric: Status sichtbar ≤ 1 s nach Bestätigung durch den Server (OPEN)
-:::
-```
-
-## Satz erreicht den Agenten rechtzeitig
-
-Ein gesprochener Satz soll den Agenten erreichen, bevor die Pause nach dem Beitrag vorbei ist.
-
-```arc42
-:::quality-scenario
-id: qs-sentence-latency
-title: Satzende bis Zeile in der Agenten-Datei
-quality: qg-responsiveness
-stimulus: Ein Mensch beendet einen Satz
-response: utterance.final steht in der lokalen Log-Datei des Agenten
-metric: p95 ≤ 2 s ab Satzende (OPEN: abhängig von Whisper-Hardware)
 :::
 ```
