@@ -172,7 +172,7 @@ addresses: qg-performance
 ## Idempotent commands with client IDs
 
 **Context:** After a network drop, a client does not know if its last command arrived.
-**Proposal:** Every command carries an ID that the client creates (for example a UUIDv7). The server
+**Decision:** Every command carries an ID that the client creates (for example a UUIDv7). The server
 stores the ID with the event. If the same ID arrives again, the server returns the existing event
 and creates no new one. **Consequences:** Clients can simply repeat commands after a drop. The
 server must keep the IDs at least for the life of the session.
@@ -181,7 +181,7 @@ server must keep the IDs at least for the life of the session.
 :::decision
 id: dec-idempotent-commands
 title: Idempotent commands with client-generated IDs
-status: proposed
+status: accepted
 date: 2026-11-06
 addresses: qg-resumability
 :::
@@ -189,19 +189,21 @@ addresses: qg-resumability
 
 ## Connect RPC for commands and stream
 
-**Context:** We want one typed contract for synchronous commands and for the session stream. The
-stage runs in a browser. **Proposal:** Define both interfaces in Protobuf and serve them with
-Connect RPC: unary calls for commands, server streaming for the session stream. The lines of the
-local JSONL file use the canonical JSON form of the same event messages. **Consequences:** One
-schema for server, clients, stage and file format. The browser needs no proxy. Maturity differs by
-language (see `risk-connect-maturity`). **Rejected:** plain gRPC (needs grpc-web and a proxy in the
-browser); tRPC (TypeScript only); WebSocket with JSON Schema (typed only by documentation).
+**Context:** We want one typed contract for synchronous commands and for the session stream.
+**Decision:** Define both interfaces in Protobuf and serve them with Connect RPC: unary calls for
+commands, server streaming for the session stream. The lines of the local JSONL file use the
+canonical JSON form of the same event messages. **Consequences:** One schema for server, clients
+and file format. Connect also speaks gRPC and gRPC-Web, and its own protocol is plain HTTP with
+JSON, so other clients can join without a special library. Maturity differs by language (see
+`risk-connect-maturity`); with Go we use the stable connect-go. **Rejected:** plain gRPC (needs
+grpc-web and a proxy in the browser); tRPC (TypeScript only); WebSocket with JSON Schema (typed only
+by documentation).
 
 ```arc42
 :::decision
 id: dec-connect-rpc
 title: Connect RPC with Protobuf for session commands and stream
-status: proposed
+status: accepted
 date: 2026-11-06
 addresses: qg-performance, qg-resumability, risk-connect-maturity
 :::

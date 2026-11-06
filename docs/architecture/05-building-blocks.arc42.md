@@ -91,7 +91,7 @@ log. Each call carries an ID created by the client, so a repeated call has no ex
 id: if-session-commands
 title: Session commands
 provider: bb-session-service
-protocol: Connect RPC, unary (proposed, dec-connect-rpc)
+protocol: Connect RPC, unary (dec-connect-rpc)
 :::
 ```
 
@@ -105,7 +105,7 @@ replication and for the stage. After a drop, the subscriber reconnects with its 
 id: if-session-stream
 title: Session stream (replication from a cursor)
 provider: bb-session-service
-protocol: Connect RPC, server streaming (proposed, dec-connect-rpc)
+protocol: Connect RPC, server streaming (dec-connect-rpc)
 :::
 ```
 
@@ -224,7 +224,7 @@ short-lived access token that is bound to its key. Also: create a read-only stag
 id: if-auth-api
 title: Auth API
 provider: bb-identity
-protocol: Connect RPC, unary (proposed, dec-connect-rpc)
+protocol: Connect RPC, unary (dec-connect-rpc)
 :::
 ```
 
