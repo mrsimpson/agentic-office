@@ -84,7 +84,7 @@ log. Each call carries an ID created by the client, so a repeated call has no ex
 id: if-session-commands
 title: Session commands
 provider: bb-session-service
-protocol: HTTPS/JSON (OPEN: typed protocol, for example Connect RPC)
+protocol: Connect RPC, unary (proposed, dec-connect-rpc)
 :::
 ```
 
@@ -98,7 +98,7 @@ replication and for the stage. After a drop, the subscriber reconnects with its 
 id: if-session-stream
 title: Session stream (replication from a cursor)
 provider: bb-session-service
-protocol: WebSocket (OPEN: typed server streaming, for example Connect RPC)
+protocol: Connect RPC, server streaming (proposed, dec-connect-rpc)
 :::
 ```
 
@@ -301,7 +301,7 @@ transcribing and queue the utterances locally. They send them in order once the 
 id: bb-ears
 title: Ears
 parent: bb-participant-client
-technology: VAD (for example Silero) / faster-whisper or whisper.cpp (OPEN)
+technology: VAD (for example Silero) / whisper.cpp via Go bindings (proposed, dec-languages)
 requires: if-session-commands
 implements: concept-edge-transcription
 :::

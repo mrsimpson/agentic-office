@@ -66,3 +66,18 @@ severity: medium
 mitigation: Headset required (con-headset-only); echo cancellation, voice print and deduplication in issue #1
 :::
 ```
+
+## Maturity of Connect RPC
+
+Connect RPC is a CNCF sandbox project. connect-go is stable. connect-python is still 0.x and was
+renamed recently. The stable status of connect-es v2 must be checked. There is no official Rust
+implementation. Few large adopters are publicly known.
+
+```arc42
+:::risk
+id: risk-connect-maturity
+title: Connect RPC is not equally mature in all languages
+severity: medium
+mitigation: Use Go (stable connect-go) for server and client; check connect-es v2 before the stage is built; the protocol is plain HTTP with JSON, so a client can speak it without a library if needed
+:::
+```

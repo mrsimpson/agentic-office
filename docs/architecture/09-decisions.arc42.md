@@ -186,3 +186,44 @@ date: 2026-11-06
 addresses: qg-resumability
 :::
 ```
+
+## Connect RPC for commands and stream
+
+**Context:** We want one typed contract for synchronous commands and for the session stream. The
+stage runs in a browser. **Proposal:** Define both interfaces in Protobuf and serve them with
+Connect RPC: unary calls for commands, server streaming for the session stream. The lines of the
+local JSONL file use the canonical JSON form of the same event messages. **Consequences:** One
+schema for server, clients, stage and file format. The browser needs no proxy. Maturity differs by
+language (see `risk-connect-maturity`). **Rejected:** plain gRPC (needs grpc-web and a proxy in the
+browser); tRPC (TypeScript only); WebSocket with JSON Schema (typed only by documentation).
+
+```arc42
+:::decision
+id: dec-connect-rpc
+title: Connect RPC with Protobuf for session commands and stream
+status: proposed
+date: 2026-11-06
+addresses: qg-performance, qg-resumability, risk-connect-maturity
+:::
+```
+
+## Programming languages
+
+**Context:** The protocol choice and the local Whisper pipeline narrow the choice. The CLI should be
+easy to install. **Proposal:** **Go** for the server and the whole participant client (CLI, MCP
+server, log replicator, ears). **TypeScript** only for the stage in the browser. **Reasons:**
+connect-go is stable; there is an official MCP SDK for Go; Go builds one static binary for the CLI;
+whisper.cpp has Go bindings, so the ears do not need Python. **Considered:** **Rust** has strong
+Whisper bindings (whisper-rs) and fits real-time audio well, but there is no official Connect
+implementation for Rust. **Python** for the ears (faster-whisper) is the most common choice for
+Whisper, but connect-python is not stable yet.
+
+```arc42
+:::decision
+id: dec-languages
+title: Go for server and client, TypeScript for the stage
+status: proposed
+date: 2026-11-06
+addresses: risk-connect-maturity, risk-whisper-latency
+:::
+```
