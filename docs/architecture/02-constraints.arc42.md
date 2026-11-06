@@ -73,3 +73,34 @@ category: organizational
 source: Product vision
 :::
 ```
+
+## No unit tests
+
+We do not write unit tests for internal functions or classes. They tie the tests to the inner
+structure and make refactoring expensive. Tests check behaviour at the boundaries of building
+blocks instead (see the next constraint).
+
+```arc42
+:::constraint
+id: con-no-unit-tests
+title: No unit tests
+category: convention
+source: Maintainer
+:::
+```
+
+## Black-box contract tests per building block
+
+Every building block is tested as a black box through its interfaces (chapter 5). A contract test
+starts the block, uses only its provided interfaces and checks the results. It knows nothing about
+the inside of the block. If a block needs another block, the test uses the real block or a fake
+that follows the same contract. End-to-end tests combine several blocks in the same way.
+
+```arc42
+:::constraint
+id: con-contract-tests
+title: Black-box contract tests per building block
+category: convention
+source: Maintainer
+:::
+```

@@ -43,3 +43,4 @@ proposed it and it still needs confirmation.
 | Spike spike/e2e | whisper.cpp brings its own voice activity detection | ch.5 bb-ears | high | — |
 | Maintainer, review 5 | Test strategy: WAV in automated tests, microphone tested manually with a headset, no virtual microphone | ch.8 concept-test-strategy, ch.10 qs-manual-headset | high | — |
 | Maintainer, review 5 | No implementation details in the architecture | AGENTS.md | high | — |
+| Maintainer, review 6 | No unit tests; black-box contract tests per building block | ch.2 con-no-unit-tests, con-contract-tests, ch.8 concept-test-strategy, ch.9 dec-contract-tests, AGENTS.md | high | — |

@@ -259,3 +259,22 @@ date: 2026-11-06
 addresses: qg-confidentiality, con-privacy-law
 :::
 ```
+
+## Contract tests instead of unit tests
+
+**Context:** The architecture is still changing. Tests should survive changes inside a building
+block. **Decision:** We write no unit tests. Each building block gets black-box contract tests
+against its provided interfaces. End-to-end tests run real processes across several blocks.
+**Consequences:** The interfaces in chapter 5 must be precise enough to test against. Tests stay
+valid when the inside of a block changes. Errors deep inside a block are found through its
+interfaces, which can make them harder to locate. **Rejected:** unit tests per function.
+
+```arc42
+:::decision
+id: dec-contract-tests
+title: Black-box contract tests instead of unit tests
+status: accepted
+date: 2026-11-06
+addresses: con-no-unit-tests, con-contract-tests
+:::
+```

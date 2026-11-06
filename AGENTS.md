@@ -22,6 +22,9 @@ Guidance for agents working in this repository.
   C/C++ compiler that whisper.cpp needs through cgo.
 - Shared types and the protocol (Protobuf, Connect RPC) belong in the shared core, not in a
   single component.
+- **No unit tests.** Test each building block as a black box through its interfaces (contract
+  tests). Use only the provided interfaces; do not reach into the inside of a block. End-to-end
+  tests combine real blocks. See `dec-contract-tests`.
 
 ## Architecture documentation
 

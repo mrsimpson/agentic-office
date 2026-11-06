@@ -138,6 +138,9 @@ category: security
 
 ## Test strategy
 
+**No unit tests.** Every building block is tested as a black box through its interfaces
+(`con-no-unit-tests`, `con-contract-tests`). The interfaces in chapter 5 are the contracts.
+
 **Automated end-to-end tests** run on a server host without a microphone. They feed a recorded
 WAV file through the ears in real time. This covers the whole pipeline after audio capture: voice
 activity detection, Whisper, submitting the utterance, the session log and the local copy. The
