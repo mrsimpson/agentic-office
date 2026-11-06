@@ -32,6 +32,8 @@ retractions are new events that point to the original (`utterance.retracted`,
   Nothing is lost, and nothing arrives twice.
 - Writers (ears, CLI, MCP) give every command an ID that they create themselves. If they send a
   command again after a drop, the server recognises the ID and returns the existing event.
+- This includes `join`: a client keeps its join command ID, so after a restart it is still the
+  same participant.
 - The ears queue utterances locally while offline (text only) and send them in order.
 
 Event levels (guide values, configurable per participant):
@@ -93,7 +95,7 @@ category: privacy
 
 People who are captured see every sentence with its status in their terminal. They can pause and
 retract. The stage shows everyone who is captured, paused or not captured. People without a client
-are not transcribed. Local log files have permissions `0600`. They are cleaned up after the session
+are not transcribed. Only the user who runs the client can read local log files. They are cleaned up after the session
 according to a retention rule (OPEN: define the rule, also for retracted sentences).
 
 ```arc42
@@ -131,5 +133,28 @@ enrollment (issue #2), encryption of stored data (OPEN).
 id: concept-identity
 title: Identity and access with local key pairs
 category: security
+:::
+```
+
+## Test strategy
+
+**Automated end-to-end tests** run on a server host without a microphone. They feed a recorded
+WAV file through the ears in real time. This covers the whole pipeline after audio capture: voice
+activity detection, Whisper, submitting the utterance, the session log and the local copy. The
+tests also cover resume after the replicator is killed, and the latency into the local log.
+
+**Manual tests** cover what a WAV file cannot: real audio capture from a device and Whisper
+accuracy on real speech. A person joins with a headset on a participant laptop and speaks a few
+sentences. We do this before we judge recognition quality, because the test WAV is synthetic and
+cleaner than a headset in a meeting.
+
+**Not planned:** a virtual microphone on the server host. It needs administrator rights and adds
+little.
+
+```arc42
+:::concept
+id: concept-test-strategy
+title: Test strategy for the audio pipeline
+category: testing
 :::
 ```

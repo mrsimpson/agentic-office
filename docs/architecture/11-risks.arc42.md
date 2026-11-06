@@ -29,14 +29,17 @@ mitigation: Capture only participants with a client; show capture status on the 
 
 ## Whisper too slow on laptops
 
-Local Whisper without a GPU may be too slow for real time. Go garbage collection could add jitter to audio frame processing.
+Whisper is the real latency risk. In the spike, a small model needed about 0.9 s per sentence on
+a CPU, whatever the length of the sentence. The large model was too slow for live use. From the end
+of speech to the log it took about 1.4 s. The jitter of the Go audio loop is no problem (p99 about
+1 ms), even while Whisper runs.
 
 ```arc42
 :::risk
 id: risk-whisper-latency
 title: Local transcription too slow
-severity: medium
-mitigation: Smaller models, whisper.cpp with quantisation; measure before choosing hardware; in the first ears prototype, measure the jitter per audio frame (p99 and maximum) including Go garbage collection; if echo cancellation later needs tighter timing, build it as a small Rust or C component behind a clear interface
+severity: high
+mitigation: Smaller or quantised models; a shorter audio window per sentence; a GPU where available; measure on real participant laptops; if echo cancellation later needs tighter timing, build it as a small Rust or C component behind a clear interface
 :::
 ```
 

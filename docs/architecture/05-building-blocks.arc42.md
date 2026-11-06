@@ -176,7 +176,7 @@ has no logic of its own.
 :::building-block
 id: bb-stage
 title: Stage
-technology: Go html/template / server-sent events
+technology: Go, rendered on the server / server-sent events
 parent: bb-office-server
 requires: if-session-stream, if-artifact-api
 implements: concept-transparency
@@ -320,8 +320,10 @@ protocol: MCP (stdio)
 ### Log replicator
 
 A local process. It keeps a connection to the session stream and appends every event as one line to
-a file (`/tmp/office/<session>.jsonl`, permissions `0600`). After a drop, it reconnects and
-continues after the last line in the file. On `session.ended` it writes a final line and stops.
+a file. There is one file per session and participant, in a private runtime directory of the user,
+so several participants on one machine (for example a human and an agent) do not collide and no
+other user can read the file. After a drop, it reconnects and continues after the last complete
+line in the file. On `session.ended` it writes a final line and stops.
 It also stops when its parent process dies.
 
 ```arc42
@@ -331,13 +333,15 @@ title: Log replicator
 technology: Go / connect-go
 parent: bb-participant-client
 requires: if-session-stream
-implements: concept-event-log, concept-read-file-write-tools
+implements: concept-event-log, concept-read-file-write-tools, concept-test-strategy
 :::
 ```
 
 #### Local session log
 
-An append-only JSONL file with one line per event. Read it with `tail -f`, `grep` and `jq`.
+An append-only JSONL file with one compact line per event. Every line carries the event type in
+dotted form (for example `"type":"utterance.final"`) and the event ID as a JSON number, so that
+`tail -f`, `grep` and `jq` work without conversion.
 
 ```arc42
 :::interface
@@ -360,9 +364,9 @@ transcribing and queue the utterances locally. They send them in order once the 
 id: bb-ears
 title: Ears
 parent: bb-participant-client
-technology: Go / whisper.cpp via cgo bindings / VAD (OPEN: for example Silero via ONNX)
+technology: Go / whisper.cpp, including its voice activity detection
 requires: if-session-commands, if-auth-api
-implements: concept-edge-transcription
+implements: concept-edge-transcription, concept-test-strategy
 :::
 ```
 

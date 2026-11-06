@@ -79,8 +79,9 @@ metric: 0 bytes of audio data in the capture
 ## From transcription to the session log
 
 We measure from the end of the transcription of a sentence (Whisper returns the final utterance)
-to the moment the event is in the session log. The time for VAD and Whisper is not included. It
-depends on the hardware and is looked at separately.
+to the moment the event is in the local copy of the log at another participant. That is what an
+agent actually sees. The time for voice activity detection and Whisper is not included; the next
+scenario covers it.
 
 ```arc42
 :::quality-scenario
@@ -88,8 +89,41 @@ id: qs-transcript-to-log
 title: End of transcription to event in the log
 quality: qg-performance
 stimulus: Whisper returns a final utterance
-response: utterance.final is in the session log
-metric: < 200 ms (OPEN: p95 or maximum; server log or local replica)
+response: utterance.final is in the local log of another participant
+metric: < 200 ms (OPEN: p95 or maximum)
+:::
+```
+
+## From end of speech to the log
+
+This is what a participant experiences: the time from the end of a spoken sentence until the
+sentence is in the local log of another participant. It includes the pause that ends a sentence,
+Whisper and the way into the log. The reference hardware is the CPU-only host of the first stage.
+
+```arc42
+:::quality-scenario
+id: qs-speech-to-log
+title: End of speech to event in the local log
+quality: qg-performance
+stimulus: A participant with --mic finishes a sentence
+response: utterance.final is in the local log of another participant
+metric: p95 ≤ 1.5 s on the reference hardware
+:::
+```
+
+## Audio capture with a real headset
+
+The automated tests use a WAV file. This manual test checks real audio capture and recognition
+quality (see `concept-test-strategy`).
+
+```arc42
+:::quality-scenario
+id: qs-manual-headset
+title: Manual test with a real headset
+quality: qg-performance
+stimulus: A person joins with --mic on a participant laptop with a headset and speaks a few sentences
+response: Each sentence appears as utterance.final with readable text; no audio leaves the device
+metric: All spoken sentences arrive; recognition is good enough to follow the meeting (OPEN: define a word error rate)
 :::
 ```
 

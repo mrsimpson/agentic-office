@@ -30,6 +30,9 @@ Guidance for agents working in this repository.
   `arc42 guide chapter <n>` and `arc42 explain <type>`. Do not rely on remembered syntax.
 - Run `npx @doctc/arc42 --dir docs/architecture validate` before you commit. Fix all errors and
   warnings. Explain any remaining hints.
+- Keep implementation details out of the architecture: no file paths, field types, library calls
+  or lint rules. Describe responsibilities, contracts and qualities. Implementation details
+  belong in the code and its README files.
 - Do not invent facts. Mark open questions with `OPEN:`. Record where each fact comes from in
   `docs/architecture/architecture-evidence.md`.
 - We are in an early planning phase. Change decisions in place. Do not mark them as `superseded`

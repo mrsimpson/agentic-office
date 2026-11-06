@@ -35,3 +35,11 @@ proposed it and it still needs confirmation.
 | agent inference | Challenge and response, short-lived token bound to the key, TLS | ch.5 bb-identity, ch.6 rs-authenticate, ch.8 concept-identity | medium | OPEN: confirm |
 | agent inference | Data protection risks (retraction, consent) | ch.11 | medium | OPEN: clarify with data protection |
 | — | Server operation (self-hosted or cloud), persistence | ch.7 | — | OPEN: not discussed yet |
+| Spike spike/e2e (f5adb62), e2e tests | Resume and idempotency: 300 utterances, 30 repeated commands, 3 replicator kills: 0 lost, 0 duplicate events | ch.9 dec-idempotent-commands | high | — |
+| Spike spike/e2e, latency test (localhost) | End of transcription to local log of another participant: p50 0.21 ms, p95 0.38 ms, max 1.1 ms | ch.10 qs-transcript-to-log | high | not measured over a real network with TLS |
+| Spike spike/e2e | Whisper small on CPU about 0.9 s per sentence; large-v3-turbo 3–3.7 s; end of speech to log about 1.4 s; audio loop jitter p99 1.1 ms | ch.10 qs-speech-to-log, ch.11 risk-whisper-latency | high | — |
+| Maintainer, review 5 | Target end of speech to log: p95 ≤ 1.5 s on the reference hardware | ch.10 qs-speech-to-log | high | — |
+| Spike spike/e2e | Local log per session and participant in a private user directory; event type in dotted form and ID as a number in each line; rejoin keeps the participant | ch.5 bb-replicator, if-local-log, ch.8, ch.9 dec-idempotent-commands | high | — |
+| Spike spike/e2e | whisper.cpp brings its own voice activity detection | ch.5 bb-ears | high | — |
+| Maintainer, review 5 | Test strategy: WAV in automated tests, microphone tested manually with a headset, no virtual microphone | ch.8 concept-test-strategy, ch.10 qs-manual-headset | high | — |
+| Maintainer, review 5 | No implementation details in the architecture | AGENTS.md | high | — |

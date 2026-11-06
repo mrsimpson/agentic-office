@@ -172,10 +172,13 @@ addresses: qg-performance
 ## Idempotent commands with client IDs
 
 **Context:** After a network drop, a client does not know if its last command arrived.
-**Decision:** Every command carries an ID that the client creates (for example a UUIDv7). The server
-stores the ID with the event. If the same ID arrives again, the server returns the existing event
-and creates no new one. **Consequences:** Clients can simply repeat commands after a drop. The
-server must keep the IDs at least for the life of the session.
+**Decision:** Every command carries an ID that the client creates. The IDs are unique and sortable
+by time. The server stores the ID with the event. If the same ID arrives again, the server returns
+the existing event and creates no new one. This also applies to `join`: the client keeps its join
+command ID, so a restarted client stays the same participant. **Consequences:** Clients can simply
+repeat commands after a drop. The server must keep the IDs at least for the life of the session.
+The spike confirmed this: 0 lost and 0 duplicate events while the replicator was killed three
+times.
 
 ```arc42
 :::decision
@@ -218,7 +221,7 @@ the server with Go templates and gets live updates through server-sent events. I
 TypeScript and no frontend build. **Reasons:** connect-go is stable (v2); there is an official MCP
 SDK for Go; Go builds one static binary for the CLI; whisper.cpp has Go bindings, so the ears need
 no Python. **Consequences:** One language, one build, shared types between all parts. The ears use
-whisper.cpp through cgo, so building the ears also needs a C/C++ compiler. Rich interaction in the
+whisper.cpp, so building the ears also needs a C/C++ compiler. Rich interaction in the
 browser would need a new decision. **Considered:** Rust (official connect-rust since 2026-08, but
 still 0.x; strong for real-time audio, slower development); Python for the ears (connect-python not
 stable); TypeScript for the stage (second toolchain).
