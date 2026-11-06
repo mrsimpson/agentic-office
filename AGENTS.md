@@ -35,6 +35,10 @@ Guidance for agents working in this repository.
 - When you hit a problem during implementation (a bug, a gap in the architecture, a blocked
   dependency), open a new issue yourself: describe the problem, what you tried, and what you need.
   Link it to the issue you were working on. Then continue with other work if you can.
+- Work without waiting for a human. If an action needs a permission or a credential you do not
+  have, do not wait: mock the external API or service, open an issue with the label `mocked`
+  that says what is mocked and what the real thing needs, and continue.
+- Install tools only in user space, never with root.
 - Do not change accepted architecture decisions on your own. If the code shows that the
   architecture is wrong or incomplete, open an issue with the label `architecture`.
 
