@@ -15,6 +15,13 @@ Guidance for agents working in this repository.
   - Make it easy to use: concrete examples, lists for steps and options, no filler.
 - Conversations with the maintainer may be in German. The written artifacts stay in English.
 
+## Code
+
+- All components are written in **Rust** and live in one Cargo workspace in this repository
+  (see `dec-languages-rust` in `docs/architecture/09-decisions.arc42.md`).
+- Shared types and the protocol (Protobuf, Connect RPC) belong in the shared core, not in a
+  single component.
+
 ## Architecture documentation
 
 - The architecture lives in `docs/architecture/` as arc42 chapters (`*.arc42.md`).

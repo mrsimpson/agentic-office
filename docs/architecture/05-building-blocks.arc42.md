@@ -52,6 +52,7 @@ deterministic tools and renders the stage. It contains no LLM.
 :::building-block
 id: bb-office-server
 title: Office server
+technology: Rust (Cargo workspace)
 implements: concept-event-log, concept-participant-model
 :::
 ```
@@ -67,6 +68,7 @@ who spoke.
 :::building-block
 id: bb-session-service
 title: Meeting session
+technology: Rust / connect-rust
 parent: bb-office-server
 implements: concept-event-log, concept-participant-model
 requires: if-journal-api
@@ -111,6 +113,7 @@ human or agent, and on whose behalf. When a session ends, the confirmed minutes 
 :::building-block
 id: bb-journal
 title: Journal (system of record)
+technology: Rust (OPEN: persistence)
 parent: bb-office-server
 implements: concept-event-log
 :::
@@ -140,6 +143,7 @@ IDs (for example `slides/42`). The stage uses these IDs to show them.
 :::building-block
 id: bb-artifact-service
 title: Artifact tools
+technology: Rust
 parent: bb-office-server
 :::
 ```
@@ -167,6 +171,7 @@ has no logic of its own.
 :::building-block
 id: bb-stage
 title: Stage
+technology: Rust, server-rendered (OPEN: SSE/htmx or WebAssembly)
 parent: bb-office-server
 requires: if-session-stream, if-artifact-api
 implements: concept-transparency
@@ -195,6 +200,7 @@ the CLI, the MCP server, the log replicator and, optionally, the ears.
 :::building-block
 id: bb-participant-client
 title: Participant client
+technology: Rust (Cargo workspace)
 implements: concept-participant-model, concept-read-file-write-tools
 :::
 ```
@@ -210,6 +216,7 @@ retract. Other commands cover artifacts, the stage and the journal.
 :::building-block
 id: bb-cli
 title: office CLI
+technology: Rust, single binary
 parent: bb-participant-client
 requires: if-session-commands, if-artifact-api, if-journal-api, if-local-log
 implements: concept-read-file-write-tools
@@ -239,6 +246,7 @@ process.
 :::building-block
 id: bb-mcp
 title: MCP server
+technology: Rust (OPEN: MCP SDK, for example rmcp)
 parent: bb-participant-client
 requires: if-session-commands, if-artifact-api, if-journal-api
 implements: concept-read-file-write-tools
@@ -270,6 +278,7 @@ It also stops when its parent process dies.
 :::building-block
 id: bb-replicator
 title: Log replicator
+technology: Rust / connect-rust
 parent: bb-participant-client
 requires: if-session-stream
 implements: concept-event-log, concept-read-file-write-tools
@@ -301,7 +310,7 @@ transcribing and queue the utterances locally. They send them in order once the 
 id: bb-ears
 title: Ears
 parent: bb-participant-client
-technology: VAD (for example Silero) / whisper.cpp via Go bindings (proposed, dec-languages)
+technology: Rust / VAD (for example Silero) / whisper-rs (whisper.cpp)
 requires: if-session-commands
 implements: concept-edge-transcription
 :::

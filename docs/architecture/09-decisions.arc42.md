@@ -223,8 +223,32 @@ Whisper, but connect-python is not stable yet.
 :::decision
 id: dec-languages
 title: Go for server and client, TypeScript for the stage
-status: proposed
+status: superseded
 date: 2026-11-06
 addresses: risk-connect-maturity, risk-whisper-latency
+:::
+```
+
+## Rust for everything, one Cargo workspace
+
+**Context:** The earlier proposal (`dec-languages`) used Go for server and client. Then we learned
+that connect-rust is an official Connect implementation. Rust also fits real-time audio and local
+Whisper (whisper-rs) well. **Decision:** All components are written in **Rust**: server, CLI, MCP
+server, log replicator and ears. They live in **one Cargo workspace** in this repository, so there
+is one toolchain and one shared core. The stage is rendered by the Rust server. It needs at most a
+small amount of plain JavaScript to follow the stream (OPEN: server-side rendering with SSE or
+htmx, or Rust compiled to WebAssembly). **Consequences:** One language, one build, shared types
+between all parts. We depend on connect-rust before its 1.0 (see `risk-connect-maturity`).
+**Rejected:** Go (stable Connect, but weaker for real-time audio and a second toolchain for the
+stage); Python for the ears (connect-python is not stable).
+
+```arc42
+:::decision
+id: dec-languages-rust
+title: Rust for all components in one Cargo workspace
+status: accepted
+date: 2026-11-06
+supersedes: dec-languages
+addresses: risk-connect-maturity, risk-whisper-latency, qg-performance
 :::
 ```

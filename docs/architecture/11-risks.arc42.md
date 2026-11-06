@@ -79,6 +79,6 @@ adopters are publicly known.
 id: risk-connect-maturity
 title: Connect RPC is not equally mature in all languages
 severity: medium
-mitigation: Use Go (stable connect-go) for server and client; check connect-es v2 before the stage is built; the protocol is plain HTTP with JSON, so a client can speak it without a library if needed
+mitigation: Pin connect-rust versions and keep it behind one internal module of the shared core; follow its releases towards 1.0; the protocol is plain HTTP with JSON, so we could replace the library if needed
 :::
 ```
