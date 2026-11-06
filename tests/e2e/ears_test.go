@@ -512,7 +512,7 @@ func TestEarsGermanWAV(t *testing.T) {
 // TestEarsNetworkDrop: the network of Ada drops after her first sentence and comes back after
 // two more sentences are final (rs-network-drop, qs-resume-after-drop). The ears queue them and
 // send them in order with the same command IDs: no lost and no duplicate utterances. Ada's own
-// local log catches up after the drop.
+// local log has them within 2 s after the network is back.
 func TestEarsNetworkDrop(t *testing.T) {
 	models := earsModels(t)
 	m := newMeeting(t)
@@ -573,14 +573,23 @@ func TestEarsNetworkDrop(t *testing.T) {
 	}
 	e.quit()
 	a, aAt := adaLog.events()
+	catchUp := time.Duration(-1)
 	for i, ev := range a {
 		if ev.GetId() != uint32(i+1) {
 			t.Fatalf("Ada's log: line %d has ID %d (a gap or a duplicate)", i+1, ev.GetId())
 		}
 		if ev.GetId() == sent[queued].EventID {
-			t.Logf("Ada's local log has the queued utterances %v after restore (replicator reconnect included)",
-				aAt[i].Sub(restoredAt).Round(time.Millisecond))
+			catchUp = aAt[i].Sub(restoredAt)
 		}
+	}
+	if catchUp < 0 {
+		t.Fatalf("Ada's log does not have the last queued utterance (event %d)", sent[queued].EventID)
+	}
+	t.Logf("Ada's local log has the queued utterances %v after restore (replicator reconnect included)",
+		catchUp.Round(time.Millisecond))
+	// qs-resume-after-drop: the local log is complete within 2 s after the network is back.
+	if catchUp > 2*time.Second {
+		t.Fatalf("Ada's local log has the queued utterances only %v after restore, want at most 2 s", catchUp)
 	}
 	t.Logf("network drop: %d utterances, 0 lost, 0 duplicate; %d resends answered as duplicate; %d connections refused while cut",
 		len(got), dups, proxy.Refused())

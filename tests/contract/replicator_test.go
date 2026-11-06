@@ -240,3 +240,62 @@ func TestReplicatorStopsWhenParentDies(t *testing.T) {
 		t.Fatal("foreground join did not end with the session")
 	}
 }
+
+// TestReplicatorCatchesUpAfterNetworkDrop (qs-resume-after-drop): the replicator of the bot
+// reaches the server through a proxy. The proxy is cut for 7 s while a writer appends events
+// directly. Within 2 s after the network is back, the local log has all events, in order, without
+// gaps or duplicates.
+func TestReplicatorCatchesUpAfterNetworkDrop(t *testing.T) {
+	m := newMachine(t)
+	bot := m.user("bot", "Bot", "agent")
+	proxy := contracttest.StartProxy(t, m.srv.URL)
+	viaProxy := *bot
+	viaProxy.env = append(append([]string{}, bot.env...), "OFFICE_SERVER="+proxy.URL)
+	writer := m.srv.Participant(t, "writer", "Writer", agent)
+	sid := newSession()
+	if _, err := writer.Session.Join(ctx10(t), &officev1.JoinRequest{SessionId: sid, CommandId: ids.NewCommandID()}); err != nil {
+		t.Fatal(err)
+	}
+	j := viaProxy.join(sid)
+	say := func(text string) uint32 {
+		t.Helper()
+		res, err := writer.Session.SubmitUtterance(ctx10(t), &officev1.SubmitUtteranceRequest{SessionId: sid,
+			CommandId: ids.NewCommandID(), ParticipantId: "writer", Text: text, Modality: officev1.Modality_MODALITY_TEXT})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res.GetResult().GetEvent().GetId()
+	}
+	waitLog(t, j.LogPath, say("before the drop"))
+
+	const drop = 7 * time.Second
+	proxy.Cut()
+	cutAt := time.Now()
+	var last uint32
+	for i := 0; time.Since(cutAt) < drop; i++ {
+		last = say("during the drop " + string(rune('a'+i%26)))
+		time.Sleep(100 * time.Millisecond)
+	}
+	if n := len(readLog(t, j.LogPath)); n > 0 && readLog(t, j.LogPath)[n-1].ev.GetId() >= last {
+		t.Fatal("the local log got events while the network was cut")
+	}
+	proxy.Restore()
+	restoredAt := time.Now()
+	waitUntil(t, 10*time.Second, "local log catches up", func() bool {
+		lines := readLog(t, j.LogPath)
+		return len(lines) > 0 && lines[len(lines)-1].ev.GetId() >= last
+	})
+	catchUp := time.Since(restoredAt)
+	t.Logf("network cut for %v (%d connections refused); local log complete %v after restore",
+		drop, proxy.Refused(), catchUp.Round(time.Millisecond))
+	if catchUp > 2*time.Second {
+		t.Fatalf("local log complete only %v after the network is back, want at most 2 s", catchUp)
+	}
+
+	if _, err := writer.Session.EndSession(ctx10(t), &officev1.EndSessionRequest{SessionId: sid, CommandId: ids.NewCommandID(),
+		ParticipantId: "writer"}); err != nil {
+		t.Fatal(err)
+	}
+	waitUntil(t, 10*time.Second, "replicator stops after session.ended", func() bool { return !alive(j.ReplicatorPID) })
+	sameAsServer(t, j.LogPath, serverLog(t, writer, sid))
+}

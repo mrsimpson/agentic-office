@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -21,6 +22,14 @@ import (
 
 // ErrRunning means that another replicator holds the lock of the file.
 var ErrRunning = errors.New("a replicator is already running for this file")
+
+// Reconnect backoff after a drop. The wait starts at MinBackoff and doubles up to MaxBackoff.
+// MaxBackoff bounds how long the local log lags behind after the network is back
+// (qs-resume-after-drop asks for 2 s), so keep it well below that.
+const (
+	MinBackoff = 100 * time.Millisecond
+	MaxBackoff = time.Second
+)
 
 // Reason tells why Run stopped.
 type Reason string
@@ -49,6 +58,8 @@ type Replicator struct {
 	Logf func(format string, args ...any)
 	// OnWrite is called after every written line. Optional.
 	OnWrite func(*officev1.Event)
+	// MaxBackoff overrides the package MaxBackoff when it is greater than zero.
+	MaxBackoff time.Duration
 
 	f      *os.File
 	cursor uint32
@@ -146,8 +157,11 @@ func (r *Replicator) Run(ctx context.Context) (Reason, error) {
 	if r.ended {
 		return Ended, nil
 	}
-	const minBackoff, maxBackoff = 100 * time.Millisecond, 5 * time.Second
-	backoff := minBackoff
+	maxBackoff := MaxBackoff
+	if r.MaxBackoff > 0 {
+		maxBackoff = r.MaxBackoff
+	}
+	backoff := min(MinBackoff, maxBackoff)
 	for {
 		got, reason, err := r.follow(ctx)
 		if reason != "" {
@@ -160,9 +174,10 @@ func (r *Replicator) Run(ctx context.Context) (Reason, error) {
 			return "", fmt.Errorf("session stream: %w", err)
 		}
 		if got {
-			backoff = minBackoff
+			backoff = min(MinBackoff, maxBackoff)
 		}
-		wait := backoff
+		// Up to 20 % less, so that many clients after the same drop do not retry in step.
+		wait := backoff - rand.N(backoff/5+1)
 		if connect.CodeOf(err) == connect.CodeUnauthenticated {
 			wait = 0 // the token was dropped; authenticate again at once
 		}
