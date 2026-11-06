@@ -236,9 +236,10 @@ addresses: risk-connect-maturity, risk-whisper-latency, qg-performance
 **Context:** Participants and agents must prove who they are. We want no secrets stored on the
 server. **Decision:** Every participant, including every agent, has its own Ed25519 key pair,
 created locally. Only the public key is sent to the server. In the first stage, keys are registered
-by hand at first contact. Agents act as themselves, not on behalf of a human.
-**Proposed details:** challenge and response with a short-lived access token bound to the key;
-read-only stage links; several keys per participant. **Consequences:** No shared secrets; agents
+by hand at first contact. Agents act as themselves, not on behalf of a human. The stage is opened
+with a read-only link. A participant can have several keys (several devices), and an admin can
+remove a key. **Proposed details:** challenge and response with a short-lived access token bound
+to the key. **Consequences:** No shared secrets; agents
 need only a key file. Enrollment needs a manual step for now (issue #2). **Considered:** OIDC with
 an existing identity provider (standard, but heavy for a small team); mTLS with client certificates
 (strong, but certificate management and awkward in the browser); static API tokens (secret on the

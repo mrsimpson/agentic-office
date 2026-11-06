@@ -31,6 +31,7 @@ proposed it and it still needs confirmation.
 | Maintainer, review 4 | Local key pair, public key sent to the server | ch.8 concept-identity, ch.9 dec-auth-keypair | high | — |
 | Maintainer, review 4 | First contact out of scope: we meet the person; enrollment flow as issue #2 | ch.8 concept-identity | high | — |
 | Maintainer, review 4 | Every agent is its own actor with its own key; acting on behalf is out of scope | ch.8, ch.9 dec-auth-keypair, ch.12 term-actor | high | — |
-| agent inference | Challenge and response, short-lived token bound to the key, read-only stage link, several keys per participant, TLS | ch.5 bb-identity, ch.6 rs-authenticate, ch.8 concept-identity | medium | OPEN: confirm |
+| Maintainer, review 4 | Read-only link for the stage; several keys per participant, an admin can remove a key | ch.8 concept-identity, ch.9 dec-auth-keypair | high | — |
+| agent inference | Challenge and response, short-lived token bound to the key, TLS | ch.5 bb-identity, ch.6 rs-authenticate, ch.8 concept-identity | medium | OPEN: confirm |
 | agent inference | Data protection risks (retraction, consent) | ch.11 | medium | OPEN: clarify with data protection |
 | — | Server operation (self-hosted or cloud), persistence | ch.7 | — | OPEN: not discussed yet |
