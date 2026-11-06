@@ -207,75 +207,26 @@ addresses: qg-performance, qg-resumability, risk-connect-maturity
 :::
 ```
 
-## Programming languages
+## Go for everything, one monorepo
 
-**Context:** The protocol choice and the local Whisper pipeline narrow the choice. The CLI should be
-easy to install. **Proposal:** **Go** for the server and the whole participant client (CLI, MCP
-server, log replicator, ears). **TypeScript** only for the stage in the browser. **Reasons:**
-connect-go is stable; there is an official MCP SDK for Go; Go builds one static binary for the CLI;
-whisper.cpp has Go bindings, so the ears do not need Python. **Considered:** **Rust** has strong
-Whisper bindings (whisper-rs) and fits real-time audio well. Since 2026-08, connect-rust is an
-official Connect implementation (contributed by Anthropic, passes the full conformance suite, in
-production at Anthropic), but it is still 0.x and its API may change. **Python** for the ears (faster-whisper) is the most common choice for
-Whisper, but connect-python is not stable yet.
+**Context:** We want one toolchain in one monorepo. The CLI should be easy to install. The ears need
+local Whisper. **Decision:** All parts are written in **Go**: server, CLI, MCP server, log
+replicator, ears and stage. They live in one monorepo with one shared core. The stage is rendered on
+the server with Go templates and gets live updates through server-sent events. It needs no
+TypeScript and no frontend build. **Reasons:** connect-go is stable (v2); there is an official MCP
+SDK for Go; Go builds one static binary for the CLI; whisper.cpp has Go bindings, so the ears need
+no Python. **Consequences:** One language, one build, shared types between all parts. The ears use
+whisper.cpp through cgo, so building the ears also needs a C/C++ compiler. Rich interaction in the
+browser would need a new decision. **Considered:** Rust (official connect-rust since 2026-08, but
+still 0.x; strong for real-time audio, slower development); Python for the ears (connect-python not
+stable); TypeScript for the stage (second toolchain).
 
 ```arc42
 :::decision
 id: dec-languages
-title: Go for server and client, TypeScript for the stage
-status: superseded
-date: 2026-11-06
-addresses: risk-connect-maturity, risk-whisper-latency
-:::
-```
-
-## Rust for everything, one Cargo workspace
-
-**Context:** The earlier proposal (`dec-languages`) used Go for server and client. Then we learned
-that connect-rust is an official Connect implementation. Rust also fits real-time audio and local
-Whisper (whisper-rs) well. **Decision:** All components are written in **Rust**: server, CLI, MCP
-server, log replicator and ears. They live in **one Cargo workspace** in this repository, so there
-is one toolchain and one shared core. The stage is rendered by the Rust server. It needs at most a
-small amount of plain JavaScript to follow the stream (OPEN: server-side rendering with SSE or
-htmx, or Rust compiled to WebAssembly). **Consequences:** One language, one build, shared types
-between all parts. We depend on connect-rust before its 1.0 (see `risk-connect-maturity`).
-**Rejected:** Go (stable Connect, but weaker for real-time audio and a second toolchain for the
-stage); Python for the ears (connect-python is not stable).
-
-```arc42
-:::decision
-id: dec-languages-rust
-title: Rust for all components in one Cargo workspace
-status: superseded
-date: 2026-11-06
-supersedes: dec-languages
-addresses: risk-connect-maturity, risk-whisper-latency, qg-performance
-:::
-```
-
-## Go for everything, one monorepo
-
-**Context:** The Rust decision (`dec-languages-rust`) was revised on the same day. The maintainer
-prefers Go. The goal stays the same: one toolchain in one monorepo. **Decision:** All parts are
-written in **Go**: server, CLI, MCP server, log replicator, ears and stage. They live in one
-monorepo with one shared core. The stage is rendered on the server with Go templates and gets live
-updates through server-sent events. It needs no TypeScript and no frontend build.
-**Reasons:** connect-go is stable (v2); there is an official MCP SDK for Go; Go builds one static
-binary for the CLI; whisper.cpp has Go bindings, so the ears need no Python.
-**Consequences:** One language, one build, shared types between all parts. The ears use whisper.cpp
-through cgo, so building the ears also needs a C/C++ compiler. Garbage collection pauses must stay
-small enough for real-time audio (to be measured, see `risk-whisper-latency`). Rich interaction in
-the browser would need a new decision. **Rejected:** Rust (official connect-rust, but still 0.x,
-slower development); Python for the ears (connect-python not stable); TypeScript for the stage
-(second toolchain).
-
-```arc42
-:::decision
-id: dec-languages-go
 title: Go for all parts in one monorepo
 status: accepted
 date: 2026-11-06
-supersedes: dec-languages-rust
 addresses: risk-connect-maturity, risk-whisper-latency, qg-performance
 :::
 ```

@@ -79,6 +79,6 @@ adopters are publicly known.
 id: risk-connect-maturity
 title: Connect RPC is not equally mature in all languages
 severity: medium
-mitigation: Use Go with the stable connect-go for all parts (dec-languages-go); keep the protocol code in one module of the shared core; the protocol is plain HTTP with JSON, so we could replace the library if needed
+mitigation: Use Go with the stable connect-go for all parts (dec-languages); keep the protocol code in one module of the shared core; the protocol is plain HTTP with JSON, so we could replace the library if needed
 :::
 ```

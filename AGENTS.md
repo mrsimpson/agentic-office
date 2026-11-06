@@ -18,7 +18,7 @@ Guidance for agents working in this repository.
 ## Code
 
 - All components are written in **Go** and live in this monorepo with one toolchain
-  (see `dec-languages-go` in `docs/architecture/09-decisions.arc42.md`). The only extra tool is the
+  (see `dec-languages` in `docs/architecture/09-decisions.arc42.md`). The only extra tool is the
   C/C++ compiler that whisper.cpp needs through cgo.
 - Shared types and the protocol (Protobuf, Connect RPC) belong in the shared core, not in a
   single component.
@@ -32,5 +32,7 @@ Guidance for agents working in this repository.
   warnings. Explain any remaining hints.
 - Do not invent facts. Mark open questions with `OPEN:`. Record where each fact comes from in
   `docs/architecture/architecture-evidence.md`.
+- We are in an early planning phase. Change decisions in place. Do not mark them as `superseded`
+  or `deprecated` until the maintainer says the architecture is baselined.
 - Architecture is about decisions and trade-offs. Align with the maintainer before you record a
   decision as `accepted`. Your own proposals start as `proposed`.
