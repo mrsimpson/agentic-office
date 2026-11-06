@@ -440,15 +440,54 @@ func TestCLISessionChoice(t *testing.T) {
 	}
 }
 
-func TestCLIUnimplementedServices(t *testing.T) {
+// TestCLIArtifacts: slides render and artifact get against the real artifact tools.
+func TestCLIArtifacts(t *testing.T) {
 	m := newMachine(t)
 	bot := m.user("bot", "Bot", "agent")
-	deck := filepath.Join(t.TempDir(), "deck.md")
-	if err := os.WriteFile(deck, []byte("# Budget\n\n## Plan\n- one\n- two\nsay this\n"), 0o600); err != nil {
-		t.Fatal(err)
+	ada := m.user("ada", "Ada", "human")
+	dir := t.TempDir()
+	write := func(name, content string) string {
+		t.Helper()
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
 	}
-	bot.fails(1, "unimplemented", "slides", "render", deck)
-	bot.fails(1, "unimplemented", "artifact", "get", "slides/1")
+	md := write("deck.md", "# Budget\n\n## Plan\n- one\n- <two>\nsay this\n")
+	js := write("deck.json", `{"title":"Budget","slides":[{"title":"Plan","bullets":["one","<two>"],"notes":"say this"}]}`)
+
+	v := bot.ok("slides", "render", md)
+	if v["artifactId"] != "slides/1" || v["mediaType"] != "text/html; charset=utf-8" || v["duplicate"] != false {
+		t.Fatalf("render Markdown: %v", v)
+	}
+	// The same deck as JSON is the same input: a new artifact with the same content.
+	if out, errOut, code := ada.run("slides", "render", js); code != 0 || out != "slides/2\n" {
+		t.Fatalf("render JSON without --json: exit %d, %q %q", code, out, errOut)
+	}
+
+	html1, _, code := ada.run("artifact", "get", "slides/1")
+	html2, _, code2 := bot.run("artifact", "get", "slides/2")
+	if code != 0 || code2 != 0 || html1 != html2 || !strings.Contains(html1, "<li>&lt;two&gt;</li>") {
+		t.Fatalf("artifact get: exit %d/%d, same %v:\n%s", code, code2, html1 == html2, html1)
+	}
+	a, _ := bot.ok("artifact", "get", "slides/1")["artifact"].(map[string]any)
+	if a["id"] != "slides/1" || a["mediaType"] != "text/html; charset=utf-8" || a["authorParticipantId"] != "bot" ||
+		a["content"] == nil || a["createdAt"] == nil {
+		t.Fatalf("artifact get --json: %v", a)
+	}
+	out := filepath.Join(dir, "out.html")
+	if v := ada.ok("artifact", "get", "slides/2", "--out", out); v["file"] != out || v["artifactId"] != "slides/2" {
+		t.Fatalf("artifact get --out: %v", v)
+	}
+	if b, err := os.ReadFile(out); err != nil || string(b) != html1 {
+		t.Fatalf("--out file: %v", err)
+	}
+
+	bot.fails(1, "not_found", "artifact", "get", "slides/99")
+	bot.fails(1, "invalid_argument", "slides", "render", write("blank.json", `{"slides":[{"title":" "}]}`))
+	bot.fails(2, "usage", "slides", "render", write("bad.md", "text before any slide\n"))
+	bot.fails(2, "usage", "artifact", "get")
 }
 
 // entriesOf returns the entries of a "journal list --json" result.

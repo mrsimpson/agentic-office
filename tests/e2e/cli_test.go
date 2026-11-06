@@ -93,12 +93,27 @@ func TestTwoCLIParticipants(t *testing.T) {
 	if turn.GetTurnEnd().GetParticipantId() != "ada" {
 		t.Fatalf("turn.end of %q", turn.GetTurnEnd().GetParticipantId())
 	}
+	// The agent renders slides and shows them (rs-agent-shows-artifact).
+	deck := filepath.Join(t.TempDir(), "budget.md")
+	if err := os.WriteFile(deck, []byte("# Budget\n\n## Costs\n- Rent: 4,000 EUR\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	artifactID := office(bot, "slides", "render", deck)["artifactId"].(string)
 	office(bot, "hand", "raise", "--topic", "budget")
-	office(bot, "stage", "show", "slides/1")
+	office(bot, "stage", "show", artifactID)
 	office(bot, "minutes", "update", "Ada asked for the budget. Bot showed slides/1.")
 	waitFor(adaLog, "hand.raised of bot", func(ev *officev1.Event) bool {
 		return ev.GetType() == events.HandRaised && ev.GetHandRaised().GetParticipantId() == "bot"
 	})
+	// Ada reads the shown ID from her log and loads the slides.
+	shown := waitFor(adaLog, "artifact.shown", func(ev *officev1.Event) bool { return ev.GetType() == events.ArtifactShown })
+	if shown.GetArtifactShown().GetArtifactId() != "slides/1" {
+		t.Fatalf("shown artifact %q, want slides/1", shown.GetArtifactShown().GetArtifactId())
+	}
+	html, errOut, code := contracttest.Run(t, "office", ada, "artifact", "get", shown.GetArtifactShown().GetArtifactId())
+	if code != 0 || !strings.Contains(html, "<h2>Costs</h2>") || !strings.Contains(html, "<li>Rent: 4,000 EUR</li>") {
+		t.Fatalf("artifact get: exit %d, %q, %q", code, html, errOut)
+	}
 	office(ada, "meeting", "end")
 
 	for _, pid := range []int{adaRep, botRep} {

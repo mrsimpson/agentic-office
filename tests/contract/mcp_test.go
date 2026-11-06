@@ -7,6 +7,7 @@ package contract
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -474,23 +475,9 @@ func TestMCPErrors(t *testing.T) {
 	// Errors of the server keep their Connect code.
 	s.fails("permission_denied", "utterance_retract", map[string]any{"eventId": adaUtt.GetId()})
 
-	// The artifact service is not implemented by the server yet: a clear error, not a mock result.
-	deck := filepath.Join(t.TempDir(), "deck.md")
-	if err := os.WriteFile(deck, []byte("# Budget\n\n## Plan\n- one\n- two\nsay this\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	unimplemented := []struct {
-		tool string
-		args map[string]any
-	}{
-		{"slides_render", map[string]any{"title": "Budget", "slides": []any{map[string]any{"title": "Plan", "bullets": []any{"one"}}}}},
-		{"slides_render", map[string]any{"markdown": "# Budget\n## Plan\n- one\n"}},
-		{"slides_render", map[string]any{"file": deck}},
-		{"artifact_get", map[string]any{"id": "slides/1"}},
-	}
-	for _, u := range unimplemented {
-		s.fails("unimplemented", u.tool, u.args)
-	}
+	// Errors of the artifact tools keep their Connect code too.
+	s.fails("not_found", "artifact_get", map[string]any{"id": "slides/99"})
+	s.fails("invalid_argument", "slides_render", map[string]any{"slides": []any{map[string]any{"title": " "}}})
 
 	// After the end of the session, commands fail with the server's code.
 	s.ok("meeting_end", nil)
@@ -566,6 +553,56 @@ func TestMCPJournal(t *testing.T) {
 
 // TestMCPWithCLIReplicator: if "office meeting join" already runs a replicator for the same
 // participant, meeting_join reuses it and reports its PID; the file keeps one writer.
+// TestMCPArtifacts: slides_render and artifact_get against the real artifact tools. The three
+// forms of a deck give the same content.
+func TestMCPArtifacts(t *testing.T) {
+	m := newMachine(t)
+	bot := m.user("bot", "Bot", "agent")
+	ada := m.user("ada", "Ada", "human")
+	s := startMCP(t, bot)
+	dir := t.TempDir()
+	deck := filepath.Join(dir, "deck.md")
+	if err := os.WriteFile(deck, []byte("# Budget\n\n## Plan\n- one\n- <two>\nsay this\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	forms := []map[string]any{
+		{"title": "Budget", "slides": []any{map[string]any{"title": "Plan", "bullets": []any{"one", "<two>"}, "notes": "say this"}}},
+		{"markdown": "# Budget\n## Plan\n- one\n- <two>\nsay this\n"},
+		{"file": deck},
+	}
+	var contents []string
+	for i, f := range forms {
+		v := s.ok("slides_render", f)
+		id := fmt.Sprintf("slides/%d", i+1)
+		if v["artifactId"] != id || v["mediaType"] != "text/html; charset=utf-8" || v["duplicate"] != false {
+			t.Fatalf("slides_render %v: %v", f, v)
+		}
+		a, _ := s.ok("artifact_get", map[string]any{"id": id})["artifact"].(map[string]any)
+		if a["id"] != id || a["authorParticipantId"] != "bot" {
+			t.Fatalf("artifact_get %s: %v", id, a)
+		}
+		b, err := base64.StdEncoding.DecodeString(a["content"].(string))
+		if err != nil {
+			t.Fatal(err)
+		}
+		contents = append(contents, string(b))
+	}
+	if contents[0] != contents[1] || contents[1] != contents[2] || !strings.Contains(contents[0], "<li>&lt;two&gt;</li>") {
+		t.Fatalf("three forms of one deck, other content:\n%s", strings.Join(contents, "\n---\n"))
+	}
+	// The CLI of another participant sees the same artifact.
+	if html, _, code := ada.run("artifact", "get", "slides/3"); code != 0 || html != contents[0] {
+		t.Fatalf("CLI get of an MCP artifact: exit %d", code)
+	}
+	out := filepath.Join(dir, "out.html")
+	if v := s.ok("artifact_get", map[string]any{"id": "slides/1", "out": out}); v["file"] != out {
+		t.Fatalf("artifact_get with out: %v", v)
+	}
+	if b, err := os.ReadFile(out); err != nil || string(b) != contents[0] {
+		t.Fatalf("out file: %v", err)
+	}
+}
+
 func TestMCPWithCLIReplicator(t *testing.T) {
 	m := newMachine(t)
 	bot := m.user("bot", "Bot", "agent")

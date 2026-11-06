@@ -187,6 +187,26 @@ the details. In short:
   minutes, stores nothing. What "confirmed minutes" means is still open (#22).
 - The journal is stored in `<data-dir>/journal.jsonl`, so it survives a restart of the server.
 
+### Artifact tools
+
+The artifact tools (`server/artifacts`) render slides. The package comment in
+`server/artifacts/doc.go` has the details. In short:
+
+- `RenderSlides` takes a deck: an optional title and at least one slide. Every slide has a title,
+  and may have bullets and notes. The result is an artifact with the ID `slides/<n>` (n starts at
+  1) and the media type `text/html; charset=utf-8`.
+- The content is one self-contained HTML document for a screen share: one section per slide,
+  black on white, large text. It has no scripts and loads nothing. All text is HTML-escaped and
+  shown as plain text. Notes are in the document but hidden.
+- The same deck always gives byte-equal content (`con-no-intelligence`): no time or random value
+  is in it. The ID and `created_at` are outside the content.
+- `RenderSlides` is idempotent by `command_id`. The same `command_id` with another deck fails
+  with `already_exists`. A new `command_id` with the same deck gives a new ID.
+- `GetArtifact` fetches by ID; an unknown ID fails with `not_found`. Any participant can fetch
+  every artifact. A stage link cannot use the artifact API: the stage renders on the server.
+- The meeting session does not check that a shown artifact exists.
+- Artifacts are stored in `<data-dir>/artifacts.jsonl`, so they survive a restart of the server.
+
 ## Server setup
 
 All files of the server are in its data directory, by default `~/.config/agentic-office/server`
@@ -197,6 +217,7 @@ All files of the server are in its data directory, by default `~/.config/agentic
 | `admins` | Admin keys. You write it by hand. |
 | `identity.json` | Registered participants and keys. The server writes it. |
 | `journal.jsonl` | Journal entries, one JSON object per line in the form of the API. The server appends to it. |
+| `artifacts.jsonl` | Artifacts, one JSON object per line: command ID, input and artifact in the form of the API. The server appends to it. |
 | `tls.crt`, `tls.key` | TLS certificate and key. The server creates a self-signed pair if neither exists. |
 
 ### First admin
@@ -299,9 +320,19 @@ office journal list --kind decision --after 10 --limit 20
 office journal list --session weekly    # also the minutes stored when "weekly" ended
 ```
 
-`journal append` links the entry to a session only with an explicit `--session`. The artifact
-commands (`slides render`, `artifact get`) exist, but the server does not implement that service
-yet: they fail with the code `unimplemented`.
+`journal append` links the entry to a session only with an explicit `--session`.
+
+**Slides:**
+
+```sh
+ID=$(office slides render deck.md)   # prints the artifact ID, for example slides/42
+office stage show "$ID"
+office artifact get "$ID" --out deck.html
+```
+
+A deck in Markdown: `# ` is the deck title, `## ` starts a slide, `- ` or `* ` is a bullet, other
+text becomes the notes of the slide. A file that does not end with `.md` is JSON in the form of
+`RenderSlidesRequest`: `{"title": …, "slides": [{"title": …, "bullets": […], "notes": …}]}`.
 
 **The local log** is `<runtime dir>/<session>/<participant>.jsonl` (directories 0700, file 0600):
 one compact JSON line per event (`core/eventlog`), with the dotted type and the event ID as a
@@ -465,8 +496,7 @@ only session this participant joined from this machine.
 **Results.** Each tool returns one JSON object, as text and as structured content, in the same
 shape as the CLI's `--json` output (see [Machine-readable output](#machine-readable-output---json)).
 Errors set `isError` and return `{"error":{"code","message"}}`. Arguments that do not match the
-input schema of a tool are `usage` errors. Artifact tools fail with `unimplemented` until the
-server has that service.
+input schema of a tool are `usage` errors.
 
 **The log.** `meeting_join` returns `logPath`. The replicator runs inside the MCP process, so the
 replication lives as long as that process: it stops when the client closes the connection, when
@@ -503,7 +533,7 @@ through its interfaces:
 - `tests/contract/stub_example_test.go` shows a test against a stub service.
 - `tests/contract/mcp_test.go` starts `office mcp` and talks to it over stdio with the MCP Go SDK
   client: every tool and its result, the log path that receives the events of all participants,
-  errors for bad input, server errors and the unimplemented artifact service, the journal, and
+  errors for bad input, server errors, the artifact tools, the journal, and
   that no writer is left
   when the MCP process closes or is killed. `tests/e2e/mcp_test.go`: an agent works only through
   MCP and follows its log with the `tail -f | grep` filter from the tool description.

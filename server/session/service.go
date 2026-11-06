@@ -494,8 +494,8 @@ func (s *Service) UpdateMinutes(ctx context.Context, req *officev1.UpdateMinutes
 	return &officev1.UpdateMinutesResponse{Result: res}, nil
 }
 
-// ShowArtifact appends artifact.shown. It does not check that the artifact exists; the artifact
-// tools are a later work package (#11).
+// ShowArtifact appends artifact.shown. It does not check that the artifact exists: the session is
+// only the log of what participants did, and the stage handles an unknown ID.
 func (s *Service) ShowArtifact(ctx context.Context, req *officev1.ShowArtifactRequest) (*officev1.ShowArtifactResponse, error) {
 	if req.GetArtifactId() == "" {
 		return nil, invalid("artifact_id is required")

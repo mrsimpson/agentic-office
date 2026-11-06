@@ -2,14 +2,14 @@
 //
 // All services are mounted. Every call needs an access token from the identity block, except
 // GetChallenge and ExchangeChallenge. The server speaks only TLS. The meeting session keeps its
-// logs in memory; the journal keeps its entries in a file. Services that are not implemented yet
-// answer every call with the Connect code "unimplemented".
+// logs in memory; the journal and the artifact tools keep their data in files.
 //
 // Files in the data directory (-data-dir):
 //
 //	admins       admin keys, written by hand (see identity.LoadAdmins)
 //	identity.json registered participants and keys, written by the server
 //	journal.jsonl journal entries, one JSON object per line, appended by the server
+//	artifacts.jsonl artifacts (rendered slides), one JSON object per line, appended by the server
 //	tls.crt      TLS certificate; created self-signed if neither it nor tls.key exists
 //	tls.key      TLS private key
 package main
@@ -33,6 +33,7 @@ import (
 	"connectrpc.com/connect/v2/connecthttp"
 
 	"github.com/mrsimpson/agentic-office/core/api/office/v1/officev1connect"
+	"github.com/mrsimpson/agentic-office/server/artifacts"
 	"github.com/mrsimpson/agentic-office/server/identity"
 	"github.com/mrsimpson/agentic-office/server/journal"
 	"github.com/mrsimpson/agentic-office/server/session"
@@ -47,7 +48,7 @@ func defaultDataDir() string {
 
 func main() {
 	addr := flag.String("addr", "127.0.0.1:8740", "listen address (port 0 picks a free port)")
-	dataDir := flag.String("data-dir", defaultDataDir(), "directory for admin keys, registered keys, the journal and the TLS certificate")
+	dataDir := flag.String("data-dir", defaultDataDir(), "directory for admin keys, registered keys, the journal, the artifacts and the TLS certificate")
 	certFile := flag.String("tls-cert", "", "TLS certificate (PEM, may include the chain); default <data-dir>/tls.crt")
 	keyFile := flag.String("tls-key", "", "TLS private key (PEM); default <data-dir>/tls.key")
 	hostname, _ := os.Hostname()
@@ -107,6 +108,19 @@ func main() {
 		return journal.Caller{ParticipantID: c.ParticipantID, Kind: c.Kind}, nil
 	}))
 
+	artifactStore, err := artifacts.OpenFileStore(filepath.Join(*dataDir, "artifacts.jsonl"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer artifactStore.Close()
+	arts := artifacts.New(artifactStore, artifacts.AuthorizerFunc(func(ctx context.Context) (artifacts.Caller, error) {
+		c, ok := identity.CallerFrom(ctx)
+		if !ok {
+			return artifacts.Caller{}, connect.NewError(connect.CodeUnauthenticated, "no access token")
+		}
+		return artifacts.Caller{ParticipantID: c.ParticipantID}, nil
+	}))
+
 	cs := connect.NewServer(ids.Interceptor())
 	officev1connect.RegisterSessionServiceHandler(cs, session.New(session.NewMemoryStore(), session.AuthorizerFunc(
 		func(ctx context.Context) (session.Caller, error) {
@@ -119,7 +133,7 @@ func main() {
 		}), jrn))
 	officev1connect.RegisterIdentityServiceHandler(cs, ids)
 	officev1connect.RegisterJournalServiceHandler(cs, jrn)
-	officev1connect.RegisterArtifactServiceHandler(cs, officev1connect.UnimplementedArtifactServiceHandler{})
+	officev1connect.RegisterArtifactServiceHandler(cs, arts)
 	mux := http.NewServeMux()
 	connecthttp.Mount(mux, cs)
 

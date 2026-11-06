@@ -15,10 +15,9 @@ import (
 	"github.com/mrsimpson/agentic-office/core/contracttest"
 )
 
-// The office server mounts every service of chapter 5 that crosses a process boundary.
-// Services without an implementation answer with "unimplemented", not "not found".
-// The meeting session, identity and journal are implemented; session_test.go, identity_test.go and
-// journal_test.go cover them.
+// The office server mounts every service of chapter 5 that crosses a process boundary. Each
+// answers with its own result or error, not "not found" or "unimplemented". session_test.go,
+// identity_test.go, journal_test.go and artifacts_test.go cover the services.
 func TestServerMountsEveryInterface(t *testing.T) {
 	srv := contracttest.StartServer(t, nil)
 	c := srv.Admin(t)
@@ -33,16 +32,9 @@ func TestServerMountsEveryInterface(t *testing.T) {
 	if _, err := c.Journal.ListEntries(ctx, &officev1.ListEntriesRequest{}); err != nil {
 		t.Errorf("journal API: %v", err)
 	}
-	calls := map[string]func() error{
-		"artifact API": func() error {
-			_, err := c.Artifact.GetArtifact(ctx, &officev1.GetArtifactRequest{Id: "slides/1"})
-			return err
-		},
-	}
-	for name, call := range calls {
-		if code := connect.CodeOf(call()); code != connect.CodeUnimplemented {
-			t.Errorf("%s: want code unimplemented, got %v", name, code)
-		}
+	// The artifact service answers: the artifact does not exist yet.
+	if _, err := c.Artifact.GetArtifact(ctx, &officev1.GetArtifactRequest{Id: "slides/1"}); connect.CodeOf(err) != connect.CodeNotFound {
+		t.Errorf("artifact API: want code not_found, got %v", err)
 	}
 }
 
@@ -108,9 +100,22 @@ func TestPlainHTTPWithJSON(t *testing.T) {
 		t.Fatalf("journal append: status %d, body %s", status, body)
 	}
 
-	status, body = post("/office.v1.ArtifactService/GetArtifact", token, `{"id":"slides/1"}`)
-	if err := json.Unmarshal(body, &e); err != nil || e.Code != "unimplemented" {
-		t.Fatalf("status %d, body %s: want a Connect error with code unimplemented", status, body)
+	status, body = post("/office.v1.ArtifactService/RenderSlides", token,
+		`{"commandId":"c","title":"Plan","slides":[{"title":"One","bullets":["a"]}],"authorParticipantId":"admin"}`)
+	var art struct {
+		Artifact struct {
+			ID        string `json:"id"`
+			MediaType string `json:"mediaType"`
+			Content   []byte `json:"content"` // base64 in JSON
+		} `json:"artifact"`
+	}
+	if err := json.Unmarshal(body, &art); err != nil || status != http.StatusOK || art.Artifact.ID != "slides/1" ||
+		art.Artifact.MediaType != "text/html; charset=utf-8" || !strings.Contains(string(art.Artifact.Content), "<h2>One</h2>") {
+		t.Fatalf("render slides: status %d, body %s", status, body)
+	}
+	status, body = post("/office.v1.ArtifactService/GetArtifact", token, `{"id":"slides/2"}`)
+	if err := json.Unmarshal(body, &e); err != nil || status != http.StatusNotFound || e.Code != "not_found" {
+		t.Fatalf("get an unknown artifact: status %d, body %s", status, body)
 	}
 }
 
