@@ -14,8 +14,9 @@ You need:
 
 - **Go 1.27** or newer.
 - **make** and **git**.
-- For the ears only (later work package): a **C/C++ compiler**, **cmake**, **whisper.cpp** and a
-  multilingual **Whisper model** (see below).
+- A **C/C++ compiler** and **cmake** for **whisper.cpp**, which the `office` binary links through
+  cgo (see below). The ears also need a multilingual **Whisper model** and the **Silero VAD
+  model**.
 - To change the protocol only: **buf**, **protoc-gen-go** and **protoc-gen-connect-go** (v2):
 
   ```sh
@@ -26,28 +27,34 @@ You need:
 
   The generated code is committed, so a normal build does not need these tools.
 
-### whisper.cpp and a model
+### whisper.cpp and the models
 
-The ears use whisper.cpp through cgo. The build expects it in `third_party/whisper.cpp` (not
-committed):
+The ears use whisper.cpp through cgo, also for voice activity detection. Every build needs it in
+`third_party/whisper.cpp` (not committed), also the build of the server, because `go.mod` points
+the Go bindings of whisper.cpp there:
 
 ```sh
 make third_party/whisper.cpp   # clones whisper.cpp; or: ln -s /path/to/whisper.cpp third_party/whisper.cpp
-make whisper                   # builds the static library libwhisper.a
+make whisper                   # builds the static libraries (libwhisper.a, libggml*.a)
+make models                    # downloads ggml-small.bin (about 490 MB) and the Silero VAD model
 ```
 
-Get a multilingual ggml model, for example `ggml-small.bin` (about 490 MB), from
-<https://huggingface.co/ggerganov/whisper.cpp>. Do not use the `.en` models: they only know
-English. Point the ears to it with `OFFICE_WHISPER_MODEL=/path/to/ggml-small.bin`. On a CPU,
-`small` needs about 0.9 s per sentence; larger models are too slow for live use there.
+`make models` puts the models into `~/.local/share/agentic-office/models` (or
+`$XDG_DATA_HOME/agentic-office/models`; change it with `MODEL_DIR=…`). The ears look there by
+default. To use other files, set `OFFICE_WHISPER_MODEL` and `OFFICE_VAD_MODEL`. Use a
+multilingual model, not a `.en` model: those only know English. On the reference host (CPU only),
+`small` needs about 0.7 s per sentence with 16 threads; larger models are too slow for live use.
+
+The Makefile sets `C_INCLUDE_PATH` and `LIBRARY_PATH` for cgo. To run `go build` or `go test`
+without make, export them as in the Makefile.
 
 ## Build and test
 
 | Command | What it does |
 |---|---|
-| `make build` | Builds all packages and the binaries `bin/office-server` and `bin/office` |
+| `make build` | Builds all packages and the binaries `bin/office-server` and `bin/office` (needs whisper.cpp) |
 | `make test` | Runs `go vet` and the contract tests (`tests/contract/`) |
-| `make e2e` | Runs the end-to-end tests with real processes (`tests/e2e/`, build tag `e2e`) |
+| `make e2e` | Runs the end-to-end tests with real processes (`tests/e2e/`, build tag `e2e`); the ears tests need the models and are skipped without them |
 | `make lint` | Checks the Protobuf contracts with `buf lint` |
 | `make generate` | Regenerates `core/api/` from `proto/` |
 
@@ -84,7 +91,7 @@ client/               Building blocks of the participant client
   replicator/         Log replicator: local copy of the session log
   ears/               Ears: local speech to text
 cmd/office-server/    Binary of the office server
-cmd/office/           Binary of the participant client (CLI, later MCP, replicator and ears)
+cmd/office/           Binary of the participant client (CLI, replicator and ears; later MCP)
 tests/contract/       Contract tests, one file per building block
 tests/e2e/            End-to-end tests
 ```
@@ -296,9 +303,55 @@ complete line; after a network drop it reconnects with a backoff.
 (`dec-gateway-cli`) and prints one line per change. Keys: `p` pauses or resumes, `r` retracts the
 last sent sentence, `q` quits. It ends with the session.
 
-`office meeting join <session> --mic` (or `--wav FILE`) joins as captured, runs the ears and
-shows the gateway view. The ears come with #8; until then, `--mic` and `--wav` fail with the
-code `unimplemented`.
+### Ears: speak into the meeting
+
+`office meeting join <session> --mic` joins as captured, runs the ears and shows the gateway
+view. The ears transcribe your own speech locally with Whisper. Only the text and its metadata go
+to the server; the audio never leaves your computer (`concept-edge-transcription`).
+
+- Each sentence ends after a short silence (default 500 ms). Whisper then transcribes it, and the
+  view shows it as `final`. It becomes `sent` when it is in your local log.
+- `p` pauses: the microphone is closed and nothing is transcribed until you press `p` again.
+  What you said just before the pause and is not final yet is dropped.
+- When the network drops, the ears keep transcribing and keep the sentences in a queue (in
+  memory). They send them in order when the network is back. Sentences that are still queued when
+  you quit are lost; the ears say how many.
+- `--wav FILE` plays a WAV file in real time instead of the microphone (16-bit PCM, any rate,
+  mono or stereo). The view stays open after the file ends; quit with `q`.
+- Use a headset (`con-headset-only`): the ears have no echo cancellation.
+- Before join, the ears check the models, the WAV file or the recorder. If something is missing,
+  join fails and you do not join.
+
+| Flag | Variable | Default |
+|---|---|---|
+| `--model` | `OFFICE_WHISPER_MODEL` | `~/.local/share/agentic-office/models/ggml-small.bin` |
+| `--vad-model` | `OFFICE_VAD_MODEL` | `~/.local/share/agentic-office/models/ggml-silero-v6.2.0.bin` |
+| `--language` | `OFFICE_WHISPER_LANGUAGE` | `de` |
+| `--threads` | `OFFICE_WHISPER_THREADS` | half of the CPUs, at most 16 |
+| `--end-silence` | `OFFICE_EARS_END_SILENCE` | `500ms` |
+| | `OFFICE_VAD_THRESHOLD` | `0.5` (speech probability of the VAD) |
+| | `OFFICE_MIC_COMMAND` | the first recorder found (see below) |
+
+**Microphone on a laptop.** The ears need no administrator rights. They read the microphone
+through a recorder program that runs as your user, like any audio application, and that writes
+raw 16 kHz mono 16-bit PCM to stdout. They try, in this order:
+
+- `parec` (PulseAudio, and PipeWire through `pipewire-pulse`): package `pulseaudio-utils`;
+- `arecord` (ALSA): package `alsa-utils`;
+- `rec` (SoX, Linux and macOS): package `sox`;
+- on macOS also `ffmpeg` with AVFoundation. macOS asks once for permission to use the microphone
+  for the terminal app.
+
+Your user must be allowed to use the audio device. On desktop Linux this is the default for the
+logged-in user; on a server, the user may need the group `audio`. Choose another device or
+program with `OFFICE_MIC_COMMAND`, which is run with `sh -c`, for example
+`OFFICE_MIC_COMMAND='parec --raw --rate=16000 --channels=1 --format=s16le --device=my-headset'`.
+
+**What the ears report.** On stderr, the ears print one line per step: `listening`, `final`
+(with the Whisper time), `sent` (with the time from the end of speech to the confirmed submit),
+`retry` while the network is down, `dropped`, `unsent` and `done` (end of a WAV file). With
+`--json`, each is a JSON object `{"ears":{"type":"sent","commandId":…,"speechEndToSubmitMs":…}}`
+(see `Report` in `client/ears`). Stdout keeps the changes of the view.
 
 ### Machine-readable output (`--json`)
 
@@ -316,6 +369,8 @@ stdout, also when it fails. Agents can pipe it to `jq`.
 - `meeting view --json` prints one JSON object per change, for example
   `{"utterance":{"eventId":12,"commandId":"…","text":"…","status":"sent"}}`, `{"paused":true}`,
   `{"ended":true}`.
+- `meeting join --mic --json` (or `--wav`) prints the join object, then the changes of the view
+  as above, one per line. The reports of the ears go to stderr as `{"ears":{…}}`.
 
 Without `--json`, a session command prints `event <id> <type>`; `join` and `meeting log` print the
 path only. Errors go to stderr.
@@ -335,5 +390,13 @@ through its interfaces:
 - `tests/contract/stub_example_test.go` shows a test against a stub service.
 - `tests/contract/cli_test.go` and `replicator_test.go` run the real `office` binary and check
   its output and the local log it leaves, including kills of the replicator and torn lines.
+- `tests/e2e/ears_test.go` runs the ears with the German test WAV (`tests/e2e/testdata/`): the
+  sentences reach another participant's local log in order; a network drop (a proxy from
+  `contracttest.StartProxy` is cut and restored) loses and duplicates nothing; a pause
+  transcribes nothing; `--mic` with a mock recorder. It also checks that no raw audio leaves the
+  device: `contracttest.StartDecryptingProxy` ends TLS with the server's own test certificate and
+  records the plaintext. Every recorded byte must decode as a known RPC request
+  (`contracttest.DecodeRequests`) with no unknown fields and no long field except the
+  transcripts. The tests print the measured times and byte counts (`go test -v`).
 - The harness uses the binaries in `$OFFICE_BIN_DIR` (the Makefile sets it). Without it, the
   harness builds them with `go build`, so `go test ./tests/contract/...` also works.

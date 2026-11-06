@@ -2,11 +2,13 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"golang.org/x/term"
@@ -35,6 +37,7 @@ type gatewayView struct {
 	local  <-chan localStatus
 	paused atomic.Bool
 	nl     string
+	errMu  sync.Mutex
 }
 
 func (g *gatewayView) run(ctx context.Context) error {
@@ -148,6 +151,25 @@ func (g *gatewayView) show(ch participant.Change) {
 		s = "-- the session ended"
 	}
 	fmt.Fprint(g.e.stdout, strings.ReplaceAll(s, "\n", " ")+g.nl)
+}
+
+// earsReport prints progress and measurements of the ears on stderr: {"ears":{…}} with --json,
+// else "ears: <text>". Stdout stays reserved for the changes of the view.
+func (g *gatewayView) earsReport(text string, fields any) {
+	g.errMu.Lock()
+	defer g.errMu.Unlock()
+	if g.e.json {
+		b, err := json.Marshal(map[string]any{"ears": fields})
+		if err == nil {
+			fmt.Fprintf(g.e.stderr, "%s\n", b)
+		}
+		return
+	}
+	nl := g.nl
+	if nl == "" {
+		nl = "\n"
+	}
+	fmt.Fprintf(g.e.stderr, "ears: %s%s", strings.ReplaceAll(text, "\n", " "), nl)
 }
 
 // report prints an error of a key action and keeps the view running.

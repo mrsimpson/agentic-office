@@ -16,8 +16,8 @@
 //   - ReadLog and FollowLog read the local session log (if-local-log) that client/replicator
 //     writes.
 //   - Gateway: the state behind the gateway view (dec-gateway-cli): own utterances with their
-//     status, and whether the participant is paused. It is driven by the local log and, once the
-//     ears exist (#8), by their local status.
+//     status, and whether the participant is paused. It is driven by the local log and, when the
+//     ears run (client/ears), by their local status.
 //
 // Files in the runtime directory (default $XDG_RUNTIME_DIR/agentic-office, mode 0700):
 //

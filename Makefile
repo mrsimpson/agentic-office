@@ -4,13 +4,16 @@ BIN := $(abspath bin)
 VERSION ?= $(shell git describe --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X github.com/mrsimpson/agentic-office/client/cli.Version=$(VERSION)
 
-# whisper.cpp for the ears (cgo). Only needed once the ears are built (#8).
+# whisper.cpp for the ears (cgo). The office binary links it statically.
 WHISPER_DIR := $(abspath third_party/whisper.cpp)
 WHISPER_BUILD := $(WHISPER_DIR)/build_go
 export C_INCLUDE_PATH := $(WHISPER_DIR)/include:$(WHISPER_DIR)/ggml/include
 export LIBRARY_PATH := $(WHISPER_BUILD)/src:$(WHISPER_BUILD)/ggml/src
 
-.PHONY: all build test e2e lint generate whisper clean
+# Models of the ears: a multilingual Whisper model and the Silero VAD model.
+MODEL_DIR ?= $(or $(XDG_DATA_HOME),$(HOME)/.local/share)/agentic-office/models
+
+.PHONY: all build test e2e lint generate whisper models clean
 all: build
 
 build:
@@ -42,6 +45,12 @@ third_party/whisper.cpp:
 whisper: third_party/whisper.cpp
 	cmake -S $(WHISPER_DIR) -B $(WHISPER_BUILD) -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF
 	cmake --build $(WHISPER_BUILD) -j --target whisper
+
+# Downloads the models into MODEL_DIR (from Hugging Face), if they are not there yet.
+models: third_party/whisper.cpp
+	mkdir -p $(MODEL_DIR)
+	test -f $(MODEL_DIR)/ggml-small.bin || sh $(WHISPER_DIR)/models/download-ggml-model.sh small $(MODEL_DIR)
+	test -f $(MODEL_DIR)/ggml-silero-v6.2.0.bin || sh $(WHISPER_DIR)/models/download-vad-model.sh silero-v6.2.0 $(MODEL_DIR)
 
 clean:
 	rm -rf $(BIN)

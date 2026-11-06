@@ -452,8 +452,52 @@ func TestCLIUnimplementedServices(t *testing.T) {
 	bot.fails(1, "unimplemented", "journal", "append", "--kind", "decision", "We ship")
 	bot.fails(1, "unimplemented", "journal", "list")
 	bot.fails(2, "usage", "journal", "append", "--kind", "gossip", "x")
-	bot.fails(1, "unimplemented", "meeting", "join", newSession(), "--mic")
-	bot.fails(1, "unimplemented", "meeting", "join", newSession(), "--wav", deck)
+}
+
+// TestCLIEarsCheck: join --mic and --wav check the ears before they join. If a model, the WAV
+// file or a recorder is missing, join fails with a clear message and the participant does not
+// join (so it is never shown as captured without ears).
+func TestCLIEarsCheck(t *testing.T) {
+	m := newMachine(t)
+	ada := m.user("ada", "Ada", "human")
+	dir := t.TempDir()
+	notWAV := filepath.Join(dir, "notes.txt")
+	model := filepath.Join(dir, "model.bin") // the check only looks whether the file is there
+	for _, f := range []string{notWAV, model} {
+		if err := os.WriteFile(f, []byte("not audio"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sid := newSession()
+	cases := []struct {
+		name string
+		env  []string
+		args []string
+		msg  string
+	}{
+		{"no Whisper model", []string{"OFFICE_WHISPER_MODEL=" + filepath.Join(dir, "missing.bin"), "OFFICE_VAD_MODEL=" + model},
+			[]string{"--wav", notWAV}, "Whisper model"},
+		{"no VAD model", []string{"OFFICE_WHISPER_MODEL=" + model, "OFFICE_VAD_MODEL=" + filepath.Join(dir, "missing.bin")},
+			[]string{"--wav", notWAV}, "VAD model"},
+		{"not a WAV file", []string{"OFFICE_WHISPER_MODEL=" + model, "OFFICE_VAD_MODEL=" + model},
+			[]string{"--wav", notWAV}, "not a WAV file"},
+		{"no recorder", []string{"OFFICE_WHISPER_MODEL=" + model, "OFFICE_VAD_MODEL=" + model, "PATH=" + dir, "OFFICE_MIC_COMMAND="},
+			[]string{"--mic"}, "no audio recorder"},
+		{"flag before env", []string{"OFFICE_WHISPER_MODEL=" + model, "OFFICE_VAD_MODEL=" + model},
+			[]string{"--wav", notWAV, "--model", filepath.Join(dir, "flag.bin")}, "flag.bin"},
+	}
+	for _, c := range cases {
+		u := *ada
+		u.env = append(append([]string(nil), ada.env...), c.env...)
+		v, code := u.call(append([]string{"meeting", "join", sid}, c.args...)...)
+		e, _ := v["error"].(map[string]any)
+		if code != 1 || e == nil || !strings.Contains(fmt.Sprint(e["message"]), c.msg) {
+			t.Fatalf("%s: want exit 1 and a message with %q, got exit %d: %v", c.name, c.msg, code, v)
+		}
+	}
+	ada.fails(2, "usage", "meeting", "join", sid, "--mic", "--wav", notWAV)
+	// None of the failed joins joined.
+	ada.fails(1, "no_session", "say", "hello")
 }
 
 func TestCLILeaveAndRejoin(t *testing.T) {
