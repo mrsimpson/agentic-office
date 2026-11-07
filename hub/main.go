@@ -6,13 +6,19 @@
 // repository; the push is mocked). The records (decisions, minutes and notes), the tasks (local
 // drafts) and the slide decks are files in the archive too.
 //
+// The operator gives the hub its signing key at start (dec-hub-signing-key): -signing-key FILE is
+// required, and the hub does not start without a valid key. Create a key file once with
+//
+//	office-hub keygen FILE
+//
+// It refuses to overwrite an existing file.
+//
 // Files in the data directory (-data-dir):
 //
 //	admins       admin keys, written by hand (see identity.LoadAdmins)
 //	identity.json registered participants and keys, written by the server
 //	tls.crt      TLS certificate; created self-signed if neither it nor tls.key exists
 //	tls.key      TLS private key
-//	signing.key  Ed25519 key that signs the tree heads of session logs; created if it does not exist
 //	archive/     Git repository of the archive (-archive-dir); the meeting session writes its logs
 //	             there at the interval -archive-interval and when a session ends; decisions,
 //	             minutes and notes are committed there one by one (see package records), and so
@@ -25,6 +31,8 @@ import (
 	"crypto/tls"
 	"errors"
 	"flag"
+	"fmt"
+	"io/fs"
 	"log"
 	"net"
 	"net/http"
@@ -63,14 +71,41 @@ func defaultDataDir() string {
 	return "office-hub-data"
 }
 
+// keygenHint tells the operator how to create a signing key file.
+const keygenHint = "create one with: office-hub keygen FILE"
+
+// keygen writes a new signing key to the file in args and prints its public key. It refuses to
+// overwrite an existing file.
+func keygen(args []string) {
+	if len(args) != 1 || strings.HasPrefix(args[0], "-") {
+		fmt.Fprintln(os.Stderr, "usage: office-hub keygen FILE")
+		os.Exit(2)
+	}
+	key, err := auth.NewKey()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := auth.WriteKey(args[0], key); err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			log.Fatalf("%s exists; it is not changed", args[0])
+		}
+		log.Fatal(err)
+	}
+	fmt.Printf("signing key: %s\npublic key:  %s\n", args[0], auth.FormatPublicKey(auth.PublicKey(key)))
+}
+
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "keygen" {
+		keygen(os.Args[2:])
+		return
+	}
 	addr := flag.String("addr", "127.0.0.1:8740", "listen address (port 0 picks a free port)")
 	dataDir := flag.String("data-dir", defaultDataDir(), "directory for admin keys, registered keys, the archive and the TLS certificate")
 	certFile := flag.String("tls-cert", "", "TLS certificate (PEM, may include the chain); default <data-dir>/tls.crt")
 	keyFile := flag.String("tls-key", "", "TLS private key (PEM); default <data-dir>/tls.key")
 	hostname, _ := os.Hostname()
 	tlsHosts := flag.String("tls-hosts", "localhost,127.0.0.1,::1,"+hostname, "host names and IPs of a new self-signed certificate")
-	signingKeyFile := flag.String("signing-key", "", "Ed25519 key that signs tree heads of session logs (PEM); default <data-dir>/signing.key, created if missing")
+	signingKeyFile := flag.String("signing-key", "", "Ed25519 key file that signs tree heads of session logs (PEM); required, "+keygenHint)
 	adminsFile := flag.String("admins", "", "admin key file; default <data-dir>/admins")
 	publicURL := flag.String("public-url", "", "base URL of the server in stage links; default https://<listen address>")
 	tokenTTL := flag.Duration("token-ttl", 15*time.Minute, "lifetime of access tokens")
@@ -95,13 +130,14 @@ func main() {
 	}
 	log.Printf("TLS certificate %s sha256 %s", or(*certFile, "tls.crt"), fingerprint(cert))
 
-	// The signing key must survive restarts, so old tree heads still verify (dec-merkle-log).
-	signingKey, created, err := auth.LoadOrCreateKey(or(*signingKeyFile, "signing.key"))
-	if err != nil {
-		log.Fatal(err)
+	// The operator gives the signing key (dec-hub-signing-key). It must stay the same across
+	// restarts, so old tree heads still verify (dec-merkle-log).
+	if *signingKeyFile == "" {
+		log.Fatal("no signing key: pass -signing-key FILE; " + keygenHint)
 	}
-	if created {
-		log.Printf("created the signing key %s", or(*signingKeyFile, "signing.key"))
+	signingKey, err := auth.ReadKey(*signingKeyFile)
+	if err != nil {
+		log.Fatalf("signing key: %v; %s", err, keygenHint)
 	}
 	log.Printf("signing key of tree heads %s", auth.FormatPublicKey(auth.PublicKey(signingKey)))
 

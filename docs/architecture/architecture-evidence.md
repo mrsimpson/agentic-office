@@ -69,7 +69,7 @@ proposed it and it still needs confirmation.
 | Maintainer, review 12 | Write interval on the hub is configurable; more often is better; writes must not cause a queue | ch.9 dec-session-persistence, ch.10 qs-archive-no-backpressure, ch.11 risk-archive-latency | high | OPEN: slow commit time for the scenario |
 | agent inference | Writes in the background, at most one in progress, coalescing later events | ch.9 dec-session-persistence | medium | — |
 | Maintainer, review 12 | Keep a separately deployed hub; call it hub instead of server | ch.5, ch.7, ch.12 | high | — |
-| agent inference | The hub keeps identity and its signing key permanently | ch.7 | medium | — |
+| agent inference | The hub keeps identity permanently | ch.7 | medium | — |
 | Maintainer, review 13 | First version: commit into a local Git repository in the hub; the push is mocked | ch.7, ch.9 dec-yaml-git-storage | high | — |
 | Maintainer, review 13 | Tasks belong to the task tools of the team; at first a local YAML draft, later synced and replaced | ch.9 dec-yaml-git-storage | high | — |
 | Maintainer, review 13 | Everything as YAML in the Git repository, local and predictably fast | ch.9 dec-yaml-git-storage | high | — |
@@ -114,5 +114,6 @@ proposed it and it still needs confirmation.
 | Maintainer, review 16 | The stream carries signed tree heads; a restored session waits for peers | ch.9 dec-signed-head-in-stream | high | — |
 | Maintainer, review 16 | The block name in dec-records-per-type is fine (#46) | ch.9 | high | — |
 | Maintainer, review 16 | The signing key is given at host start, at first as a file name on the command line | ch.9 dec-hub-signing-key | high | OPEN: client pinning (#41) |
+| Issue #41, agent decision | The operator gives the signing key at every start and creates it with a separate command of the hub that never overwrites a key | ch.7 | medium | OPEN: client pinning (#41) |
 | Maintainer, review 16 | Schema changes are not taken over inside a session; a session belongs to exactly one schema | ch.9 dec-session-schema | high | — |
 

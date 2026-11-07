@@ -63,7 +63,8 @@ without make, export them as in the Makefile.
 Run the hub by hand:
 
 ```sh
-bin/office-hub -addr 127.0.0.1:8740
+bin/office-hub keygen ~/.config/agentic-office/hub-signing.key   # once
+bin/office-hub -addr 127.0.0.1:8740 -signing-key ~/.config/agentic-office/hub-signing.key
 ```
 
 The hub speaks only TLS and needs an access token for every call. See
@@ -191,8 +192,9 @@ Transparency), and the hub signs its tree heads (`dec-merkle-log`). Package
   `GetConsistencyProof` proves that the log of `second_size` events extends the log of
   `first_size` events. `GetInclusionProof` proves that one event is in a tree. A size beyond the
   log fails with `out_of_range`.
-- `GetHubKey` returns the public key of the hub. The hub keeps the key in
-  `<data-dir>/signing.key`, so heads signed before a restart still verify.
+- `GetHubKey` returns the public key of the hub. The operator gives the hub its key file at
+  start (`-signing-key`, see [Signing key](#signing-key)). Start the hub with the same file
+  every time, so heads signed before a restart still verify.
 - Check a copy: `merkle.VerifyEvents(events, head, hubKey)` (all events from 1 to the tree size),
   `merkle.VerifyEventInclusion` and `merkle.VerifyTreeHeadConsistency`.
 
@@ -472,7 +474,6 @@ All files of the hub are in its data directory, by default `~/.config/agentic-of
 | `admins` | Admin keys. You write it by hand. |
 | `identity.json` | Registered participants and keys. The hub writes it. |
 | `tls.crt`, `tls.key` | TLS certificate and key. The hub creates a self-signed pair if neither exists. |
-| `signing.key` | Ed25519 key that signs the tree heads of session logs (`-signing-key`). The hub creates it if it does not exist. Keep it: without it, old tree heads cannot be checked against the hub key. |
 | `archive/` | The Git repository of the archive (`-archive-dir`): sessions, decisions, minutes, notes, tasks and slide decks. The hub creates it and commits into it. See [Archive](#archive). |
 
 Flags of the hub (`bin/office-hub -h` lists them all):
@@ -485,10 +486,30 @@ Flags of the hub (`bin/office-hub -h` lists them all):
 | `-archive-interval` | `30s` | Time between two writes of changed sessions. Keep it above the usual commit time. |
 | `-restore-wait` | `10s` | After a restart, how long a restored session that has not ended waits for a peer to fill in (see [Restore](#restore-after-a-restart)) |
 | `-tls-cert`, `-tls-key`, `-tls-hosts` | see [TLS](#tls-and-your-own-certificate) | TLS certificate |
-| `-signing-key` | `<data-dir>/signing.key` | Key that signs tree heads |
+| `-signing-key` | none, required | Key file that signs tree heads (see [Signing key](#signing-key)) |
 | `-admins` | `<data-dir>/admins` | Admin keys |
 | `-public-url` | `https://<listen address>` | Base URL in stage links |
 | `-token-ttl`, `-stage-link-ttl` | `15m`, `24h` | Lifetime of access tokens and stage links |
+
+### Signing key
+
+The hub signs the tree heads of session logs with an Ed25519 key. You, the operator, give the hub
+this key at every start with `-signing-key FILE`. The hub never creates a signing key by itself.
+It does not start without the flag, or if the file is missing, broken or readable by others.
+
+Create a key file once:
+
+```sh
+bin/office-hub keygen /etc/office/hub-signing.key
+```
+
+- `keygen` writes the private key as PEM (PKCS #8) with mode 0600 and prints the public key.
+- It refuses to overwrite an existing file.
+- The hub logs the public key at start: `signing key of tree heads …`.
+- Keep the file with your other secrets and back it up. Without it, old tree heads cannot be
+  checked against the hub key. Replacing it is a deliberate act: heads signed with the old key
+  then no longer verify against `GetHubKey`.
+- How clients pin the public key is still open (#41).
 
 ### First admin
 
@@ -845,7 +866,8 @@ through its interfaces:
 
 - A contract test starts the block with `tests/contracttest` (as a real process, or as a fake that
   follows the same contract) and uses only its interfaces. `contracttest.StartHub` starts
-  `office-hub` with TLS and an admin key; `Hub.Participant` registers a key for a test
+  `office-hub` with TLS, an admin key and a signing key file (`-signing-key`); `StartHubIn`
+  restarts it with the same file. `Hub.Participant` registers a key for a test
   participant and returns authenticated clients. It never imports the package that
   implements the block.
 - `tests/contract/stub_example_test.go` shows a test against a stub service.

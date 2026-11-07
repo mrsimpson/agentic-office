@@ -3,7 +3,6 @@ package session
 import (
 	"context"
 	"crypto/ed25519"
-	"crypto/rand"
 	"errors"
 	"slices"
 	"strings"
@@ -85,18 +84,14 @@ var _ sessionv1connect.SessionServiceHandler = (*Service)(nil)
 
 // New returns a Service that keeps its logs in store and stores the minutes of ended sessions
 // with minutes. It signs tree heads with key. If auth is nil, every call fails with
-// Unauthenticated. If minutes is nil, the minutes are not stored. If key is nil, the service creates a key in
-// memory, so its signatures cannot be checked after a restart.
+// Unauthenticated. If minutes is nil, the minutes are not stored. key is required: New panics without it
+// (dec-hub-signing-key).
 func New(store Store, auth Authorizer, minutes Minutes, key ed25519.PrivateKey) *Service {
 	if auth == nil {
 		auth = denyAll{}
 	}
-	if key == nil {
-		_, k, err := ed25519.GenerateKey(rand.Reader)
-		if err != nil {
-			panic("session: create a signing key: " + err.Error())
-		}
-		key = k
+	if len(key) != ed25519.PrivateKeySize {
+		panic("session: no signing key")
 	}
 	return &Service{store: store, auth: auth, minutes: minutes, key: key, sessions: map[string]*state{}}
 }

@@ -5,7 +5,7 @@
 // packages that implement the block.
 //
 // StartHub starts a real office-hub with TLS (a self-signed certificate in a temporary data
-// directory) and an admin key. Server.Participant registers a key for a test participant and
+// directory), an admin key and a signing key file that the harness creates. Server.Participant registers a key for a test participant and
 // returns an Actor with authenticated clients; Server.Anonymous returns clients without a token.
 //
 // Binaries are taken from $OFFICE_BIN_DIR (set by the Makefile). If it is not set, the harness
@@ -219,10 +219,16 @@ type Hub struct {
 	CertFile string
 	// AdminKey is the private key of the admin (participant AdminID).
 	AdminKey ed25519.PrivateKey
+	// SigningKeyFile is the signing key file that the hub gets with -signing-key.
+	SigningKeyFile string
 }
 
+// SigningKeyFile returns the signing key file of a hub with the data directory dir. StartHub
+// creates it there; the hub itself does not know this name and gets it with -signing-key.
+func SigningKeyFile(dir string) string { return filepath.Join(dir, "test-signing.key") }
+
 // StartHub starts office-hub on a free port and waits until it listens. It creates a data
-// directory with an admin key. args are extra flags, for example "-token-ttl", "2s".
+// directory with an admin key and a signing key file (SigningKeyFile). args are extra flags, for example "-token-ttl", "2s".
 func StartHub(t testing.TB, env []string, args ...string) *Hub {
 	t.Helper()
 	dir := t.TempDir()
@@ -234,19 +240,28 @@ func StartHub(t testing.TB, env []string, args ...string) *Hub {
 	if err := os.WriteFile(filepath.Join(dir, "admins"), []byte(line), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	signing, err := auth.NewKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := auth.WriteKey(SigningKeyFile(dir), signing); err != nil {
+		t.Fatal(err)
+	}
 	return StartHubIn(t, dir, key, env, args...)
 }
 
 // StartHubIn starts office-hub with an existing data directory, for example to restart a
-// server. adminKey is the key of AdminID in the admin file of dir.
+// server. adminKey is the key of AdminID in the admin file of dir. The hub gets the signing key
+// file of dir (SigningKeyFile), so a restart signs with the same key.
 func StartHubIn(t testing.TB, dir string, adminKey ed25519.PrivateKey, env []string, args ...string) *Hub {
 	t.Helper()
-	p := Start(t, "office-hub", env, append([]string{"-addr", "127.0.0.1:0", "-data-dir", dir}, args...)...)
+	p := Start(t, "office-hub", env, append([]string{"-addr", "127.0.0.1:0", "-data-dir", dir,
+		"-signing-key", SigningKeyFile(dir)}, args...)...)
 	// Stop the hub gracefully first, so it ends its last write to the archive before the data
 	// directory is removed. Start's cleanup kills it if it does not stop in time.
 	t.Cleanup(func() { _, _ = p.Stop(10 * time.Second) })
 	return &Hub{Process: p, URL: p.WaitStderr(t, listening, 10*time.Second), DataDir: dir,
-		CertFile: filepath.Join(dir, "tls.crt"), AdminKey: adminKey}
+		CertFile: filepath.Join(dir, "tls.crt"), AdminKey: adminKey, SigningKeyFile: SigningKeyFile(dir)}
 }
 
 // HTTPClient returns an HTTP client that trusts the certificate of the server.
