@@ -608,7 +608,10 @@ func TestEarsPause(t *testing.T) {
 	bot := m.joinBot()
 
 	s := readPCM(t, testWAV).sentences()
-	const gap = 5 * time.Second
+	// The key press comes after the first sentence is sent, so the gap must be longer than one
+	// transcription plus the start of the model on a slow host (about 5 s on a 2-core CPU);
+	// e2e tests never fail on timing (dec-performance-tests).
+	const gap = 15 * time.Second
 	wav := filepath.Join(t.TempDir(), "pause.wav")
 	join(s[0].rate, gap, s[0], s[1], s[2]).writeWAV(t, wav)
 	// The second sentence starts at s0+gap and ends at s0+gap+s1.
