@@ -158,6 +158,30 @@ In short:
 - `Subscribe` ends with `unauthenticated` when the token expires or its key is revoked. The client
   authenticates again and resumes from its cursor.
 
+### Checking a session log (Merkle tree)
+
+The events of a session are the leaves of a Merkle tree in the style of RFC 9162 (Certificate
+Transparency), and the hub signs its tree heads (`dec-merkle-log`). Package
+`hub/session/api/merkle` has the exact bytes and the verification code for clients:
+
+- Leaf hash = SHA-256(0x00 || leaf), node hash = SHA-256(0x01 || left || right). Event `n` is
+  leaf `n-1`. The leaf of an event is its deterministic binary Protobuf encoding, as it is in the
+  log of the hub (with `leaf_hash` empty).
+- A placeholder of an utterance that is off the record carries `leafHash`: the leaf hash of the
+  original. Verifiers use it instead of hashing the placeholder, so a copy with placeholders still
+  verifies. Any other event with a `leafHash` fails the check.
+- A signed tree head has the session ID, the tree size, the root hash, the Ed25519 signature and
+  the public key that signed. The signed message is `merkle.TreeHeadMessage`.
+- `session.ended` carries the signed tree head of the log before it (`sessionEnded.treeHead`).
+- `GetTreeHead` returns the signed head of the current log, or of its first `tree_size` events.
+  `GetConsistencyProof` proves that the log of `second_size` events extends the log of
+  `first_size` events. `GetInclusionProof` proves that one event is in a tree. A size beyond the
+  log fails with `out_of_range`.
+- `GetHubKey` returns the public key of the hub. The hub keeps the key in
+  `<data-dir>/signing.key`, so heads signed before a restart still verify.
+- Check a copy: `merkle.VerifyEvents(events, head, hubKey)` (all events from 1 to the tree size),
+  `merkle.VerifyEventInclusion` and `merkle.VerifyTreeHeadConsistency`.
+
 ### Identity
 
 Identity (`hub/identity`) is implemented. The package comment in `hub/identity/doc.go` has
@@ -246,6 +270,7 @@ All files of the hub are in its data directory, by default `~/.config/agentic-of
 | `journal.jsonl` | Journal entries, one JSON object per line in the form of the API. The hub appends to it. |
 | `artifacts.jsonl` | Artifacts, one JSON object per line: command ID, input and artifact in the form of the API. The hub appends to it. |
 | `tls.crt`, `tls.key` | TLS certificate and key. The hub creates a self-signed pair if neither exists. |
+| `signing.key` | Ed25519 key that signs the tree heads of session logs (`-signing-key`). The hub creates it if it does not exist. Keep it: without it, old tree heads cannot be checked against the hub key. |
 
 ### First admin
 
@@ -399,7 +424,8 @@ What is said stays said (`dec-off-the-record`). A participant can mark **their o
 the record (`office utterance off-the-record <event-id> | --last`); the hub checks that the
 caller is the speaker. The log gets a new `utterance.off_the_record` line. Everyone who reads the
 session later, through the stream or `meeting events`, gets the sentence as a placeholder: the
-same ID, `"offTheRecord": true`, and no text. The stage hides it. Agents must not use such a
+same ID, `"offTheRecord": true`, no text, and the `leafHash` of the original (see
+[Checking a session log](#checking-a-session-log-merkle-tree)). The stage hides it. Agents must not use such a
 sentence anywhere.
 
 Event IDs grow by one without gaps (`dec-events-from-cursor`). `office meeting events --after N

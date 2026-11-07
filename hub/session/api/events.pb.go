@@ -146,6 +146,12 @@ type Event struct {
 	CommandId string `protobuf:"bytes,5,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
 	// actor_participant_id is the participant whose command created the event.
 	ActorParticipantId string `protobuf:"bytes,6,opt,name=actor_participant_id,json=actorParticipantId,proto3" json:"actor_participant_id,omitempty"`
+	// leaf_hash is set only on a placeholder: an utterance.final that is off the record
+	// (utterance_final.off_the_record is true). It is the leaf hash of the original event in the
+	// Merkle tree of the session log (dec-merkle-log). A verifier uses it instead of hashing the
+	// placeholder, so a copy with placeholders still verifies. It is empty in the log itself and in
+	// every other event. See package merkle for the leaf of an event.
+	LeafHash []byte `protobuf:"bytes,7,opt,name=leaf_hash,json=leafHash,proto3" json:"leaf_hash,omitempty"`
 	// Types that are valid to be assigned to Payload:
 	//
 	//	*Event_UtteranceFinal
@@ -237,6 +243,13 @@ func (x *Event) GetActorParticipantId() string {
 		return x.ActorParticipantId
 	}
 	return ""
+}
+
+func (x *Event) GetLeafHash() []byte {
+	if x != nil {
+		return x.LeafHash
+	}
+	return nil
 }
 
 func (x *Event) GetPayload() isEvent_Payload {
@@ -1128,7 +1141,11 @@ func (x *ParticipantResumed) GetParticipantId() string {
 }
 
 type SessionEnded struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// tree_head is the signed tree head of the log before this event: its size is the ID of
+	// session.ended minus one (dec-merkle-log). Get the head that includes session.ended with
+	// GetTreeHead.
+	TreeHead      *SignedTreeHead `protobuf:"bytes,1,opt,name=tree_head,json=treeHead,proto3" json:"tree_head,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1163,11 +1180,103 @@ func (*SessionEnded) Descriptor() ([]byte, []int) {
 	return file_office_session_v1_events_proto_rawDescGZIP(), []int{14}
 }
 
+func (x *SessionEnded) GetTreeHead() *SignedTreeHead {
+	if x != nil {
+		return x.TreeHead
+	}
+	return nil
+}
+
+// SignedTreeHead is the head of the Merkle tree over the events of a session (dec-merkle-log), in
+// the style of RFC 9162 (Certificate Transparency). The leaves are the events 1 to tree_size, in
+// order of their IDs. The hub signs it with its own Ed25519 key. Package merkle has the exact bytes
+// of a leaf and of the signed message, and the code to verify a head and its proofs.
+type SignedTreeHead struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	SessionId string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	// tree_size is the number of events in the tree. The last event in the tree has this ID.
+	TreeSize uint32 `protobuf:"varint,2,opt,name=tree_size,json=treeSize,proto3" json:"tree_size,omitempty"`
+	// root_hash is the SHA-256 root hash of the tree (32 bytes).
+	RootHash []byte `protobuf:"bytes,3,opt,name=root_hash,json=rootHash,proto3" json:"root_hash,omitempty"`
+	// signature is the Ed25519 signature of the hub over session_id, tree_size and root_hash.
+	Signature []byte `protobuf:"bytes,4,opt,name=signature,proto3" json:"signature,omitempty"`
+	// public_key is the Ed25519 public key that made the signature (32 bytes). It only says which
+	// key signed: a verifier must check it against the hub key it trusts (GetHubKey).
+	PublicKey     []byte `protobuf:"bytes,5,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SignedTreeHead) Reset() {
+	*x = SignedTreeHead{}
+	mi := &file_office_session_v1_events_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SignedTreeHead) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SignedTreeHead) ProtoMessage() {}
+
+func (x *SignedTreeHead) ProtoReflect() protoreflect.Message {
+	mi := &file_office_session_v1_events_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SignedTreeHead.ProtoReflect.Descriptor instead.
+func (*SignedTreeHead) Descriptor() ([]byte, []int) {
+	return file_office_session_v1_events_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *SignedTreeHead) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *SignedTreeHead) GetTreeSize() uint32 {
+	if x != nil {
+		return x.TreeSize
+	}
+	return 0
+}
+
+func (x *SignedTreeHead) GetRootHash() []byte {
+	if x != nil {
+		return x.RootHash
+	}
+	return nil
+}
+
+func (x *SignedTreeHead) GetSignature() []byte {
+	if x != nil {
+		return x.Signature
+	}
+	return nil
+}
+
+func (x *SignedTreeHead) GetPublicKey() []byte {
+	if x != nil {
+		return x.PublicKey
+	}
+	return nil
+}
+
 var File_office_session_v1_events_proto protoreflect.FileDescriptor
 
 const file_office_session_v1_events_proto_rawDesc = "" +
 	"\n" +
-	"\x1eoffice/session/v1/events.proto\x12\x11office.session.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x9b\n" +
+	"\x1eoffice/session/v1/events.proto\x12\x11office.session.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xb8\n" +
 	"\n" +
 	"\x05Event\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x12\x1d\n" +
@@ -1177,7 +1286,8 @@ const file_office_session_v1_events_proto_rawDesc = "" +
 	"\x04time\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x05 \x01(\tR\tcommandId\x120\n" +
-	"\x14actor_participant_id\x18\x06 \x01(\tR\x12actorParticipantId\x12L\n" +
+	"\x14actor_participant_id\x18\x06 \x01(\tR\x12actorParticipantId\x12\x1b\n" +
+	"\tleaf_hash\x18\a \x01(\fR\bleafHash\x12L\n" +
 	"\x0futterance_final\x18\n" +
 	" \x01(\v2!.office.session.v1.UtteranceFinalH\x00R\x0eutteranceFinal\x12c\n" +
 	"\x18utterance_off_the_record\x18\v \x01(\v2(.office.session.v1.UtteranceOffTheRecordH\x00R\x15utteranceOffTheRecord\x12X\n" +
@@ -1232,8 +1342,17 @@ const file_office_session_v1_events_proto_rawDesc = "" +
 	"\x11ParticipantPaused\x12%\n" +
 	"\x0eparticipant_id\x18\x01 \x01(\tR\rparticipantId\";\n" +
 	"\x12ParticipantResumed\x12%\n" +
-	"\x0eparticipant_id\x18\x01 \x01(\tR\rparticipantId\"\x0e\n" +
-	"\fSessionEnded*k\n" +
+	"\x0eparticipant_id\x18\x01 \x01(\tR\rparticipantId\"N\n" +
+	"\fSessionEnded\x12>\n" +
+	"\ttree_head\x18\x01 \x01(\v2!.office.session.v1.SignedTreeHeadR\btreeHead\"\xa6\x01\n" +
+	"\x0eSignedTreeHead\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x1b\n" +
+	"\ttree_size\x18\x02 \x01(\rR\btreeSize\x12\x1b\n" +
+	"\troot_hash\x18\x03 \x01(\fR\brootHash\x12\x1c\n" +
+	"\tsignature\x18\x04 \x01(\fR\tsignature\x12\x1d\n" +
+	"\n" +
+	"public_key\x18\x05 \x01(\fR\tpublicKey*k\n" +
 	"\x0fParticipantKind\x12 \n" +
 	"\x1cPARTICIPANT_KIND_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16PARTICIPANT_KIND_HUMAN\x10\x01\x12\x1a\n" +
@@ -1256,7 +1375,7 @@ func file_office_session_v1_events_proto_rawDescGZIP() []byte {
 }
 
 var file_office_session_v1_events_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_office_session_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_office_session_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_office_session_v1_events_proto_goTypes = []any{
 	(ParticipantKind)(0),          // 0: office.session.v1.ParticipantKind
 	(Modality)(0),                 // 1: office.session.v1.Modality
@@ -1275,11 +1394,12 @@ var file_office_session_v1_events_proto_goTypes = []any{
 	(*ParticipantPaused)(nil),     // 14: office.session.v1.ParticipantPaused
 	(*ParticipantResumed)(nil),    // 15: office.session.v1.ParticipantResumed
 	(*SessionEnded)(nil),          // 16: office.session.v1.SessionEnded
-	(*timestamppb.Timestamp)(nil), // 17: google.protobuf.Timestamp
-	(*durationpb.Duration)(nil),   // 18: google.protobuf.Duration
+	(*SignedTreeHead)(nil),        // 17: office.session.v1.SignedTreeHead
+	(*timestamppb.Timestamp)(nil), // 18: google.protobuf.Timestamp
+	(*durationpb.Duration)(nil),   // 19: google.protobuf.Duration
 }
 var file_office_session_v1_events_proto_depIdxs = []int32{
-	17, // 0: office.session.v1.Event.time:type_name -> google.protobuf.Timestamp
+	18, // 0: office.session.v1.Event.time:type_name -> google.protobuf.Timestamp
 	3,  // 1: office.session.v1.Event.utterance_final:type_name -> office.session.v1.UtteranceFinal
 	4,  // 2: office.session.v1.Event.utterance_off_the_record:type_name -> office.session.v1.UtteranceOffTheRecord
 	5,  // 3: office.session.v1.Event.utterance_corrected:type_name -> office.session.v1.UtteranceCorrected
@@ -1295,14 +1415,15 @@ var file_office_session_v1_events_proto_depIdxs = []int32{
 	15, // 13: office.session.v1.Event.participant_resumed:type_name -> office.session.v1.ParticipantResumed
 	16, // 14: office.session.v1.Event.session_ended:type_name -> office.session.v1.SessionEnded
 	1,  // 15: office.session.v1.UtteranceFinal.modality:type_name -> office.session.v1.Modality
-	17, // 16: office.session.v1.UtteranceFinal.transcribed_at:type_name -> google.protobuf.Timestamp
-	18, // 17: office.session.v1.SilenceLong.duration:type_name -> google.protobuf.Duration
+	18, // 16: office.session.v1.UtteranceFinal.transcribed_at:type_name -> google.protobuf.Timestamp
+	19, // 17: office.session.v1.SilenceLong.duration:type_name -> google.protobuf.Duration
 	0,  // 18: office.session.v1.ParticipantJoined.kind:type_name -> office.session.v1.ParticipantKind
-	19, // [19:19] is the sub-list for method output_type
-	19, // [19:19] is the sub-list for method input_type
-	19, // [19:19] is the sub-list for extension type_name
-	19, // [19:19] is the sub-list for extension extendee
-	0,  // [0:19] is the sub-list for field type_name
+	17, // 19: office.session.v1.SessionEnded.tree_head:type_name -> office.session.v1.SignedTreeHead
+	20, // [20:20] is the sub-list for method output_type
+	20, // [20:20] is the sub-list for method input_type
+	20, // [20:20] is the sub-list for extension type_name
+	20, // [20:20] is the sub-list for extension extendee
+	0,  // [0:20] is the sub-list for field type_name
 }
 
 func init() { file_office_session_v1_events_proto_init() }
@@ -1332,7 +1453,7 @@ func file_office_session_v1_events_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_office_session_v1_events_proto_rawDesc), len(file_office_session_v1_events_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   15,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

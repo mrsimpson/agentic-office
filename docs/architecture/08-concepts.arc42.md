@@ -60,6 +60,13 @@ Event levels (guide values, configurable per participant):
 
 Partials are not written to the log (`dec-no-partials-in-log`).
 
+**Checking a log:** the events of a session are the leaves of a Merkle tree (`dec-merkle-log`).
+The hub signs the head of the tree with its own key, which stays the same across restarts. It
+puts the signed head of the log so far into `session.ended`, and returns a signed head, a
+consistency proof or an inclusion proof on request. A placeholder of an utterance that is off
+the record carries the leaf hash of the original, so a copy with placeholders still verifies.
+A placeholder can only hide a text; it cannot change what the tree proves.
+
 ```arc42
 :::concept
 id: concept-event-log

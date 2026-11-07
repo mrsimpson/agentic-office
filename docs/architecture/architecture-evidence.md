@@ -75,4 +75,7 @@ proposed it and it still needs confirmation.
 | Maintainer, review 13 | Everything as YAML in the Git repository, local and predictably fast | ch.9 dec-yaml-git-storage | high | — |
 | Maintainer, review 13 | A dedicated interface for every type; notes, minutes and decisions are different things | ch.9 dec-records-per-type | high | — |
 | Maintainer, review 14 | Building blocks: records part, tasks part, artifact tools, archive part; session log with one line per event | ch.9 dec-records-per-type, dec-yaml-git-storage | high | — |
-
+| Issue #33, agent decision | The session commands return the signed tree head, consistency and inclusion proofs and the hub key; the verification code belongs to the session interface | ch.5 if-session-commands | medium | — |
+| Issue #33, agent decision | Leaves in RFC 9162 style; the leaf of an event is its original form in the log; a placeholder carries the leaf hash of the original | ch.8 concept-event-log, ch.9 dec-merkle-log | medium | OPEN: a client with an older contract may not reproduce the leaf of an event with new fields |
+| Issue #33, agent decision | session.ended carries the signed head of the log before it; the head that includes session.ended is available on request | ch.8 concept-event-log | medium | — |
+| Issue #33, agent decision | The hub key that signs tree heads is its own key, kept in the data directory of the hub, and is fetched through the session commands | ch.8 concept-event-log | medium | OPEN: how clients pin the hub key (today they trust the key they fetch over TLS) |

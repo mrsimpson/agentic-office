@@ -84,6 +84,12 @@ Synchronous calls that answer at once: `join`, `leave`, `utterance.submit`, `utt
 `pause`, `hand.raise`, `minutes.update`, `stage.show`. Each successful call creates one event in the
 log. Each call carries an ID created by the client, so a repeated call has no extra effect.
 
+The session commands also let anyone with a token check a session log (`dec-merkle-log`): they
+return the signed tree head of a log (for the current log or for its first events), a
+consistency proof between two sizes, an inclusion proof for one event, and the public key of the
+hub that signs the tree heads. The verification code for clients belongs to this interface,
+because the interface owns the event types.
+
 ```arc42
 :::ignore H020 Commands and stream are two contracts of one Connect service; they share its package :::
 :::interface

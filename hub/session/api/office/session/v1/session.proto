@@ -41,6 +41,19 @@ service SessionService {
   // is a placeholder with its ID.
   rpc GetEvents(GetEventsRequest) returns (GetEventsResponse);
 
+  // GetTreeHead returns the signed tree head of the session log (dec-merkle-log): for the current
+  // log, or for its first tree_size events.
+  rpc GetTreeHead(GetTreeHeadRequest) returns (GetTreeHeadResponse);
+  // GetConsistencyProof returns the proof that the log of second_size events extends the log of
+  // first_size events (RFC 9162, section 2.1.4).
+  rpc GetConsistencyProof(GetConsistencyProofRequest) returns (GetConsistencyProofResponse);
+  // GetInclusionProof returns the proof that one event is in the tree of tree_size events
+  // (RFC 9162, section 2.1.3).
+  rpc GetInclusionProof(GetInclusionProofRequest) returns (GetInclusionProofResponse);
+  // GetHubKey returns the public key with which the hub signs tree heads. The key stays the same
+  // across restarts of the hub.
+  rpc GetHubKey(GetHubKeyRequest) returns (GetHubKeyResponse);
+
   // Subscribe sends every event with an ID greater than after_event_id, then live events.
   // The stream closes after session.ended. It ends with unauthenticated when the token expires
   // or its key is revoked; the client authenticates again and resumes from its cursor.
@@ -203,4 +216,52 @@ message GetEventsResponse {
   repeated Event events = 1;
   // more is true if there are more events after the last one returned.
   bool more = 2;
+}
+
+message GetTreeHeadRequest {
+  string session_id = 1;
+  // tree_size is the size of the tree: the first tree_size events. 0 means the current log.
+  uint32 tree_size = 2;
+}
+
+message GetTreeHeadResponse {
+  SignedTreeHead tree_head = 1;
+}
+
+message GetConsistencyProofRequest {
+  string session_id = 1;
+  // first_size is the size of the older tree. It must be at least 1.
+  uint32 first_size = 2;
+  // second_size is the size of the newer tree, at least first_size. 0 means the current log.
+  uint32 second_size = 3;
+}
+
+message GetConsistencyProofResponse {
+  uint32 first_size = 1;
+  uint32 second_size = 2;
+  // hashes are the node hashes of the proof, in the order of RFC 9162. Empty if both sizes are
+  // equal.
+  repeated bytes hashes = 3;
+}
+
+message GetInclusionProofRequest {
+  string session_id = 1;
+  // event_id is the event to prove. Its leaf index is event_id minus one.
+  uint32 event_id = 2;
+  // tree_size is the size of the tree, at least event_id. 0 means the current log.
+  uint32 tree_size = 3;
+}
+
+message GetInclusionProofResponse {
+  uint32 event_id = 1;
+  uint32 tree_size = 2;
+  // hashes are the node hashes of the audit path, from the leaf to the root (RFC 9162).
+  repeated bytes hashes = 3;
+}
+
+message GetHubKeyRequest {}
+
+message GetHubKeyResponse {
+  // public_key is the Ed25519 public key of the hub (32 bytes).
+  bytes public_key = 1;
 }

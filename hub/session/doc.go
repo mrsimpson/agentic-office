@@ -28,6 +28,11 @@
 //   - EndSession stores the confirmed minutes in the journal through the Journal interface
 //     (if-journal-api, rs-session-ends), then writes session.ended. For now the confirmed minutes
 //     are the text of the last minutes.updated event (#22). See EndSession.
+//   - The events are the leaves of a Merkle tree (dec-merkle-log, package merkle of the
+//     interface). The state keeps the leaf hash of every event. GetTreeHead, GetConsistencyProof
+//     and GetInclusionProof compute heads and proofs from them; the hub key passed to New signs
+//     the heads. session.ended carries the signed head of the log before it. A placeholder
+//     carries the leaf hash of its original.
 //   - Subscribe closes the stream after it has sent session.ended. It ends the stream with
 //     Unauthenticated when the token of the caller expires or is revoked.
 package session

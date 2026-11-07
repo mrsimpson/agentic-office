@@ -64,6 +64,16 @@ const (
 	SessionServiceEndSessionProcedure = "/office.session.v1.SessionService/EndSession"
 	// SessionServiceGetEventsProcedure is the procedure name of the SessionService's GetEvents RPC.
 	SessionServiceGetEventsProcedure = "/office.session.v1.SessionService/GetEvents"
+	// SessionServiceGetTreeHeadProcedure is the procedure name of the SessionService's GetTreeHead RPC.
+	SessionServiceGetTreeHeadProcedure = "/office.session.v1.SessionService/GetTreeHead"
+	// SessionServiceGetConsistencyProofProcedure is the procedure name of the SessionService's
+	// GetConsistencyProof RPC.
+	SessionServiceGetConsistencyProofProcedure = "/office.session.v1.SessionService/GetConsistencyProof"
+	// SessionServiceGetInclusionProofProcedure is the procedure name of the SessionService's
+	// GetInclusionProof RPC.
+	SessionServiceGetInclusionProofProcedure = "/office.session.v1.SessionService/GetInclusionProof"
+	// SessionServiceGetHubKeyProcedure is the procedure name of the SessionService's GetHubKey RPC.
+	SessionServiceGetHubKeyProcedure = "/office.session.v1.SessionService/GetHubKey"
 	// SessionServiceSubscribeProcedure is the procedure name of the SessionService's Subscribe RPC.
 	SessionServiceSubscribeProcedure = "/office.session.v1.SessionService/Subscribe"
 )
@@ -153,6 +163,34 @@ var (
 			Procedure:  SessionServiceGetEventsProcedure,
 		}
 	})
+	sessionServiceGetTreeHeadSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     api.File_office_session_v1_session_proto.Services().ByName("SessionService").Methods().ByName("GetTreeHead"),
+			Procedure:  SessionServiceGetTreeHeadProcedure,
+		}
+	})
+	sessionServiceGetConsistencyProofSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     api.File_office_session_v1_session_proto.Services().ByName("SessionService").Methods().ByName("GetConsistencyProof"),
+			Procedure:  SessionServiceGetConsistencyProofProcedure,
+		}
+	})
+	sessionServiceGetInclusionProofSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     api.File_office_session_v1_session_proto.Services().ByName("SessionService").Methods().ByName("GetInclusionProof"),
+			Procedure:  SessionServiceGetInclusionProofProcedure,
+		}
+	})
+	sessionServiceGetHubKeySpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     api.File_office_session_v1_session_proto.Services().ByName("SessionService").Methods().ByName("GetHubKey"),
+			Procedure:  SessionServiceGetHubKeyProcedure,
+		}
+	})
 	sessionServiceSubscribeSpec = sync.OnceValue(func() connect.Spec {
 		return connect.Spec{
 			StreamType: connect.StreamTypeServer,
@@ -185,6 +223,18 @@ type SessionServiceClient interface {
 	// instead of following a stream or a file. IDs have no gaps; an utterance that is off the record
 	// is a placeholder with its ID.
 	GetEvents(context.Context, *api.GetEventsRequest) (*api.GetEventsResponse, error)
+	// GetTreeHead returns the signed tree head of the session log (dec-merkle-log): for the current
+	// log, or for its first tree_size events.
+	GetTreeHead(context.Context, *api.GetTreeHeadRequest) (*api.GetTreeHeadResponse, error)
+	// GetConsistencyProof returns the proof that the log of second_size events extends the log of
+	// first_size events (RFC 9162, section 2.1.4).
+	GetConsistencyProof(context.Context, *api.GetConsistencyProofRequest) (*api.GetConsistencyProofResponse, error)
+	// GetInclusionProof returns the proof that one event is in the tree of tree_size events
+	// (RFC 9162, section 2.1.3).
+	GetInclusionProof(context.Context, *api.GetInclusionProofRequest) (*api.GetInclusionProofResponse, error)
+	// GetHubKey returns the public key with which the hub signs tree heads. The key stays the same
+	// across restarts of the hub.
+	GetHubKey(context.Context, *api.GetHubKeyRequest) (*api.GetHubKeyResponse, error)
 	// Subscribe sends every event with an ID greater than after_event_id, then live events.
 	// The stream closes after session.ended. It ends with unauthenticated when the token expires
 	// or its key is revoked; the client authenticates again and resumes from its cursor.
@@ -240,6 +290,18 @@ type SessionServiceHandler interface {
 	// instead of following a stream or a file. IDs have no gaps; an utterance that is off the record
 	// is a placeholder with its ID.
 	GetEvents(context.Context, *api.GetEventsRequest) (*api.GetEventsResponse, error)
+	// GetTreeHead returns the signed tree head of the session log (dec-merkle-log): for the current
+	// log, or for its first tree_size events.
+	GetTreeHead(context.Context, *api.GetTreeHeadRequest) (*api.GetTreeHeadResponse, error)
+	// GetConsistencyProof returns the proof that the log of second_size events extends the log of
+	// first_size events (RFC 9162, section 2.1.4).
+	GetConsistencyProof(context.Context, *api.GetConsistencyProofRequest) (*api.GetConsistencyProofResponse, error)
+	// GetInclusionProof returns the proof that one event is in the tree of tree_size events
+	// (RFC 9162, section 2.1.3).
+	GetInclusionProof(context.Context, *api.GetInclusionProofRequest) (*api.GetInclusionProofResponse, error)
+	// GetHubKey returns the public key with which the hub signs tree heads. The key stays the same
+	// across restarts of the hub.
+	GetHubKey(context.Context, *api.GetHubKeyRequest) (*api.GetHubKeyResponse, error)
 	// Subscribe sends every event with an ID greater than after_event_id, then live events.
 	// The stream closes after session.ended. It ends with unauthenticated when the token expires
 	// or its key is revoked; the client authenticates again and resumes from its cursor.
@@ -263,6 +325,10 @@ func RegisterSessionServiceHandler(server *connect.Server, svc SessionServiceHan
 		connect.Method{Spec: sessionServiceShowArtifactSpec(), Handler: adapter.showArtifact},
 		connect.Method{Spec: sessionServiceEndSessionSpec(), Handler: adapter.endSession},
 		connect.Method{Spec: sessionServiceGetEventsSpec(), Handler: adapter.getEvents},
+		connect.Method{Spec: sessionServiceGetTreeHeadSpec(), Handler: adapter.getTreeHead},
+		connect.Method{Spec: sessionServiceGetConsistencyProofSpec(), Handler: adapter.getConsistencyProof},
+		connect.Method{Spec: sessionServiceGetInclusionProofSpec(), Handler: adapter.getInclusionProof},
+		connect.Method{Spec: sessionServiceGetHubKeySpec(), Handler: adapter.getHubKey},
 		connect.Method{Spec: sessionServiceSubscribeSpec(), Handler: adapter.subscribe},
 	)
 }
@@ -331,6 +397,22 @@ func (UnimplementedSessionServiceHandler) EndSession(context.Context, *api.EndSe
 
 func (UnimplementedSessionServiceHandler) GetEvents(context.Context, *api.GetEventsRequest) (*api.GetEventsResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, "office.session.v1.SessionService.GetEvents is not implemented")
+}
+
+func (UnimplementedSessionServiceHandler) GetTreeHead(context.Context, *api.GetTreeHeadRequest) (*api.GetTreeHeadResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "office.session.v1.SessionService.GetTreeHead is not implemented")
+}
+
+func (UnimplementedSessionServiceHandler) GetConsistencyProof(context.Context, *api.GetConsistencyProofRequest) (*api.GetConsistencyProofResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "office.session.v1.SessionService.GetConsistencyProof is not implemented")
+}
+
+func (UnimplementedSessionServiceHandler) GetInclusionProof(context.Context, *api.GetInclusionProofRequest) (*api.GetInclusionProofResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "office.session.v1.SessionService.GetInclusionProof is not implemented")
+}
+
+func (UnimplementedSessionServiceHandler) GetHubKey(context.Context, *api.GetHubKeyRequest) (*api.GetHubKeyResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "office.session.v1.SessionService.GetHubKey is not implemented")
 }
 
 func (UnimplementedSessionServiceHandler) Subscribe(context.Context, *api.SubscribeRequest, SessionServiceSubscribeServerStream) error {
@@ -432,6 +514,38 @@ func (c *sessionServiceClient) EndSession(ctx context.Context, req *api.EndSessi
 func (c *sessionServiceClient) GetEvents(ctx context.Context, req *api.GetEventsRequest) (*api.GetEventsResponse, error) {
 	var res api.GetEventsResponse
 	if err := c.client.CallUnary(ctx, sessionServiceGetEventsSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *sessionServiceClient) GetTreeHead(ctx context.Context, req *api.GetTreeHeadRequest) (*api.GetTreeHeadResponse, error) {
+	var res api.GetTreeHeadResponse
+	if err := c.client.CallUnary(ctx, sessionServiceGetTreeHeadSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *sessionServiceClient) GetConsistencyProof(ctx context.Context, req *api.GetConsistencyProofRequest) (*api.GetConsistencyProofResponse, error) {
+	var res api.GetConsistencyProofResponse
+	if err := c.client.CallUnary(ctx, sessionServiceGetConsistencyProofSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *sessionServiceClient) GetInclusionProof(ctx context.Context, req *api.GetInclusionProofRequest) (*api.GetInclusionProofResponse, error) {
+	var res api.GetInclusionProofResponse
+	if err := c.client.CallUnary(ctx, sessionServiceGetInclusionProofSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *sessionServiceClient) GetHubKey(ctx context.Context, req *api.GetHubKeyRequest) (*api.GetHubKeyResponse, error) {
+	var res api.GetHubKeyResponse
+	if err := c.client.CallUnary(ctx, sessionServiceGetHubKeySpec(), req, &res); err != nil {
 		return nil, err
 	}
 	return &res, nil
@@ -585,6 +699,54 @@ func (h sessionServiceHandler) getEvents(ctx context.Context, _ connect.Spec, st
 		return err
 	}
 	res, err := h.svc.GetEvents(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h sessionServiceHandler) getTreeHead(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req api.GetTreeHeadRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.GetTreeHead(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h sessionServiceHandler) getConsistencyProof(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req api.GetConsistencyProofRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.GetConsistencyProof(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h sessionServiceHandler) getInclusionProof(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req api.GetInclusionProofRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.GetInclusionProof(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h sessionServiceHandler) getHubKey(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req api.GetHubKeyRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.GetHubKey(ctx, &req)
 	if err != nil {
 		return err
 	}

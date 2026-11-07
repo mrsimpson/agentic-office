@@ -2,6 +2,8 @@ package session
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"slices"
 	"strings"
 	"sync"
@@ -13,6 +15,7 @@ import (
 	journalv1 "github.com/mrsimpson/agentic-office/hub/journal/api"
 	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 	"github.com/mrsimpson/agentic-office/hub/session/api/events"
+	"github.com/mrsimpson/agentic-office/hub/session/api/merkle"
 	sessionv1connect "github.com/mrsimpson/agentic-office/hub/session/api/sessionv1connect"
 )
 
@@ -64,6 +67,7 @@ type Service struct {
 	store   Store
 	auth    Authorizer
 	journal Journal
+	key     ed25519.PrivateKey // signs tree heads (dec-merkle-log)
 
 	mu       sync.Mutex
 	sessions map[string]*state
@@ -72,13 +76,21 @@ type Service struct {
 var _ sessionv1connect.SessionServiceHandler = (*Service)(nil)
 
 // New returns a Service that keeps its logs in store and stores the minutes of ended sessions in
-// journal. If auth is nil, every call fails with Unauthenticated. If journal is nil, the minutes
-// are not stored.
-func New(store Store, auth Authorizer, journal Journal) *Service {
+// journal. It signs tree heads with key. If auth is nil, every call fails with Unauthenticated.
+// If journal is nil, the minutes are not stored. If key is nil, the service creates a key in
+// memory, so its signatures cannot be checked after a restart.
+func New(store Store, auth Authorizer, journal Journal, key ed25519.PrivateKey) *Service {
 	if auth == nil {
 		auth = denyAll{}
 	}
-	return &Service{store: store, auth: auth, journal: journal, sessions: map[string]*state{}}
+	if key == nil {
+		_, k, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			panic("session: create a signing key: " + err.Error())
+		}
+		key = k
+	}
+	return &Service{store: store, auth: auth, journal: journal, key: key, sessions: map[string]*state{}}
 }
 
 // state is what the service knows about one session. It is derived from the log only, so it can
@@ -91,6 +103,9 @@ type state struct {
 	participants map[string]*participant
 	utterances   map[uint32]*utterance // utterance.final event ID -> utterance
 	minutes      *sessionv1.Event      // the last minutes.updated event
+	// leaves are the leaf hashes of the Merkle tree: leaves[i] belongs to event i+1. The slice
+	// only grows; its elements never change.
+	leaves [][]byte
 }
 
 type participant struct {
@@ -104,8 +119,17 @@ type utterance struct {
 	offTheRecord bool
 }
 
-// apply updates the state with one event of the log.
-func (st *state) apply(ev *sessionv1.Event) {
+// apply updates the state with one event of the log. It fails only if the event cannot be a leaf
+// of the Merkle tree, for example a placeholder in the log.
+func (st *state) apply(ev *sessionv1.Event) error {
+	if ev.GetId() != uint32(len(st.leaves)+1) {
+		return connect.NewError(connect.CodeInternal, "session log has a gap")
+	}
+	h, err := merkle.EventLeafHash(ev)
+	if err != nil {
+		return connect.NewError(connect.CodeInternal, "leaf hash of an event: "+err.Error())
+	}
+	st.leaves = append(st.leaves, h)
 	st.lastID = ev.GetId()
 	switch p := ev.GetPayload().(type) {
 	case *sessionv1.Event_ParticipantJoined:
@@ -133,6 +157,7 @@ func (st *state) apply(ev *sessionv1.Event) {
 	case *sessionv1.Event_SessionEnded:
 		st.ended = true
 	}
+	return nil
 }
 
 // lock returns the locked state of a session. It loads the state from the store on first use.
@@ -153,7 +178,10 @@ func (s *Service) lock(sessionID string) (*state, error) {
 			return nil, connect.NewError(connect.CodeInternal, "read session log: "+err.Error())
 		}
 		for _, ev := range evs {
-			st.apply(ev)
+			if err := st.apply(ev); err != nil {
+				st.mu.Unlock()
+				return nil, err
+			}
 		}
 		st.loaded = true
 	}
@@ -259,7 +287,9 @@ func (s *Service) run(ctx context.Context, c command, isJoin bool) (*sessionv1.C
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, "append to session log: "+err.Error())
 	}
-	st.apply(ev)
+	if err := st.apply(ev); err != nil {
+		return nil, err
+	}
 	return &sessionv1.CommandResult{Event: ev}, nil
 }
 
@@ -516,7 +546,7 @@ func (s *Service) ShowArtifact(ctx context.Context, req *sessionv1.ShowArtifactR
 }
 
 // EndSession stores the confirmed minutes in the journal and then appends session.ended
-// (rs-session-ends). After it, every new command fails with FailedPrecondition; a repeated
+// (rs-session-ends). session.ended carries the signed tree head of the log before it. After it, every new command fails with FailedPrecondition; a repeated
 // command_id still returns its stored event. Any participant can end the session for now: roles
 // are open (#14).
 //
@@ -535,7 +565,10 @@ func (s *Service) EndSession(ctx context.Context, req *sessionv1.EndSessionReque
 			if err := s.storeMinutes(ctx, st, req); err != nil {
 				return nil, err
 			}
-			return &sessionv1.Event{Payload: &sessionv1.Event_SessionEnded{SessionEnded: &sessionv1.SessionEnded{}}}, nil
+			// The head of the log before session.ended (dec-merkle-log).
+			head := merkle.SignTreeHead(s.key, req.GetSessionId(), st.leaves)
+			return &sessionv1.Event{Payload: &sessionv1.Event_SessionEnded{SessionEnded: &sessionv1.SessionEnded{
+				TreeHead: head}}}, nil
 		},
 	}, false)
 	if err != nil {
@@ -693,7 +726,8 @@ func (s *Service) GetEvents(ctx context.Context, req *sessionv1.GetEventsRequest
 }
 
 // placeholders replaces every utterance that is off the record by a placeholder with the same ID
-// and without its text (dec-off-the-record). The log itself keeps the original.
+// and without its text (dec-off-the-record). The placeholder carries the leaf hash of the
+// original. The log itself keeps the original.
 func (s *Service) placeholders(sid string, evs []*sessionv1.Event) ([]*sessionv1.Event, error) {
 	st, err := s.lock(sid)
 	if err != nil {
@@ -707,10 +741,111 @@ func (s *Service) placeholders(sid string, evs []*sessionv1.Event) ([]*sessionv1
 				c := proto.Clone(ev).(*sessionv1.Event)
 				f := c.GetUtteranceFinal()
 				f.Text, f.TranscribedAt, f.OffTheRecord = "", nil, true
+				// The placeholder keeps the leaf hash of the original (dec-merkle-log).
+				c.LeafHash = st.leaves[ev.GetId()-1]
 				ev = c
 			}
 		}
 		out = append(out, ev)
 	}
 	return out, nil
+}
+
+// tree returns the leaf hashes of the current log of a session, after the checks that every
+// read of a session needs. The caller must not change the slice.
+func (s *Service) tree(ctx context.Context, sid string) ([][]byte, error) {
+	if sid == "" {
+		return nil, invalid("session_id is required")
+	}
+	caller, err := s.auth.Caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if caller.StageSessionID != "" && caller.StageSessionID != sid {
+		return nil, connect.NewError(connect.CodePermissionDenied, "the stage link is for another session")
+	}
+	st, err := s.lock(sid)
+	if err != nil {
+		return nil, err
+	}
+	defer st.mu.Unlock()
+	n := len(st.leaves)
+	return st.leaves[:n:n], nil
+}
+
+// treeSize resolves a requested tree size: 0 is the current size; a size beyond it is
+// OutOfRange.
+func treeSize(req uint32, current int, field string) (int, error) {
+	if req == 0 {
+		return current, nil
+	}
+	if int(req) > current {
+		return 0, connect.NewError(connect.CodeOutOfRange, field+" is beyond the last event of the session")
+	}
+	return int(req), nil
+}
+
+// GetTreeHead returns the signed tree head of the session log, for the current log or for its
+// first tree_size events (dec-merkle-log). The head of an empty session has size 0.
+func (s *Service) GetTreeHead(ctx context.Context, req *sessionv1.GetTreeHeadRequest) (*sessionv1.GetTreeHeadResponse, error) {
+	leaves, err := s.tree(ctx, req.GetSessionId())
+	if err != nil {
+		return nil, err
+	}
+	n, err := treeSize(req.GetTreeSize(), len(leaves), "tree_size")
+	if err != nil {
+		return nil, err
+	}
+	return &sessionv1.GetTreeHeadResponse{TreeHead: merkle.SignTreeHead(s.key, req.GetSessionId(), leaves[:n])}, nil
+}
+
+// GetConsistencyProof returns the proof that the log of second_size events extends the log of
+// first_size events. first_size must be at least 1 and at most second_size.
+func (s *Service) GetConsistencyProof(ctx context.Context, req *sessionv1.GetConsistencyProofRequest) (*sessionv1.GetConsistencyProofResponse, error) {
+	leaves, err := s.tree(ctx, req.GetSessionId())
+	if err != nil {
+		return nil, err
+	}
+	second, err := treeSize(req.GetSecondSize(), len(leaves), "second_size")
+	if err != nil {
+		return nil, err
+	}
+	first := int(req.GetFirstSize())
+	if first == 0 {
+		return nil, invalid("first_size is required")
+	}
+	if first > second {
+		return nil, invalid("first_size is greater than second_size")
+	}
+	return &sessionv1.GetConsistencyProofResponse{FirstSize: uint32(first), SecondSize: uint32(second),
+		Hashes: merkle.ConsistencyProof(leaves[:second], first)}, nil
+}
+
+// GetInclusionProof returns the audit path of one event in the tree of tree_size events.
+func (s *Service) GetInclusionProof(ctx context.Context, req *sessionv1.GetInclusionProofRequest) (*sessionv1.GetInclusionProofResponse, error) {
+	leaves, err := s.tree(ctx, req.GetSessionId())
+	if err != nil {
+		return nil, err
+	}
+	n, err := treeSize(req.GetTreeSize(), len(leaves), "tree_size")
+	if err != nil {
+		return nil, err
+	}
+	id := req.GetEventId()
+	if id == 0 {
+		return nil, invalid("event_id is required")
+	}
+	if int(id) > n {
+		return nil, connect.NewError(connect.CodeOutOfRange, "event_id is beyond the tree size")
+	}
+	return &sessionv1.GetInclusionProofResponse{EventId: id, TreeSize: uint32(n),
+		Hashes: merkle.InclusionProof(leaves[:n], int(id-1))}, nil
+}
+
+// GetHubKey returns the public key that signs tree heads. Every caller with a token may read it.
+func (s *Service) GetHubKey(ctx context.Context, _ *sessionv1.GetHubKeyRequest) (*sessionv1.GetHubKeyResponse, error) {
+	if _, err := s.auth.Caller(ctx); err != nil {
+		return nil, err
+	}
+	return &sessionv1.GetHubKeyResponse{PublicKey: s.key.Public().(ed25519.PublicKey)}, nil
 }

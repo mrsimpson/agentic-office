@@ -22,6 +22,7 @@ import (
 	"github.com/mrsimpson/agentic-office/client/core/ids"
 	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 	"github.com/mrsimpson/agentic-office/hub/session/api/events"
+	"github.com/mrsimpson/agentic-office/hub/session/api/merkle"
 	sessionv1connect "github.com/mrsimpson/agentic-office/hub/session/api/sessionv1connect"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
@@ -473,6 +474,12 @@ func TestSessionOffTheRecordIsANewEvent(t *testing.T) {
 			want = proto.Clone(ev).(*sessionv1.Event)
 			f := want.GetUtteranceFinal()
 			f.Text, f.TranscribedAt, f.OffTheRecord = "", nil, true
+			// It keeps the leaf hash of the original (dec-merkle-log).
+			h, err := merkle.EventLeafHash(ev)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want.LeafHash = h
 		}
 		if !proto.Equal(log[i], want) {
 			t.Fatalf("event %d after the off-the-record mark:\n%v\nwant %v", ev.GetId(), log[i], want)

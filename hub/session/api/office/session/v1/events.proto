@@ -27,6 +27,12 @@ message Event {
   string command_id = 5;
   // actor_participant_id is the participant whose command created the event.
   string actor_participant_id = 6;
+  // leaf_hash is set only on a placeholder: an utterance.final that is off the record
+  // (utterance_final.off_the_record is true). It is the leaf hash of the original event in the
+  // Merkle tree of the session log (dec-merkle-log). A verifier uses it instead of hashing the
+  // placeholder, so a copy with placeholders still verifies. It is empty in the log itself and in
+  // every other event. See package merkle for the leaf of an event.
+  bytes leaf_hash = 7;
 
   oneof payload {
     // Utterances
@@ -123,7 +129,29 @@ message ParticipantResumed {
   string participant_id = 1;
 }
 
-message SessionEnded {}
+message SessionEnded {
+  // tree_head is the signed tree head of the log before this event: its size is the ID of
+  // session.ended minus one (dec-merkle-log). Get the head that includes session.ended with
+  // GetTreeHead.
+  SignedTreeHead tree_head = 1;
+}
+
+// SignedTreeHead is the head of the Merkle tree over the events of a session (dec-merkle-log), in
+// the style of RFC 9162 (Certificate Transparency). The leaves are the events 1 to tree_size, in
+// order of their IDs. The hub signs it with its own Ed25519 key. Package merkle has the exact bytes
+// of a leaf and of the signed message, and the code to verify a head and its proofs.
+message SignedTreeHead {
+  string session_id = 1;
+  // tree_size is the number of events in the tree. The last event in the tree has this ID.
+  uint32 tree_size = 2;
+  // root_hash is the SHA-256 root hash of the tree (32 bytes).
+  bytes root_hash = 3;
+  // signature is the Ed25519 signature of the hub over session_id, tree_size and root_hash.
+  bytes signature = 4;
+  // public_key is the Ed25519 public key that made the signature (32 bytes). It only says which
+  // key signed: a verifier must check it against the hub key it trusts (GetHubKey).
+  bytes public_key = 5;
+}
 
 // ParticipantKind tells humans and agents apart (concept-participant-model).
 enum ParticipantKind {

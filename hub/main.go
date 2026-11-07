@@ -2,7 +2,7 @@
 //
 // All services are mounted, and the stage at /stage/<session>?token=<stage link token>. Every call
 // needs an access token from the identity block, except GetChallenge and ExchangeChallenge. The server speaks only TLS. The meeting session keeps its
-// logs in memory; the journal and the artifact tools keep their data in files.
+// logs in memory and signs their tree heads with the signing key; the journal and the artifact tools keep their data in files.
 //
 // Files in the data directory (-data-dir):
 //
@@ -12,6 +12,7 @@
 //	artifacts.jsonl artifacts (rendered slides), one JSON object per line, appended by the server
 //	tls.crt      TLS certificate; created self-signed if neither it nor tls.key exists
 //	tls.key      TLS private key
+//	signing.key  Ed25519 key that signs the tree heads of session logs; created if it does not exist
 package main
 
 import (
@@ -36,6 +37,7 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/artifacts"
 	"github.com/mrsimpson/agentic-office/hub/artifacts/api/artifactv1connect"
 	"github.com/mrsimpson/agentic-office/hub/identity"
+	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/identityv1connect"
 	"github.com/mrsimpson/agentic-office/hub/journal"
 	"github.com/mrsimpson/agentic-office/hub/journal/api/journalv1connect"
@@ -58,6 +60,7 @@ func main() {
 	keyFile := flag.String("tls-key", "", "TLS private key (PEM); default <data-dir>/tls.key")
 	hostname, _ := os.Hostname()
 	tlsHosts := flag.String("tls-hosts", "localhost,127.0.0.1,::1,"+hostname, "host names and IPs of a new self-signed certificate")
+	signingKeyFile := flag.String("signing-key", "", "Ed25519 key that signs tree heads of session logs (PEM); default <data-dir>/signing.key, created if missing")
 	adminsFile := flag.String("admins", "", "admin key file; default <data-dir>/admins")
 	publicURL := flag.String("public-url", "", "base URL of the server in stage links; default https://<listen address>")
 	tokenTTL := flag.Duration("token-ttl", 15*time.Minute, "lifetime of access tokens")
@@ -78,6 +81,16 @@ func main() {
 		log.Printf("created a self-signed TLS certificate %s for %s", or(*certFile, "tls.crt"), *tlsHosts)
 	}
 	log.Printf("TLS certificate %s sha256 %s", or(*certFile, "tls.crt"), fingerprint(cert))
+
+	// The signing key must survive restarts, so old tree heads still verify (dec-merkle-log).
+	signingKey, created, err := auth.LoadOrCreateKey(or(*signingKeyFile, "signing.key"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	if created {
+		log.Printf("created the signing key %s", or(*signingKeyFile, "signing.key"))
+	}
+	log.Printf("signing key of tree heads %s", auth.FormatPublicKey(auth.PublicKey(signingKey)))
 
 	admins, err := identity.LoadAdmins(or(*adminsFile, "admins"))
 	if err != nil {
@@ -116,7 +129,7 @@ func main() {
 	arts := artifacts.New(artifactStore, artifacts.TokenCheck())
 
 	cs := connect.NewServer(ids.Interceptor())
-	sessionv1connect.RegisterSessionServiceHandler(cs, session.New(session.NewMemoryStore(), session.TokenCheck(), jrn))
+	sessionv1connect.RegisterSessionServiceHandler(cs, session.New(session.NewMemoryStore(), session.TokenCheck(), jrn, signingKey))
 	identityv1connect.RegisterIdentityServiceHandler(cs, ids)
 	journalv1connect.RegisterJournalServiceHandler(cs, jrn)
 	artifactv1connect.RegisterArtifactServiceHandler(cs, arts)
