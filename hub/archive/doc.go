@@ -15,7 +15,10 @@
 //     of the hub (no hooks, no signing, no editor) and with the identity "office-hub".
 //   - Only the hub writes the repository. Open removes a lock file that a hub left when it died
 //     during a commit. On Linux, git stops when the hub dies.
-//   - Commit carries out one change at a time. It writes every file to a temporary file and
+//   - Commit carries out one change at a time. Records go first (dec-records-synchronous): a
+//     change that is not Background goes before every waiting Background change (the session
+//     writes). The change in progress is never interrupted, so a record waits at most for one
+//     session write. Records wait for each other in no fixed order. Commit writes every file to a temporary file and
 //     renames it, then adds the files and commits them. A change that alters nothing creates no
 //     commit. If the commit fails, the files stay in the work tree; the next change commits
 //     them too.

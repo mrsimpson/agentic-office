@@ -222,6 +222,9 @@ The meeting session writes every session that changed:
   progress. A write that takes longer than the interval makes the next write take everything
   that came meanwhile, so writes never queue up. A failed write is logged and repeated with the
   next write.
+- after the records: the decisions, minutes, notes, tasks and slide decks are committed before
+  the call returns (`dec-records-synchronous`), and they go before a session write that waits.
+  A record waits at most for the one session write that is in progress, never for a queue.
 
 A session is stored in the directory `sessions/<name>/`. `<name>` is the session ID if it is safe
 as a file name (letters, digits, `.`, `_`, `-`, at most 128 characters, not starting with `.`),
@@ -407,8 +410,8 @@ command_ids:
     - "01a1b7a2-1c3e-7e0a-9a55-02c4b1f4d6e2"
 ```
 
-Like the records, a task write waits for its commit, and so for a session write that the archive
-is carrying out at that moment (#45).
+Like the records, a task write waits for its commit. It goes before a waiting session write, so
+it waits at most for the one session write that is in progress (see [Archive](#archive)).
 
 ### Slides
 
@@ -457,8 +460,8 @@ create_time: "2026-11-07T18:59:31.48928053Z"
 command_id: "01a1b761-5420-7b0d-82a7-6d9a249506f9"
 ```
 
-Like the records and the tasks, a render waits for its commit, and so for a session write that
-the archive is carrying out at that moment (#45).
+Like the records and the tasks, a render waits for its commit. It goes before a waiting session
+write, so it waits at most for the one session write that is in progress (see [Archive](#archive)).
 
 ### Stage
 
@@ -943,6 +946,13 @@ through its interfaces:
   there are far fewer commits than intervals (no queue), and that the last commit has the whole
   session. Only `make performance` fails on the latency of commands and the stream (maximum
   < 200 ms). `QS_ARCHIVE_DURATION` sets how long Ada speaks (default `12s`).
+  `TestArchiveRecordsBeforeSessionWrites` (`dec-records-synchronous`) uses the same wrapper with
+  commits of 2 s, an interval of 100 ms and Ada speaking every 50 ms. In three rounds it records
+  a decision while a session write runs and a note while the decision is committed. It checks
+  from the commit log of the wrapper that no record waits for a session write that started after
+  the call (the decision waits at most for the one in progress, the note for none), that session
+  writes still run between the rounds, and that the last commit has the whole session. Only
+  `make performance` fails on the time of a record call (< 4.5 s: one other commit and its own).
 - `tests/architecture/` checks the code against the arc42 model (`make arch`). It reads the model
   with `arc42 get --format json` and the imports with `go list`. A fixture workspace with
   deliberate violations proves that each rule fails when it should.

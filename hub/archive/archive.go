@@ -44,7 +44,42 @@ type Repo struct {
 	push Pusher
 	logf func(string, ...any)
 
-	mu sync.Mutex // one change at a time
+	turn turn // one change at a time, records first
+}
+
+// turn lets one change at a time into the repository. A change that is not Background goes
+// before a waiting Background change (dec-records-synchronous); the change in progress is not
+// interrupted.
+type turn struct {
+	mu      sync.Mutex
+	free    *sync.Cond // signalled when busy becomes false
+	busy    bool       // a change is in progress
+	records int        // changes that are not Background and wait for their turn
+}
+
+// take waits until the change may go. A Background change also waits while a record waits.
+func (t *turn) take(background bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.free == nil {
+		t.free = sync.NewCond(&t.mu)
+	}
+	if !background {
+		t.records++
+		defer func() { t.records-- }()
+	}
+	for t.busy || (background && t.records > 0) {
+		t.free.Wait()
+	}
+	t.busy = true
+}
+
+// give ends the change in progress and lets the next change go.
+func (t *turn) give() {
+	t.mu.Lock()
+	t.busy = false
+	t.mu.Unlock()
+	t.free.Broadcast()
 }
 
 var _ storage.Archive = (*Repo)(nil)
@@ -155,8 +190,8 @@ func (r *Repo) Commit(ctx context.Context, c storage.Change) (string, error) {
 		}
 		seen[f.Path] = true
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.turn.take(c.Background)
+	defer r.turn.give()
 	paths := make([]string, 0, len(c.Files))
 	for _, f := range c.Files {
 		if err := writeFile(filepath.Join(r.dir, filepath.FromSlash(f.Path)), f.Data); err != nil {

@@ -193,7 +193,7 @@ func (s *Service) restore(ctx context.Context) error {
 	if complete {
 		// From now on the archive may miss events again until the next stop.
 		if _, err := a.opts.Archive.Commit(ctx, storage.Change{Message: "Sessions: the hub started",
-			Files: []storage.File{{Path: ArchiveStateFile, Data: marshalArchiveState(false)}}}); err != nil {
+			Files: []storage.File{{Path: ArchiveStateFile, Data: marshalArchiveState(false)}}, Background: true}); err != nil {
 			return fmt.Errorf("session: write %s: %w", ArchiveStateFile, err)
 		}
 	}
