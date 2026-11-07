@@ -65,8 +65,8 @@ type archivedLog struct {
 	count int
 }
 
-// markDirty records that a session has new events. On session.ended it wakes the writer, so the
-// ended session is written without waiting for the interval. It never blocks.
+// markDirty records that a session has new events. On session.ended and on import.completed it
+// wakes the writer, so the session is written without waiting for the interval. It never blocks.
 func (s *Service) markDirty(sessionID, eventType string) {
 	if s.wake == nil {
 		return
@@ -74,7 +74,7 @@ func (s *Service) markDirty(sessionID, eventType string) {
 	s.archMu.Lock()
 	s.dirty[sessionID] = true
 	s.archMu.Unlock()
-	if eventType == events.SessionEnded {
+	if eventType == events.SessionEnded || eventType == events.ImportCompleted {
 		select {
 		case s.wake <- struct{}{}:
 		default: // a wake is pending; the next write takes this session too

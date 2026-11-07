@@ -19,6 +19,8 @@ const (
 	ParticipantPaused     = "participant.paused"
 	ParticipantResumed    = "participant.resumed"
 	SessionEnded          = "session.ended"
+	SessionImported       = "session.imported"
+	ImportCompleted       = "import.completed"
 )
 
 // TypeOf returns the dotted type that belongs to the payload of ev, or "" if it has none.
@@ -52,6 +54,10 @@ func TypeOf(ev *sessionv1.Event) string {
 		return ParticipantResumed
 	case *sessionv1.Event_SessionEnded:
 		return SessionEnded
+	case *sessionv1.Event_SessionImported:
+		return SessionImported
+	case *sessionv1.Event_ImportCompleted:
+		return ImportCompleted
 	}
 	return ""
 }

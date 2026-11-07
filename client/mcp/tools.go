@@ -36,7 +36,7 @@ const logHelp = `How to read the log file:
   tail -n +1 -f "$LOG" | grep --line-buffered '"type":"turn.end"\|"type":"addressed"'
   or read it again from time to time and keep the last id you handled:
   jq -c 'select(.id > 41 and (.type == "utterance.final" or .type == "addressed"))' "$LOG"
-- Event types: utterance.final (someone said or typed a sentence), utterance.off_the_record (the speaker marked a sentence off the record: never use or repeat that sentence, not in minutes, decisions or notes; the original line stays in your file), turn.end (a speaker finished; a good moment to answer), addressed (someone named a participant; check addressed.participantId), silence.long, hand.raised, minutes.updated, artifact.shown, participant.joined, participant.left, participant.paused, participant.resumed, session.ended (the last line; the file is complete).
+- Event types: utterance.final (someone said or typed a sentence), utterance.off_the_record (the speaker marked a sentence off the record: never use or repeat that sentence, not in minutes, decisions or notes; the original line stays in your file), turn.end (a speaker finished; a good moment to answer), addressed (someone named a participant; check addressed.participantId), silence.long, hand.raised, minutes.updated, artifact.shown, participant.joined, participant.left, participant.paused, participant.resumed, session.ended (the last line; the file is complete), session.imported and import.completed (the session was imported from another tool, see session_import; its speakers are not registered participants and the hub cannot check what they said).
 - Usually filter for turn.end and addressed, and read the utterance.final lines before them for the context.
 - IDs have no gaps. If you see a gap (43 after 41), read the missing events with meeting_events (after 41). meeting_events also works without the file, if you poll it with your last id.`
 
@@ -126,6 +126,12 @@ type minutesIn struct {
 	Text    string `json:"text,omitempty" jsonschema:"The full new minutes (Markdown). They replace the old minutes. Use text or file."`
 	File    string `json:"file,omitempty" jsonschema:"Read the minutes from this local file instead."`
 	Session string `json:"session,omitempty" jsonschema:"Session ID. Default: the session given when the server was started, else the only session you joined from this machine."`
+}
+
+type importIn struct {
+	File         string             `json:"file,omitempty" jsonschema:"A local file with the conversation in the import format. Use file or conversation."`
+	Conversation *core.Conversation `json:"conversation,omitempty" jsonschema:"The conversation itself, in the import format."`
+	Session      string             `json:"session,omitempty" jsonschema:"ID of the new session. Default: a new ID. The session must not exist yet."`
 }
 
 type stageShowIn struct {
@@ -580,6 +586,30 @@ func (s *Server) addTools(srv *sdk.Server) {
 				return nil, err
 			}
 			return map[string]any{"task": core.MessageJSON(res.GetTask()), "duplicate": res.GetDuplicate()}, nil
+		})
+
+	tool(srv, s, &sdk.Tool{Name: "session_import", Title: "Import a conversation", Annotations: additive,
+		Description: `Import a whole conversation that happened outside the office (another meeting tool, a chat, an agent conversation) as a new session. The session is marked as imported: its first event is session.imported with the source, the speakers join as imported participants ("imported:<id>"), every message is an utterance.final, and import.completed ends the import. Give the conversation as {"source", "title", "participants": [{"id", "name", "kind": "human"|"agent"}], "utterances": [{"speaker", "text", "time", "modality": "text"|"voice"}]}, or as a file in that format. Returns {"sessionId", "firstEventId", "lastEventId", "participants", "utterances", "pages", "treeHead"}. Afterwards read it with meeting_events, join it with meeting_join to write minutes, and record decisions, notes and tasks with its session ID, as for any session.`},
+		func(ctx context.Context, c *core.Client, in importIn) (any, error) {
+			conv := in.Conversation
+			switch {
+			case (in.File == "") == (conv == nil):
+				return nil, usagef("give exactly one of file or conversation")
+			case in.File != "":
+				f, err := os.Open(in.File)
+				if err != nil {
+					return nil, err
+				}
+				defer f.Close()
+				if conv, err = core.ParseConversation(f); err != nil {
+					return nil, err
+				}
+			}
+			im, err := c.Import(ctx, in.Session, conv)
+			if err != nil {
+				return nil, err
+			}
+			return core.ImportedJSON(im), nil
 		})
 
 	tool(srv, s, &sdk.Tool{Name: "meeting_events", Title: "Read events after a cursor", Annotations: readOnly,

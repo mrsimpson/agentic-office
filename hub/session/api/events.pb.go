@@ -168,6 +168,8 @@ type Event struct {
 	//	*Event_ParticipantPaused
 	//	*Event_ParticipantResumed
 	//	*Event_SessionEnded
+	//	*Event_SessionImported
+	//	*Event_ImportCompleted
 	Payload       isEvent_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -385,6 +387,24 @@ func (x *Event) GetSessionEnded() *SessionEnded {
 	return nil
 }
 
+func (x *Event) GetSessionImported() *SessionImported {
+	if x != nil {
+		if x, ok := x.Payload.(*Event_SessionImported); ok {
+			return x.SessionImported
+		}
+	}
+	return nil
+}
+
+func (x *Event) GetImportCompleted() *ImportCompleted {
+	if x != nil {
+		if x, ok := x.Payload.(*Event_ImportCompleted); ok {
+			return x.ImportCompleted
+		}
+	}
+	return nil
+}
+
 type isEvent_Payload interface {
 	isEvent_Payload()
 }
@@ -449,6 +469,15 @@ type Event_SessionEnded struct {
 	SessionEnded *SessionEnded `protobuf:"bytes,44,opt,name=session_ended,json=sessionEnded,proto3,oneof"` // "session.ended"
 }
 
+type Event_SessionImported struct {
+	// Import of a conversation (dec-session-import, if-session-import)
+	SessionImported *SessionImported `protobuf:"bytes,50,opt,name=session_imported,json=sessionImported,proto3,oneof"` // "session.imported"
+}
+
+type Event_ImportCompleted struct {
+	ImportCompleted *ImportCompleted `protobuf:"bytes,51,opt,name=import_completed,json=importCompleted,proto3,oneof"` // "import.completed"
+}
+
 func (*Event_UtteranceFinal) isEvent_Payload() {}
 
 func (*Event_UtteranceOffTheRecord) isEvent_Payload() {}
@@ -477,6 +506,10 @@ func (*Event_ParticipantResumed) isEvent_Payload() {}
 
 func (*Event_SessionEnded) isEvent_Payload() {}
 
+func (*Event_SessionImported) isEvent_Payload() {}
+
+func (*Event_ImportCompleted) isEvent_Payload() {}
+
 type UtteranceFinal struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ParticipantId string                 `protobuf:"bytes,1,opt,name=participant_id,json=participantId,proto3" json:"participant_id,omitempty"`
@@ -487,7 +520,11 @@ type UtteranceFinal struct {
 	// off_the_record is true if the speaker marked the utterance off the record
 	// (utterance.off_the_record). The event is then a placeholder: it keeps its ID, but text and
 	// transcribed_at are empty (dec-off-the-record).
-	OffTheRecord  bool `protobuf:"varint,5,opt,name=off_the_record,json=offTheRecord,proto3" json:"off_the_record,omitempty"`
+	OffTheRecord bool `protobuf:"varint,5,opt,name=off_the_record,json=offTheRecord,proto3" json:"off_the_record,omitempty"`
+	// original_time is when the utterance was made in the original conversation. It is set only
+	// for an imported utterance whose import gave a time (dec-session-import). The hub does not
+	// check it.
+	OriginalTime  *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=original_time,json=originalTime,proto3" json:"original_time,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -555,6 +592,13 @@ func (x *UtteranceFinal) GetOffTheRecord() bool {
 		return x.OffTheRecord
 	}
 	return false
+}
+
+func (x *UtteranceFinal) GetOriginalTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.OriginalTime
+	}
+	return nil
 }
 
 type UtteranceOffTheRecord struct {
@@ -945,7 +989,12 @@ type ParticipantJoined struct {
 	DisplayName   string                 `protobuf:"bytes,2,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
 	Kind          ParticipantKind        `protobuf:"varint,3,opt,name=kind,proto3,enum=office.session.v1.ParticipantKind" json:"kind,omitempty"`
 	// captured is true if the participant's speech is transcribed (joined with a microphone).
-	Captured      bool `protobuf:"varint,4,opt,name=captured,proto3" json:"captured,omitempty"`
+	Captured bool `protobuf:"varint,4,opt,name=captured,proto3" json:"captured,omitempty"`
+	// imported is true for a speaker of an imported conversation (dec-session-import). Such a
+	// participant is not registered and has no key: the hub took its name and kind from the import
+	// and cannot check them. Its participant_id starts with "imported:", which no registered
+	// participant ID can.
+	Imported      bool `protobuf:"varint,5,opt,name=imported,proto3" json:"imported,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1004,6 +1053,13 @@ func (x *ParticipantJoined) GetKind() ParticipantKind {
 func (x *ParticipantJoined) GetCaptured() bool {
 	if x != nil {
 		return x.Captured
+	}
+	return false
+}
+
+func (x *ParticipantJoined) GetImported() bool {
+	if x != nil {
+		return x.Imported
 	}
 	return false
 }
@@ -1187,6 +1243,112 @@ func (x *SessionEnded) GetTreeHead() *SignedTreeHead {
 	return nil
 }
 
+// SessionImported is the first event of an imported session (dec-session-import, if-session-import).
+// It marks the session as imported: the hub did not see the conversation happen. The events up to
+// import.completed come from the import; actor_participant_id of each of them is the participant
+// who imported the conversation. A signed tree head over an imported log proves who imported it
+// and that it has not changed since, not that the speakers said what it says.
+type SessionImported struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// source says where the conversation comes from, for example "Zoom meeting 2026-11-06" or a URL.
+	Source string `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	// title is the title of the conversation. It may be empty.
+	Title         string `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SessionImported) Reset() {
+	*x = SessionImported{}
+	mi := &file_office_session_v1_events_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SessionImported) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SessionImported) ProtoMessage() {}
+
+func (x *SessionImported) ProtoReflect() protoreflect.Message {
+	mi := &file_office_session_v1_events_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SessionImported.ProtoReflect.Descriptor instead.
+func (*SessionImported) Descriptor() ([]byte, []int) {
+	return file_office_session_v1_events_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *SessionImported) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *SessionImported) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+// ImportCompleted ends the import of a conversation. After it, the session takes session
+// commands like any other session.
+type ImportCompleted struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// utterances is the number of imported utterances.
+	Utterances    uint32 `protobuf:"varint,1,opt,name=utterances,proto3" json:"utterances,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ImportCompleted) Reset() {
+	*x = ImportCompleted{}
+	mi := &file_office_session_v1_events_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ImportCompleted) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ImportCompleted) ProtoMessage() {}
+
+func (x *ImportCompleted) ProtoReflect() protoreflect.Message {
+	mi := &file_office_session_v1_events_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ImportCompleted.ProtoReflect.Descriptor instead.
+func (*ImportCompleted) Descriptor() ([]byte, []int) {
+	return file_office_session_v1_events_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *ImportCompleted) GetUtterances() uint32 {
+	if x != nil {
+		return x.Utterances
+	}
+	return 0
+}
+
 // SignedTreeHead is the head of the Merkle tree over the events of a session (dec-merkle-log), in
 // the style of RFC 9162 (Certificate Transparency). The leaves are the events 1 to tree_size, in
 // order of their IDs. The hub signs it with its own Ed25519 key. Package merkle has the exact bytes
@@ -1195,7 +1357,7 @@ type SignedTreeHead struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	SessionId string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
 	// schema is the schema of the session (dec-session-schema): the version of the session contract
-	// the session was started with, for example "office.session.v1/1". A session keeps its schema
+	// the session was started with, for example "office.session.v1/2". A session keeps its schema
 	// for its whole life. A hub with another schema does not continue the session, and a verifier
 	// checks the session only with its own schema. The Go constant is Schema in this package.
 	Schema string `protobuf:"bytes,6,opt,name=schema,proto3" json:"schema,omitempty"`
@@ -1215,7 +1377,7 @@ type SignedTreeHead struct {
 
 func (x *SignedTreeHead) Reset() {
 	*x = SignedTreeHead{}
-	mi := &file_office_session_v1_events_proto_msgTypes[15]
+	mi := &file_office_session_v1_events_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1227,7 +1389,7 @@ func (x *SignedTreeHead) String() string {
 func (*SignedTreeHead) ProtoMessage() {}
 
 func (x *SignedTreeHead) ProtoReflect() protoreflect.Message {
-	mi := &file_office_session_v1_events_proto_msgTypes[15]
+	mi := &file_office_session_v1_events_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1240,7 +1402,7 @@ func (x *SignedTreeHead) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SignedTreeHead.ProtoReflect.Descriptor instead.
 func (*SignedTreeHead) Descriptor() ([]byte, []int) {
-	return file_office_session_v1_events_proto_rawDescGZIP(), []int{15}
+	return file_office_session_v1_events_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *SignedTreeHead) GetSessionId() string {
@@ -1289,8 +1451,7 @@ var File_office_session_v1_events_proto protoreflect.FileDescriptor
 
 const file_office_session_v1_events_proto_rawDesc = "" +
 	"\n" +
-	"\x1eoffice/session/v1/events.proto\x12\x11office.session.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xb8\n" +
-	"\n" +
+	"\x1eoffice/session/v1/events.proto\x12\x11office.session.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xda\v\n" +
 	"\x05Event\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x12\x1d\n" +
 	"\n" +
@@ -1316,14 +1477,17 @@ const file_office_session_v1_events_proto_rawDesc = "" +
 	"\x10participant_left\x18) \x01(\v2\".office.session.v1.ParticipantLeftH\x00R\x0fparticipantLeft\x12U\n" +
 	"\x12participant_paused\x18* \x01(\v2$.office.session.v1.ParticipantPausedH\x00R\x11participantPaused\x12X\n" +
 	"\x13participant_resumed\x18+ \x01(\v2%.office.session.v1.ParticipantResumedH\x00R\x12participantResumed\x12F\n" +
-	"\rsession_ended\x18, \x01(\v2\x1f.office.session.v1.SessionEndedH\x00R\fsessionEndedB\t\n" +
-	"\apayload\"\xed\x01\n" +
+	"\rsession_ended\x18, \x01(\v2\x1f.office.session.v1.SessionEndedH\x00R\fsessionEnded\x12O\n" +
+	"\x10session_imported\x182 \x01(\v2\".office.session.v1.SessionImportedH\x00R\x0fsessionImported\x12O\n" +
+	"\x10import_completed\x183 \x01(\v2\".office.session.v1.ImportCompletedH\x00R\x0fimportCompletedB\t\n" +
+	"\apayload\"\xae\x02\n" +
 	"\x0eUtteranceFinal\x12%\n" +
 	"\x0eparticipant_id\x18\x01 \x01(\tR\rparticipantId\x12\x12\n" +
 	"\x04text\x18\x02 \x01(\tR\x04text\x127\n" +
 	"\bmodality\x18\x03 \x01(\x0e2\x1b.office.session.v1.ModalityR\bmodality\x12A\n" +
 	"\x0etranscribed_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\rtranscribedAt\x12$\n" +
-	"\x0eoff_the_record\x18\x05 \x01(\bR\foffTheRecord\"E\n" +
+	"\x0eoff_the_record\x18\x05 \x01(\bR\foffTheRecord\x12?\n" +
+	"\roriginal_time\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\foriginalTime\"E\n" +
 	"\x15UtteranceOffTheRecord\x12,\n" +
 	"\x12utterance_event_id\x18\x01 \x01(\rR\x10utteranceEventId\"V\n" +
 	"\x12UtteranceCorrected\x12,\n" +
@@ -1344,12 +1508,13 @@ const file_office_session_v1_events_proto_rawDesc = "" +
 	"\x04text\x18\x01 \x01(\tR\x04text\"0\n" +
 	"\rArtifactShown\x12\x1f\n" +
 	"\vartifact_id\x18\x01 \x01(\tR\n" +
-	"artifactId\"\xb1\x01\n" +
+	"artifactId\"\xcd\x01\n" +
 	"\x11ParticipantJoined\x12%\n" +
 	"\x0eparticipant_id\x18\x01 \x01(\tR\rparticipantId\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x126\n" +
 	"\x04kind\x18\x03 \x01(\x0e2\".office.session.v1.ParticipantKindR\x04kind\x12\x1a\n" +
-	"\bcaptured\x18\x04 \x01(\bR\bcaptured\"8\n" +
+	"\bcaptured\x18\x04 \x01(\bR\bcaptured\x12\x1a\n" +
+	"\bimported\x18\x05 \x01(\bR\bimported\"8\n" +
 	"\x0fParticipantLeft\x12%\n" +
 	"\x0eparticipant_id\x18\x01 \x01(\tR\rparticipantId\":\n" +
 	"\x11ParticipantPaused\x12%\n" +
@@ -1357,7 +1522,14 @@ const file_office_session_v1_events_proto_rawDesc = "" +
 	"\x12ParticipantResumed\x12%\n" +
 	"\x0eparticipant_id\x18\x01 \x01(\tR\rparticipantId\"N\n" +
 	"\fSessionEnded\x12>\n" +
-	"\ttree_head\x18\x01 \x01(\v2!.office.session.v1.SignedTreeHeadR\btreeHead\"\xbe\x01\n" +
+	"\ttree_head\x18\x01 \x01(\v2!.office.session.v1.SignedTreeHeadR\btreeHead\"?\n" +
+	"\x0fSessionImported\x12\x16\n" +
+	"\x06source\x18\x01 \x01(\tR\x06source\x12\x14\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\"1\n" +
+	"\x0fImportCompleted\x12\x1e\n" +
+	"\n" +
+	"utterances\x18\x01 \x01(\rR\n" +
+	"utterances\"\xbe\x01\n" +
 	"\x0eSignedTreeHead\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x16\n" +
@@ -1389,7 +1561,7 @@ func file_office_session_v1_events_proto_rawDescGZIP() []byte {
 }
 
 var file_office_session_v1_events_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_office_session_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_office_session_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_office_session_v1_events_proto_goTypes = []any{
 	(ParticipantKind)(0),          // 0: office.session.v1.ParticipantKind
 	(Modality)(0),                 // 1: office.session.v1.Modality
@@ -1408,12 +1580,14 @@ var file_office_session_v1_events_proto_goTypes = []any{
 	(*ParticipantPaused)(nil),     // 14: office.session.v1.ParticipantPaused
 	(*ParticipantResumed)(nil),    // 15: office.session.v1.ParticipantResumed
 	(*SessionEnded)(nil),          // 16: office.session.v1.SessionEnded
-	(*SignedTreeHead)(nil),        // 17: office.session.v1.SignedTreeHead
-	(*timestamppb.Timestamp)(nil), // 18: google.protobuf.Timestamp
-	(*durationpb.Duration)(nil),   // 19: google.protobuf.Duration
+	(*SessionImported)(nil),       // 17: office.session.v1.SessionImported
+	(*ImportCompleted)(nil),       // 18: office.session.v1.ImportCompleted
+	(*SignedTreeHead)(nil),        // 19: office.session.v1.SignedTreeHead
+	(*timestamppb.Timestamp)(nil), // 20: google.protobuf.Timestamp
+	(*durationpb.Duration)(nil),   // 21: google.protobuf.Duration
 }
 var file_office_session_v1_events_proto_depIdxs = []int32{
-	18, // 0: office.session.v1.Event.time:type_name -> google.protobuf.Timestamp
+	20, // 0: office.session.v1.Event.time:type_name -> google.protobuf.Timestamp
 	3,  // 1: office.session.v1.Event.utterance_final:type_name -> office.session.v1.UtteranceFinal
 	4,  // 2: office.session.v1.Event.utterance_off_the_record:type_name -> office.session.v1.UtteranceOffTheRecord
 	5,  // 3: office.session.v1.Event.utterance_corrected:type_name -> office.session.v1.UtteranceCorrected
@@ -1428,16 +1602,19 @@ var file_office_session_v1_events_proto_depIdxs = []int32{
 	14, // 12: office.session.v1.Event.participant_paused:type_name -> office.session.v1.ParticipantPaused
 	15, // 13: office.session.v1.Event.participant_resumed:type_name -> office.session.v1.ParticipantResumed
 	16, // 14: office.session.v1.Event.session_ended:type_name -> office.session.v1.SessionEnded
-	1,  // 15: office.session.v1.UtteranceFinal.modality:type_name -> office.session.v1.Modality
-	18, // 16: office.session.v1.UtteranceFinal.transcribed_at:type_name -> google.protobuf.Timestamp
-	19, // 17: office.session.v1.SilenceLong.duration:type_name -> google.protobuf.Duration
-	0,  // 18: office.session.v1.ParticipantJoined.kind:type_name -> office.session.v1.ParticipantKind
-	17, // 19: office.session.v1.SessionEnded.tree_head:type_name -> office.session.v1.SignedTreeHead
-	20, // [20:20] is the sub-list for method output_type
-	20, // [20:20] is the sub-list for method input_type
-	20, // [20:20] is the sub-list for extension type_name
-	20, // [20:20] is the sub-list for extension extendee
-	0,  // [0:20] is the sub-list for field type_name
+	17, // 15: office.session.v1.Event.session_imported:type_name -> office.session.v1.SessionImported
+	18, // 16: office.session.v1.Event.import_completed:type_name -> office.session.v1.ImportCompleted
+	1,  // 17: office.session.v1.UtteranceFinal.modality:type_name -> office.session.v1.Modality
+	20, // 18: office.session.v1.UtteranceFinal.transcribed_at:type_name -> google.protobuf.Timestamp
+	20, // 19: office.session.v1.UtteranceFinal.original_time:type_name -> google.protobuf.Timestamp
+	21, // 20: office.session.v1.SilenceLong.duration:type_name -> google.protobuf.Duration
+	0,  // 21: office.session.v1.ParticipantJoined.kind:type_name -> office.session.v1.ParticipantKind
+	19, // 22: office.session.v1.SessionEnded.tree_head:type_name -> office.session.v1.SignedTreeHead
+	23, // [23:23] is the sub-list for method output_type
+	23, // [23:23] is the sub-list for method input_type
+	23, // [23:23] is the sub-list for extension type_name
+	23, // [23:23] is the sub-list for extension extendee
+	0,  // [0:23] is the sub-list for field type_name
 }
 
 func init() { file_office_session_v1_events_proto_init() }
@@ -1460,6 +1637,8 @@ func file_office_session_v1_events_proto_init() {
 		(*Event_ParticipantPaused)(nil),
 		(*Event_ParticipantResumed)(nil),
 		(*Event_SessionEnded)(nil),
+		(*Event_SessionImported)(nil),
+		(*Event_ImportCompleted)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -1467,7 +1646,7 @@ func file_office_session_v1_events_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_office_session_v1_events_proto_rawDesc), len(file_office_session_v1_events_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   16,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

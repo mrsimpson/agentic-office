@@ -41,6 +41,12 @@ the rest (`dec-restore-from-peers`). For this, the stream gives every peer a sig
 its whole copy, and a restored session waits for the peers before it takes commands, so the IDs
 and every cursor stay valid (`dec-signed-head-in-stream`, `rs-hub-restart`).
 
+**Imported sessions.** A conversation from outside the office becomes a session through its own
+interface (`dec-session-import`). The meeting session writes it into the log like live commands,
+so the log keeps one writer and gap-free IDs. The first event marks the session as imported and
+names its source. The speakers are imported participants, not registered ones. The tree heads
+over an imported log protect it from later changes, but do not prove what was said.
+
 **Resuming after a network drop:**
 
 - Readers (replicator, stage) reconnect with their last event ID and receive every event after it.

@@ -1,0 +1,101 @@
+// Session import (if-session-import): imports a whole conversation that happened outside the
+// office as a new session (dec-session-import).
+//
+// A conversation comes in one call or in pages. Every page is one ImportConversation call with its
+// own command_id that the client creates (dec-idempotent-commands). If the same command_id
+// arrives again, the hub returns the stored result of that page with duplicate set and stores
+// nothing new. Pages are applied in the order they arrive.
+//
+// - The first page creates the session. The session must have no events yet. The first page sets
+//   conversation; later pages must not. The hub writes session.imported as event 1.
+// - Every page may add participants and utterances. A participant is written as participant.joined
+//   with imported set and the participant ID "imported:" + key. An utterance is written as
+//   utterance.final of that participant, in the order of the page, with original_time if given.
+//   An utterance may only name a participant of the same or an earlier page.
+// - The page with complete set writes import.completed after its own events. It ends the import.
+// - Until the import is complete, the session takes only pages of the participant who sent the
+//   first page; every session command fails with failed_precondition. After it, the session takes
+//   no more pages, and takes session commands like any other session.
+//
+// The events of a page all carry the command_id of the page, and the importer as
+// actor_participant_id. Every call needs an access token of a participant (see identity.proto);
+// participant_id must be that participant. A stage link cannot import.
+//
+// Error codes: a missing or wrong field is invalid_argument; a first page for a session that has
+// events, a page for a session that is not being imported, a page after the import is complete, a
+// page for a session of another schema, are failed_precondition; a page of another participant
+// than the importer, or a participant_id that is not the caller, is permission_denied; a
+// command_id that was used for another command is already_exists.
+syntax = "proto3";
+
+package office.sessionimport.v1;
+
+import "google/protobuf/timestamp.proto";
+import "office/session/v1/events.proto";
+
+option go_package = "github.com/mrsimpson/agentic-office/hub/session/importapi;sessionimportv1";
+
+service SessionImportService {
+  // ImportConversation imports one page of a conversation.
+  rpc ImportConversation(ImportConversationRequest) returns (ImportConversationResponse);
+}
+
+message ImportConversationRequest {
+  string session_id = 1;
+  string command_id = 2;
+  // participant_id is the participant who imports: the participant of the access token.
+  string participant_id = 3;
+  // conversation is required on the first page. A page with a conversation for a session that
+  // already has events fails with failed_precondition.
+  Conversation conversation = 4;
+  // participants are the speakers that this page adds. At most 1000 per page.
+  repeated ImportedParticipant participants = 5;
+  // utterances are the utterances of this page, in order. At most 1000 per page.
+  repeated ImportedUtterance utterances = 6;
+  // complete is true on the last page.
+  bool complete = 7;
+}
+
+// Conversation describes where an imported conversation comes from.
+message Conversation {
+  // source is required: where the conversation comes from, for example "Zoom meeting 2026-11-06",
+  // "Slack #design" or a URL.
+  string source = 1;
+  // title is optional.
+  string title = 2;
+}
+
+message ImportedParticipant {
+  // key names the participant inside the import. 1 to 64 letters, digits, '.', '_' or '-',
+  // starting with a letter or digit. Unique in the import. The participant ID in the session is
+  // "imported:" + key.
+  string key = 1;
+  // display_name is required.
+  string display_name = 2;
+  // kind is required: human or agent.
+  office.session.v1.ParticipantKind kind = 3;
+}
+
+message ImportedUtterance {
+  // speaker is the key of an imported participant.
+  string speaker = 1;
+  // text is required.
+  string text = 2;
+  // modality is required: voice for speech, text for written messages.
+  office.session.v1.Modality modality = 3;
+  // time is when the utterance was made in the original conversation. Optional; the hub does not
+  // check it.
+  google.protobuf.Timestamp time = 4;
+}
+
+message ImportConversationResponse {
+  // first_event_id and last_event_id are the events that this page wrote.
+  uint32 first_event_id = 1;
+  uint32 last_event_id = 2;
+  // duplicate is true if the command_id was already known and nothing new was stored.
+  bool duplicate = 3;
+  // complete is true if the import is complete.
+  bool complete = 4;
+  // tree_head is a tree head signed by the hub over the events 1 to last_event_id.
+  office.session.v1.SignedTreeHead tree_head = 5;
+}

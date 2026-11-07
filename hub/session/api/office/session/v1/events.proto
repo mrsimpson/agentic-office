@@ -53,6 +53,9 @@ message Event {
     ParticipantPaused participant_paused = 42; // "participant.paused"
     ParticipantResumed participant_resumed = 43; // "participant.resumed"
     SessionEnded session_ended = 44; // "session.ended"
+    // Import of a conversation (dec-session-import, if-session-import)
+    SessionImported session_imported = 50; // "session.imported"
+    ImportCompleted import_completed = 51; // "import.completed"
   }
 }
 
@@ -66,6 +69,10 @@ message UtteranceFinal {
   // (utterance.off_the_record). The event is then a placeholder: it keeps its ID, but text and
   // transcribed_at are empty (dec-off-the-record).
   bool off_the_record = 5;
+  // original_time is when the utterance was made in the original conversation. It is set only
+  // for an imported utterance whose import gave a time (dec-session-import). The hub does not
+  // check it.
+  google.protobuf.Timestamp original_time = 6;
 }
 
 message UtteranceOffTheRecord {
@@ -115,6 +122,11 @@ message ParticipantJoined {
   ParticipantKind kind = 3;
   // captured is true if the participant's speech is transcribed (joined with a microphone).
   bool captured = 4;
+  // imported is true for a speaker of an imported conversation (dec-session-import). Such a
+  // participant is not registered and has no key: the hub took its name and kind from the import
+  // and cannot check them. Its participant_id starts with "imported:", which no registered
+  // participant ID can.
+  bool imported = 5;
 }
 
 message ParticipantLeft {
@@ -136,6 +148,25 @@ message SessionEnded {
   SignedTreeHead tree_head = 1;
 }
 
+// SessionImported is the first event of an imported session (dec-session-import, if-session-import).
+// It marks the session as imported: the hub did not see the conversation happen. The events up to
+// import.completed come from the import; actor_participant_id of each of them is the participant
+// who imported the conversation. A signed tree head over an imported log proves who imported it
+// and that it has not changed since, not that the speakers said what it says.
+message SessionImported {
+  // source says where the conversation comes from, for example "Zoom meeting 2026-11-06" or a URL.
+  string source = 1;
+  // title is the title of the conversation. It may be empty.
+  string title = 2;
+}
+
+// ImportCompleted ends the import of a conversation. After it, the session takes session
+// commands like any other session.
+message ImportCompleted {
+  // utterances is the number of imported utterances.
+  uint32 utterances = 1;
+}
+
 // SignedTreeHead is the head of the Merkle tree over the events of a session (dec-merkle-log), in
 // the style of RFC 9162 (Certificate Transparency). The leaves are the events 1 to tree_size, in
 // order of their IDs. The hub signs it with its own Ed25519 key. Package merkle has the exact bytes
@@ -143,7 +174,7 @@ message SessionEnded {
 message SignedTreeHead {
   string session_id = 1;
   // schema is the schema of the session (dec-session-schema): the version of the session contract
-  // the session was started with, for example "office.session.v1/1". A session keeps its schema
+  // the session was started with, for example "office.session.v1/2". A session keeps its schema
   // for its whole life. A hub with another schema does not continue the session, and a verifier
   // checks the session only with its own schema. The Go constant is Schema in this package.
   string schema = 6;

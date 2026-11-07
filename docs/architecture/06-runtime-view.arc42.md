@@ -359,3 +359,56 @@ sequenceDiagram
     bb_replicator->>bb_session: subscribe(cursor=last line)
     bb_session-->>bb_replicator: live events, IDs continue
 ```
+
+## Agent imports a conversation and writes its minutes
+
+An agent has a conversation from another tool as a file in the import format
+(`dec-import-format`). It calls `session.import` with the file. The client core reads the file
+and sends the conversation in pages to the session import. The first page creates the session:
+the meeting session writes an event that marks the session as imported, the imported
+participants and the first utterances. Every further page adds utterances, and the last page
+writes the end of the import. The client core returns the session ID and the signed tree head
+over the imported log. The hub writes the session to the archive at its next interval, like
+every other session. The agent then reads the events after a cursor, joins the session like a
+live one, writes the minutes and records decisions and tasks with the session ID. When it ends
+the session, the meeting session stores the minutes (`rs-session-ends`).
+
+```arc42
+:::runtime-scenario
+id: rs-import-conversation
+title: Agent imports a conversation and writes its minutes
+trigger: An agent calls session.import with a conversation file
+involves: bb-mcp, bb-cli, bb-client-core, bb-session-service, bb-records, bb-archive, bb-participant-client, bb-office-hub
+:::
+```
+
+```arc42
+:::diagram
+id: seq-import-conversation
+notation: mermaid-sequence
+scenario: rs-import-conversation
+aliases: actor_agent=actor-agent, bb_mcp=bb-mcp, bb_client_core=bb-client-core, bb_session=bb-session-service, bb_archive=bb-archive, bb_records=bb-records
+:::
+```
+
+```mermaid
+sequenceDiagram
+    participant actor_agent as Agent
+    participant bb_mcp as MCP server
+    participant bb_client_core as Client core
+    participant bb_session as Meeting session
+    participant bb_archive as Archive
+    participant bb_records as Records
+    actor_agent->>bb_mcp: session.import(file)
+    bb_mcp->>bb_client_core: read the import format
+    bb_client_core->>bb_session: first page (source, participants, utterances)
+    bb_session-->>bb_client_core: events stored, signed tree head
+    bb_client_core->>bb_session: last page (complete)
+    bb_session-->>bb_client_core: end of import, signed tree head
+    bb_mcp-->>actor_agent: session ID, tree head
+    bb_session->>bb_archive: write the log (next interval, background)
+    actor_agent->>bb_session: events after a cursor, join, minutes
+    actor_agent->>bb_records: decisions with the session ID
+    actor_agent->>bb_session: end the session
+    bb_session->>bb_records: store the minutes
+```

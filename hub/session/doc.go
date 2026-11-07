@@ -65,6 +65,13 @@
 //     every OfferLog fails with FailedPrecondition, and the hub does not wait for peers to fill it
 //     in. A repeated command_id still returns its stored event. OfferLog also fails with
 //     FailedPrecondition for a copy whose tree head has another schema.
+//   - Import (dec-session-import, import.go): the Service also realizes the session import
+//     (if-session-import). A page is checked as a whole, then written as ordinary events with the
+//     command ID of the page: session.imported first, participant.joined with imported set and the
+//     ID ImportedPrefix + key, utterance.final with original_time, and import.completed on the last
+//     page. The state knows the importer and whether the import runs; while it runs, every session
+//     command fails with FailedPrecondition. import.completed wakes the archive writer like
+//     session.ended. After the import the session is like any other.
 //   - Subscribe closes the stream after it has sent session.ended. It ends the stream with
 //     Unauthenticated when the token of the caller expires or is revoked.
 package session

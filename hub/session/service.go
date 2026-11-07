@@ -129,6 +129,11 @@ type state struct {
 	participants map[string]*participant
 	utterances   map[uint32]*utterance // utterance.final event ID -> utterance
 	minutes      *sessionv1.Event      // the last minutes.updated event
+	// An imported session (dec-session-import, import.go): importer is the participant who sent
+	// the first page; importing is true until import.completed.
+	importer  string
+	importing bool
+	imported  uint32 // number of imported utterances
 	// leaves are the leaf hashes of the Merkle tree: leaves[i] belongs to event i+1. The slice
 	// only grows; its elements never change.
 	leaves [][]byte
@@ -195,6 +200,13 @@ func (st *state) apply(ev *sessionv1.Event) error {
 		st.minutes = ev
 	case *sessionv1.Event_SessionEnded:
 		st.ended = true
+	case *sessionv1.Event_SessionImported:
+		st.importer, st.importing = ev.GetActorParticipantId(), true
+	case *sessionv1.Event_ImportCompleted:
+		st.importing = false
+	}
+	if ev.GetUtteranceFinal() != nil && st.importing {
+		st.imported++
 	}
 	return nil
 }
@@ -319,6 +331,9 @@ func (s *Service) run(ctx context.Context, c command, isJoin bool) (*sessionv1.C
 	}
 	if err := st.checkRestored(); err != nil {
 		return nil, err
+	}
+	if st.importing {
+		return nil, precondition("the session is being imported; it takes session commands after the import is complete")
 	}
 	if st.ended {
 		return nil, precondition("the session has ended")

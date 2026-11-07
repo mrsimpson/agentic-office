@@ -57,6 +57,7 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/records/note/api/notev1connect"
 	"github.com/mrsimpson/agentic-office/hub/session"
 	"github.com/mrsimpson/agentic-office/hub/session/api/sessionv1connect"
+	"github.com/mrsimpson/agentic-office/hub/session/importapi/sessionimportv1connect"
 	"github.com/mrsimpson/agentic-office/hub/slides"
 	"github.com/mrsimpson/agentic-office/hub/slides/api/slidesv1connect"
 	"github.com/mrsimpson/agentic-office/hub/stage"
@@ -200,6 +201,7 @@ func main() {
 
 	cs := connect.NewServer(ids.Interceptor())
 	sessionv1connect.RegisterSessionServiceHandler(cs, sessions)
+	sessionimportv1connect.RegisterSessionImportServiceHandler(cs, sessions)
 	identityv1connect.RegisterIdentityServiceHandler(cs, ids)
 	decisionv1connect.RegisterDecisionServiceHandler(cs, recs)
 	minutesv1connect.RegisterMinutesServiceHandler(cs, recs)

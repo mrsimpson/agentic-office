@@ -17,6 +17,8 @@
 //     writes.
 //   - The shared shapes of output and input: EventJSON, MessageJSON and ResultJSON (the JSON
 //     of the CLI's --json and of the MCP tools), ParseDeck and ParseEntryKind.
+//   - Import: reads a conversation in the import format (ParseConversation, dec-import-format)
+//     and sends it to the session import (if-session-import) in pages, with a command ID per page.
 //   - Gateway: the state behind the gateway view (dec-gateway-cli): own utterances with their
 //     status, and whether the participant is paused. It is driven by the local log and, when the
 //     ears run (client/ears), by their local status.

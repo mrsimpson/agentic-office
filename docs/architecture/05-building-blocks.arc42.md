@@ -26,6 +26,7 @@ flowchart LR
     bb_office_hub[Office hub]
     bb_participant_client[Participant client]
     bb_participant_client -->|if-session-commands| bb_office_hub
+    bb_participant_client -->|if-session-import| bb_office_hub
     bb_participant_client -->|if-decision-api| bb_office_hub
     bb_participant_client -->|if-minutes-api| bb_office_hub
     bb_participant_client -->|if-note-api| bb_office_hub
@@ -141,6 +142,40 @@ provider: bb-office-hub
 x-realized-by: bb-session-service
 protocol: Connect RPC, server streaming (dec-connect-rpc)
 path: hub/session/api
+:::
+```
+
+### Session import
+
+Imports a whole conversation that happened outside the office as a new session
+(`dec-session-import`): a meeting in another tool, a chat, or a conversation with an agent. The
+import names its source and, optionally, a title. It lists the participants (a name, human or
+agent) and the utterances in order (speaker, text, modality and, if known, the time they were
+made). A conversation comes in one call or in pages. Each page carries an ID created by the client,
+so a repeated page has no extra effect. The last page completes the import.
+
+The import only fills the log. The meeting session writes the events of an import like those of
+live commands, and the session stream, the events after a cursor and the archive deliver them the
+same way. The first event of an imported session marks it as imported, with its source and the
+participant who imported it. A last event marks the end of the import. While an import is not
+complete, the session takes only the next pages of the same participant. After it, the session
+behaves like any other session, so participants derive minutes, decisions, notes and tasks
+through the existing interfaces.
+
+The speakers of an imported conversation are not registered participants: the hub cannot check
+who they are. Their participant IDs are marked as imported, so they never match a registered
+participant. The hub signs tree heads over an imported log like over every log. Such a signature
+proves which participant imported the log and that the log has not changed since; it does not
+prove that the speakers said what the log says.
+
+```arc42
+:::interface
+id: if-session-import
+title: Session import
+provider: bb-office-hub
+x-realized-by: bb-session-service
+protocol: Connect RPC, unary (dec-connect-rpc)
+path: hub/session/importapi
 :::
 ```
 
@@ -281,7 +316,9 @@ path: hub/stage
 ### Meeting session
 
 Manages sessions and their participants. Accepts utterances from the ears and actions from
-participants, and writes everything to one append-only event log per session. Subscribers receive
+participants, and writes everything to one append-only event log per session. It also takes
+imported conversations (`if-session-import`) and writes them into the log of a new session, so a
+session log has one writer in every case. Subscribers receive
 the log from a cursor onwards. Events are merged by time only: the participant model already says
 who spoke.
 
@@ -298,7 +335,8 @@ path: hub/session
 ```
 
 The meeting session writes the log of every session that changed to the archive, at a
-configurable interval and when the session ends (`dec-session-persistence`). The write runs in
+configurable interval and when the session ends (`dec-session-persistence`). The end of an import
+also starts a write, so an imported session reaches the archive soon (`dec-session-import`). The write runs in
 the background: commands and the stream never wait for it. At most one write is in progress. A
 slow write makes the next write take everything that has come since. Every write stores the raw
 log (with the original text of sentences that are off the record, and their marks) and the tree
@@ -533,7 +571,7 @@ path: client/cli
 
 Tools such as `meeting.join`, `meeting.leave`, `hand.raise`, `minutes.update`, `stage.show`,
 `slides.render`, `slides.get`, `plan.validate`, `decision.record`, `minutes.get`, `note.add`, `task.create`,
-`task.update`.
+`task.update`, `session.import`.
 
 ```arc42
 :::interface
@@ -584,7 +622,9 @@ path: client/ears
 
 The shared core of the CLI, the MCP server and the ears ("one core, two adapters",
 `dec-cli-and-mcp`). It holds the configuration of a participant, authenticates with Identity,
-creates the command IDs and calls the interfaces of the office hub. The adapters add only their
+creates the command IDs and calls the interfaces of the office hub. It reads the import format
+of conversations and sends a conversation to the session import in pages
+(`dec-import-format`), so the CLI and the MCP server import in the same way. The adapters add only their
 own way of talking to a human or an agent.
 
 ```arc42
@@ -594,7 +634,7 @@ title: Client core
 technology: Go
 parent: bb-participant-client
 path: client/core
-requires: if-session-commands, if-auth-api, if-decision-api, if-minutes-api, if-note-api, if-task-api, if-slides-api
+requires: if-session-commands, if-session-import, if-auth-api, if-decision-api, if-minutes-api, if-note-api, if-task-api, if-slides-api
 :::
 ```
 
@@ -618,8 +658,9 @@ path: client/core
 The main access for humans and for agents with a shell. `office meeting join <session> [--mic]`
 starts the replication and prints the log path. With `--mic`, the terminal shows the user's own
 utterances with their status (partial → final → sent / off the record). Keys let the user pause and
-mark a sentence off the record. Other commands cover slides, the stage, decisions, minutes,
-notes and tasks.
+mark a sentence off the record. `office session import <file>` imports a conversation from a
+file in the import format of the client (`dec-import-format`). Other commands cover slides, the
+stage, decisions, minutes, notes and tasks.
 
 ```arc42
 :::building-block

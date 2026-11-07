@@ -241,3 +241,15 @@ definition: The separately deployed part that orders and distributes the events 
 :::
 ```
 
+
+## Imported session
+
+A session that was not held in the office.
+
+```arc42
+:::glossary-term
+id: term-imported-session
+title: Imported session
+definition: A session whose log starts with a conversation that happened outside the office and that a participant imported; its first event marks it as imported and names the source
+:::
+```

@@ -113,3 +113,18 @@ severity: medium
 mitigation: Writes run in the background with a configurable interval; at most one write in progress; later events go into the next write (dec-session-persistence)
 :::
 ```
+
+## An imported conversation is taken for a live one
+
+The hub did not see an imported conversation happen. Its messages may be incomplete or made up,
+and the hub cannot check who said them. A reader who takes an imported session for a live one
+trusts it more than it deserves.
+
+```arc42
+:::risk
+id: risk-imported-conversation
+title: An imported conversation is taken for a live session
+severity: medium
+mitigation: An imported session is marked by its first event, with its source and the participant who imported it; imported speakers have marked IDs; the signature over an imported log only proves who imported it and that it has not changed (dec-session-import)
+:::
+```

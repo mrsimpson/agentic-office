@@ -629,3 +629,69 @@ addresses: risk-archive-latency, qg-usability
 :::
 ```
 
+
+## Imported conversations become marked sessions
+
+**Context:** Many conversations happen outside the office: in other meeting tools, in chats, or
+with an agent. The team wants minutes, decisions, notes and tasks from them, like from a session.
+The hub did not see these conversations happen, so it cannot order and sign their messages one by
+one. Nobody may mistake such a session for a live one. **Decision:** The hub has its own
+interface to import a whole conversation as a new session (`if-session-import`), in one call or in
+pages. The meeting session realizes it, so every session log keeps one writer. The first event of
+an imported session marks it as imported, with its source, its title and the participant who
+imported it; a last event marks the end of the import. The speakers of the conversation become
+imported participants with a name and a kind; their IDs are marked as imported, so they never
+match a registered participant. The utterances keep their order and, if known, the time they were
+made. Every page carries an ID created by the client (`dec-idempotent-commands`). Until the import
+is complete, the session takes only the pages of the participant who started it. After that, it is
+a session like any other: participants join, write minutes and end it, and the stream, the events
+after a cursor, the archive and the restore treat it like every other session. The end of an
+import starts a write to the archive, like the end of a session. The hub signs tree
+heads over an imported log as over every log. The signature proves who imported the log and that
+it has not changed since; it does not prove that the speakers said what it says.
+**Consequences:** Agents and humans derive records from an imported session through the existing
+interfaces, without a second path. Readers recognise an imported session by its first event. The
+new events are a new revision of the session schema (`dec-session-schema`). OPEN: nobody can mark
+an imported sentence off the record, because the speakers are not participants with a key (#50).
+OPEN: an import that stops halfway leaves an incomplete session; it cannot be continued by a new
+call of the client (#51). **Rejected:** a separate part of the hub with its own log (two writers,
+or an extra internal interface for writing many events at once); a signature per imported
+message (it would claim an order the hub never saw); ending the session with the import
+(participants could not write minutes into it any more); matching imported speakers to registered
+participants by name (the hub cannot check it).
+
+```arc42
+:::decision
+id: dec-session-import
+title: Imported conversations become marked sessions
+status: proposed
+date: 2026-11-07
+addresses: qg-usability, risk-imported-conversation
+:::
+```
+
+## An own JSON format for imported conversations, read by the client
+
+**Context:** Conversations come from many tools, each with its own export. The import interface
+should not change with every new tool. **Decision:** The first import format is our own: one JSON
+document per conversation with its title, its source, its participants and its utterances in
+order. The client core reads it and sends the conversation to the hub in pages, so the CLI and the
+MCP server accept the same format. The README of the client documents the format with an example.
+Adapters for other formats, for example chat exports or WebVTT transcripts of meeting tools, are
+later work in the client and translate into the same pages. **Consequences:** The hub knows only
+the import interface, not the formats of other tools. An agent can write a conversation as one
+JSON object, in a file or directly as the argument of the MCP tool. A very long conversation is
+one file, but goes to the hub in pages. **Rejected:** one line per message (the file then needs a
+header line of another kind, and an agent cannot write it as one object); the JSON form of the
+interface itself (paging and enum names would leak into a format for authors); reading the
+formats in the hub (every new tool would change the hub).
+
+```arc42
+:::decision
+id: dec-import-format
+title: An own JSON format for imported conversations, read by the client
+status: proposed
+date: 2026-11-07
+addresses: qg-usability, con-no-intelligence
+:::
+```

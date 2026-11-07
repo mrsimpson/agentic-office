@@ -18,6 +18,7 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/records/minutes/api/minutesv1connect"
 	"github.com/mrsimpson/agentic-office/hub/records/note/api/notev1connect"
 	"github.com/mrsimpson/agentic-office/hub/session/api/sessionv1connect"
+	"github.com/mrsimpson/agentic-office/hub/session/importapi/sessionimportv1connect"
 	"github.com/mrsimpson/agentic-office/hub/slides/api/slidesv1connect"
 	"github.com/mrsimpson/agentic-office/hub/tasks/api/taskv1connect"
 )
@@ -28,13 +29,15 @@ type Client struct {
 	Key    ed25519.PrivateKey
 	Tokens *auth.TokenSource
 
-	Session  sessionv1connect.SessionServiceClient
-	Identity identityv1connect.IdentityServiceClient
-	Decision decisionv1connect.DecisionServiceClient
-	Minutes  minutesv1connect.MinutesServiceClient
-	Note     notev1connect.NoteServiceClient
-	Task     taskv1connect.TaskServiceClient
-	Slides   slidesv1connect.SlidesServiceClient
+	Session sessionv1connect.SessionServiceClient
+	// SessionImport imports conversations (if-session-import); see Import.
+	SessionImport sessionimportv1connect.SessionImportServiceClient
+	Identity      identityv1connect.IdentityServiceClient
+	Decision      decisionv1connect.DecisionServiceClient
+	Minutes       minutesv1connect.MinutesServiceClient
+	Note          notev1connect.NoteServiceClient
+	Task          taskv1connect.TaskServiceClient
+	Slides        slidesv1connect.SlidesServiceClient
 }
 
 // ErrNoKey means that the key file does not exist.
@@ -59,13 +62,14 @@ func Dial(cfg Config) (*Client, error) {
 	ts := auth.NewTokenSource(identityv1connect.NewIdentityServiceClient(newConnect(hc, base)), key)
 	cc := newConnect(hc, base, auth.Bearer(ts))
 	return &Client{Config: cfg, Key: key, Tokens: ts,
-		Session:  sessionv1connect.NewSessionServiceClient(cc),
-		Identity: identityv1connect.NewIdentityServiceClient(cc),
-		Decision: decisionv1connect.NewDecisionServiceClient(cc),
-		Minutes:  minutesv1connect.NewMinutesServiceClient(cc),
-		Note:     notev1connect.NewNoteServiceClient(cc),
-		Task:     taskv1connect.NewTaskServiceClient(cc),
-		Slides:   slidesv1connect.NewSlidesServiceClient(cc),
+		Session:       sessionv1connect.NewSessionServiceClient(cc),
+		SessionImport: sessionimportv1connect.NewSessionImportServiceClient(cc),
+		Identity:      identityv1connect.NewIdentityServiceClient(cc),
+		Decision:      decisionv1connect.NewDecisionServiceClient(cc),
+		Minutes:       minutesv1connect.NewMinutesServiceClient(cc),
+		Note:          notev1connect.NewNoteServiceClient(cc),
+		Task:          taskv1connect.NewTaskServiceClient(cc),
+		Slides:        slidesv1connect.NewSlidesServiceClient(cc),
 	}, nil
 }
 

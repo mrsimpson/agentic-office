@@ -7,4 +7,4 @@ package sessionv1
 // The form is "<Protobuf package>/<revision>". Increase the revision with every change of the
 // events or of their encoding that changes a Merkle leaf (package merkle), for example a new field
 // in an event. A new Protobuf package (office.session.v2) starts again at revision 1.
-const Schema = "office.session.v1/1"
+const Schema = "office.session.v1/2"

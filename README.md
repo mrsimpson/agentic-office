@@ -85,6 +85,7 @@ hub/                      bb-office-hub: wiring of the hub (binary office-hub)
     api/                  if-session-commands, if-session-stream: contract, generated code,
                           event types in dotted form (api/events), Merkle code (api/merkle),
                           stored form of a session log: lines and tree head (api/logfile)
+    importapi/            if-session-import: contract and generated code
   archive/                bb-archive: local Git repository, push mocked
     storage/              if-archive-storage: write files as one commit, read them back (in-process)
   identity/               bb-identity
@@ -123,6 +124,7 @@ All interfaces are defined in Protobuf and served with Connect RPC (`dec-connect
 |---|---|---|
 | Session commands | `office.session.v1.SessionService` | unary |
 | Session stream | `office.session.v1.SessionService/Subscribe` | server stream from a cursor |
+| Session import | `office.sessionimport.v1.SessionImportService` | unary, one call per page |
 | Auth API | `office.identity.v1.IdentityService` | unary |
 | Decisions | `office.decision.v1.DecisionService` | unary |
 | Minutes | `office.minutes.v1.MinutesService` | unary |
@@ -173,6 +175,34 @@ In short:
 - `Subscribe` ends with `unauthenticated` when the token expires or its key is revoked. The client
   authenticates again and resumes from its cursor.
 
+### Session import
+
+The meeting session also realizes the session import (`hub/session/import.go`,
+`dec-session-import`). `ImportConversation` takes one page of a conversation from outside the
+office; the proto comment in `hub/session/importapi/office/sessionimport/v1/import.proto` has
+the full contract. In short:
+
+- The first page creates the session; the session must have no events. It carries the
+  conversation (`source` is required, `title` is optional) and writes `session.imported` as
+  event 1.
+- Each page may add participants (`key`, `display_name`, `kind`) and utterances (`speaker` is a
+  key, `text`, `modality`, optional `time`), at most 1000 of each. A participant becomes
+  `participant.joined` with `imported: true` and the ID `imported:<key>`; registered IDs never
+  contain `:`. An utterance becomes `utterance.final` with `originalTime`.
+- The page with `complete` writes `import.completed` (with the number of utterances). It also
+  starts a write to the archive, like `session.ended`.
+- Every page has its own `command_id`; a repeated page returns its stored result with
+  `duplicate`. Every event of a page carries that command ID and the importer as actor. The
+  response has the event range and a tree head signed over the log up to the page.
+- Until the import is complete, the session takes only further pages of the importer; session
+  commands fail with `failed_precondition`. After it, the session is a normal session: join,
+  minutes, end. Nobody can mark an imported sentence off the record yet (#50).
+- What the signature means: the tree heads over an imported log prove which participant imported
+  it and that it has not changed since. They do not prove that the speakers said it.
+
+The new events are revision 2 of the session schema. Stored sessions of revision 1 are readable
+but not continued (`dec-session-schema`).
+
 ### Checking a session log (Merkle tree)
 
 The events of a session are the leaves of a Merkle tree in the style of RFC 9162 (Certificate
@@ -190,7 +220,7 @@ Transparency), and the hub signs its tree heads (`dec-merkle-log`). Package
   `merkle.TreeHeadMessage`; it covers the schema.
 - Schema (`dec-session-schema`): a session belongs to the schema it was started with, the
   version of the session contract. The schema of this code is `sessionv1.Schema`, for example
-  `office.session.v1/1`: the Protobuf package and a revision. The revision goes up with every
+  `office.session.v1/2`: the Protobuf package and a revision. The revision goes up with every
   change of the events or their encoding that changes a leaf. Every check in package `merkle`
   fails with `merkle.ErrSchema` (and `merkle.ErrVerify`) for a tree head of another schema, so a
   verifier checks a session only with code of its own schema.
@@ -701,6 +731,60 @@ complete line; after a network drop it reconnects with a backoff.
 (`dec-gateway-cli`) and prints one line per change. Keys: `p` pauses or resumes, `o` marks the
 last sent sentence off the record, `q` quits. It ends with the session.
 
+### Import a conversation
+
+`office session import <file | -> [--session S]` imports a whole conversation from another tool
+(a chat export, a meeting transcript, an agent conversation) as a new session
+(`dec-session-import`). It prints the session ID; without `--session` it creates one
+(`import-<uuid>`). `--json` prints `{"sessionId", "pages", "firstEventId", "lastEventId",
+"participants", "utterances", "treeHead"}`. The CLI sends the conversation in pages of 500
+utterances. If it stops halfway, the session stays incomplete; import again into a new session
+(#51).
+
+The import format (`dec-import-format`) is one JSON document:
+
+```json
+{
+  "source": "Slack #design, exported 2026-11-06",
+  "title": "Design review",
+  "participants": [
+    {"id": "ada", "name": "Ada", "kind": "human"},
+    {"id": "claude", "name": "Claude", "kind": "agent"}
+  ],
+  "utterances": [
+    {"speaker": "ada", "text": "Shall we import old chats?", "time": "2026-11-06T10:00:00Z"},
+    {"speaker": "claude", "text": "Yes, as marked sessions.", "time": "2026-11-06T10:00:30Z"},
+    {"speaker": "ada", "text": "Decided.", "modality": "voice"}
+  ]
+}
+```
+
+| Field | Required | Meaning |
+|---|---|---|
+| `source` | yes | Where the conversation comes from: a tool, a channel, a URL. |
+| `title` | no | Title of the conversation. |
+| `participants[].id` | yes | Short ID inside the file: 1 to 64 letters, digits, `.`, `_` or `-`, starting with a letter or digit. Unique. |
+| `participants[].name` | yes | Display name. |
+| `participants[].kind` | yes | `human` or `agent`. |
+| `utterances[]` | | The messages in order. The order of the file is the order of the log. |
+| `utterances[].speaker` | yes | The `id` of a participant. |
+| `utterances[].text` | yes | What was said or written. |
+| `utterances[].time` | no | When, in RFC 3339. Kept as `originalTime`; not checked. |
+| `utterances[].modality` | no | `text` (default) or `voice`. |
+
+Unknown fields are an error, so a typo does not get lost. Every error in the file is a usage
+error (exit code 2), and nothing is imported. In the log, the session starts with
+`session.imported`, then `participant.joined` (with `imported: true`) for every speaker, then
+one `utterance.final` per message, and ends the import with `import.completed`:
+
+```sh
+office session import design.json --session design-review
+office meeting events --session design-review | jq -c 'select(.type == "utterance.final") | .utteranceFinal.text'
+office meeting join design-review     # then write minutes, record decisions and tasks, end it
+```
+
+Adapters for other formats (chat exports, WebVTT) are not built yet; convert to this format first.
+
 ### Off the record and reading events after a cursor
 
 What is said stays said (`dec-off-the-record`). A participant can mark **their own** sentence off
@@ -843,6 +927,7 @@ tool names.
 | `minutes_get` (session), `minutes_list` (afterId, limit, session) | `minutes show`, `minutes list` |
 | `task_create` (title, description, assignee, status, session), `task_get` (ref) | `task create`, `task get` |
 | `task_list` (statuses, assignee, session, pageToken, limit), `task_update` (ref and the fields to change) | `task list`, `task update` |
+| `session_import` (conversation or file, session) | `session import` |
 | `whoami` | `whoami` |
 
 Session tools take an optional `session`. The default is `--session` or `OFFICE_SESSION`, else the

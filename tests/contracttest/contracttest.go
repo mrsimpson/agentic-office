@@ -42,6 +42,7 @@ import (
 	minutesv1connect "github.com/mrsimpson/agentic-office/hub/records/minutes/api/minutesv1connect"
 	notev1connect "github.com/mrsimpson/agentic-office/hub/records/note/api/notev1connect"
 	sessionv1connect "github.com/mrsimpson/agentic-office/hub/session/api/sessionv1connect"
+	sessionimportv1connect "github.com/mrsimpson/agentic-office/hub/session/importapi/sessionimportv1connect"
 	"github.com/mrsimpson/agentic-office/hub/slides/api/slidesv1connect"
 	taskv1connect "github.com/mrsimpson/agentic-office/hub/tasks/api/taskv1connect"
 )
@@ -342,6 +343,7 @@ func (s *Hub) Participant(t testing.TB, participantID, displayName string, kind 
 // Clients holds a Connect client for every office interface.
 type Clients struct {
 	Session  sessionv1connect.SessionServiceClient
+	Import   sessionimportv1connect.SessionImportServiceClient
 	Identity identityv1connect.IdentityServiceClient
 	Decision decisionv1connect.DecisionServiceClient
 	Minutes  minutesv1connect.MinutesServiceClient
@@ -359,6 +361,7 @@ func NewClients(baseURL string, hc *http.Client, interceptors ...connect.ClientI
 	c := connect.NewClient(connecthttp.NewTransport(hc, baseURL), interceptors...)
 	return Clients{
 		Session:  sessionv1connect.NewSessionServiceClient(c),
+		Import:   sessionimportv1connect.NewSessionImportServiceClient(c),
 		Identity: identityv1connect.NewIdentityServiceClient(c),
 		Decision: decisionv1connect.NewDecisionServiceClient(c),
 		Minutes:  minutesv1connect.NewMinutesServiceClient(c),

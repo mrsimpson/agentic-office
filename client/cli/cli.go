@@ -48,6 +48,10 @@ Meeting:
   stage show <artifact-id>
   stage link                         create a read-only link to the stage
 
+Import (dec-session-import; the format is in README.md):
+  session import <conversation.json | ->  import a conversation as a new, marked session and
+                                     print its ID (--session S chooses the ID; - reads stdin)
+
 Slides (the ID, such as slides/42, is what stage show takes):
   slides render <deck.json | deck.md>  render a deck and print its ID
   slides get <id> [--out FILE]       the rendered deck (--json: input and output)
@@ -118,6 +122,7 @@ func init() {
 		"meeting pause":            cmdSimple("pause", (*core.Client).Pause),
 		"meeting resume":           cmdSimple("resume", (*core.Client).Resume),
 		"meeting end":              cmdSimple("end", (*core.Client).EndSession),
+		"session import":           cmdImport,
 		"say":                      cmdSay,
 		"utterance off-the-record": cmdOffTheRecord,
 		"signal turn-end":          cmdTurnEnd,
