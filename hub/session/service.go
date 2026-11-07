@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"errors"
 	"slices"
 	"strings"
 	"sync"
@@ -71,6 +72,12 @@ type Service struct {
 
 	mu       sync.Mutex
 	sessions map[string]*state
+
+	// The archive (dec-session-persistence), set by UseArchive. See RunArchive.
+	arch   *archiver
+	archMu sync.Mutex
+	dirty  map[string]bool // sessions with events that are not in the archive yet
+	wake   chan struct{}   // wakes the writer when a session ends
 }
 
 var _ sessionv1connect.SessionServiceHandler = (*Service)(nil)
@@ -91,6 +98,21 @@ func New(store Store, auth Authorizer, journal Journal, key ed25519.PrivateKey) 
 		key = k
 	}
 	return &Service{store: store, auth: auth, journal: journal, key: key, sessions: map[string]*state{}}
+}
+
+// UseArchive makes the service write its sessions to an archive. Call it before the service
+// takes commands, then run RunArchive.
+func (s *Service) UseArchive(opts ArchiveOptions) error {
+	if opts.Archive == nil {
+		return errors.New("session: no archive")
+	}
+	if opts.Interval <= 0 {
+		return errors.New("session: the archive interval must be positive")
+	}
+	s.arch = &archiver{opts: opts, lines: map[string]*archivedLog{}}
+	s.dirty = map[string]bool{}
+	s.wake = make(chan struct{}, 1)
+	return nil
 }
 
 // state is what the service knows about one session. It is derived from the log only, so it can
@@ -290,6 +312,7 @@ func (s *Service) run(ctx context.Context, c command, isJoin bool) (*sessionv1.C
 	if err := st.apply(ev); err != nil {
 		return nil, err
 	}
+	s.markDirty(c.sessionID, ev.GetType())
 	return &sessionv1.CommandResult{Event: ev}, nil
 }
 

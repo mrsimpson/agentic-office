@@ -33,6 +33,13 @@
 //     and GetInclusionProof compute heads and proofs from them; the hub key passed to New signs
 //     the heads. session.ended carries the signed head of the log before it. A placeholder
 //     carries the leaf hash of its original.
+//   - The service writes its sessions to the archive (if-archive-storage, dec-session-persistence)
+//     when UseArchive is set and RunArchive runs: at the interval and when a session ends, in
+//     the background, at most one write at a time. Each write is one commit with, per changed
+//     session, the raw log in the line form of package logfile (ArchiveLogFile, with the
+//     originals of utterances that are off the record) and the signed tree head over exactly
+//     that log (ArchiveTreeHeadFile). The service only reads the log from the archive again once
+//     restore exists (#34).
 //   - Subscribe closes the stream after it has sent session.ended. It ends the stream with
 //     Unauthenticated when the token of the caller expires or is revoked.
 package session

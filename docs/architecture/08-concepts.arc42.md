@@ -31,10 +31,12 @@ Corrections and off-the-record marks are new events that point to the original
 deliver a placeholder without its text, so no false gap appears (`dec-off-the-record`).
 
 **Storage and integrity.** The hub orders the events and is the gateway to the archive: it writes
-the log to an external Git repository at a configurable interval and at the end, without ever
-holding up the session (`dec-session-persistence`). The peers keep copies as their reading
-interface. The events are the leaves of a Merkle tree, and the hub signs its tree head
-(`dec-merkle-log`). After a crash, the hub restores a session from the archive, and a peer fills in
+the log to a Git repository at a configurable interval and at the end, without ever holding up
+the session (`dec-session-persistence`). At first the repository is local on the hub host
+(`dec-yaml-git-storage`). The peers keep copies as their reading interface; their copies and the
+stored log have the same lines. The events are the leaves of a Merkle tree, and the hub signs its
+tree head (`dec-merkle-log`). Every write to the archive carries the signed tree head over
+exactly the stored log. After a crash, the hub restores a session from the archive, and a peer fills in
 the rest (`dec-restore-from-peers`).
 
 **Resuming after a network drop:**

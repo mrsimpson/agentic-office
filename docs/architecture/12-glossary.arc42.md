@@ -200,7 +200,7 @@ The central part of the office.
 :::glossary-term
 id: term-hub
 title: Office hub
-definition: The separately deployed part that orders and distributes the events of a session, checks identities, renders the stage and is the gateway to the archive; it does not store sessions itself
+definition: The separately deployed part that orders and distributes the events of a session, checks identities, renders the stage and is the gateway to the archive; its archive part writes sessions to a Git repository, which is the storage
 :::
 ```
 

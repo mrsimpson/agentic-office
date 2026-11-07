@@ -213,3 +213,43 @@ trigger: The moderator ends the session
 involves: bb-mcp, bb-cli, bb-session-service, bb-journal, bb-replicator, bb-participant-client, bb-office-hub
 :::
 ```
+
+## Hub writes sessions to the archive
+
+While sessions run, the meeting session writes every session that changed to the archive, at a
+configurable interval and at once when a session ends (`dec-session-persistence`). It takes the
+log as it is at that moment and signs the tree head over it. The archive writes the log and the
+tree head and commits them as one commit; the push is mocked. Commands and the stream go on
+during the commit. Events that arrive during a slow commit go into the next write. There is
+never more than one write in progress (`qs-archive-no-backpressure`).
+
+```arc42
+:::runtime-scenario
+id: rs-archive-session
+title: Hub writes sessions to the archive
+trigger: The write interval has passed, or a session has ended
+involves: bb-session-service, bb-archive, bb-office-hub
+:::
+```
+
+```arc42
+:::diagram
+id: seq-archive-session
+notation: mermaid-sequence
+scenario: rs-archive-session
+aliases: bb_session=bb-session-service, bb_archive=bb-archive
+:::
+```
+
+```mermaid
+sequenceDiagram
+    participant bb_session as Meeting session
+    participant bb_archive as Archive
+    Note over bb_session: interval passed or session.ended
+    bb_session->>bb_session: take the changed sessions, sign their tree heads
+    bb_session->>bb_archive: commit (log and tree head of each session)
+    Note over bb_session: commands and the stream go on
+    bb_archive->>bb_archive: write files, commit, push (mocked)
+    bb_archive-->>bb_session: commit ID
+    Note over bb_session: the next write takes everything since
+```

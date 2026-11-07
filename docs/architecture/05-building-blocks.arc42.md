@@ -35,7 +35,7 @@ flowchart LR
 ## Office hub
 
 The central, headless part. It holds the state of the team and of running meetings, offers
-deterministic tools and renders the stage. It contains no LLM.
+deterministic tools and renders the stage. It is the gateway to the archive. It contains no LLM.
 
 ```arc42
 :::building-block
@@ -56,13 +56,14 @@ id: bb-office-hub-whitebox
 view: building-block
 notation: mermaid
 roots: bb-office-hub
-aliases: bb_office_hub=bb-office-hub, bb_artifact_service=bb-artifact-service, bb_identity=bb-identity, bb_journal=bb-journal, bb_session_service=bb-session-service, bb_stage=bb-stage
+aliases: bb_office_hub=bb-office-hub, bb_archive=bb-archive, bb_artifact_service=bb-artifact-service, bb_identity=bb-identity, bb_journal=bb-journal, bb_session_service=bb-session-service, bb_stage=bb-stage
 :::
 ```
 
 ```mermaid
 flowchart LR
     subgraph bb_office_hub [Office hub]
+        bb_archive[Archive]
         bb_artifact_service[Artifact tools]
         bb_identity[Identity]
         bb_journal[Journal]
@@ -71,6 +72,7 @@ flowchart LR
     end
     bb_artifact_service -->|if-token-check| bb_identity
     bb_journal -->|if-token-check| bb_identity
+    bb_session_service -->|if-archive-storage| bb_archive
     bb_session_service -->|if-journal-api| bb_journal
     bb_session_service -->|if-token-check| bb_identity
     bb_stage -->|if-session-stream| bb_session_service
@@ -108,6 +110,11 @@ Delivers the event log of a session from a cursor onwards, then live. This is th
 replication and for the stage. After a drop, the subscriber reconnects with its last event ID.
 It also answers a one-time request for the events after a cursor. A participant uses it when it
 finds a gap in its copy, or to follow the session without a file system (`dec-events-from-cursor`).
+
+The interface also defines the stored form of a session log: one line per event and the signed
+tree head next to it. The local log of a participant and the session log in the archive use the
+same lines (`dec-yaml-git-storage`), so every reader can rebuild the events and check them
+against the tree head with the event types of this interface alone.
 
 ```arc42
 :::interface
@@ -196,10 +203,17 @@ title: Meeting session
 technology: Go / connect-go
 parent: bb-office-hub
 implements: concept-event-log, concept-participant-model, concept-identity
-requires: if-journal-api, if-token-check
+requires: if-journal-api, if-token-check, if-archive-storage
 path: hub/session
 :::
 ```
+
+The meeting session writes the log of every session that changed to the archive, at a
+configurable interval and when the session ends (`dec-session-persistence`). The write runs in
+the background: commands and the stream never wait for it. At most one write is in progress. A
+slow write makes the next write take everything that has come since. Every write stores the raw
+log (with the original text of sentences that are off the record, and their marks) and the tree
+head signed by the hub over exactly that log (`dec-merkle-log`).
 
 ### Journal
 
@@ -232,6 +246,40 @@ technology: Go
 parent: bb-office-hub
 path: hub/artifacts
 requires: if-token-check
+:::
+```
+
+### Archive
+
+The storage that all record parts of the hub use (`dec-records-per-type`). It stores records as
+files in a local Git repository on the hub host and commits locally (`dec-yaml-git-storage`).
+Every change of a caller is one commit. The archive does not know the records: the caller
+decides the files and their content. After every commit, the archive pushes to a remote. The
+push is mocked for now: it does nothing and reports success. A commit can be slow, so callers
+that must not wait call it in the background.
+
+```arc42
+:::building-block
+id: bb-archive
+title: Archive
+technology: Go / local Git repository
+parent: bb-office-hub
+path: hub/archive
+:::
+```
+
+#### Archive storage
+
+The in-process interface of the archive: write a set of files as one commit. Paths are relative
+to the repository.
+
+```arc42
+:::interface
+id: if-archive-storage
+title: Archive storage
+provider: bb-archive
+protocol: In-process Go call
+path: hub/archive/storage
 :::
 ```
 
@@ -366,7 +414,8 @@ path: client/mcp
 
 An append-only JSONL file with one compact line per event. Every line carries the event type in
 dotted form (for example `"type":"utterance.final"`) and the event ID as a JSON number, so that
-`tail -f`, `grep` and `jq` work without conversion.
+`tail -f`, `grep` and `jq` work without conversion. The line form belongs to the session stream,
+so the session log in the archive has the same lines.
 
 ```arc42
 :::interface

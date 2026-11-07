@@ -30,6 +30,7 @@ architecture-beta
     service bb-artifact-service(server)[Artifact tools] in dn-office-hub
     service bb-stage(internet)[Stage] in dn-office-hub
     service bb-identity(server)[Identity] in dn-office-hub
+    service bb-archive(disk)[Archive] in dn-office-hub
     bb-ears:R --> L:bb-session-service
     bb-replicator:R --> L:bb-session-service
     bb-mcp:L --> R:bb-session-service
@@ -80,9 +81,10 @@ hosts: bb-mcp, bb-cli, bb-client-core, bb-replicator
 
 ## Office hub
 
-One server or container that runs the hub: the meeting session, the journal, the artifact tools and the stage.
-It stores sessions and all other records as YAML in a local Git repository on this host
-(`dec-yaml-git-storage`); the push to a remote is mocked for now. It keeps its own
+One server or container that runs the hub: the meeting session, the journal, the artifact tools,
+the stage and the archive. The archive stores sessions and all other records in a local Git
+repository on this host (`dec-yaml-git-storage`); the push to a remote is mocked for now. The
+host needs the Git command line tool. It keeps its own
 state permanently: the participants and their keys (identity) and its signing key for the tree
 heads (`dec-merkle-log`).
 
@@ -92,6 +94,6 @@ id: dn-office-hub
 title: Office hub
 type: server
 parent: env-mvp
-hosts: bb-session-service, bb-journal, bb-artifact-service, bb-stage, bb-identity
+hosts: bb-session-service, bb-journal, bb-artifact-service, bb-stage, bb-identity, bb-archive
 :::
 ```

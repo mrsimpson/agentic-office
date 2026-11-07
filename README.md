@@ -80,9 +80,12 @@ blocks goes through an interface that the importing block requires (concept-modu
 
 ```
 hub/                      bb-office-hub: wiring of the hub (binary office-hub)
-  session/                bb-session-service
+  session/                bb-session-service; writes sessions to the archive
     api/                  if-session-commands, if-session-stream: contract, generated code,
-                          event types in dotted form (api/events)
+                          event types in dotted form (api/events), Merkle code (api/merkle),
+                          stored form of a session log: lines and tree head (api/logfile)
+  archive/                bb-archive: local Git repository, push mocked
+    storage/              if-archive-storage: write files as one commit (in-process)
   identity/               bb-identity
     api/                  if-auth-api: contract, generated code, client side (api/auth: key files,
                           challenge signing, tokens, TLS trust)
@@ -96,7 +99,7 @@ client/                   bb-participant-client: wiring of the client (binary of
   cli/                    bb-cli, if-cli
   mcp/                    bb-mcp, if-mcp
   replicator/             bb-replicator, if-replication (start, find and stop a replicator)
-    locallog/             if-local-log: line format of the local session log
+    locallog/             if-local-log: the local session log, in the line form of api/logfile
   ears/                   bb-ears, if-audio-in
 tests/                    external actors: may use interfaces only
   architecture/           architecture test
@@ -138,8 +141,10 @@ Rules that hold for all of them:
 
 ### Meeting session
 
-The meeting session (`hub/session`) is implemented. It keeps its logs in memory, so a restart
-of the hub loses all sessions. The package comment in `hub/session/doc.go` has the details.
+The meeting session (`hub/session`) is implemented. It keeps its logs in memory and writes them
+to the archive in the background (see [Archive](#archive)). A restart of the hub does not read
+them back yet (#34), so it starts without sessions. The package comment in `hub/session/doc.go`
+has the details.
 In short:
 
 - A session exists as soon as someone joins or subscribes.
@@ -181,6 +186,44 @@ Transparency), and the hub signs its tree heads (`dec-merkle-log`). Package
   `<data-dir>/signing.key`, so heads signed before a restart still verify.
 - Check a copy: `merkle.VerifyEvents(events, head, hubKey)` (all events from 1 to the tree size),
   `merkle.VerifyEventInclusion` and `merkle.VerifyTreeHeadConsistency`.
+
+### Archive
+
+The archive (`hub/archive`) stores the records of the hub in a local Git repository on the hub
+host, by default `<data-dir>/archive` (`-archive-dir`). It creates the repository (branch `main`)
+on the first start. Every write is one commit. The push to a remote is mocked: it does nothing
+and reports success (#43). The hub needs the `git` command line tool in `PATH`. It runs git
+without your system and global git configuration, so hooks and commit signing do not apply.
+
+The meeting session writes every session that changed:
+
+- every `-archive-interval` (default 30s), and at once when the session ends;
+- once more when the hub stops (SIGINT or SIGTERM);
+- in the background: commands and the stream never wait for Git. At most one write is in
+  progress. A write that takes longer than the interval makes the next write take everything
+  that came meanwhile, so writes never queue up. A failed write is logged and repeated with the
+  next write.
+
+A session is stored in the directory `sessions/<name>/`. `<name>` is the session ID if it is safe
+as a file name (letters, digits, `.`, `_`, `-`, at most 128 characters, not starting with `.`),
+else `=` plus the base64url form of the ID without padding (`team/weekly 1` becomes
+`=dGVhbS93ZWVrbHkgMQ`). Each write puts two files into one commit:
+
+| File | What it is |
+|---|---|
+| `log.jsonl` | The raw session log: one line per event, the same lines as the local log of a participant (`hub/session/api/logfile`). It keeps the original text of sentences that are off the record and their `utterance.off_the_record` marks. Reading a session through the interfaces gives placeholders. |
+| `tree-head.yaml` | The tree head signed by the hub over exactly this log: `session_id`, `tree_size` (the number of lines), `root_hash`, `signature`, `public_key` (bytes in base64). |
+
+Check a stored session:
+
+```go
+evs, _ := logfile.UnmarshalLines(logData)
+head, _ := logfile.UnmarshalTreeHead(headData)
+err := merkle.VerifyEvents(evs, head, hubKey) // hubKey from GetHubKey
+```
+
+`git log -- sessions/<name>/log.jsonl` lists the writes of a session; every commit extends the
+log of the one before.
 
 ### Identity
 
@@ -271,6 +314,21 @@ All files of the hub are in its data directory, by default `~/.config/agentic-of
 | `artifacts.jsonl` | Artifacts, one JSON object per line: command ID, input and artifact in the form of the API. The hub appends to it. |
 | `tls.crt`, `tls.key` | TLS certificate and key. The hub creates a self-signed pair if neither exists. |
 | `signing.key` | Ed25519 key that signs the tree heads of session logs (`-signing-key`). The hub creates it if it does not exist. Keep it: without it, old tree heads cannot be checked against the hub key. |
+| `archive/` | The Git repository of the archive (`-archive-dir`). The hub creates it and commits into it. See [Archive](#archive). |
+
+Flags of the hub (`bin/office-hub -h` lists them all):
+
+| Flag | Default | What it sets |
+|---|---|---|
+| `-addr` | `127.0.0.1:8740` | Listen address |
+| `-data-dir` | `~/.config/agentic-office/hub` | Data directory |
+| `-archive-dir` | `<data-dir>/archive` | Git repository of the archive |
+| `-archive-interval` | `30s` | Time between two writes of changed sessions. Keep it above the usual commit time. |
+| `-tls-cert`, `-tls-key`, `-tls-hosts` | see [TLS](#tls-and-your-own-certificate) | TLS certificate |
+| `-signing-key` | `<data-dir>/signing.key` | Key that signs tree heads |
+| `-admins` | `<data-dir>/admins` | Admin keys |
+| `-public-url` | `https://<listen address>` | Base URL in stage links |
+| `-token-ttl`, `-stage-link-ttl` | `15m`, `24h` | Lifetime of access tokens and stage links |
 
 ### First admin
 
@@ -387,7 +445,8 @@ text becomes the notes of the slide. A file that does not end with `.md` is JSON
 `RenderSlidesRequest`: `{"title": …, "slides": [{"title": …, "bullets": […], "notes": …}]}`.
 
 **The local log** is `<runtime dir>/<session>/<participant>.jsonl` (directories 0700, file 0600):
-one compact JSON line per event (`client/replicator/locallog`), with the dotted type and the event ID as a
+one compact JSON line per event (`client/replicator/locallog`, the line form of
+`hub/session/api/logfile`, the same as in the archive of the hub), with the dotted type and the event ID as a
 number. It is append-only: marking a sentence off the record adds a new `utterance.off_the_record` line. The runtime
 directory also holds the join state (`<participant>.join`, the stored join command ID, so a
 restarted client is the same participant), the PID of the replicator (`<participant>.pid`) and
@@ -628,6 +687,18 @@ through its interfaces:
   the timing criteria. Two variables set the lengths: `QS_SPEECH_DURATION` (default `60s`) and
   `QS_DROP_DURATION` (default `10s`). `make performance` sets them to `30m` and `60s`, for example
   `make performance QS_SPEECH_DURATION=5m`.
+- `tests/contract/archive_test.go` checks the archive through the real hub and its Git
+  repository: after `session.ended` the session is in one commit with all events, the original
+  of an off-the-record sentence and its mark, and a tree head that verifies; at a short interval
+  every write is one commit whose log extends the one before; the hub writes once more when it
+  stops; session IDs that are not safe as file names are encoded. The harness reads the
+  repository with `contracttest.SessionCommits` and `ReadArchivedSession`.
+- `tests/e2e/archive_test.go` (`TestQualityArchiveNoBackpressure`, `qs-archive-no-backpressure`)
+  puts a `git` wrapper first in the `PATH` of the hub that makes every commit take 5 s, and lets
+  Ada speak every 100 ms at an interval of 500 ms. It checks that commits never overlap, that
+  there are far fewer commits than intervals (no queue), and that the last commit has the whole
+  session. Only `make performance` fails on the latency of commands and the stream (maximum
+  < 200 ms). `QS_ARCHIVE_DURATION` sets how long Ada speaks (default `12s`).
 - `tests/architecture/` checks the code against the arc42 model (`make arch`). It reads the model
   with `arc42 get --format json` and the imports with `go list`. A fixture workspace with
   deliberate violations proves that each rule fails when it should.

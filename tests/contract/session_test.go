@@ -37,9 +37,12 @@ type meeting struct {
 	reader *contracttest.Actor
 }
 
-func newMeeting(t *testing.T) *meeting {
+func newMeeting(t *testing.T) *meeting { t.Helper(); return newMeetingArgs(t) }
+
+// newMeetingArgs starts the hub with extra flags, for example "-archive-interval", "1h".
+func newMeetingArgs(t *testing.T, args ...string) *meeting {
 	t.Helper()
-	srv := contracttest.StartHub(t, nil)
+	srv := contracttest.StartHub(t, nil, args...)
 	return &meeting{t: t, srv: srv, sid: "s-" + ids.NewCommandID(), actors: map[string]*contracttest.Actor{},
 		reader: srv.Participant(t, "reader", "Reader", identityv1.ActorKind_ACTOR_KIND_AGENT)}
 }

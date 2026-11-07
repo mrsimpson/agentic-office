@@ -2,7 +2,8 @@
 //
 // All services are mounted, and the stage at /stage/<session>?token=<stage link token>. Every call
 // needs an access token from the identity block, except GetChallenge and ExchangeChallenge. The server speaks only TLS. The meeting session keeps its
-// logs in memory and signs their tree heads with the signing key; the journal and the artifact tools keep their data in files.
+// logs in memory, signs their tree heads with the signing key and writes them to the archive (a local Git
+// repository; the push is mocked); the journal and the artifact tools keep their data in files.
 //
 // Files in the data directory (-data-dir):
 //
@@ -13,6 +14,8 @@
 //	tls.crt      TLS certificate; created self-signed if neither it nor tls.key exists
 //	tls.key      TLS private key
 //	signing.key  Ed25519 key that signs the tree heads of session logs; created if it does not exist
+//	archive/     Git repository of the archive (-archive-dir); the meeting session writes its logs
+//	             there at the interval -archive-interval and when a session ends
 package main
 
 import (
@@ -34,6 +37,7 @@ import (
 	"connectrpc.com/connect/v2/connecthttp"
 	"connectrpc.com/connect/v2/connectinprocess"
 
+	"github.com/mrsimpson/agentic-office/hub/archive"
 	"github.com/mrsimpson/agentic-office/hub/artifacts"
 	"github.com/mrsimpson/agentic-office/hub/artifacts/api/artifactv1connect"
 	"github.com/mrsimpson/agentic-office/hub/identity"
@@ -55,7 +59,7 @@ func defaultDataDir() string {
 
 func main() {
 	addr := flag.String("addr", "127.0.0.1:8740", "listen address (port 0 picks a free port)")
-	dataDir := flag.String("data-dir", defaultDataDir(), "directory for admin keys, registered keys, the journal, the artifacts and the TLS certificate")
+	dataDir := flag.String("data-dir", defaultDataDir(), "directory for admin keys, registered keys, the journal, the artifacts, the archive and the TLS certificate")
 	certFile := flag.String("tls-cert", "", "TLS certificate (PEM, may include the chain); default <data-dir>/tls.crt")
 	keyFile := flag.String("tls-key", "", "TLS private key (PEM); default <data-dir>/tls.key")
 	hostname, _ := os.Hostname()
@@ -65,6 +69,8 @@ func main() {
 	publicURL := flag.String("public-url", "", "base URL of the server in stage links; default https://<listen address>")
 	tokenTTL := flag.Duration("token-ttl", 15*time.Minute, "lifetime of access tokens")
 	stageTTL := flag.Duration("stage-link-ttl", 24*time.Hour, "lifetime of stage links")
+	archiveDir := flag.String("archive-dir", "", "Git repository of the archive; default <data-dir>/archive, created if missing")
+	archiveInterval := flag.Duration("archive-interval", 30*time.Second, "time between two writes of changed sessions to the archive; sessions are also written when they end")
 	flag.Parse()
 	or := func(v, def string) string {
 		if v != "" {
@@ -128,8 +134,23 @@ func main() {
 	defer artifactStore.Close()
 	arts := artifacts.New(artifactStore, artifacts.TokenCheck())
 
+	// The archive (dec-yaml-git-storage): a local Git repository; the push is mocked (#43).
+	arch, err := archive.Open(context.Background(), archive.Options{Dir: or(*archiveDir, "archive"), Push: archive.NoPush{}})
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("archive %s, sessions written every %s and when they end; push mocked", arch.Dir(), *archiveInterval)
+	sessions := session.New(session.NewMemoryStore(), session.TokenCheck(), jrn, signingKey)
+	if err := sessions.UseArchive(session.ArchiveOptions{Archive: arch, Interval: *archiveInterval, Logf: log.Printf}); err != nil {
+		log.Fatal(err)
+	}
+	// The writer runs until the server has stopped, then writes a last time.
+	archCtx, archStop := context.WithCancel(context.Background())
+	archDone := make(chan struct{})
+	go func() { sessions.RunArchive(archCtx); close(archDone) }()
+
 	cs := connect.NewServer(ids.Interceptor())
-	sessionv1connect.RegisterSessionServiceHandler(cs, session.New(session.NewMemoryStore(), session.TokenCheck(), jrn, signingKey))
+	sessionv1connect.RegisterSessionServiceHandler(cs, sessions)
 	identityv1connect.RegisterIdentityServiceHandler(cs, ids)
 	journalv1connect.RegisterJournalServiceHandler(cs, jrn)
 	artifactv1connect.RegisterArtifactServiceHandler(cs, arts)
@@ -154,7 +175,9 @@ func main() {
 		TLSConfig: &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12},
 		// Open session streams end when the server stops.
 		BaseContext: func(net.Listener) context.Context { return ctx }}
+	shutDown := make(chan struct{})
 	go func() {
+		defer close(shutDown)
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -165,5 +188,8 @@ func main() {
 	if err := srv.ServeTLS(ln, "", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
+	<-shutDown
+	archStop()
+	<-archDone
 	log.Printf("office-hub stopped")
 }

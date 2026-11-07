@@ -239,6 +239,9 @@ func StartHub(t testing.TB, env []string, args ...string) *Hub {
 func StartHubIn(t testing.TB, dir string, adminKey ed25519.PrivateKey, env []string, args ...string) *Hub {
 	t.Helper()
 	p := Start(t, "office-hub", env, append([]string{"-addr", "127.0.0.1:0", "-data-dir", dir}, args...)...)
+	// Stop the hub gracefully first, so it ends its last write to the archive before the data
+	// directory is removed. Start's cleanup kills it if it does not stop in time.
+	t.Cleanup(func() { _, _ = p.Stop(10 * time.Second) })
 	return &Hub{Process: p, URL: p.WaitStderr(t, listening, 10*time.Second), DataDir: dir,
 		CertFile: filepath.Join(dir, "tls.crt"), AdminKey: adminKey}
 }

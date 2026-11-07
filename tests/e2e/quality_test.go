@@ -10,10 +10,11 @@ package e2e
 //
 // In "make e2e" these tests check behaviour only and print the numbers; they never fail on a
 // timing criterion. "make performance" (build tag performance) also checks the timing criteria and
-// runs the lengths of the scenarios. Two environment variables set how long the tests run:
+// runs the lengths of the scenarios. These environment variables set how long the tests run:
 //
 //	QS_SPEECH_DURATION  how long Ada speaks (the test sentences in a loop); default 60s, scenario 30m
 //	QS_DROP_DURATION    how long the network of Ada is down; default 10s, scenario 60s
+//	QS_ARCHIVE_DURATION how long Ada speaks while every commit takes 5 s; default 12s (archive_test.go)
 
 import (
 	"bufio"
