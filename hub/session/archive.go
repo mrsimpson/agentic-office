@@ -12,7 +12,6 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/archive/storage"
 	"github.com/mrsimpson/agentic-office/hub/session/api/events"
 	"github.com/mrsimpson/agentic-office/hub/session/api/logfile"
-	"github.com/mrsimpson/agentic-office/hub/session/api/merkle"
 )
 
 // Layout of a session in the archive (dec-yaml-git-storage). <name> is ArchiveName(session ID).
@@ -44,7 +43,12 @@ type ArchiveOptions struct {
 	Archive storage.Archive
 	// Interval is the time between two writes while sessions change. It must be positive.
 	Interval time.Duration
-	// Logf logs failed writes. Nil means no logging.
+	// RestoreWait is how long a restored session that has not ended waits for a peer to fill in
+	// the events after the last write (dec-restore-from-peers). Commands of the session fail with
+	// Unavailable until a peer's copy is accepted or the time is over. 0 means no wait. There is
+	// no wait if the hub stopped after a last write of every session.
+	RestoreWait time.Duration
+	// Logf logs failed writes and the restore. Nil means no logging.
 	Logf func(format string, args ...any)
 }
 
@@ -100,7 +104,7 @@ func (s *Service) RunArchive(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			last, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			s.writeArchive(last)
+			s.writeArchive(last, true)
 			cancel()
 			return
 		case <-t.C:
@@ -108,7 +112,7 @@ func (s *Service) RunArchive(ctx context.Context) {
 		}
 		// A write is not cancelled when ctx is done: a killed commit could leave the repository
 		// locked. The last write follows it.
-		s.writeArchive(context.WithoutCancel(ctx))
+		s.writeArchive(context.WithoutCancel(ctx), false)
 	}
 }
 
@@ -118,13 +122,15 @@ func (s *Service) logf(format string, args ...any) {
 	}
 }
 
-// writeArchive writes every session that changed since the last write as one commit.
-func (s *Service) writeArchive(ctx context.Context) {
+// writeArchive writes every session that changed since the last write as one commit. The last
+// write (final) also records in ArchiveStateFile that the archive is complete, if it wrote every
+// changed session.
+func (s *Service) writeArchive(ctx context.Context, final bool) {
 	s.archMu.Lock()
 	dirty := s.dirty
 	s.dirty = map[string]bool{}
 	s.archMu.Unlock()
-	if len(dirty) == 0 {
+	if len(dirty) == 0 && !final {
 		return
 	}
 	ids := make([]string, 0, len(dirty))
@@ -134,14 +140,20 @@ func (s *Service) writeArchive(ctx context.Context) {
 	slices.Sort(ids)
 	var files []storage.File
 	var summary []string
+	failed := false
 	for _, sid := range ids {
 		f, n, err := s.archiveFiles(sid)
 		if err != nil {
 			s.logf("archive: session %q: %v", sid, err)
+			failed = true
 			continue
 		}
 		files = append(files, f...)
 		summary = append(summary, fmt.Sprintf("%s (%d events)", sid, n))
+	}
+	if final && !failed && !s.anyRestoring() {
+		files = append(files, storage.File{Path: ArchiveStateFile, Data: marshalArchiveState(true)})
+		summary = append(summary, "complete at stop")
 	}
 	if len(files) == 0 {
 		return
@@ -165,7 +177,7 @@ func (s *Service) archiveFiles(sid string) ([]storage.File, int, error) {
 		return nil, 0, err
 	}
 	n := len(st.leaves)
-	leaves := st.leaves[:n:n]
+	head := s.signedHead(sid, st)
 	st.mu.Unlock()
 
 	al := s.arch.lines[sid]
@@ -191,13 +203,33 @@ func (s *Service) archiveFiles(sid string) ([]storage.File, int, error) {
 		}
 		al.data, al.count = data, n
 	}
-	head, err := logfile.MarshalTreeHead(merkle.SignTreeHead(s.key, sid, leaves))
+	headData, err := logfile.MarshalTreeHead(head)
 	if err != nil {
 		return nil, 0, err
 	}
 	name := ArchiveName(sid)
 	return []storage.File{
 		{Path: fmt.Sprintf(ArchiveLogFile, name), Data: al.data},
-		{Path: fmt.Sprintf(ArchiveTreeHeadFile, name), Data: head},
+		{Path: fmt.Sprintf(ArchiveTreeHeadFile, name), Data: headData},
 	}, n, nil
+}
+
+// anyRestoring reports whether a session still waits for a peer to fill it in. Then the archive
+// is not complete even after a last write.
+func (s *Service) anyRestoring() bool {
+	s.mu.Lock()
+	sts := make([]*state, 0, len(s.sessions))
+	for _, st := range s.sessions {
+		sts = append(sts, st)
+	}
+	s.mu.Unlock()
+	for _, st := range sts {
+		st.mu.Lock()
+		r := st.restoring && (st.broken != "" || time.Now().Before(st.restoreUntil))
+		st.mu.Unlock()
+		if r {
+			return true
+		}
+	}
+	return false
 }

@@ -306,3 +306,56 @@ sequenceDiagram
     bb_archive-->>bb_session: commit ID
     Note over bb_session: the next write takes everything since
 ```
+
+## Hub restarts and restores a session
+
+The hub crashes while a session runs. Its last write to the archive has the session up to some
+event; the events after it are lost on the hub, but the peers still have them. When the hub starts
+again, the meeting session reads every stored log back from the archive and checks it against its
+signed tree head (`dec-restore-from-peers`). A session that has not ended takes no commands yet.
+The replicators reconnect with their cursors. The hub does not know these cursors and answers that
+they are beyond the end. Each replicator then asks the hub how many events it has and offers the
+events after that, with the tree head the hub signed over its copy before the crash
+(`dec-signed-head-in-stream`). The hub checks the signature, the root hash and the consistency
+with its own log, and appends the missing events with their IDs. The first copy that fits wins;
+later copies have no effect. The session takes commands again, the replicators follow the stream
+from their cursors, and the IDs continue without a gap. A copy that does not verify or forks
+fails, and the replicator stops instead of continuing it.
+
+```arc42
+:::runtime-scenario
+id: rs-hub-restart
+title: Hub restarts and restores a session from the archive and the peers
+trigger: The hub starts again after a crash while a session runs
+involves: bb-session-service, bb-archive, bb-replicator, bb-participant-client, bb-office-hub
+:::
+```
+
+```arc42
+:::diagram
+id: seq-hub-restart
+notation: mermaid-sequence
+scenario: rs-hub-restart
+aliases: bb_session=bb-session-service, bb_archive=bb-archive, bb_replicator=bb-replicator
+:::
+```
+
+```mermaid
+sequenceDiagram
+    participant bb_archive as Archive
+    participant bb_session as Meeting session
+    participant bb_replicator as Log replicator
+    Note over bb_session: hub starts after a crash
+    bb_session->>bb_archive: read stored logs and tree heads
+    bb_archive-->>bb_session: logs up to the last write
+    bb_session->>bb_session: verify each log, wait for peers
+    bb_replicator->>bb_session: subscribe(cursor=last line)
+    bb_session-->>bb_replicator: cursor beyond the end
+    bb_replicator->>bb_session: tree head (how many events?)
+    bb_replicator->>bb_session: offer missing events + signed tree head
+    bb_session->>bb_session: check signature, root hash, consistency
+    bb_session-->>bb_replicator: accepted (a later copy: no effect)
+    bb_replicator->>bb_session: tree head at cursor (same root as the local log?)
+    bb_replicator->>bb_session: subscribe(cursor=last line)
+    bb_session-->>bb_replicator: live events, IDs continue
+```

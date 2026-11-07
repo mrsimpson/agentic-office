@@ -1429,8 +1429,12 @@ func (x *SubscribeRequest) GetAfterEventId() uint32 {
 }
 
 type SubscribeResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Event         *Event                 `protobuf:"bytes,1,opt,name=event,proto3" json:"event,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Event *Event                 `protobuf:"bytes,1,opt,name=event,proto3" json:"event,omitempty"`
+	// tree_head is the tree head signed by the hub over the events 1 to event.id. The hub sets it
+	// on the last event it has when it sends it, so a subscriber always holds a signed head over
+	// its whole copy, and can prove its copy after the hub lost events (OfferLog).
+	TreeHead      *SignedTreeHead `protobuf:"bytes,2,opt,name=tree_head,json=treeHead,proto3" json:"tree_head,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1468,6 +1472,13 @@ func (*SubscribeResponse) Descriptor() ([]byte, []int) {
 func (x *SubscribeResponse) GetEvent() *Event {
 	if x != nil {
 		return x.Event
+	}
+	return nil
+}
+
+func (x *SubscribeResponse) GetTreeHead() *SignedTreeHead {
+	if x != nil {
+		return x.TreeHead
 	}
 	return nil
 }
@@ -2012,6 +2023,135 @@ func (x *GetHubKeyResponse) GetPublicKey() []byte {
 	return nil
 }
 
+type OfferLogRequest struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	SessionId string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	// after_event_id is the last event before the offered events. It is at most the last event of
+	// the hub; the hub uses its own events up to it. 0 offers the whole log.
+	AfterEventId uint32 `protobuf:"varint,2,opt,name=after_event_id,json=afterEventId,proto3" json:"after_event_id,omitempty"`
+	// events are the events after_event_id + 1 to tree_head.tree_size, in order, as the peer
+	// received them. A placeholder (an utterance off the record) verifies by its leaf_hash.
+	Events []*Event `protobuf:"bytes,3,rep,name=events,proto3" json:"events,omitempty"`
+	// tree_head is a tree head signed by the hub over the events 1 to tree_size of the copy, for
+	// example the last one of the session stream.
+	TreeHead      *SignedTreeHead `protobuf:"bytes,4,opt,name=tree_head,json=treeHead,proto3" json:"tree_head,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OfferLogRequest) Reset() {
+	*x = OfferLogRequest{}
+	mi := &file_office_session_v1_session_proto_msgTypes[35]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OfferLogRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OfferLogRequest) ProtoMessage() {}
+
+func (x *OfferLogRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_office_session_v1_session_proto_msgTypes[35]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OfferLogRequest.ProtoReflect.Descriptor instead.
+func (*OfferLogRequest) Descriptor() ([]byte, []int) {
+	return file_office_session_v1_session_proto_rawDescGZIP(), []int{35}
+}
+
+func (x *OfferLogRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *OfferLogRequest) GetAfterEventId() uint32 {
+	if x != nil {
+		return x.AfterEventId
+	}
+	return 0
+}
+
+func (x *OfferLogRequest) GetEvents() []*Event {
+	if x != nil {
+		return x.Events
+	}
+	return nil
+}
+
+func (x *OfferLogRequest) GetTreeHead() *SignedTreeHead {
+	if x != nil {
+		return x.TreeHead
+	}
+	return nil
+}
+
+type OfferLogResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// accepted is true if the hub appended events from the copy. It is false for a copy that is
+	// not longer than the log of the hub.
+	Accepted bool `protobuf:"varint,1,opt,name=accepted,proto3" json:"accepted,omitempty"`
+	// tree_head is the signed tree head of the log of the hub after the offer.
+	TreeHead      *SignedTreeHead `protobuf:"bytes,2,opt,name=tree_head,json=treeHead,proto3" json:"tree_head,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OfferLogResponse) Reset() {
+	*x = OfferLogResponse{}
+	mi := &file_office_session_v1_session_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OfferLogResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OfferLogResponse) ProtoMessage() {}
+
+func (x *OfferLogResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_office_session_v1_session_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OfferLogResponse.ProtoReflect.Descriptor instead.
+func (*OfferLogResponse) Descriptor() ([]byte, []int) {
+	return file_office_session_v1_session_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *OfferLogResponse) GetAccepted() bool {
+	if x != nil {
+		return x.Accepted
+	}
+	return false
+}
+
+func (x *OfferLogResponse) GetTreeHead() *SignedTreeHead {
+	if x != nil {
+		return x.TreeHead
+	}
+	return nil
+}
+
 var File_office_session_v1_session_proto protoreflect.FileDescriptor
 
 const file_office_session_v1_session_proto_rawDesc = "" +
@@ -2127,9 +2267,10 @@ const file_office_session_v1_session_proto_rawDesc = "" +
 	"\x10SubscribeRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12$\n" +
-	"\x0eafter_event_id\x18\x02 \x01(\rR\fafterEventId\"C\n" +
+	"\x0eafter_event_id\x18\x02 \x01(\rR\fafterEventId\"\x83\x01\n" +
 	"\x11SubscribeResponse\x12.\n" +
-	"\x05event\x18\x01 \x01(\v2\x18.office.session.v1.EventR\x05event\"m\n" +
+	"\x05event\x18\x01 \x01(\v2\x18.office.session.v1.EventR\x05event\x12>\n" +
+	"\ttree_head\x18\x02 \x01(\v2!.office.session.v1.SignedTreeHeadR\btreeHead\"m\n" +
 	"\x10GetEventsRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12$\n" +
@@ -2169,7 +2310,16 @@ const file_office_session_v1_session_proto_rawDesc = "" +
 	"\x10GetHubKeyRequest\"2\n" +
 	"\x11GetHubKeyResponse\x12\x1d\n" +
 	"\n" +
-	"public_key\x18\x01 \x01(\fR\tpublicKey2\xbe\f\n" +
+	"public_key\x18\x01 \x01(\fR\tpublicKey\"\xc8\x01\n" +
+	"\x0fOfferLogRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\x12$\n" +
+	"\x0eafter_event_id\x18\x02 \x01(\rR\fafterEventId\x120\n" +
+	"\x06events\x18\x03 \x03(\v2\x18.office.session.v1.EventR\x06events\x12>\n" +
+	"\ttree_head\x18\x04 \x01(\v2!.office.session.v1.SignedTreeHeadR\btreeHead\"n\n" +
+	"\x10OfferLogResponse\x12\x1a\n" +
+	"\baccepted\x18\x01 \x01(\bR\baccepted\x12>\n" +
+	"\ttree_head\x18\x02 \x01(\v2!.office.session.v1.SignedTreeHeadR\btreeHead2\x93\r\n" +
 	"\x0eSessionService\x12G\n" +
 	"\x04Join\x12\x1e.office.session.v1.JoinRequest\x1a\x1f.office.session.v1.JoinResponse\x12J\n" +
 	"\x05Leave\x12\x1f.office.session.v1.LeaveRequest\x1a .office.session.v1.LeaveResponse\x12h\n" +
@@ -2187,7 +2337,8 @@ const file_office_session_v1_session_proto_rawDesc = "" +
 	"\vGetTreeHead\x12%.office.session.v1.GetTreeHeadRequest\x1a&.office.session.v1.GetTreeHeadResponse\x12t\n" +
 	"\x13GetConsistencyProof\x12-.office.session.v1.GetConsistencyProofRequest\x1a..office.session.v1.GetConsistencyProofResponse\x12n\n" +
 	"\x11GetInclusionProof\x12+.office.session.v1.GetInclusionProofRequest\x1a,.office.session.v1.GetInclusionProofResponse\x12V\n" +
-	"\tGetHubKey\x12#.office.session.v1.GetHubKeyRequest\x1a$.office.session.v1.GetHubKeyResponse\x12X\n" +
+	"\tGetHubKey\x12#.office.session.v1.GetHubKeyRequest\x1a$.office.session.v1.GetHubKeyResponse\x12S\n" +
+	"\bOfferLog\x12\".office.session.v1.OfferLogRequest\x1a#.office.session.v1.OfferLogResponse\x12X\n" +
 	"\tSubscribe\x12#.office.session.v1.SubscribeRequest\x1a$.office.session.v1.SubscribeResponse0\x01B?Z=github.com/mrsimpson/agentic-office/hub/session/api;sessionv1b\x06proto3"
 
 var (
@@ -2202,7 +2353,7 @@ func file_office_session_v1_session_proto_rawDescGZIP() []byte {
 	return file_office_session_v1_session_proto_rawDescData
 }
 
-var file_office_session_v1_session_proto_msgTypes = make([]protoimpl.MessageInfo, 35)
+var file_office_session_v1_session_proto_msgTypes = make([]protoimpl.MessageInfo, 37)
 var file_office_session_v1_session_proto_goTypes = []any{
 	(*CommandResult)(nil),               // 0: office.session.v1.CommandResult
 	(*JoinRequest)(nil),                 // 1: office.session.v1.JoinRequest
@@ -2239,27 +2390,29 @@ var file_office_session_v1_session_proto_goTypes = []any{
 	(*GetInclusionProofResponse)(nil),   // 32: office.session.v1.GetInclusionProofResponse
 	(*GetHubKeyRequest)(nil),            // 33: office.session.v1.GetHubKeyRequest
 	(*GetHubKeyResponse)(nil),           // 34: office.session.v1.GetHubKeyResponse
-	(*Event)(nil),                       // 35: office.session.v1.Event
-	(ParticipantKind)(0),                // 36: office.session.v1.ParticipantKind
-	(Modality)(0),                       // 37: office.session.v1.Modality
-	(*timestamppb.Timestamp)(nil),       // 38: google.protobuf.Timestamp
-	(*TurnEnd)(nil),                     // 39: office.session.v1.TurnEnd
-	(*SilenceLong)(nil),                 // 40: office.session.v1.SilenceLong
-	(*Addressed)(nil),                   // 41: office.session.v1.Addressed
-	(*SignedTreeHead)(nil),              // 42: office.session.v1.SignedTreeHead
+	(*OfferLogRequest)(nil),             // 35: office.session.v1.OfferLogRequest
+	(*OfferLogResponse)(nil),            // 36: office.session.v1.OfferLogResponse
+	(*Event)(nil),                       // 37: office.session.v1.Event
+	(ParticipantKind)(0),                // 38: office.session.v1.ParticipantKind
+	(Modality)(0),                       // 39: office.session.v1.Modality
+	(*timestamppb.Timestamp)(nil),       // 40: google.protobuf.Timestamp
+	(*TurnEnd)(nil),                     // 41: office.session.v1.TurnEnd
+	(*SilenceLong)(nil),                 // 42: office.session.v1.SilenceLong
+	(*Addressed)(nil),                   // 43: office.session.v1.Addressed
+	(*SignedTreeHead)(nil),              // 44: office.session.v1.SignedTreeHead
 }
 var file_office_session_v1_session_proto_depIdxs = []int32{
-	35, // 0: office.session.v1.CommandResult.event:type_name -> office.session.v1.Event
-	36, // 1: office.session.v1.JoinRequest.kind:type_name -> office.session.v1.ParticipantKind
+	37, // 0: office.session.v1.CommandResult.event:type_name -> office.session.v1.Event
+	38, // 1: office.session.v1.JoinRequest.kind:type_name -> office.session.v1.ParticipantKind
 	0,  // 2: office.session.v1.JoinResponse.result:type_name -> office.session.v1.CommandResult
 	0,  // 3: office.session.v1.LeaveResponse.result:type_name -> office.session.v1.CommandResult
-	37, // 4: office.session.v1.SubmitUtteranceRequest.modality:type_name -> office.session.v1.Modality
-	38, // 5: office.session.v1.SubmitUtteranceRequest.transcribed_at:type_name -> google.protobuf.Timestamp
+	39, // 4: office.session.v1.SubmitUtteranceRequest.modality:type_name -> office.session.v1.Modality
+	40, // 5: office.session.v1.SubmitUtteranceRequest.transcribed_at:type_name -> google.protobuf.Timestamp
 	0,  // 6: office.session.v1.SubmitUtteranceResponse.result:type_name -> office.session.v1.CommandResult
 	0,  // 7: office.session.v1.MarkOffTheRecordResponse.result:type_name -> office.session.v1.CommandResult
-	39, // 8: office.session.v1.SubmitSignalRequest.turn_end:type_name -> office.session.v1.TurnEnd
-	40, // 9: office.session.v1.SubmitSignalRequest.silence_long:type_name -> office.session.v1.SilenceLong
-	41, // 10: office.session.v1.SubmitSignalRequest.addressed:type_name -> office.session.v1.Addressed
+	41, // 8: office.session.v1.SubmitSignalRequest.turn_end:type_name -> office.session.v1.TurnEnd
+	42, // 9: office.session.v1.SubmitSignalRequest.silence_long:type_name -> office.session.v1.SilenceLong
+	43, // 10: office.session.v1.SubmitSignalRequest.addressed:type_name -> office.session.v1.Addressed
 	0,  // 11: office.session.v1.SubmitSignalResponse.result:type_name -> office.session.v1.CommandResult
 	0,  // 12: office.session.v1.PauseResponse.result:type_name -> office.session.v1.CommandResult
 	0,  // 13: office.session.v1.ResumeResponse.result:type_name -> office.session.v1.CommandResult
@@ -2267,48 +2420,54 @@ var file_office_session_v1_session_proto_depIdxs = []int32{
 	0,  // 15: office.session.v1.UpdateMinutesResponse.result:type_name -> office.session.v1.CommandResult
 	0,  // 16: office.session.v1.ShowArtifactResponse.result:type_name -> office.session.v1.CommandResult
 	0,  // 17: office.session.v1.EndSessionResponse.result:type_name -> office.session.v1.CommandResult
-	35, // 18: office.session.v1.SubscribeResponse.event:type_name -> office.session.v1.Event
-	35, // 19: office.session.v1.GetEventsResponse.events:type_name -> office.session.v1.Event
-	42, // 20: office.session.v1.GetTreeHeadResponse.tree_head:type_name -> office.session.v1.SignedTreeHead
-	1,  // 21: office.session.v1.SessionService.Join:input_type -> office.session.v1.JoinRequest
-	3,  // 22: office.session.v1.SessionService.Leave:input_type -> office.session.v1.LeaveRequest
-	5,  // 23: office.session.v1.SessionService.SubmitUtterance:input_type -> office.session.v1.SubmitUtteranceRequest
-	7,  // 24: office.session.v1.SessionService.MarkOffTheRecord:input_type -> office.session.v1.MarkOffTheRecordRequest
-	9,  // 25: office.session.v1.SessionService.SubmitSignal:input_type -> office.session.v1.SubmitSignalRequest
-	11, // 26: office.session.v1.SessionService.Pause:input_type -> office.session.v1.PauseRequest
-	13, // 27: office.session.v1.SessionService.Resume:input_type -> office.session.v1.ResumeRequest
-	15, // 28: office.session.v1.SessionService.RaiseHand:input_type -> office.session.v1.RaiseHandRequest
-	17, // 29: office.session.v1.SessionService.UpdateMinutes:input_type -> office.session.v1.UpdateMinutesRequest
-	19, // 30: office.session.v1.SessionService.ShowArtifact:input_type -> office.session.v1.ShowArtifactRequest
-	21, // 31: office.session.v1.SessionService.EndSession:input_type -> office.session.v1.EndSessionRequest
-	25, // 32: office.session.v1.SessionService.GetEvents:input_type -> office.session.v1.GetEventsRequest
-	27, // 33: office.session.v1.SessionService.GetTreeHead:input_type -> office.session.v1.GetTreeHeadRequest
-	29, // 34: office.session.v1.SessionService.GetConsistencyProof:input_type -> office.session.v1.GetConsistencyProofRequest
-	31, // 35: office.session.v1.SessionService.GetInclusionProof:input_type -> office.session.v1.GetInclusionProofRequest
-	33, // 36: office.session.v1.SessionService.GetHubKey:input_type -> office.session.v1.GetHubKeyRequest
-	23, // 37: office.session.v1.SessionService.Subscribe:input_type -> office.session.v1.SubscribeRequest
-	2,  // 38: office.session.v1.SessionService.Join:output_type -> office.session.v1.JoinResponse
-	4,  // 39: office.session.v1.SessionService.Leave:output_type -> office.session.v1.LeaveResponse
-	6,  // 40: office.session.v1.SessionService.SubmitUtterance:output_type -> office.session.v1.SubmitUtteranceResponse
-	8,  // 41: office.session.v1.SessionService.MarkOffTheRecord:output_type -> office.session.v1.MarkOffTheRecordResponse
-	10, // 42: office.session.v1.SessionService.SubmitSignal:output_type -> office.session.v1.SubmitSignalResponse
-	12, // 43: office.session.v1.SessionService.Pause:output_type -> office.session.v1.PauseResponse
-	14, // 44: office.session.v1.SessionService.Resume:output_type -> office.session.v1.ResumeResponse
-	16, // 45: office.session.v1.SessionService.RaiseHand:output_type -> office.session.v1.RaiseHandResponse
-	18, // 46: office.session.v1.SessionService.UpdateMinutes:output_type -> office.session.v1.UpdateMinutesResponse
-	20, // 47: office.session.v1.SessionService.ShowArtifact:output_type -> office.session.v1.ShowArtifactResponse
-	22, // 48: office.session.v1.SessionService.EndSession:output_type -> office.session.v1.EndSessionResponse
-	26, // 49: office.session.v1.SessionService.GetEvents:output_type -> office.session.v1.GetEventsResponse
-	28, // 50: office.session.v1.SessionService.GetTreeHead:output_type -> office.session.v1.GetTreeHeadResponse
-	30, // 51: office.session.v1.SessionService.GetConsistencyProof:output_type -> office.session.v1.GetConsistencyProofResponse
-	32, // 52: office.session.v1.SessionService.GetInclusionProof:output_type -> office.session.v1.GetInclusionProofResponse
-	34, // 53: office.session.v1.SessionService.GetHubKey:output_type -> office.session.v1.GetHubKeyResponse
-	24, // 54: office.session.v1.SessionService.Subscribe:output_type -> office.session.v1.SubscribeResponse
-	38, // [38:55] is the sub-list for method output_type
-	21, // [21:38] is the sub-list for method input_type
-	21, // [21:21] is the sub-list for extension type_name
-	21, // [21:21] is the sub-list for extension extendee
-	0,  // [0:21] is the sub-list for field type_name
+	37, // 18: office.session.v1.SubscribeResponse.event:type_name -> office.session.v1.Event
+	44, // 19: office.session.v1.SubscribeResponse.tree_head:type_name -> office.session.v1.SignedTreeHead
+	37, // 20: office.session.v1.GetEventsResponse.events:type_name -> office.session.v1.Event
+	44, // 21: office.session.v1.GetTreeHeadResponse.tree_head:type_name -> office.session.v1.SignedTreeHead
+	37, // 22: office.session.v1.OfferLogRequest.events:type_name -> office.session.v1.Event
+	44, // 23: office.session.v1.OfferLogRequest.tree_head:type_name -> office.session.v1.SignedTreeHead
+	44, // 24: office.session.v1.OfferLogResponse.tree_head:type_name -> office.session.v1.SignedTreeHead
+	1,  // 25: office.session.v1.SessionService.Join:input_type -> office.session.v1.JoinRequest
+	3,  // 26: office.session.v1.SessionService.Leave:input_type -> office.session.v1.LeaveRequest
+	5,  // 27: office.session.v1.SessionService.SubmitUtterance:input_type -> office.session.v1.SubmitUtteranceRequest
+	7,  // 28: office.session.v1.SessionService.MarkOffTheRecord:input_type -> office.session.v1.MarkOffTheRecordRequest
+	9,  // 29: office.session.v1.SessionService.SubmitSignal:input_type -> office.session.v1.SubmitSignalRequest
+	11, // 30: office.session.v1.SessionService.Pause:input_type -> office.session.v1.PauseRequest
+	13, // 31: office.session.v1.SessionService.Resume:input_type -> office.session.v1.ResumeRequest
+	15, // 32: office.session.v1.SessionService.RaiseHand:input_type -> office.session.v1.RaiseHandRequest
+	17, // 33: office.session.v1.SessionService.UpdateMinutes:input_type -> office.session.v1.UpdateMinutesRequest
+	19, // 34: office.session.v1.SessionService.ShowArtifact:input_type -> office.session.v1.ShowArtifactRequest
+	21, // 35: office.session.v1.SessionService.EndSession:input_type -> office.session.v1.EndSessionRequest
+	25, // 36: office.session.v1.SessionService.GetEvents:input_type -> office.session.v1.GetEventsRequest
+	27, // 37: office.session.v1.SessionService.GetTreeHead:input_type -> office.session.v1.GetTreeHeadRequest
+	29, // 38: office.session.v1.SessionService.GetConsistencyProof:input_type -> office.session.v1.GetConsistencyProofRequest
+	31, // 39: office.session.v1.SessionService.GetInclusionProof:input_type -> office.session.v1.GetInclusionProofRequest
+	33, // 40: office.session.v1.SessionService.GetHubKey:input_type -> office.session.v1.GetHubKeyRequest
+	35, // 41: office.session.v1.SessionService.OfferLog:input_type -> office.session.v1.OfferLogRequest
+	23, // 42: office.session.v1.SessionService.Subscribe:input_type -> office.session.v1.SubscribeRequest
+	2,  // 43: office.session.v1.SessionService.Join:output_type -> office.session.v1.JoinResponse
+	4,  // 44: office.session.v1.SessionService.Leave:output_type -> office.session.v1.LeaveResponse
+	6,  // 45: office.session.v1.SessionService.SubmitUtterance:output_type -> office.session.v1.SubmitUtteranceResponse
+	8,  // 46: office.session.v1.SessionService.MarkOffTheRecord:output_type -> office.session.v1.MarkOffTheRecordResponse
+	10, // 47: office.session.v1.SessionService.SubmitSignal:output_type -> office.session.v1.SubmitSignalResponse
+	12, // 48: office.session.v1.SessionService.Pause:output_type -> office.session.v1.PauseResponse
+	14, // 49: office.session.v1.SessionService.Resume:output_type -> office.session.v1.ResumeResponse
+	16, // 50: office.session.v1.SessionService.RaiseHand:output_type -> office.session.v1.RaiseHandResponse
+	18, // 51: office.session.v1.SessionService.UpdateMinutes:output_type -> office.session.v1.UpdateMinutesResponse
+	20, // 52: office.session.v1.SessionService.ShowArtifact:output_type -> office.session.v1.ShowArtifactResponse
+	22, // 53: office.session.v1.SessionService.EndSession:output_type -> office.session.v1.EndSessionResponse
+	26, // 54: office.session.v1.SessionService.GetEvents:output_type -> office.session.v1.GetEventsResponse
+	28, // 55: office.session.v1.SessionService.GetTreeHead:output_type -> office.session.v1.GetTreeHeadResponse
+	30, // 56: office.session.v1.SessionService.GetConsistencyProof:output_type -> office.session.v1.GetConsistencyProofResponse
+	32, // 57: office.session.v1.SessionService.GetInclusionProof:output_type -> office.session.v1.GetInclusionProofResponse
+	34, // 58: office.session.v1.SessionService.GetHubKey:output_type -> office.session.v1.GetHubKeyResponse
+	36, // 59: office.session.v1.SessionService.OfferLog:output_type -> office.session.v1.OfferLogResponse
+	24, // 60: office.session.v1.SessionService.Subscribe:output_type -> office.session.v1.SubscribeResponse
+	43, // [43:61] is the sub-list for method output_type
+	25, // [25:43] is the sub-list for method input_type
+	25, // [25:25] is the sub-list for extension type_name
+	25, // [25:25] is the sub-list for extension extendee
+	0,  // [0:25] is the sub-list for field type_name
 }
 
 func init() { file_office_session_v1_session_proto_init() }
@@ -2328,7 +2487,7 @@ func file_office_session_v1_session_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_office_session_v1_session_proto_rawDesc), len(file_office_session_v1_session_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   35,
+			NumMessages:   37,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

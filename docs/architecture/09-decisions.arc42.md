@@ -463,6 +463,37 @@ addresses: qg-resumability
 :::
 ```
 
+## Every peer holds a signed tree head over its whole copy
+
+**Context:** The hub accepts a peer copy only against a tree head it signed
+(`dec-restore-from-peers`, `dec-merkle-log`). But the events that the hub lost in a crash are
+exactly the ones after its last write to the archive, so the stored tree head does not cover them.
+After the restart, the hub also does not know how long the longest copy is. **Decision:** The
+session stream carries a tree head signed by the hub together with the last event the hub has.
+So every peer holds a signed head over its whole copy, and keeps it next to its local log. A peer
+whose cursor the hub does not know offers the events the hub misses with that head. The hub checks
+the signature with its own key, that the events give the root hash, and a consistency proof
+between its own head and the head of the copy. After a restart, a session that has not ended
+takes no commands until a peer copy fits or a configurable wait is over, so no new event can take
+the ID of a lost one. There is no wait if the hub stopped after a last write of every session.
+**Consequences:** A forged or changed copy fails, and the hub needs no extra storage per event.
+Every batch of the stream costs one signature. Commands of a restored session can fail for up to
+the wait; clients repeat them, which is safe (`dec-idempotent-commands`). OPEN: a session that the
+hub never wrote to the archive is unknown after a crash until a peer offers a whole copy; a peer
+that comes back after the wait has a copy that forks. **Rejected:** a head signed only at every
+write to the archive (it does not cover the lost events); accepting a tail without a signed head
+(anyone could add events); persisting a head on the hub for every event (a write per event).
+
+```arc42
+:::decision
+id: dec-signed-head-in-stream
+title: The stream carries signed tree heads; a restored session waits for peers
+status: proposed
+date: 2026-11-07
+addresses: qg-resumability, risk-forged-copy
+:::
+```
+
 ## One interface of the hub for every type of record
 
 **Context:** Decisions, minutes, notes, tasks and slides are different things with different

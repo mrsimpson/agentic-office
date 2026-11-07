@@ -74,6 +74,8 @@ const (
 	SessionServiceGetInclusionProofProcedure = "/office.session.v1.SessionService/GetInclusionProof"
 	// SessionServiceGetHubKeyProcedure is the procedure name of the SessionService's GetHubKey RPC.
 	SessionServiceGetHubKeyProcedure = "/office.session.v1.SessionService/GetHubKey"
+	// SessionServiceOfferLogProcedure is the procedure name of the SessionService's OfferLog RPC.
+	SessionServiceOfferLogProcedure = "/office.session.v1.SessionService/OfferLog"
 	// SessionServiceSubscribeProcedure is the procedure name of the SessionService's Subscribe RPC.
 	SessionServiceSubscribeProcedure = "/office.session.v1.SessionService/Subscribe"
 )
@@ -191,6 +193,13 @@ var (
 			Procedure:  SessionServiceGetHubKeyProcedure,
 		}
 	})
+	sessionServiceOfferLogSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     api.File_office_session_v1_session_proto.Services().ByName("SessionService").Methods().ByName("OfferLog"),
+			Procedure:  SessionServiceOfferLogProcedure,
+		}
+	})
 	sessionServiceSubscribeSpec = sync.OnceValue(func() connect.Spec {
 		return connect.Spec{
 			StreamType: connect.StreamTypeServer,
@@ -235,6 +244,18 @@ type SessionServiceClient interface {
 	// GetHubKey returns the public key with which the hub signs tree heads. The key stays the same
 	// across restarts of the hub.
 	GetHubKey(context.Context, *api.GetHubKeyRequest) (*api.GetHubKeyResponse, error)
+	// OfferLog offers the copy of a session log that a peer holds (dec-restore-from-peers). After a
+	// restart, the hub has the log only up to its last write to the archive; a peer with a longer
+	// copy offers the events after the last event of the hub. The hub accepts the copy only if it
+	// proves itself: the tree head of the copy must carry a valid signature of the hub key, the
+	// events must give its root hash, and the log of the hub must be a prefix of it (consistency
+	// proof against the last signed tree head of the hub). The hub then appends the missing events
+	// with their IDs, so all cursors stay valid. A copy that is not longer than the log of the hub
+	// is a no-op, so the first copy that fits wins. A copy that does not verify fails with
+	// invalid_argument; a copy signed by the hub that does not extend its log (a fork) fails with
+	// failed_precondition. OfferLog creates no new event, so it needs no command_id: a repeated
+	// offer is a no-op.
+	OfferLog(context.Context, *api.OfferLogRequest) (*api.OfferLogResponse, error)
 	// Subscribe sends every event with an ID greater than after_event_id, then live events.
 	// The stream closes after session.ended. It ends with unauthenticated when the token expires
 	// or its key is revoked; the client authenticates again and resumes from its cursor.
@@ -302,6 +323,18 @@ type SessionServiceHandler interface {
 	// GetHubKey returns the public key with which the hub signs tree heads. The key stays the same
 	// across restarts of the hub.
 	GetHubKey(context.Context, *api.GetHubKeyRequest) (*api.GetHubKeyResponse, error)
+	// OfferLog offers the copy of a session log that a peer holds (dec-restore-from-peers). After a
+	// restart, the hub has the log only up to its last write to the archive; a peer with a longer
+	// copy offers the events after the last event of the hub. The hub accepts the copy only if it
+	// proves itself: the tree head of the copy must carry a valid signature of the hub key, the
+	// events must give its root hash, and the log of the hub must be a prefix of it (consistency
+	// proof against the last signed tree head of the hub). The hub then appends the missing events
+	// with their IDs, so all cursors stay valid. A copy that is not longer than the log of the hub
+	// is a no-op, so the first copy that fits wins. A copy that does not verify fails with
+	// invalid_argument; a copy signed by the hub that does not extend its log (a fork) fails with
+	// failed_precondition. OfferLog creates no new event, so it needs no command_id: a repeated
+	// offer is a no-op.
+	OfferLog(context.Context, *api.OfferLogRequest) (*api.OfferLogResponse, error)
 	// Subscribe sends every event with an ID greater than after_event_id, then live events.
 	// The stream closes after session.ended. It ends with unauthenticated when the token expires
 	// or its key is revoked; the client authenticates again and resumes from its cursor.
@@ -329,6 +362,7 @@ func RegisterSessionServiceHandler(server *connect.Server, svc SessionServiceHan
 		connect.Method{Spec: sessionServiceGetConsistencyProofSpec(), Handler: adapter.getConsistencyProof},
 		connect.Method{Spec: sessionServiceGetInclusionProofSpec(), Handler: adapter.getInclusionProof},
 		connect.Method{Spec: sessionServiceGetHubKeySpec(), Handler: adapter.getHubKey},
+		connect.Method{Spec: sessionServiceOfferLogSpec(), Handler: adapter.offerLog},
 		connect.Method{Spec: sessionServiceSubscribeSpec(), Handler: adapter.subscribe},
 	)
 }
@@ -413,6 +447,10 @@ func (UnimplementedSessionServiceHandler) GetInclusionProof(context.Context, *ap
 
 func (UnimplementedSessionServiceHandler) GetHubKey(context.Context, *api.GetHubKeyRequest) (*api.GetHubKeyResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, "office.session.v1.SessionService.GetHubKey is not implemented")
+}
+
+func (UnimplementedSessionServiceHandler) OfferLog(context.Context, *api.OfferLogRequest) (*api.OfferLogResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "office.session.v1.SessionService.OfferLog is not implemented")
 }
 
 func (UnimplementedSessionServiceHandler) Subscribe(context.Context, *api.SubscribeRequest, SessionServiceSubscribeServerStream) error {
@@ -546,6 +584,14 @@ func (c *sessionServiceClient) GetInclusionProof(ctx context.Context, req *api.G
 func (c *sessionServiceClient) GetHubKey(ctx context.Context, req *api.GetHubKeyRequest) (*api.GetHubKeyResponse, error) {
 	var res api.GetHubKeyResponse
 	if err := c.client.CallUnary(ctx, sessionServiceGetHubKeySpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *sessionServiceClient) OfferLog(ctx context.Context, req *api.OfferLogRequest) (*api.OfferLogResponse, error) {
+	var res api.OfferLogResponse
+	if err := c.client.CallUnary(ctx, sessionServiceOfferLogSpec(), req, &res); err != nil {
 		return nil, err
 	}
 	return &res, nil
@@ -747,6 +793,18 @@ func (h sessionServiceHandler) getHubKey(ctx context.Context, _ connect.Spec, st
 		return err
 	}
 	res, err := h.svc.GetHubKey(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h sessionServiceHandler) offerLog(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req api.OfferLogRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.OfferLog(ctx, &req)
 	if err != nil {
 		return err
 	}

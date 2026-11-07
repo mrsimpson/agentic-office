@@ -9,6 +9,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 	"github.com/mrsimpson/agentic-office/hub/session/api/events"
 	"github.com/mrsimpson/agentic-office/hub/session/api/logfile"
+	"github.com/mrsimpson/agentic-office/hub/session/api/merkle"
 	sessionv1connect "github.com/mrsimpson/agentic-office/hub/session/api/sessionv1connect"
 )
 
@@ -54,6 +56,10 @@ type Replicator struct {
 	ParticipantID string
 	// Path is the local session log.
 	Path string
+	// TreeHeadPath is the file with the latest signed tree head over the local log
+	// (dec-restore-from-peers). Empty means Path with the extension replaced by
+	// ".tree-head.yaml".
+	TreeHeadPath string
 	// Logf receives status messages. Nil means no messages.
 	Logf func(format string, args ...any)
 	// OnWrite is called after every written line. Optional.
@@ -64,6 +70,23 @@ type Replicator struct {
 	f      *os.File
 	cursor uint32
 	ended  bool
+	// head is the latest signed tree head of the hub over the local log, or nil.
+	head *sessionv1.SignedTreeHead
+	// behind is set when the hub did not know the cursor: the hub lost events. Before the next
+	// subscribe the replicator offers its copy and checks that the hub's log still matches.
+	behind bool
+}
+
+// ErrFork means that the log of the hub and the local log differ: the local copy can no longer
+// be continued.
+var ErrFork = errors.New("the local log and the log of the hub differ")
+
+// treeHeadPath returns the file of the tree head.
+func (r *Replicator) treeHeadPath() string {
+	if r.TreeHeadPath != "" {
+		return r.TreeHeadPath
+	}
+	return strings.TrimSuffix(r.Path, filepath.Ext(r.Path)) + ".tree-head.yaml"
 }
 
 // Open opens or creates the file (mode 0600, directory 0700) and takes an exclusive lock on it.
@@ -92,6 +115,40 @@ func (r *Replicator) Open() error {
 		return err
 	}
 	r.f = f
+	r.loadHead()
+	return nil
+}
+
+// loadHead reads the stored tree head. A head that does not fit the local log is ignored.
+func (r *Replicator) loadHead() {
+	data, err := os.ReadFile(r.treeHeadPath())
+	if err != nil {
+		return
+	}
+	h, err := logfile.UnmarshalTreeHead(data)
+	if err != nil || h.GetSessionId() != r.SessionID || h.GetTreeSize() > r.cursor {
+		r.Logf("replicator: ignoring the stored tree head %s", r.treeHeadPath())
+		return
+	}
+	r.head = h
+}
+
+// writeHead stores the tree head next to the log: a new file that replaces the old one, so the
+// file always holds a whole head.
+func (r *Replicator) writeHead(h *sessionv1.SignedTreeHead) error {
+	data, err := logfile.MarshalTreeHead(h)
+	if err != nil {
+		return err
+	}
+	p := r.treeHeadPath()
+	tmp := p + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, p); err != nil {
+		return err
+	}
+	r.head = h
 	return nil
 }
 
@@ -141,17 +198,24 @@ func (r *Replicator) Close() error {
 // fatal tells errors after which a reconnect cannot help.
 func fatal(err error) bool {
 	switch connect.CodeOf(err) {
-	case connect.CodeInvalidArgument, connect.CodePermissionDenied, connect.CodeOutOfRange:
+	case connect.CodeInvalidArgument, connect.CodePermissionDenied, connect.CodeFailedPrecondition:
 		return true
 	}
-	return false
+	return errors.Is(err, ErrFork)
 }
 
 // Run follows the stream until it has written session.ended or the participant's own
 // participant.left, or ctx ends. After a drop it reconnects from the cursor with a backoff.
-// It returns an error only for a problem a reconnect cannot solve, for example a cursor the
-// server does not know (out_of_range, after a restart of a server without persistence).
-// Run closes the file when it returns.
+//
+// If the hub does not know the cursor (out_of_range), the hub lost events, for example in a
+// restart (dec-restore-from-peers). The replicator then offers the events the hub misses, with
+// the signed tree head it holds over them, and retries until the hub has the cursor again (it
+// or another peer filled in). Before it follows the stream again, it checks that the log of the
+// hub up to the cursor has the root hash of the local log.
+//
+// Run returns an error only for a problem a reconnect cannot solve, for example a local log
+// that differs from the log of the hub (ErrFork), or a copy the hub rejects. Run closes the file
+// when it returns.
 func (r *Replicator) Run(ctx context.Context) (Reason, error) {
 	defer r.Close()
 	if r.ended {
@@ -163,7 +227,20 @@ func (r *Replicator) Run(ctx context.Context) (Reason, error) {
 	}
 	backoff := min(MinBackoff, maxBackoff)
 	for {
-		got, reason, err := r.follow(ctx)
+		var got bool
+		var reason Reason
+		var err error
+		if r.behind {
+			err = r.restore(ctx)
+		}
+		if err == nil {
+			got, reason, err = r.follow(ctx)
+		}
+		if connect.CodeOf(err) == connect.CodeOutOfRange && !r.behind {
+			r.behind = true
+			r.Logf("replicator: the hub does not know cursor %d; offering the local copy", r.cursor)
+			continue
+		}
 		if reason != "" {
 			return reason, nil
 		}
@@ -216,6 +293,11 @@ func (r *Replicator) follow(ctx context.Context) (got bool, reason Reason, err e
 		if err := r.write(ev); err != nil {
 			return got, "", err
 		}
+		if h := res.GetTreeHead(); h != nil && h.GetTreeSize() == ev.GetId() && h.GetSessionId() == r.SessionID {
+			if err := r.writeHead(h); err != nil {
+				return got, "", err
+			}
+		}
 		switch {
 		case ev.GetType() == events.SessionEnded:
 			return got, Ended, nil
@@ -254,4 +336,76 @@ func Running(path string) bool {
 	}
 	_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
 	return false
+}
+
+// errBehind means that the hub has fewer events than the local log and the local copy cannot fill
+// them in (yet). The replicator retries: another peer may fill them in.
+var errBehind = errors.New("the hub has fewer events than the local log")
+
+// restore runs while the hub is behind the local log. It offers the events the hub misses, if
+// the stored tree head covers them, and then checks that the log of the hub up to the cursor is
+// the local log. It returns nil when the replicator can follow the stream again.
+func (r *Replicator) restore(ctx context.Context) error {
+	res, err := r.Session.GetTreeHead(ctx, &sessionv1.GetTreeHeadRequest{SessionId: r.SessionID})
+	if err != nil {
+		return err
+	}
+	n := res.GetTreeHead().GetTreeSize()
+	if n < r.cursor {
+		if r.head == nil || r.head.GetTreeSize() <= n {
+			r.Logf("replicator: the hub has %d events, the local log %d, and no signed tree head covers the missing ones; waiting for another peer",
+				n, r.cursor)
+			return errBehind
+		}
+		evs, err := r.localEvents()
+		if err != nil {
+			return err
+		}
+		size := r.head.GetTreeSize()
+		offer, err := r.Session.OfferLog(ctx, &sessionv1.OfferLogRequest{SessionId: r.SessionID, AfterEventId: n,
+			Events: evs[n:size], TreeHead: r.head})
+		if err != nil {
+			return fmt.Errorf("offer the local copy: %w", err)
+		}
+		r.Logf("replicator: offered the events %d to %d: accepted %v, the hub has %d events",
+			n+1, size, offer.GetAccepted(), offer.GetTreeHead().GetTreeSize())
+		if offer.GetTreeHead().GetTreeSize() < r.cursor {
+			return errBehind
+		}
+	}
+	// The hub has the cursor again. Its log up to the cursor must be the local log.
+	res, err = r.Session.GetTreeHead(ctx, &sessionv1.GetTreeHeadRequest{SessionId: r.SessionID, TreeSize: r.cursor})
+	if err != nil {
+		return err
+	}
+	evs, err := r.localEvents()
+	if err != nil {
+		return err
+	}
+	leaves, err := merkle.LeafHashes(r.SessionID, evs)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(merkle.RootHash(leaves), res.GetTreeHead().GetRootHash()) {
+		return fmt.Errorf("%w: the root hashes over the events 1 to %d differ", ErrFork, r.cursor)
+	}
+	r.behind = false
+	r.Logf("replicator: the hub has the local log again; following from cursor %d", r.cursor)
+	return nil
+}
+
+// localEvents reads the whole local log.
+func (r *Replicator) localEvents() ([]*sessionv1.Event, error) {
+	data, err := os.ReadFile(r.Path)
+	if err != nil {
+		return nil, err
+	}
+	evs, err := logfile.UnmarshalLines(data)
+	if err != nil {
+		return nil, err
+	}
+	if len(evs) != int(r.cursor) {
+		return nil, fmt.Errorf("%s has %d events, the cursor is %d", r.Path, len(evs), r.cursor)
+	}
+	return evs, nil
 }

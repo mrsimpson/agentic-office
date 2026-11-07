@@ -54,6 +54,19 @@ service SessionService {
   // across restarts of the hub.
   rpc GetHubKey(GetHubKeyRequest) returns (GetHubKeyResponse);
 
+  // OfferLog offers the copy of a session log that a peer holds (dec-restore-from-peers). After a
+  // restart, the hub has the log only up to its last write to the archive; a peer with a longer
+  // copy offers the events after the last event of the hub. The hub accepts the copy only if it
+  // proves itself: the tree head of the copy must carry a valid signature of the hub key, the
+  // events must give its root hash, and the log of the hub must be a prefix of it (consistency
+  // proof against the last signed tree head of the hub). The hub then appends the missing events
+  // with their IDs, so all cursors stay valid. A copy that is not longer than the log of the hub
+  // is a no-op, so the first copy that fits wins. A copy that does not verify fails with
+  // invalid_argument; a copy signed by the hub that does not extend its log (a fork) fails with
+  // failed_precondition. OfferLog creates no new event, so it needs no command_id: a repeated
+  // offer is a no-op.
+  rpc OfferLog(OfferLogRequest) returns (OfferLogResponse);
+
   // Subscribe sends every event with an ID greater than after_event_id, then live events.
   // The stream closes after session.ended. It ends with unauthenticated when the token expires
   // or its key is revoked; the client authenticates again and resumes from its cursor.
@@ -202,6 +215,10 @@ message SubscribeRequest {
 
 message SubscribeResponse {
   Event event = 1;
+  // tree_head is the tree head signed by the hub over the events 1 to event.id. The hub sets it
+  // on the last event it has when it sends it, so a subscriber always holds a signed head over
+  // its whole copy, and can prove its copy after the hub lost events (OfferLog).
+  SignedTreeHead tree_head = 2;
 }
 
 message GetEventsRequest {
@@ -264,4 +281,25 @@ message GetHubKeyRequest {}
 message GetHubKeyResponse {
   // public_key is the Ed25519 public key of the hub (32 bytes).
   bytes public_key = 1;
+}
+
+message OfferLogRequest {
+  string session_id = 1;
+  // after_event_id is the last event before the offered events. It is at most the last event of
+  // the hub; the hub uses its own events up to it. 0 offers the whole log.
+  uint32 after_event_id = 2;
+  // events are the events after_event_id + 1 to tree_head.tree_size, in order, as the peer
+  // received them. A placeholder (an utterance off the record) verifies by its leaf_hash.
+  repeated Event events = 3;
+  // tree_head is a tree head signed by the hub over the events 1 to tree_size of the copy, for
+  // example the last one of the session stream.
+  SignedTreeHead tree_head = 4;
+}
+
+message OfferLogResponse {
+  // accepted is true if the hub appended events from the copy. It is false for a copy that is
+  // not longer than the log of the hub.
+  bool accepted = 1;
+  // tree_head is the signed tree head of the log of the hub after the offer.
+  SignedTreeHead tree_head = 2;
 }

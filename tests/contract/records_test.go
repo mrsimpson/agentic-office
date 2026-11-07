@@ -527,40 +527,37 @@ func TestSessionEndStoresMinutes(t *testing.T) {
 	}
 }
 
-// TestSessionEndStoresMinutesAfterRestart: session logs are not restored after a restart yet
-// (#34), the minutes are. A session with the same ID after the restart stores its minutes as new
-// minutes; GetMinutes returns the newest.
+// TestSessionEndStoresMinutesAfterRestart: the minutes and the session survive a restart (#34).
+// The restored session has ended, so it takes no new commands, and its minutes stay the ones
+// stored at the end.
 func TestSessionEndStoresMinutesAfterRestart(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
-	run := func(text string) {
-		t.Helper()
-		ctx := ctx10(t)
-		if _, err := ada.Session.Join(ctx, &sessionv1.JoinRequest{SessionId: "standup", CommandId: ids.NewCommandID()}); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := ada.Session.UpdateMinutes(ctx, &sessionv1.UpdateMinutesRequest{SessionId: "standup",
-			CommandId: ids.NewCommandID(), ParticipantId: "ada", Text: text}); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := ada.Session.EndSession(ctx, &sessionv1.EndSessionRequest{SessionId: "standup",
-			CommandId: ids.NewCommandID(), ParticipantId: "ada"}); err != nil {
-			t.Fatal(err)
-		}
+	ctx := ctx10(t)
+	if _, err := ada.Session.Join(ctx, &sessionv1.JoinRequest{SessionId: "standup", CommandId: ids.NewCommandID()}); err != nil {
+		t.Fatal(err)
 	}
-	run("Monday")
+	if _, err := ada.Session.UpdateMinutes(ctx, &sessionv1.UpdateMinutesRequest{SessionId: "standup",
+		CommandId: ids.NewCommandID(), ParticipantId: "ada", Text: "Monday"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ada.Session.EndSession(ctx, &sessionv1.EndSessionRequest{SessionId: "standup",
+		CommandId: ids.NewCommandID(), ParticipantId: "ada"}); err != nil {
+		t.Fatal(err)
+	}
 	if code, err := srv.Stop(5 * time.Second); err != nil || code != 0 {
 		t.Fatalf("stop: %d, %v", code, err)
 	}
 	srv = contracttest.StartHubIn(t, srv.DataDir, srv.AdminKey, nil)
 	ada = srv.WithKey(t, ada.Key)
-	run("Tuesday")
+	_, err := ada.Session.Join(ctx10(t), &sessionv1.JoinRequest{SessionId: "standup", CommandId: ids.NewCommandID()})
+	wantCode(t, "join an ended session after the restart", err, connect.CodeFailedPrecondition)
 	got := listMinutes(t, ada, &minutesv1.ListMinutesRequest{SessionId: "standup"})
-	if len(got) != 2 || got[0].GetText() != "Monday" || got[1].GetText() != "Tuesday" {
+	if len(got) != 1 || got[0].GetText() != "Monday" {
 		t.Fatalf("minutes of standup: %v", got)
 	}
 	res, err := ada.Minutes.GetMinutes(ctx10(t), &minutesv1.GetMinutesRequest{SessionId: "standup"})
-	if err != nil || res.GetMinutes().GetText() != "Tuesday" {
-		t.Fatalf("newest minutes of standup: %v, %v", res, err)
+	if err != nil || res.GetMinutes().GetText() != "Monday" {
+		t.Fatalf("minutes of standup: %v, %v", res, err)
 	}
 }

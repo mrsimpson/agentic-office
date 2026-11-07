@@ -77,6 +77,7 @@ func main() {
 	stageTTL := flag.Duration("stage-link-ttl", 24*time.Hour, "lifetime of stage links")
 	archiveDir := flag.String("archive-dir", "", "Git repository of the archive; default <data-dir>/archive, created if missing")
 	archiveInterval := flag.Duration("archive-interval", 30*time.Second, "time between two writes of changed sessions to the archive; sessions are also written when they end")
+	restoreWait := flag.Duration("restore-wait", 10*time.Second, "after a restart, how long a restored session that has not ended waits for a peer to fill in the events after the last write to the archive")
 	flag.Parse()
 	or := func(v, def string) string {
 		if v != "" {
@@ -152,7 +153,8 @@ func main() {
 	}
 	log.Printf("slides: %d decks", decks.Count())
 	sessions := session.New(session.NewMemoryStore(), session.TokenCheck(), recs, signingKey)
-	if err := sessions.UseArchive(session.ArchiveOptions{Archive: arch, Interval: *archiveInterval, Logf: log.Printf}); err != nil {
+	if err := sessions.UseArchive(context.Background(), session.ArchiveOptions{Archive: arch, Interval: *archiveInterval,
+		RestoreWait: *restoreWait, Logf: log.Printf}); err != nil {
 		log.Fatal(err)
 	}
 	// The writer runs until the server has stopped, then writes a last time.

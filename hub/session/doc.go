@@ -39,8 +39,23 @@
 //     the background, at most one write at a time. Each write is one commit with, per changed
 //     session, the raw log in the line form of package logfile (ArchiveLogFile, with the
 //     originals of utterances that are off the record) and the signed tree head over exactly
-//     that log (ArchiveTreeHeadFile). The service only reads the log from the archive again once
-//     restore exists (#34).
+//     that log (ArchiveTreeHeadFile). The tree head comes from the state, which keeps the
+//     roots of the perfect subtrees, so a head costs O(log n) hashes and one signature per size.
+//   - Restore after a restart (dec-restore-from-peers, restore.go): UseArchive reads every
+//     stored log and its tree head back and verifies the log against the head with the hub
+//     key. A log that verifies is the start of its session (IDs, idempotency, participants);
+//     the next write appends to the stored lines. The events after the last write are lost.
+//     Every Subscribe response that carries the last event of the session has the signed head
+//     over the events up to it, so every peer holds a signed head over its whole copy. A peer
+//     whose cursor is beyond the end (OutOfRange) offers its copy with OfferLog: the hub checks
+//     the signature, that the events give the root hash of the head, and a consistency proof
+//     between its own current head and the head of the copy. Then it appends what it misses. A
+//     copy that is not longer is a no-op, so the first copy that fits wins. Until a copy is
+//     accepted, or for at most ArchiveOptions.RestoreWait, commands of a restored session that
+//     has not ended fail with Unavailable, so no new event can take an ID of a lost one. There is
+//     no wait if ArchiveStateFile says that the hub stopped after a last write of every session.
+//     A stored log that does not verify is not used: its commands fail with DataLoss until a
+//     peer offers a whole copy.
 //   - Subscribe closes the stream after it has sent session.ended. It ends the stream with
 //     Unauthenticated when the token of the caller expires or is revoked.
 package session

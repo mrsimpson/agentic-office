@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"connectrpc.com/connect/v2"
 	"google.golang.org/protobuf/proto"
@@ -100,19 +101,23 @@ func New(store Store, auth Authorizer, minutes Minutes, key ed25519.PrivateKey) 
 	return &Service{store: store, auth: auth, minutes: minutes, key: key, sessions: map[string]*state{}}
 }
 
-// UseArchive makes the service write its sessions to an archive. Call it before the service
-// takes commands, then run RunArchive.
-func (s *Service) UseArchive(opts ArchiveOptions) error {
+// UseArchive makes the service write its sessions to an archive, and restores the sessions that
+// are stored there (dec-restore-from-peers, see restore). Call it before the service takes
+// commands, then run RunArchive.
+func (s *Service) UseArchive(ctx context.Context, opts ArchiveOptions) error {
 	if opts.Archive == nil {
 		return errors.New("session: no archive")
 	}
 	if opts.Interval <= 0 {
 		return errors.New("session: the archive interval must be positive")
 	}
+	if opts.RestoreWait < 0 {
+		return errors.New("session: the restore wait must not be negative")
+	}
 	s.arch = &archiver{opts: opts, lines: map[string]*archivedLog{}}
 	s.dirty = map[string]bool{}
 	s.wake = make(chan struct{}, 1)
-	return nil
+	return s.restore(ctx)
 }
 
 // state is what the service knows about one session. It is derived from the log only, so it can
@@ -128,6 +133,19 @@ type state struct {
 	// leaves are the leaf hashes of the Merkle tree: leaves[i] belongs to event i+1. The slice
 	// only grows; its elements never change.
 	leaves [][]byte
+	// frontier holds the roots of the perfect subtrees of the tree over leaves, largest first, so
+	// the root hash of the current log takes O(log n) hashes per event.
+	frontier [][]byte
+	// head is the signed tree head of the current log, once it was needed; nil after a new event.
+	head *sessionv1.SignedTreeHead
+
+	// After a restart (dec-restore-from-peers): restoring is set while the hub waits for a peer
+	// to fill in the events after the last write to the archive. Commands wait until
+	// restoreUntil, or until a peer's copy was accepted. broken is set if the stored log did not
+	// verify; then commands fail until a peer offers a copy.
+	restoring    bool
+	restoreUntil time.Time
+	broken       string
 }
 
 type participant struct {
@@ -151,7 +169,7 @@ func (st *state) apply(ev *sessionv1.Event) error {
 	if err != nil {
 		return connect.NewError(connect.CodeInternal, "leaf hash of an event: "+err.Error())
 	}
-	st.leaves = append(st.leaves, h)
+	st.pushLeaf(h)
 	st.lastID = ev.GetId()
 	switch p := ev.GetPayload().(type) {
 	case *sessionv1.Event_ParticipantJoined:
@@ -277,6 +295,9 @@ func (s *Service) run(ctx context.Context, c command, isJoin bool) (*sessionv1.C
 				"command_id was already used for another command")
 		}
 		return &sessionv1.CommandResult{Event: prev, Duplicate: true}, nil
+	}
+	if err := st.checkRestored(); err != nil {
+		return nil, err
 	}
 	if st.ended {
 		return nil, precondition("the session has ended")
@@ -589,7 +610,7 @@ func (s *Service) EndSession(ctx context.Context, req *sessionv1.EndSessionReque
 				return nil, err
 			}
 			// The head of the log before session.ended (dec-merkle-log).
-			head := merkle.SignTreeHead(s.key, req.GetSessionId(), st.leaves)
+			head := s.signedHead(req.GetSessionId(), st)
 			return &sessionv1.Event{Payload: &sessionv1.Event_SessionEnded{SessionEnded: &sessionv1.SessionEnded{
 				TreeHead: head}}}, nil
 		},
@@ -665,11 +686,17 @@ func (s *Service) Subscribe(ctx context.Context, req *sessionv1.SubscribeRequest
 		if err != nil {
 			return connect.NewError(connect.CodeInternal, "read session log: "+err.Error())
 		}
-		if evs, err = s.placeholders(sid, evs); err != nil {
+		evs, head, err := s.prepare(sid, evs)
+		if err != nil {
 			return err
 		}
-		for _, ev := range evs {
-			if err := stream.Send(&sessionv1.SubscribeResponse{Event: ev}); err != nil {
+		for i, ev := range evs {
+			res := &sessionv1.SubscribeResponse{Event: ev}
+			if i == len(evs)-1 {
+				// A signed head over the whole copy of the subscriber (dec-restore-from-peers).
+				res.TreeHead = head
+			}
+			if err := stream.Send(res); err != nil {
 				return err
 			}
 			cursor = ev.GetId()
@@ -742,21 +769,28 @@ func (s *Service) GetEvents(ctx context.Context, req *sessionv1.GetEventsRequest
 	if more {
 		evs = evs[:limit]
 	}
-	if evs, err = s.placeholders(sid, evs); err != nil {
+	if evs, _, err = s.prepare(sid, evs); err != nil {
 		return nil, err
 	}
 	return &sessionv1.GetEventsResponse{Events: evs, More: more}, nil
 }
 
-// placeholders replaces every utterance that is off the record by a placeholder with the same ID
+// prepare replaces every utterance that is off the record by a placeholder with the same ID
 // and without its text (dec-off-the-record). The placeholder carries the leaf hash of the
-// original. The log itself keeps the original.
-func (s *Service) placeholders(sid string, evs []*sessionv1.Event) ([]*sessionv1.Event, error) {
+// original. The log itself keeps the original. prepare also returns the signed tree head over
+// the events up to the last one in evs if that is the last event of the session, else nil.
+func (s *Service) prepare(sid string, evs []*sessionv1.Event) ([]*sessionv1.Event, *sessionv1.SignedTreeHead, error) {
 	st, err := s.lock(sid)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer st.mu.Unlock()
+	var head *sessionv1.SignedTreeHead
+	// Commands append to the store and apply to the state under st.mu, so the state is at least
+	// as far as the events that were read before.
+	if n := len(evs); n > 0 && evs[n-1].GetId() == st.lastID {
+		head = s.signedHead(sid, st)
+	}
 	out := make([]*sessionv1.Event, 0, len(evs))
 	for _, ev := range evs {
 		if ev.GetUtteranceFinal() != nil {
@@ -771,7 +805,7 @@ func (s *Service) placeholders(sid string, evs []*sessionv1.Event) ([]*sessionv1
 		}
 		out = append(out, ev)
 	}
-	return out, nil
+	return out, head, nil
 }
 
 // tree returns the leaf hashes of the current log of a session, after the checks that every
@@ -818,6 +852,11 @@ func (s *Service) GetTreeHead(ctx context.Context, req *sessionv1.GetTreeHeadReq
 	n, err := treeSize(req.GetTreeSize(), len(leaves), "tree_size")
 	if err != nil {
 		return nil, err
+	}
+	if n == len(leaves) {
+		if head := s.currentHead(req.GetSessionId(), n); head != nil {
+			return &sessionv1.GetTreeHeadResponse{TreeHead: head}, nil
+		}
 	}
 	return &sessionv1.GetTreeHeadResponse{TreeHead: merkle.SignTreeHead(s.key, req.GetSessionId(), leaves[:n])}, nil
 }

@@ -150,8 +150,9 @@ Rules that hold for all of them:
 ### Meeting session
 
 The meeting session (`hub/session`) is implemented. It keeps its logs in memory and writes them
-to the archive in the background (see [Archive](#archive)). A restart of the hub does not read
-them back yet (#34), so it starts without sessions. The package comment in `hub/session/doc.go`
+to the archive in the background (see [Archive](#archive)). After a restart it reads them back
+and the peers fill in what the archive does not have yet (see
+[Restore after a restart](#restore-after-a-restart)). The package comment in `hub/session/doc.go`
 has the details.
 In short:
 
@@ -233,6 +234,47 @@ err := merkle.VerifyEvents(evs, head, hubKey) // hubKey from GetHubKey
 
 `git log -- sessions/<name>/log.jsonl` lists the writes of a session; every commit extends the
 log of the one before.
+
+`sessions/+state.yaml` says whether the archive is complete: `complete: true` when the hub stopped
+after a last write of every session, `false` from the next start on. No session name starts with
+`+`.
+
+### Restore after a restart
+
+When the hub starts, it restores every session from the archive (`dec-restore-from-peers`):
+
+1. It reads `log.jsonl` and `tree-head.yaml` of every session and checks the log against the
+   head with its signing key (`merkle.VerifyEvents`). A log that verifies is the start of the
+   session: the events keep their IDs, repeated command IDs still return their events, ended
+   sessions stay ended, and the next write appends to the stored lines.
+2. The events after the last write are lost on the hub, but the peers have them. To let a peer
+   prove them, every `Subscribe` response with the last event the hub has carries `tree_head`:
+   the head signed by the hub over the events 1 to that ID. The replicator keeps it next to the
+   local log in `<participant>.tree-head.yaml`.
+3. A peer whose cursor is beyond the end (`out_of_range`) calls `OfferLog` with the events after
+   the last event of the hub (`after_event_id`) and its signed head. The hub checks the
+   signature with its own key, that its events up to `after_event_id` and the offered events
+   give the root hash, and a consistency proof between its own current head and the head of the
+   copy. Then it appends the missing events with their IDs and answers `accepted: true`.
+4. A copy that is not longer than the log of the hub is a no-op (`accepted: false`), so of two
+   peers that offer at once the first wins. A copy that does not verify fails with
+   `invalid_argument`. A copy signed by the hub that does not extend its log (a fork) fails with
+   `failed_precondition`. A stage link cannot offer.
+5. Until a copy is accepted, or for at most `-restore-wait` (default 10s), the commands of a
+   restored session that has not ended fail with `unavailable`, so no new event can take the ID of
+   a lost one. Repeat the command (it is idempotent). After a clean stop (`complete: true`) there
+   is no wait. A stored log that does not verify is not used: its commands fail with `data_loss`
+   until a peer offers a whole copy (`after_event_id` 0).
+
+The replicator does steps 2 and 3 by itself. After the hub has its cursor again, it checks that
+the head of the hub at the cursor has the root hash of the local log, and then follows the stream.
+If the roots differ, or the hub rejects the copy, the replicator stops with an error: the local
+log forks from the hub and cannot go on.
+
+Open points (#47): a session that the hub never wrote to
+the archive is unknown after a crash until a peer offers a whole copy, and a new join before that
+starts a new log; a peer that comes back only after the wait has a copy that forks; the CLI and
+MCP do not repeat a command that fails with `unavailable` by themselves.
 
 ### Identity
 
@@ -441,6 +483,7 @@ Flags of the hub (`bin/office-hub -h` lists them all):
 | `-data-dir` | `~/.config/agentic-office/hub` | Data directory |
 | `-archive-dir` | `<data-dir>/archive` | Git repository of the archive |
 | `-archive-interval` | `30s` | Time between two writes of changed sessions. Keep it above the usual commit time. |
+| `-restore-wait` | `10s` | After a restart, how long a restored session that has not ended waits for a peer to fill in (see [Restore](#restore-after-a-restart)) |
 | `-tls-cert`, `-tls-key`, `-tls-hosts` | see [TLS](#tls-and-your-own-certificate) | TLS certificate |
 | `-signing-key` | `<data-dir>/signing.key` | Key that signs tree heads |
 | `-admins` | `<data-dir>/admins` | Admin keys |
@@ -841,6 +884,18 @@ through its interfaces:
   every write is one commit whose log extends the one before; the hub writes once more when it
   stops; session IDs that are not safe as file names are encoded. The harness reads the
   repository with `contracttest.SessionCommits` and `ReadArchivedSession`.
+- `tests/contract/restore_test.go` checks the restore after a restart. `contracttest.NewGitGate`
+  puts a `git` wrapper first in the `PATH` of the hub that can make every commit fail; the test
+  writes a session, closes the gate, adds events and kills the hub, so the hub loses the tail.
+  After the restart: the archive part is back; commands fail with `unavailable`; a copy shorter
+  than the archive is a no-op; a changed event, a forged signature and a wrong number of events
+  fail; of two peers that offer at once (one with the original of a sentence off the record, one
+  with its placeholder) exactly one fills in; then the IDs continue and the cursor of a peer is
+  valid again. A copy of the old tail after the wait forks and fails. After a clean stop there is
+  no wait, ended sessions stay ended and repeated command IDs still work.
+  `tests/e2e/restore_test.go` does the same with two CLI participants and their replicators:
+  the hub restores 4 events from the archive, a replicator fills in 5 to 7, and both local logs,
+  the hub and the archive end with every event exactly once.
 - `tests/e2e/archive_test.go` (`TestQualityArchiveNoBackpressure`, `qs-archive-no-backpressure`)
   puts a `git` wrapper first in the `PATH` of the hub that makes every commit take 5 s, and lets
   Ada speak every 100 ms at an interval of 500 ms. It checks that commits never overlap, that

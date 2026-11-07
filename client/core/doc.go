@@ -25,6 +25,7 @@
 //
 //	<session>/                      one directory per session, mode 0700
 //	<session>/<participant>.jsonl   local session log, mode 0600
+//	<session>/<participant>.tree-head.yaml  latest signed tree head over the local log (see client/replicator)
 //	<session>/<participant>.join    join state: session ID and join command ID
 //	<session>/<participant>.pid     PID of the running replicator
 //	<session>/<participant>.replicator.log  output of a detached replicator

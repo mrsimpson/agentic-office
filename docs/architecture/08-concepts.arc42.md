@@ -37,7 +37,9 @@ the session (`dec-session-persistence`). At first the repository is local on the
 stored log have the same lines. The events are the leaves of a Merkle tree, and the hub signs its
 tree head (`dec-merkle-log`). Every write to the archive carries the signed tree head over
 exactly the stored log. After a crash, the hub restores a session from the archive, and a peer fills in
-the rest (`dec-restore-from-peers`).
+the rest (`dec-restore-from-peers`). For this, the stream gives every peer a signed tree head over
+its whole copy, and a restored session waits for the peers before it takes commands, so the IDs
+and every cursor stay valid (`dec-signed-head-in-stream`, `rs-hub-restart`).
 
 **Resuming after a network drop:**
 

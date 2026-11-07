@@ -100,6 +100,11 @@ consistency proof between two sizes, an inclusion proof for one event, and the p
 hub that signs the tree heads. The verification code for clients belongs to this interface,
 because the interface owns the event types.
 
+After a restart, a peer offers its copy of a session log with one more command
+(`dec-restore-from-peers`): the events the hub misses and a tree head signed by the hub over the
+copy. The hub accepts the copy only if it verifies and extends its own log. A copy that is not
+longer has no effect, and a copy that does not verify or forks fails.
+
 ```arc42
 :::ignore H020 Commands and stream are two contracts of one Connect service; they share its package :::
 :::interface
@@ -118,6 +123,10 @@ Delivers the event log of a session from a cursor onwards, then live. This is th
 replication and for the stage. After a drop, the subscriber reconnects with its last event ID.
 It also answers a one-time request for the events after a cursor. A participant uses it when it
 finds a gap in its copy, or to follow the session without a file system (`dec-events-from-cursor`).
+With the last event it has, the stream sends a tree head signed by the hub over all events up to
+it, so a subscriber always holds a signed head over its whole copy (`dec-signed-head-in-stream`).
+A cursor beyond the end of the log means that the hub lost events: the subscriber then offers its
+copy.
 
 The interface also defines the stored form of a session log: one line per event and the signed
 tree head next to it. The local log of a participant and the session log in the archive use the
@@ -294,6 +303,13 @@ the background: commands and the stream never wait for it. At most one write is 
 slow write makes the next write take everything that has come since. Every write stores the raw
 log (with the original text of sentences that are off the record, and their marks) and the tree
 head signed by the hub over exactly that log (`dec-merkle-log`).
+
+When the hub starts, the meeting session reads every stored log back from the archive and checks
+it against its signed tree head before it uses it (`dec-restore-from-peers`). A restored session
+keeps its IDs, so every cursor stays valid. The events after the last write are lost; a peer
+fills them in. Until a peer copy fits, or a configurable wait is over, a restored session that has
+not ended takes no commands (`dec-signed-head-in-stream`). The archive also records whether the
+hub stopped after a last write of every session; then nothing is lost and there is no wait.
 
 ### Records
 
@@ -535,7 +551,8 @@ path: client/mcp
 An append-only JSONL file with one compact line per event. Every line carries the event type in
 dotted form (for example `"type":"utterance.final"`) and the event ID as a JSON number, so that
 `tail -f`, `grep` and `jq` work without conversion. The line form belongs to the session stream,
-so the session log in the archive has the same lines.
+so the session log in the archive has the same lines. Next to the log, the replicator keeps the
+latest tree head that the hub signed over it (`dec-signed-head-in-stream`).
 
 ```arc42
 :::interface
@@ -643,13 +660,19 @@ other user can read the file. After a drop, it reconnects and continues after th
 line in the file. On `session.ended` it writes a final line and stops.
 It also stops when its parent process dies.
 
+If the hub does not know its cursor, the hub has lost events (`dec-restore-from-peers`). The
+replicator then offers the events the hub misses, with the signed tree head it keeps, through the
+session commands. It retries until the hub has its cursor again, from its own copy or from another
+peer. Before it goes on, it checks that the log of the hub up to the cursor has the same root
+hash as the local log; if not, it stops with an error instead of continuing a copy that forks.
+
 ```arc42
 :::building-block
 id: bb-replicator
 title: Log replicator
 technology: Go / connect-go
 parent: bb-participant-client
-requires: if-session-stream
+requires: if-session-stream, if-session-commands
 implements: concept-event-log, concept-read-file-write-tools, concept-test-strategy
 path: client/replicator
 :::
