@@ -118,8 +118,12 @@ func (s *Service) UseArchive(ctx context.Context, opts ArchiveOptions) error {
 // state is what the service knows about one session. It is derived from the log only, so it can
 // be rebuilt from the store at any time.
 type state struct {
-	mu           sync.Mutex // serialises the commands of the session
-	loaded       bool
+	mu     sync.Mutex // serialises the commands of the session
+	loaded bool
+	// schema is the schema of the session (dec-session-schema): sessionv1.Schema for a session
+	// this hub started, the schema of the stored tree head for a restored one. The hub continues
+	// only sessions of its own schema; see checkSchema.
+	schema       string
 	lastID       uint32
 	ended        bool
 	participants map[string]*participant
@@ -195,13 +199,32 @@ func (st *state) apply(ev *sessionv1.Event) error {
 	return nil
 }
 
+// newState returns the empty state of a session of a schema.
+func newState(schema string) *state {
+	return &state{schema: schema, participants: map[string]*participant{}, utterances: map[uint32]*utterance{}}
+}
+
+// checkSchema fails for a session of another schema than the one of this hub
+// (dec-session-schema): the hub serves its log but does not continue it. The caller holds st.mu.
+func (st *state) checkSchema() error {
+	if st.schema == sessionv1.Schema {
+		return nil
+	}
+	return precondition(schemaMismatch(st.schema))
+}
+
+func schemaMismatch(schema string) string {
+	return "the session has schema \"" + schema + "\"; this hub has schema \"" + sessionv1.Schema +
+		"\" and does not continue a session of another schema"
+}
+
 // lock returns the locked state of a session. It loads the state from the store on first use.
 // The caller must unlock st.mu.
 func (s *Service) lock(sessionID string) (*state, error) {
 	s.mu.Lock()
 	st, ok := s.sessions[sessionID]
 	if !ok {
-		st = &state{participants: map[string]*participant{}, utterances: map[uint32]*utterance{}}
+		st = newState(sessionv1.Schema)
 		s.sessions[sessionID] = st
 	}
 	s.mu.Unlock()
@@ -290,6 +313,9 @@ func (s *Service) run(ctx context.Context, c command, isJoin bool) (*sessionv1.C
 				"command_id was already used for another command")
 		}
 		return &sessionv1.CommandResult{Event: prev, Duplicate: true}, nil
+	}
+	if err := st.checkSchema(); err != nil {
+		return nil, err
 	}
 	if err := st.checkRestored(); err != nil {
 		return nil, err
@@ -803,26 +829,26 @@ func (s *Service) prepare(sid string, evs []*sessionv1.Event) ([]*sessionv1.Even
 	return out, head, nil
 }
 
-// tree returns the leaf hashes of the current log of a session, after the checks that every
-// read of a session needs. The caller must not change the slice.
-func (s *Service) tree(ctx context.Context, sid string) ([][]byte, error) {
+// tree returns the leaf hashes of the current log of a session and its schema, after the checks
+// that every read of a session needs. The caller must not change the slice.
+func (s *Service) tree(ctx context.Context, sid string) ([][]byte, string, error) {
 	if sid == "" {
-		return nil, invalid("session_id is required")
+		return nil, "", invalid("session_id is required")
 	}
 	caller, err := s.auth.Caller(ctx)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if caller.StageSessionID != "" && caller.StageSessionID != sid {
-		return nil, connect.NewError(connect.CodePermissionDenied, "the stage link is for another session")
+		return nil, "", connect.NewError(connect.CodePermissionDenied, "the stage link is for another session")
 	}
 	st, err := s.lock(sid)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer st.mu.Unlock()
 	n := len(st.leaves)
-	return st.leaves[:n:n], nil
+	return st.leaves[:n:n], st.schema, nil
 }
 
 // treeSize resolves a requested tree size: 0 is the current size; a size beyond it is
@@ -840,7 +866,7 @@ func treeSize(req uint32, current int, field string) (int, error) {
 // GetTreeHead returns the signed tree head of the session log, for the current log or for its
 // first tree_size events (dec-merkle-log). The head of an empty session has size 0.
 func (s *Service) GetTreeHead(ctx context.Context, req *sessionv1.GetTreeHeadRequest) (*sessionv1.GetTreeHeadResponse, error) {
-	leaves, err := s.tree(ctx, req.GetSessionId())
+	leaves, schema, err := s.tree(ctx, req.GetSessionId())
 	if err != nil {
 		return nil, err
 	}
@@ -853,13 +879,13 @@ func (s *Service) GetTreeHead(ctx context.Context, req *sessionv1.GetTreeHeadReq
 			return &sessionv1.GetTreeHeadResponse{TreeHead: head}, nil
 		}
 	}
-	return &sessionv1.GetTreeHeadResponse{TreeHead: merkle.SignTreeHead(s.key, req.GetSessionId(), leaves[:n])}, nil
+	return &sessionv1.GetTreeHeadResponse{TreeHead: merkle.SignTreeHead(s.key, schema, req.GetSessionId(), leaves[:n])}, nil
 }
 
 // GetConsistencyProof returns the proof that the log of second_size events extends the log of
 // first_size events. first_size must be at least 1 and at most second_size.
 func (s *Service) GetConsistencyProof(ctx context.Context, req *sessionv1.GetConsistencyProofRequest) (*sessionv1.GetConsistencyProofResponse, error) {
-	leaves, err := s.tree(ctx, req.GetSessionId())
+	leaves, _, err := s.tree(ctx, req.GetSessionId())
 	if err != nil {
 		return nil, err
 	}
@@ -880,7 +906,7 @@ func (s *Service) GetConsistencyProof(ctx context.Context, req *sessionv1.GetCon
 
 // GetInclusionProof returns the audit path of one event in the tree of tree_size events.
 func (s *Service) GetInclusionProof(ctx context.Context, req *sessionv1.GetInclusionProofRequest) (*sessionv1.GetInclusionProofResponse, error) {
-	leaves, err := s.tree(ctx, req.GetSessionId())
+	leaves, _, err := s.tree(ctx, req.GetSessionId())
 	if err != nil {
 		return nil, err
 	}

@@ -142,11 +142,17 @@ message SessionEnded {
 // of a leaf and of the signed message, and the code to verify a head and its proofs.
 message SignedTreeHead {
   string session_id = 1;
+  // schema is the schema of the session (dec-session-schema): the version of the session contract
+  // the session was started with, for example "office.session.v1/1". A session keeps its schema
+  // for its whole life. A hub with another schema does not continue the session, and a verifier
+  // checks the session only with its own schema. The Go constant is Schema in this package.
+  string schema = 6;
   // tree_size is the number of events in the tree. The last event in the tree has this ID.
   uint32 tree_size = 2;
   // root_hash is the SHA-256 root hash of the tree (32 bytes).
   bytes root_hash = 3;
-  // signature is the Ed25519 signature of the hub over session_id, tree_size and root_hash.
+  // signature is the Ed25519 signature of the hub over schema, session_id, tree_size and
+  // root_hash.
   bytes signature = 4;
   // public_key is the Ed25519 public key that made the signature (32 bytes). It only says which
   // key signed: a verifier must check it against the hub key it trusts (GetHubKey).

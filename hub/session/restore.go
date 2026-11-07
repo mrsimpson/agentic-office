@@ -70,8 +70,8 @@ func (st *state) root() []byte {
 func (s *Service) signedHead(sid string, st *state) *sessionv1.SignedTreeHead {
 	if st.head == nil {
 		n, root := uint64(len(st.leaves)), st.root()
-		st.head = &sessionv1.SignedTreeHead{SessionId: sid, TreeSize: uint32(n), RootHash: root,
-			Signature: ed25519.Sign(s.key, merkle.TreeHeadMessage(sid, n, root)),
+		st.head = &sessionv1.SignedTreeHead{SessionId: sid, Schema: st.schema, TreeSize: uint32(n), RootHash: root,
+			Signature: ed25519.Sign(s.key, merkle.TreeHeadMessage(st.schema, sid, n, root)),
 			PublicKey: s.key.Public().(ed25519.PublicKey)}
 	}
 	return st.head
@@ -164,18 +164,23 @@ func (s *Service) restore(ctx context.Context) error {
 		}
 	}
 	until := time.Now().Add(a.opts.RestoreWait)
-	var restored, waiting, broken int
+	var restored, waiting, broken, other int
 	for _, name := range names {
 		f := byName[name]
 		sid, st, err := s.restoreOne(name, f.log, f.head)
 		if err != nil {
 			s.logf("restore: session %q: %v; it takes no commands until a peer offers its copy", sid, err)
-			s.sessions[sid] = &state{participants: map[string]*participant{}, utterances: map[uint32]*utterance{},
-				loaded: true, restoring: true, broken: err.Error()}
+			st := newState(sessionv1.Schema)
+			st.loaded, st.restoring, st.broken = true, true, err.Error()
+			s.sessions[sid] = st
 			broken++
 			continue
 		}
-		if !st.ended && !complete && a.opts.RestoreWait > 0 {
+		if st.schema != sessionv1.Schema {
+			// Readable, but this hub does not continue it (dec-session-schema): no wait for peers.
+			s.logf("restore: session %q: %s", sid, schemaMismatch(st.schema))
+			other++
+		} else if !st.ended && !complete && a.opts.RestoreWait > 0 {
 			st.restoring, st.restoreUntil = true, until
 			waiting++
 		}
@@ -183,8 +188,8 @@ func (s *Service) restore(ctx context.Context) error {
 		a.lines[sid] = &archivedLog{data: f.log, count: len(st.leaves)}
 		restored++
 	}
-	s.logf("restore: %d sessions from the archive, %d wait up to %s for peers, %d do not verify",
-		restored, waiting, a.opts.RestoreWait, broken)
+	s.logf("restore: %d sessions from the archive, %d wait up to %s for peers, %d do not verify, %d have another schema",
+		restored, waiting, a.opts.RestoreWait, broken, other)
 	if complete {
 		// From now on the archive may miss events again until the next stop.
 		if _, err := a.opts.Archive.Commit(ctx, storage.Change{Message: "Sessions: the hub started",
@@ -215,10 +220,12 @@ func (s *Service) restoreOne(name string, logData, headData []byte) (string, *st
 	if err != nil {
 		return sid, nil, fmt.Errorf("read the log: %w", err)
 	}
-	if err := merkle.VerifyEvents(evs, head, s.key.Public().(ed25519.PublicKey)); err != nil {
+	if err := s.verifyStored(evs, head); err != nil {
 		return sid, nil, err
 	}
-	st := &state{participants: map[string]*participant{}, utterances: map[uint32]*utterance{}, loaded: true}
+	// The session keeps the schema of its stored tree head (dec-session-schema).
+	st := newState(head.GetSchema())
+	st.loaded = true
 	for _, ev := range evs {
 		stored, err := s.store.Append(sid, ev)
 		if err != nil {
@@ -229,6 +236,32 @@ func (s *Service) restoreOne(name string, logData, headData []byte) (string, *st
 		}
 	}
 	return sid, st, nil
+}
+
+// verifyStored checks a stored log against its stored tree head. A log of the schema of the hub
+// verifies with merkle.VerifyEvents. A log of another schema is checked with the signature of its
+// head and the leaves this hub computes: the hub serves it only if its leaves give the signed root
+// hash, so every head and proof the hub signs for it later is right.
+func (s *Service) verifyStored(evs []*sessionv1.Event, head *sessionv1.SignedTreeHead) error {
+	key := s.key.Public().(ed25519.PublicKey)
+	if head.GetSchema() == sessionv1.Schema {
+		return merkle.VerifyEvents(evs, head, key)
+	}
+	if err := merkle.VerifyTreeHeadSignature(head, key); err != nil {
+		return err
+	}
+	if len(evs) != int(head.GetTreeSize()) {
+		return fmt.Errorf("the log has %d events, the tree head %d", len(evs), head.GetTreeSize())
+	}
+	leaves, err := merkle.LeafHashes(head.GetSessionId(), evs)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(merkle.RootHash(leaves), head.GetRootHash()) {
+		return fmt.Errorf("the log has schema %q and does not give the root hash of its tree head "+
+			"with the encoding of schema %q", head.GetSchema(), sessionv1.Schema)
+	}
+	return nil
 }
 
 // OfferLog takes the missing events of a session from the copy of a peer
@@ -260,8 +293,13 @@ func (s *Service) OfferLog(ctx context.Context, req *sessionv1.OfferLogRequest) 
 	if head.GetSessionId() != sid {
 		return nil, invalid("tree_head is for another session")
 	}
-	if err := merkle.VerifyTreeHead(head, s.key.Public().(ed25519.PublicKey)); err != nil {
+	if err := merkle.VerifyTreeHeadSignature(head, s.key.Public().(ed25519.PublicKey)); err != nil {
 		return nil, invalid("tree_head: " + err.Error())
+	}
+	// A copy of another schema does not continue a session of this hub (dec-session-schema).
+	if head.GetSchema() != sessionv1.Schema {
+		return nil, precondition("the copy has schema \"" + head.GetSchema() + "\"; this hub has schema \"" +
+			sessionv1.Schema + "\" and does not continue a session of another schema")
 	}
 	m, after := int(head.GetTreeSize()), int(req.GetAfterEventId())
 	if after > m {
@@ -276,6 +314,9 @@ func (s *Service) OfferLog(ctx context.Context, req *sessionv1.OfferLogRequest) 
 		return nil, err
 	}
 	defer st.mu.Unlock()
+	if err := st.checkSchema(); err != nil {
+		return nil, err
+	}
 	n := len(st.leaves)
 	if after > n {
 		return nil, connect.NewError(connect.CodeOutOfRange,

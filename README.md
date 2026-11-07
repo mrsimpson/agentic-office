@@ -185,8 +185,15 @@ Transparency), and the hub signs its tree heads (`dec-merkle-log`). Package
 - A placeholder of an utterance that is off the record carries `leafHash`: the leaf hash of the
   original. Verifiers use it instead of hashing the placeholder, so a copy with placeholders still
   verifies. Any other event with a `leafHash` fails the check.
-- A signed tree head has the session ID, the tree size, the root hash, the Ed25519 signature and
-  the public key that signed. The signed message is `merkle.TreeHeadMessage`.
+- A signed tree head has the session ID, the schema of the session, the tree size, the root hash,
+  the Ed25519 signature and the public key that signed. The signed message is
+  `merkle.TreeHeadMessage`; it covers the schema.
+- Schema (`dec-session-schema`): a session belongs to the schema it was started with, the
+  version of the session contract. The schema of this code is `sessionv1.Schema`, for example
+  `office.session.v1/1`: the Protobuf package and a revision. The revision goes up with every
+  change of the events or their encoding that changes a leaf. Every check in package `merkle`
+  fails with `merkle.ErrSchema` (and `merkle.ErrVerify`) for a tree head of another schema, so a
+  verifier checks a session only with code of its own schema.
 - `session.ended` carries the signed tree head of the log before it (`sessionEnded.treeHead`).
 - `GetTreeHead` returns the signed head of the current log, or of its first `tree_size` events.
   `GetConsistencyProof` proves that the log of `second_size` events extends the log of
@@ -224,7 +231,7 @@ else `=` plus the base64url form of the ID without padding (`team/weekly 1` beco
 | File | What it is |
 |---|---|
 | `log.jsonl` | The raw session log: one line per event, the same lines as the local log of a participant (`hub/session/api/logfile`). It keeps the original text of sentences that are off the record and their `utterance.off_the_record` marks. Reading a session through the interfaces gives placeholders. |
-| `tree-head.yaml` | The tree head signed by the hub over exactly this log: `session_id`, `tree_size` (the number of lines), `root_hash`, `signature`, `public_key` (bytes in base64). |
+| `tree-head.yaml` | The tree head signed by the hub over exactly this log: `session_id`, `schema` (the schema of the session), `tree_size` (the number of lines), `root_hash`, `signature`, `public_key` (bytes in base64). |
 
 Check a stored session:
 
@@ -267,6 +274,12 @@ When the hub starts, it restores every session from the archive (`dec-restore-fr
    a lost one. Repeat the command (it is idempotent). After a clean stop (`complete: true`) there
    is no wait. A stored log that does not verify is not used: its commands fail with `data_loss`
    until a peer offers a whole copy (`after_event_id` 0).
+6. A session keeps its schema (`dec-session-schema`). A stored session of another schema than
+   the hub's is readable if its signature verifies and the hub's leaves give its root hash:
+   events, stream, tree heads (with the session's schema) and proofs. But the hub does not
+   continue it: every new command and every `OfferLog` fails with `failed_precondition`, and the
+   error names both schemas. A repeated command ID still returns its stored event. `OfferLog`
+   also fails with `failed_precondition` for a copy whose tree head has another schema.
 
 The replicator does steps 2 and 3 by itself. After the hub has its cursor again, it checks that
 the head of the hub at the cursor has the root hash of the local log, and then follows the stream.
@@ -915,6 +928,12 @@ through its interfaces:
   with its placeholder) exactly one fills in; then the IDs continue and the cursor of a peer is
   valid again. A copy of the old tail after the wait forks and fails. After a clean stop there is
   no wait, ended sessions stay ended and repeated command IDs still work.
+- `tests/contract/schema_test.go` checks the schema of a session (`dec-session-schema`): every
+  tree head of a new session carries the schema of the hub and its signature covers it; package
+  `merkle` rejects a head of another schema; the hub rejects an offered copy of another schema.
+  To get a stored session of another schema, the test stops the hub, signs the stored tree head
+  again with the hub's signing key file but with another schema, and commits it to the archive.
+  After the restart the session is readable but not continued.
   `tests/e2e/restore_test.go` does the same with two CLI participants and their replicators:
   the hub restores 4 events from the archive, a replicator fills in 5 to 7, and both local logs,
   the hub and the archive end with every event exactly once.

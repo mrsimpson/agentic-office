@@ -1194,11 +1194,17 @@ func (x *SessionEnded) GetTreeHead() *SignedTreeHead {
 type SignedTreeHead struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	SessionId string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	// schema is the schema of the session (dec-session-schema): the version of the session contract
+	// the session was started with, for example "office.session.v1/1". A session keeps its schema
+	// for its whole life. A hub with another schema does not continue the session, and a verifier
+	// checks the session only with its own schema. The Go constant is Schema in this package.
+	Schema string `protobuf:"bytes,6,opt,name=schema,proto3" json:"schema,omitempty"`
 	// tree_size is the number of events in the tree. The last event in the tree has this ID.
 	TreeSize uint32 `protobuf:"varint,2,opt,name=tree_size,json=treeSize,proto3" json:"tree_size,omitempty"`
 	// root_hash is the SHA-256 root hash of the tree (32 bytes).
 	RootHash []byte `protobuf:"bytes,3,opt,name=root_hash,json=rootHash,proto3" json:"root_hash,omitempty"`
-	// signature is the Ed25519 signature of the hub over session_id, tree_size and root_hash.
+	// signature is the Ed25519 signature of the hub over schema, session_id, tree_size and
+	// root_hash.
 	Signature []byte `protobuf:"bytes,4,opt,name=signature,proto3" json:"signature,omitempty"`
 	// public_key is the Ed25519 public key that made the signature (32 bytes). It only says which
 	// key signed: a verifier must check it against the hub key it trusts (GetHubKey).
@@ -1240,6 +1246,13 @@ func (*SignedTreeHead) Descriptor() ([]byte, []int) {
 func (x *SignedTreeHead) GetSessionId() string {
 	if x != nil {
 		return x.SessionId
+	}
+	return ""
+}
+
+func (x *SignedTreeHead) GetSchema() string {
+	if x != nil {
+		return x.Schema
 	}
 	return ""
 }
@@ -1344,10 +1357,11 @@ const file_office_session_v1_events_proto_rawDesc = "" +
 	"\x12ParticipantResumed\x12%\n" +
 	"\x0eparticipant_id\x18\x01 \x01(\tR\rparticipantId\"N\n" +
 	"\fSessionEnded\x12>\n" +
-	"\ttree_head\x18\x01 \x01(\v2!.office.session.v1.SignedTreeHeadR\btreeHead\"\xa6\x01\n" +
+	"\ttree_head\x18\x01 \x01(\v2!.office.session.v1.SignedTreeHeadR\btreeHead\"\xbe\x01\n" +
 	"\x0eSignedTreeHead\x12\x1d\n" +
 	"\n" +
-	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x1b\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x16\n" +
+	"\x06schema\x18\x06 \x01(\tR\x06schema\x12\x1b\n" +
 	"\ttree_size\x18\x02 \x01(\rR\btreeSize\x12\x1b\n" +
 	"\troot_hash\x18\x03 \x01(\fR\brootHash\x12\x1c\n" +
 	"\tsignature\x18\x04 \x01(\fR\tsignature\x12\x1d\n" +

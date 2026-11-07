@@ -56,6 +56,15 @@
 //     no wait if ArchiveStateFile says that the hub stopped after a last write of every session.
 //     A stored log that does not verify is not used: its commands fail with DataLoss until a
 //     peer offers a whole copy.
+//   - Schema (dec-session-schema): a session belongs to the schema it was started with. A session
+//     this hub starts has sessionv1.Schema; every tree head the hub signs for it carries the schema,
+//     and the signature covers it, so the archive keeps the schema in the tree head file. A restored
+//     session keeps the schema of its stored tree head. A stored log of another schema is used only
+//     if its signature verifies and the leaves this hub computes give its root hash; then it is
+//     readable (events, stream, tree heads with its own schema, proofs), but every new command and
+//     every OfferLog fails with FailedPrecondition, and the hub does not wait for peers to fill it
+//     in. A repeated command_id still returns its stored event. OfferLog also fails with
+//     FailedPrecondition for a copy whose tree head has another schema.
 //   - Subscribe closes the stream after it has sent session.ended. It ends the stream with
 //     Unauthenticated when the token of the caller expires or is revoked.
 package session

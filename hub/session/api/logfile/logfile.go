@@ -9,8 +9,9 @@
 // A line is the canonical JSON form of the event (protojson, field names in lowerCamelCase, the
 // event ID as a number, the type in dotted form) without spaces, ending with a newline.
 //
-// A tree head file is YAML with the field names of the contract (session_id, tree_size,
-// root_hash, signature, public_key); bytes are base64.
+// A tree head file is YAML with the field names of the contract (session_id, schema, tree_size,
+// root_hash, signature, public_key); bytes are base64. The schema in it is the schema of the
+// session (dec-session-schema).
 package logfile
 
 import (

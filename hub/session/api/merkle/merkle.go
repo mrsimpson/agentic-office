@@ -14,11 +14,15 @@
 //     original in leaf_hash. EventLeafHash uses it instead of hashing the placeholder, so a copy
 //     with placeholders still verifies (dec-off-the-record). A placeholder cannot change what the
 //     tree proves: it can only hide the text.
-//   - The hub signs a tree head with Ed25519 over TreeHeadMessage: a fixed prefix, the session ID,
-//     the tree size and the root hash.
+//   - The hub signs a tree head with Ed25519 over TreeHeadMessage: a fixed prefix, the schema of
+//     the session, the session ID, the tree size and the root hash.
+//   - A session belongs to one schema (dec-session-schema, sessionv1.Schema). The leaves depend on
+//     the encoding of the events, so this code checks only logs of the schema it knows: every
+//     check of a tree head fails with ErrSchema for a head of another schema.
 //
 // The client side is VerifyTreeHead, VerifyEvents, VerifyInclusion, VerifyEventInclusion and
-// VerifyConsistency. The hub side is RootHash, InclusionProof, ConsistencyProof and SignTreeHead.
+// VerifyConsistency. The hub side is RootHash, InclusionProof, ConsistencyProof, SignTreeHead and
+// VerifyTreeHeadSignature.
 package merkle
 
 import (
@@ -44,6 +48,10 @@ const TreeHeadPrefix = "agentic-office/session/v1/tree-head\x00"
 
 // ErrVerify is wrapped by every error of a check that fails.
 var ErrVerify = errors.New("merkle: verification failed")
+
+// ErrSchema is wrapped, together with ErrVerify, by the error of a check of a tree head with
+// another schema than sessionv1.Schema.
+var ErrSchema = errors.New("the log has another schema")
 
 func fail(format string, a ...any) error {
 	return fmt.Errorf("%w: %s", ErrVerify, fmt.Sprintf(format, a...))
@@ -239,30 +247,47 @@ func VerifyConsistency(first, second uint64, firstRoot, secondRoot []byte, proof
 }
 
 // TreeHeadMessage returns the bytes the hub signs for a tree head: TreeHeadPrefix, the length
-// of the session ID (4 bytes, big endian), the session ID, the tree size (8 bytes, big endian)
-// and the root hash.
-func TreeHeadMessage(sessionID string, size uint64, root []byte) []byte {
-	b := make([]byte, 0, len(TreeHeadPrefix)+4+len(sessionID)+8+len(root))
+// of the schema (4 bytes, big endian), the schema, the length of the session ID (4 bytes, big
+// endian), the session ID, the tree size (8 bytes, big endian) and the root hash.
+func TreeHeadMessage(schema, sessionID string, size uint64, root []byte) []byte {
+	b := make([]byte, 0, len(TreeHeadPrefix)+4+len(schema)+4+len(sessionID)+8+len(root))
 	b = append(b, TreeHeadPrefix...)
+	b = binary.BigEndian.AppendUint32(b, uint32(len(schema)))
+	b = append(b, schema...)
 	b = binary.BigEndian.AppendUint32(b, uint32(len(sessionID)))
 	b = append(b, sessionID...)
 	b = binary.BigEndian.AppendUint64(b, size)
 	return append(b, root...)
 }
 
-// SignTreeHead returns the signed tree head of a session over the leaf hashes.
-func SignTreeHead(key ed25519.PrivateKey, sessionID string, leaves [][]byte) *sessionv1.SignedTreeHead {
+// SignTreeHead returns the signed tree head of a session of the given schema over the leaf
+// hashes.
+func SignTreeHead(key ed25519.PrivateKey, schema, sessionID string, leaves [][]byte) *sessionv1.SignedTreeHead {
 	root := RootHash(leaves)
 	return &sessionv1.SignedTreeHead{
-		SessionId: sessionID, TreeSize: uint32(len(leaves)), RootHash: root,
-		Signature: ed25519.Sign(key, TreeHeadMessage(sessionID, uint64(len(leaves)), root)),
+		SessionId: sessionID, Schema: schema, TreeSize: uint32(len(leaves)), RootHash: root,
+		Signature: ed25519.Sign(key, TreeHeadMessage(schema, sessionID, uint64(len(leaves)), root)),
 		PublicKey: key.Public().(ed25519.PublicKey),
 	}
 }
 
-// VerifyTreeHead checks the signature of a tree head with the hub key the caller trusts. It
-// fails if the head names another key.
+// VerifyTreeHead checks a tree head with the hub key the caller trusts: its signature, and that
+// it has the schema of this code (sessionv1.Schema). It fails if the head names another key. A
+// head of another schema fails with ErrSchema.
 func VerifyTreeHead(sth *sessionv1.SignedTreeHead, hubKey ed25519.PublicKey) error {
+	if err := VerifyTreeHeadSignature(sth, hubKey); err != nil {
+		return err
+	}
+	if sth.GetSchema() != sessionv1.Schema {
+		return fmt.Errorf("%w: %w: the tree head has schema %q, this code checks only schema %q",
+			ErrVerify, ErrSchema, sth.GetSchema(), sessionv1.Schema)
+	}
+	return nil
+}
+
+// VerifyTreeHeadSignature checks only the signature of a tree head, whatever its schema. A hub
+// uses it to serve a stored session of another schema; a verifier uses VerifyTreeHead.
+func VerifyTreeHeadSignature(sth *sessionv1.SignedTreeHead, hubKey ed25519.PublicKey) error {
 	if len(hubKey) != ed25519.PublicKeySize {
 		return fail("hub key has %d bytes, not %d", len(hubKey), ed25519.PublicKeySize)
 	}
@@ -272,7 +297,7 @@ func VerifyTreeHead(sth *sessionv1.SignedTreeHead, hubKey ed25519.PublicKey) err
 	if len(sth.GetRootHash()) != HashSize {
 		return fail("root hash has %d bytes, not %d", len(sth.GetRootHash()), HashSize)
 	}
-	msg := TreeHeadMessage(sth.GetSessionId(), uint64(sth.GetTreeSize()), sth.GetRootHash())
+	msg := TreeHeadMessage(sth.GetSchema(), sth.GetSessionId(), uint64(sth.GetTreeSize()), sth.GetRootHash())
 	if !ed25519.Verify(hubKey, msg, sth.GetSignature()) {
 		return fail("signature of the tree head is not valid")
 	}
