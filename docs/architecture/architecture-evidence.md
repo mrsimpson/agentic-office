@@ -65,3 +65,8 @@ proposed it and it still needs confirmation.
 | Maintainer, review 11 | Publication keeps the original and the off-the-record mark; reading gives placeholders | ch.9 dec-off-the-record | high | — |
 | Maintainer, review 11 | Joining accepts that others keep and publish a copy | ch.9 dec-consent-by-mic | high | — |
 | Maintainer, review 11 | The next peer in joining order restores a lost log; no epoch | ch.9 dec-restore-from-peers | high | — |
+| Maintainer, review 12 | The hub is the gateway of the archive and brings the semantics; the external Git repository is pure storage; peers do not publish | ch.7, ch.8, ch.9 dec-session-persistence (replaces dec-peer-storage and dec-publish-session) | high | — |
+| Maintainer, review 12 | Write interval on the hub is configurable; more often is better; writes must not cause a queue | ch.9 dec-session-persistence, ch.10 qs-archive-no-backpressure, ch.11 risk-archive-latency | high | OPEN: slow commit time for the scenario |
+| agent inference | Writes in the background, at most one in progress, coalescing later events | ch.9 dec-session-persistence | medium | — |
+| Maintainer, review 12 | Keep a separately deployed hub; call it hub instead of server | ch.5, ch.7, ch.12 | high | — |
+| agent inference | The hub keeps identity and its signing key permanently | ch.7 | medium | — |

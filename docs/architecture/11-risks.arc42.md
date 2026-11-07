@@ -86,28 +86,30 @@ mitigation: Use Go with the stable connect-go for all parts (dec-languages); kee
 :::
 ```
 
-## A peer publishes a changed copy
+## A changed session in the repository or in a peer copy
 
-A peer could change its copy of a session before it publishes it or restores the server with it.
+Someone with access to the Git repository could change a stored session, and a peer could change
+the copy it supplies after a crash.
 
 ```arc42
 :::risk
 id: risk-forged-copy
 title: Forged session copies
 severity: high
-mitigation: Merkle tree with tree heads signed by the server; the archive checks every publication (dec-merkle-log)
+mitigation: Merkle tree with tree heads signed by the hub; the hub checks every peer copy, and every reader can check the repository (dec-merkle-log)
 :::
 ```
 
-## Several peers publish at once
+## Writing to Git is slow
 
-All peers publish at the end of a session, with different cursors and at the same time.
+A Git commit takes noticeable time. If the session waited for it, every command would be slow, and
+a slow repository could build up a queue.
 
 ```arc42
 :::risk
-id: risk-publication-race
-title: Concurrent publications of one session
+id: risk-archive-latency
+title: Slow writes to the archive hold up the session
 severity: medium
-mitigation: The target is addressed by session ID; a lower cursor is rejected; a consistency proof decides (dec-publish-session)
+mitigation: Writes run in the background with a configurable interval; at most one write in progress; later events go into the next write (dec-session-persistence)
 :::
 ```

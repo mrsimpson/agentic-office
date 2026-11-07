@@ -127,6 +127,22 @@ metric: All spoken sentences arrive; recognition is good enough to follow the me
 :::
 ```
 
+## Slow archive does not slow the session
+
+The hub writes to the archive in the background. Even with a slow Git repository, speech reaches
+the local log of the other participants as fast as without it.
+
+```arc42
+:::quality-scenario
+id: qs-archive-no-backpressure
+title: A slow archive does not delay the session
+quality: qg-performance
+stimulus: Every write to the archive takes 5 s (OPEN) while participants speak
+response: Commands and the stream run as usual; later events go into the next write
+metric: qs-transcript-to-log still < 200 ms; no queue of writes builds up
+:::
+```
+
 ## Resume after a network drop
 
 A participant's network drops in the middle of a meeting and comes back. While offline, the person
