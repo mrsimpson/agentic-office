@@ -12,13 +12,13 @@ import (
 	"connectrpc.com/connect/v2"
 	"connectrpc.com/connect/v2/connecthttp"
 
-	"github.com/mrsimpson/agentic-office/hub/artifacts/api/artifactv1connect"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/identityv1connect"
 	"github.com/mrsimpson/agentic-office/hub/records/decision/api/decisionv1connect"
 	"github.com/mrsimpson/agentic-office/hub/records/minutes/api/minutesv1connect"
 	"github.com/mrsimpson/agentic-office/hub/records/note/api/notev1connect"
 	"github.com/mrsimpson/agentic-office/hub/session/api/sessionv1connect"
+	"github.com/mrsimpson/agentic-office/hub/slides/api/slidesv1connect"
 	"github.com/mrsimpson/agentic-office/hub/tasks/api/taskv1connect"
 )
 
@@ -34,7 +34,7 @@ type Client struct {
 	Minutes  minutesv1connect.MinutesServiceClient
 	Note     notev1connect.NoteServiceClient
 	Task     taskv1connect.TaskServiceClient
-	Artifact artifactv1connect.ArtifactServiceClient
+	Slides   slidesv1connect.SlidesServiceClient
 }
 
 // ErrNoKey means that the key file does not exist.
@@ -65,7 +65,7 @@ func Dial(cfg Config) (*Client, error) {
 		Minutes:  minutesv1connect.NewMinutesServiceClient(cc),
 		Note:     notev1connect.NewNoteServiceClient(cc),
 		Task:     taskv1connect.NewTaskServiceClient(cc),
-		Artifact: artifactv1connect.NewArtifactServiceClient(cc),
+		Slides:   slidesv1connect.NewSlidesServiceClient(cc),
 	}, nil
 }
 

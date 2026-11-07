@@ -35,7 +35,6 @@ import (
 	"connectrpc.com/connect/v2/connecthttp"
 
 	"github.com/mrsimpson/agentic-office/client/core/ids"
-	artifactv1connect "github.com/mrsimpson/agentic-office/hub/artifacts/api/artifactv1connect"
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	identityv1connect "github.com/mrsimpson/agentic-office/hub/identity/api/identityv1connect"
@@ -43,6 +42,7 @@ import (
 	minutesv1connect "github.com/mrsimpson/agentic-office/hub/records/minutes/api/minutesv1connect"
 	notev1connect "github.com/mrsimpson/agentic-office/hub/records/note/api/notev1connect"
 	sessionv1connect "github.com/mrsimpson/agentic-office/hub/session/api/sessionv1connect"
+	"github.com/mrsimpson/agentic-office/hub/slides/api/slidesv1connect"
 	taskv1connect "github.com/mrsimpson/agentic-office/hub/tasks/api/taskv1connect"
 )
 
@@ -332,7 +332,7 @@ type Clients struct {
 	Minutes  minutesv1connect.MinutesServiceClient
 	Note     notev1connect.NoteServiceClient
 	Task     taskv1connect.TaskServiceClient
-	Artifact artifactv1connect.ArtifactServiceClient
+	Slides   slidesv1connect.SlidesServiceClient
 }
 
 // NewClients returns clients for baseURL that use hc (nil: a new default client) and the
@@ -349,7 +349,7 @@ func NewClients(baseURL string, hc *http.Client, interceptors ...connect.ClientI
 		Minutes:  minutesv1connect.NewMinutesServiceClient(c),
 		Note:     notev1connect.NewNoteServiceClient(c),
 		Task:     taskv1connect.NewTaskServiceClient(c),
-		Artifact: artifactv1connect.NewArtifactServiceClient(c),
+		Slides:   slidesv1connect.NewSlidesServiceClient(c),
 	}
 }
 

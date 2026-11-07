@@ -20,12 +20,12 @@ import (
 	"google.golang.org/protobuf/types/dynamicpb"
 
 	// Register the office contracts, so that requests can be decoded by their path.
-	_ "github.com/mrsimpson/agentic-office/hub/artifacts/api"
 	_ "github.com/mrsimpson/agentic-office/hub/identity/api"
 	_ "github.com/mrsimpson/agentic-office/hub/records/decision/api"
 	_ "github.com/mrsimpson/agentic-office/hub/records/minutes/api"
 	_ "github.com/mrsimpson/agentic-office/hub/records/note/api"
 	_ "github.com/mrsimpson/agentic-office/hub/session/api"
+	_ "github.com/mrsimpson/agentic-office/hub/slides/api"
 )
 
 // Request is one RPC request that a client sent, decoded from the plaintext that a decrypting

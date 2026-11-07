@@ -160,7 +160,7 @@ func mcpJoined(t *testing.T, v map[string]any) (logPath, pid string, replicatorP
 // The tools of if-mcp. Names use "_" instead of "." (see README.md).
 var mcpTools = []string{"meeting_join", "meeting_log", "meeting_leave", "meeting_pause", "meeting_resume", "meeting_end",
 	"utterance_say", "utterance_off_the_record", "signal_turn_end", "signal_silence_long", "signal_addressed", "hand_raise",
-	"minutes_update", "stage_show", "stage_link", "slides_render", "artifact_get", "decision_record", "decision_list", "minutes_get", "minutes_list", "note_add", "note_list",
+	"minutes_update", "stage_show", "stage_link", "slides_render", "slides_get", "decision_record", "decision_list", "minutes_get", "minutes_list", "note_add", "note_list",
 	"task_create", "task_get", "task_list", "task_update", "whoami"}
 
 // TestMCPToolsDescribeTheLog: the server offers every tool, and tells an agent how to follow
@@ -487,7 +487,7 @@ func TestMCPErrors(t *testing.T) {
 		{"slides_render", nil},
 		{"slides_render", map[string]any{"markdown": "# t\n## s", "slides": []any{map[string]any{"title": "x"}}}},
 		{"slides_render", map[string]any{"markdown": "text before any slide"}},
-		{"artifact_get", nil},
+		{"slides_get", nil},
 		{"decision_record", nil},
 		{"decision_record", map[string]any{"text": " "}},
 		{"note_add", map[string]any{"text": ""}},
@@ -501,8 +501,8 @@ func TestMCPErrors(t *testing.T) {
 	// Errors of the server keep their Connect code.
 	s.fails("permission_denied", "utterance_off_the_record", map[string]any{"eventId": adaUtt.GetId()})
 
-	// Errors of the artifact tools keep their Connect code too.
-	s.fails("not_found", "artifact_get", map[string]any{"id": "slides/99"})
+	// Errors of the slides interface keep their Connect code too.
+	s.fails("not_found", "slides_get", map[string]any{"id": "slides/99"})
 	s.fails("invalid_argument", "slides_render", map[string]any{"slides": []any{map[string]any{"title": " "}}})
 
 	// After the end of the session, commands fail with the server's code.
@@ -602,11 +602,9 @@ func TestMCPRecords(t *testing.T) {
 	}
 }
 
-// TestMCPWithCLIReplicator: if "office meeting join" already runs a replicator for the same
-// participant, meeting_join reuses it and reports its PID; the file keeps one writer.
-// TestMCPArtifacts: slides_render and artifact_get against the real artifact tools. The three
+// TestMCPSlides: slides_render and slides_get against the real slides part of the hub. The three
 // forms of a deck give the same content.
-func TestMCPArtifacts(t *testing.T) {
+func TestMCPSlides(t *testing.T) {
 	m := newMachine(t)
 	bot := m.user("bot", "Bot", "agent")
 	ada := m.user("ada", "Ada", "human")
@@ -625,12 +623,12 @@ func TestMCPArtifacts(t *testing.T) {
 	for i, f := range forms {
 		v := s.ok("slides_render", f)
 		id := fmt.Sprintf("slides/%d", i+1)
-		if v["artifactId"] != id || v["mediaType"] != "text/html; charset=utf-8" || v["duplicate"] != false {
+		if v["id"] != id || v["mediaType"] != "text/html; charset=utf-8" || v["duplicate"] != false {
 			t.Fatalf("slides_render %v: %v", f, v)
 		}
-		a, _ := s.ok("artifact_get", map[string]any{"id": id})["artifact"].(map[string]any)
-		if a["id"] != id || a["authorParticipantId"] != "bot" {
-			t.Fatalf("artifact_get %s: %v", id, a)
+		a, _ := s.ok("slides_get", map[string]any{"id": id})["deck"].(map[string]any)
+		if sl, _ := a["slides"].([]any); a["id"] != id || a["authorParticipantId"] != "bot" || a["title"] != "Budget" || len(sl) != 1 {
+			t.Fatalf("slides_get %s: %v", id, a)
 		}
 		b, err := base64.StdEncoding.DecodeString(a["content"].(string))
 		if err != nil {
@@ -641,19 +639,21 @@ func TestMCPArtifacts(t *testing.T) {
 	if contents[0] != contents[1] || contents[1] != contents[2] || !strings.Contains(contents[0], "<li>&lt;two&gt;</li>") {
 		t.Fatalf("three forms of one deck, other content:\n%s", strings.Join(contents, "\n---\n"))
 	}
-	// The CLI of another participant sees the same artifact.
-	if html, _, code := ada.run("artifact", "get", "slides/3"); code != 0 || html != contents[0] {
-		t.Fatalf("CLI get of an MCP artifact: exit %d", code)
+	// The CLI of another participant sees the same deck.
+	if html, _, code := ada.run("slides", "get", "slides/3"); code != 0 || html != contents[0] {
+		t.Fatalf("CLI get of an MCP deck: exit %d", code)
 	}
 	out := filepath.Join(dir, "out.html")
-	if v := s.ok("artifact_get", map[string]any{"id": "slides/1", "out": out}); v["file"] != out {
-		t.Fatalf("artifact_get with out: %v", v)
+	if v := s.ok("slides_get", map[string]any{"id": "slides/1", "out": out}); v["file"] != out || v["id"] != "slides/1" {
+		t.Fatalf("slides_get with out: %v", v)
 	}
 	if b, err := os.ReadFile(out); err != nil || string(b) != contents[0] {
 		t.Fatalf("out file: %v", err)
 	}
 }
 
+// TestMCPWithCLIReplicator: if "office meeting join" already runs a replicator for the same
+// participant, meeting_join reuses it and reports its PID; the file keeps one writer.
 func TestMCPWithCLIReplicator(t *testing.T) {
 	m := newMachine(t)
 	bot := m.user("bot", "Bot", "agent")

@@ -13,9 +13,9 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
-	artifactv1 "github.com/mrsimpson/agentic-office/hub/artifacts/api"
 	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 	"github.com/mrsimpson/agentic-office/hub/session/api/logfile"
+	slidesv1 "github.com/mrsimpson/agentic-office/hub/slides/api"
 )
 
 // This file holds what the CLI (--json) and the MCP server share in their output and input, so
@@ -52,9 +52,9 @@ func ResultJSON(res *sessionv1.CommandResult) map[string]any {
 var ErrBadInput = errors.New("bad input")
 
 // ParseDeck reads a deck from a file named name: Markdown if the name ends with ".md" (see
-// ParseDeckMarkdown), else JSON in the form of RenderSlidesRequest ({"title": …, "slides":
+// ParseDeckMarkdown), else JSON in the form of RenderDeckRequest ({"title": …, "slides":
 // [{"title": …, "bullets": […], "notes": …}]}).
-func ParseDeck(name string, b []byte) (*artifactv1.RenderSlidesRequest, error) {
+func ParseDeck(name string, b []byte) (*slidesv1.RenderDeckRequest, error) {
 	if strings.EqualFold(filepath.Ext(name), ".md") {
 		req, err := ParseDeckMarkdown(b)
 		if err != nil {
@@ -62,7 +62,7 @@ func ParseDeck(name string, b []byte) (*artifactv1.RenderSlidesRequest, error) {
 		}
 		return req, nil
 	}
-	req := &artifactv1.RenderSlidesRequest{}
+	req := &slidesv1.RenderDeckRequest{}
 	if err := protojson.Unmarshal(b, req); err != nil {
 		return nil, fmt.Errorf("%w: %s: %v", ErrBadInput, name, err)
 	}
@@ -71,15 +71,15 @@ func ParseDeck(name string, b []byte) (*artifactv1.RenderSlidesRequest, error) {
 
 // ParseDeckMarkdown reads a deck in Markdown: "# " is the deck title, "## " starts a slide,
 // "- " or "* " is a bullet, other text becomes the notes of the slide.
-func ParseDeckMarkdown(b []byte) (*artifactv1.RenderSlidesRequest, error) {
-	req := &artifactv1.RenderSlidesRequest{}
-	var cur *artifactv1.Slide
+func ParseDeckMarkdown(b []byte) (*slidesv1.RenderDeckRequest, error) {
+	req := &slidesv1.RenderDeckRequest{}
+	var cur *slidesv1.Slide
 	sc := bufio.NewScanner(bytes.NewReader(b))
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
 		switch {
 		case strings.HasPrefix(line, "## "):
-			cur = &artifactv1.Slide{Title: strings.TrimSpace(line[3:])}
+			cur = &slidesv1.Slide{Title: strings.TrimSpace(line[3:])}
 			req.Slides = append(req.Slides, cur)
 		case strings.HasPrefix(line, "# "):
 			req.Title = strings.TrimSpace(line[2:])

@@ -11,18 +11,18 @@ import (
 
 	"connectrpc.com/connect/v2"
 
-	artifactv1 "github.com/mrsimpson/agentic-office/hub/artifacts/api"
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 	decisionv1 "github.com/mrsimpson/agentic-office/hub/records/decision/api"
 	minutesv1 "github.com/mrsimpson/agentic-office/hub/records/minutes/api"
 	notev1 "github.com/mrsimpson/agentic-office/hub/records/note/api"
 	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
+	slidesv1 "github.com/mrsimpson/agentic-office/hub/slides/api"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
 // The office hub mounts every service of chapter 5 that crosses a process boundary. Each
 // answers with its own result or error, not "not found" or "unimplemented". session_test.go,
-// identity_test.go, records_test.go and artifacts_test.go cover the services.
+// identity_test.go, records_test.go, tasks_test.go and slides_test.go cover the services.
 func TestServerMountsEveryInterface(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	c := srv.Admin(t)
@@ -44,9 +44,9 @@ func TestServerMountsEveryInterface(t *testing.T) {
 	if _, err := c.Minutes.GetMinutes(ctx, &minutesv1.GetMinutesRequest{SessionId: "s"}); connect.CodeOf(err) != connect.CodeNotFound {
 		t.Errorf("minutes: want code not_found, got %v", err)
 	}
-	// The artifact service answers: the artifact does not exist yet.
-	if _, err := c.Artifact.GetArtifact(ctx, &artifactv1.GetArtifactRequest{Id: "slides/1"}); connect.CodeOf(err) != connect.CodeNotFound {
-		t.Errorf("artifact API: want code not_found, got %v", err)
+	// The slides interface answers: the deck does not exist yet.
+	if _, err := c.Slides.GetDeck(ctx, &slidesv1.GetDeckRequest{Id: "slides/1"}); connect.CodeOf(err) != connect.CodeNotFound {
+		t.Errorf("slides: want code not_found, got %v", err)
 	}
 }
 
@@ -112,22 +112,22 @@ func TestPlainHTTPWithJSON(t *testing.T) {
 		t.Fatalf("record a decision: status %d, body %s", status, body)
 	}
 
-	status, body = post("/office.artifact.v1.ArtifactService/RenderSlides", token,
+	status, body = post("/office.slides.v1.SlidesService/RenderDeck", token,
 		`{"commandId":"c","title":"Plan","slides":[{"title":"One","bullets":["a"]}],"authorParticipantId":"admin"}`)
-	var art struct {
-		Artifact struct {
+	var deck struct {
+		Deck struct {
 			ID        string `json:"id"`
 			MediaType string `json:"mediaType"`
 			Content   []byte `json:"content"` // base64 in JSON
-		} `json:"artifact"`
+		} `json:"deck"`
 	}
-	if err := json.Unmarshal(body, &art); err != nil || status != http.StatusOK || art.Artifact.ID != "slides/1" ||
-		art.Artifact.MediaType != "text/html; charset=utf-8" || !strings.Contains(string(art.Artifact.Content), "<h2>One</h2>") {
-		t.Fatalf("render slides: status %d, body %s", status, body)
+	if err := json.Unmarshal(body, &deck); err != nil || status != http.StatusOK || deck.Deck.ID != "slides/1" ||
+		deck.Deck.MediaType != "text/html; charset=utf-8" || !strings.Contains(string(deck.Deck.Content), "<h2>One</h2>") {
+		t.Fatalf("render a deck: status %d, body %s", status, body)
 	}
-	status, body = post("/office.artifact.v1.ArtifactService/GetArtifact", token, `{"id":"slides/2"}`)
+	status, body = post("/office.slides.v1.SlidesService/GetDeck", token, `{"id":"slides/2"}`)
 	if err := json.Unmarshal(body, &e); err != nil || status != http.StatusNotFound || e.Code != "not_found" {
-		t.Fatalf("get an unknown artifact: status %d, body %s", status, body)
+		t.Fatalf("get an unknown deck: status %d, body %s", status, body)
 	}
 }
 

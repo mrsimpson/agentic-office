@@ -13,8 +13,8 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	artifactv1 "github.com/mrsimpson/agentic-office/hub/artifacts/api"
 	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
+	slidesv1 "github.com/mrsimpson/agentic-office/hub/slides/api"
 
 	"github.com/mrsimpson/agentic-office/client/core"
 )
@@ -182,7 +182,7 @@ func cmdStageLink(e *env, fs *flag.FlagSet) func([]string) error {
 }
 
 // parseDeck reads a deck file (see core.ParseDeck).
-func parseDeck(path string, b []byte) (*artifactv1.RenderSlidesRequest, error) {
+func parseDeck(path string, b []byte) (*slidesv1.RenderDeckRequest, error) {
 	req, err := core.ParseDeck(path, b)
 	if errors.Is(err, core.ErrBadInput) {
 		return nil, usagef("%v", err)
@@ -207,31 +207,31 @@ func cmdSlidesRender(e *env, fs *flag.FlagSet) func([]string) error {
 		if err != nil {
 			return err
 		}
-		res, err := c.RenderSlides(e.ctx, req)
+		res, err := c.RenderDeck(e.ctx, req)
 		if err != nil {
 			return err
 		}
 		if e.json {
-			e.printJSON(map[string]any{"artifactId": res.GetArtifact().GetId(), "mediaType": res.GetArtifact().GetMediaType(),
+			e.printJSON(map[string]any{"id": res.GetDeck().GetId(), "mediaType": res.GetDeck().GetMediaType(),
 				"duplicate": res.GetDuplicate()})
 		} else {
-			fmt.Fprintln(e.stdout, res.GetArtifact().GetId())
+			fmt.Fprintln(e.stdout, res.GetDeck().GetId())
 		}
 		return nil
 	}
 }
 
-func cmdArtifactGet(e *env, fs *flag.FlagSet) func([]string) error {
-	out := fs.String("out", "", "write the content to this file (default: stdout)")
+func cmdSlidesGet(e *env, fs *flag.FlagSet) func([]string) error {
+	out := fs.String("out", "", "write the rendered deck to this file (default: stdout)")
 	return func(args []string) error {
 		if len(args) != 1 {
-			return usagef("usage: office artifact get <id> [--out FILE]")
+			return usagef("usage: office slides get <id> [--out FILE]")
 		}
 		c, err := e.client()
 		if err != nil {
 			return err
 		}
-		a, err := c.GetArtifact(e.ctx, args[0])
+		a, err := c.GetDeck(e.ctx, args[0])
 		if err != nil {
 			return err
 		}
@@ -241,10 +241,10 @@ func cmdArtifactGet(e *env, fs *flag.FlagSet) func([]string) error {
 				return err
 			}
 			if e.json {
-				e.printJSON(map[string]any{"artifactId": a.GetId(), "mediaType": a.GetMediaType(), "file": *out})
+				e.printJSON(map[string]any{"id": a.GetId(), "mediaType": a.GetMediaType(), "file": *out})
 			}
 		case e.json:
-			e.printJSON(map[string]any{"artifact": core.MessageJSON(a)})
+			e.printJSON(map[string]any{"deck": core.MessageJSON(a)})
 		default:
 			_, err = e.stdout.Write(a.GetContent())
 			return err

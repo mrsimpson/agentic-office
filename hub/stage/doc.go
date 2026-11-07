@@ -29,9 +29,10 @@
 //     of that participant), raises it again (the new topic replaces the old one), or leaves. All
 //     hands go down when the session ends. There is no hand.lowered event; the rule is open in
 //     #24.
-//   - The shown artifact: the last artifact.shown. The stage loads it in-process from the artifact
-//     tools and embeds the HTML document in a sandboxed iframe (srcdoc, no scripts). An unknown
-//     ID or another media type gives a note instead.
+//   - The shown artifact: the last artifact.shown. The part of its ID before the first slash
+//     names its type. The stage loads a deck ("slides/<n>") in-process from the slides interface
+//     and embeds the HTML document in a sandboxed iframe (srcdoc, no scripts). An unknown deck, an
+//     ID of another type or another media type gives a note instead.
 //   - Minutes: the text of the last minutes.updated. Utterances: the last eight that are not
 //     off the record, with corrections applied. A off the record utterance disappears.
 //   - After session.ended the status shows that the session has ended, and the stream sends "end"

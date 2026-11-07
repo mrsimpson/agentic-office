@@ -15,18 +15,18 @@ import (
 
 	"connectrpc.com/connect/v2"
 
-	artifactv1 "github.com/mrsimpson/agentic-office/hub/artifacts/api"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 	sessionv1connect "github.com/mrsimpson/agentic-office/hub/session/api/sessionv1connect"
+	slidesv1 "github.com/mrsimpson/agentic-office/hub/slides/api"
 )
 
 // PathPrefix is where the stage is mounted. Identity creates links <public-url>/stage/<session>.
 const PathPrefix = "/stage/"
 
-// Artifacts loads artifacts in-process (if-artifact-api). artifacts.Service implements it.
-type Artifacts interface {
-	Load(ctx context.Context, id string) (*artifactv1.Artifact, error)
+// Slides loads decks in-process (if-slides-api). slides.Service implements it.
+type Slides interface {
+	Load(ctx context.Context, id string) (*slidesv1.Deck, error)
 }
 
 // Options configure a Handler.
@@ -38,8 +38,9 @@ type Options struct {
 	// StageSession returns the session of a stage link token. It returns "" for a valid token
 	// that is not a stage link, and an error for an unknown, expired or revoked token.
 	StageSession func(token string) (string, error)
-	// Artifacts loads shown artifacts. Nil means the stage shows a note instead.
-	Artifacts Artifacts
+	// Slides loads shown decks (artifact IDs "slides/<n>"). Nil means the stage shows a note
+	// instead.
+	Slides Slides
 	// KeepAlive is the interval of comments on an idle event stream. Default 15 seconds.
 	KeepAlive time.Duration
 }
@@ -263,10 +264,6 @@ func (h *Handler) events(w http.ResponseWriter, r *http.Request, sid, token stri
 	fmt.Fprint(w, "retry: 2000\n\n")
 	flusher.Flush()
 
-	var load func(context.Context, string) (*artifactv1.Artifact, error)
-	if h.opts.Artifacts != nil {
-		load = h.opts.Artifacts.Load
-	}
 	v := newView()
 	sent := map[string]string{}
 	send := func() {
@@ -292,7 +289,7 @@ func (h *Handler) events(w http.ResponseWriter, r *http.Request, sid, token stri
 	for {
 		select {
 		case ev := <-evs:
-			v.apply(ctx, ev, load)
+			v.apply(ctx, ev, h.opts.Slides)
 			if !pending {
 				pending = true
 				timer.Reset(coalesce)

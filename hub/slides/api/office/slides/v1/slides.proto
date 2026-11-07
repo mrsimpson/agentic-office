@@ -1,0 +1,91 @@
+// Slides (if-slides-api): render a slide deck from a structured description and fetch it again
+// by its ID. One of the record types of the hub (dec-records-per-type).
+//
+// The hub keeps the input of every deck (title, slides, author, time) and the rendered output in
+// its archive (dec-yaml-git-storage), so decks survive a restart. Rendering is deterministic
+// (con-no-intelligence): the same title and slides give the same bytes.
+//
+// A deck has an ID such as "slides/42". The stage shows a deck by this ID (artifact.shown in
+// session.proto): "artifact" is the general word for anything the stage can show, and the part
+// before the slash names its type.
+//
+// Every call needs an access token of a participant (see identity.proto). A stage link cannot
+// use this interface: the stage loads decks inside the hub. A sentence that is off the record
+// must not go into a deck (dec-off-the-record).
+syntax = "proto3";
+
+package office.slides.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/mrsimpson/agentic-office/hub/slides/api;slidesv1";
+
+service SlidesService {
+  // RenderDeck renders a deck and stores its input and its output as a new deck. It returns
+  // only after the deck is stored. It is idempotent by command_id: a repeated request returns
+  // the stored deck with duplicate set. The same command_id with another title, other slides or
+  // another author fails with already_exists.
+  rpc RenderDeck(RenderDeckRequest) returns (RenderDeckResponse);
+  // GetDeck returns a deck with its input and its rendered output. An unknown ID fails with
+  // not_found.
+  rpc GetDeck(GetDeckRequest) returns (GetDeckResponse);
+}
+
+message Slide {
+  // title is required.
+  string title = 1;
+  repeated string bullets = 2;
+  // notes are speaker notes. The rendered deck holds them, hidden.
+  string notes = 3;
+}
+
+// Deck is a stored deck: its input as the client sent it, and its rendered output.
+message Deck {
+  // id names the deck, for example "slides/42". It never changes and is never used twice.
+  string id = 1;
+  // title is the optional title of the deck. It becomes a title slide.
+  string title = 2;
+  repeated Slide slides = 3;
+  // author_participant_id is the human or agent who rendered the deck.
+  string author_participant_id = 4;
+  // author_kind tells whether the author is a human or an agent.
+  AuthorKind author_kind = 5;
+  google.protobuf.Timestamp create_time = 6;
+  // command_id is the command that rendered the deck.
+  string command_id = 7;
+  // media_type is the media type of content, for example "text/html; charset=utf-8".
+  string media_type = 8;
+  // content is the rendered deck: one self-contained document without scripts.
+  bytes content = 9;
+}
+
+message RenderDeckRequest {
+  // command_id is created by the client. A repeated request with the same command_id has no
+  // extra effect.
+  string command_id = 1;
+  string title = 2;
+  // slides are at least one slide.
+  repeated Slide slides = 3;
+  // author_participant_id must be the participant of the access token.
+  string author_participant_id = 4;
+}
+
+message RenderDeckResponse {
+  Deck deck = 1;
+  bool duplicate = 2;
+}
+
+message GetDeckRequest {
+  string id = 1;
+}
+
+message GetDeckResponse {
+  Deck deck = 1;
+}
+
+// AuthorKind tells whether the author of a deck is a human or an agent.
+enum AuthorKind {
+  AUTHOR_KIND_UNSPECIFIED = 0;
+  AUTHOR_KIND_HUMAN = 1;
+  AUTHOR_KIND_AGENT = 2;
+}

@@ -8,9 +8,9 @@ import (
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	artifactv1 "github.com/mrsimpson/agentic-office/hub/artifacts/api"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
+	slidesv1 "github.com/mrsimpson/agentic-office/hub/slides/api"
 
 	"github.com/mrsimpson/agentic-office/client/core"
 	"github.com/mrsimpson/agentic-office/client/replicator"
@@ -129,7 +129,7 @@ type minutesIn struct {
 }
 
 type stageShowIn struct {
-	ArtifactID string `json:"artifactId" jsonschema:"Artifact to show, for example \"slides/42\" from slides_render."`
+	ArtifactID string `json:"artifactId" jsonschema:"Artifact to show, for example the deck ID \"slides/42\" from slides_render."`
 	Session    string `json:"session,omitempty" jsonschema:"Session ID. Default: the session given when the server was started, else the only session you joined from this machine."`
 }
 
@@ -146,9 +146,9 @@ type slidesIn struct {
 	File     string    `json:"file,omitempty" jsonschema:"A local deck file: .md (Markdown as above) or .json ({\"title\", \"slides\"})."`
 }
 
-type artifactIn struct {
-	ID  string `json:"id" jsonschema:"Artifact ID, for example \"slides/42\"."`
-	Out string `json:"out,omitempty" jsonschema:"Write the content to this local file instead of returning it (base64) in the result."`
+type deckIn struct {
+	ID  string `json:"id" jsonschema:"Deck ID, for example \"slides/42\"."`
+	Out string `json:"out,omitempty" jsonschema:"Write the rendered deck to this local file instead of returning it (base64) in the result."`
 }
 
 type recordIn struct {
@@ -358,7 +358,7 @@ func (s *Server) addTools(srv *sdk.Server) {
 		})
 
 	sessionTool(srv, s, &sdk.Tool{Name: "stage_show", Title: "Show an artifact on the stage", Annotations: additive,
-		Description: `Show an artifact on the stage for everyone (artifact.shown), for example the artifactId from slides_render. Returns {"event", "duplicate"}.`},
+		Description: `Show an artifact on the stage for everyone (artifact.shown), for example the id of a deck from slides_render. Returns {"event", "duplicate"}.`},
 		func(in stageShowIn) string { return in.Session },
 		func(ctx context.Context, c *core.Client, sid string, in stageShowIn) (*sessionv1.CommandResult, error) {
 			if blank(in.ArtifactID) {
@@ -382,7 +382,7 @@ func (s *Server) addTools(srv *sdk.Server) {
 		})
 
 	tool(srv, s, &sdk.Tool{Name: "slides_render", Title: "Render slides", Annotations: additive,
-		Description: `Render a slide deck into an artifact. Give the deck as title and slides, as markdown, or as a local file. Returns {"artifactId", "mediaType", "duplicate"}; show it with stage_show.`},
+		Description: `Render a slide deck. The hub stores its input and the rendered deck. Give the deck as title and slides, as markdown, or as a local file. Returns {"id", "mediaType", "duplicate"}; show it with stage_show (artifactId = id).`},
 		func(ctx context.Context, c *core.Client, in slidesIn) (any, error) {
 			n := 0
 			for _, set := range []bool{len(in.Slides) > 0, in.Markdown != "", in.File != ""} {
@@ -393,7 +393,7 @@ func (s *Server) addTools(srv *sdk.Server) {
 			if n != 1 {
 				return nil, usagef("give exactly one of slides, markdown or file")
 			}
-			var req *artifactv1.RenderSlidesRequest
+			var req *slidesv1.RenderDeckRequest
 			var err error
 			switch {
 			case in.File != "":
@@ -405,9 +405,9 @@ func (s *Server) addTools(srv *sdk.Server) {
 			case in.Markdown != "":
 				req, err = core.ParseDeckMarkdown([]byte(in.Markdown))
 			default:
-				req = &artifactv1.RenderSlidesRequest{Title: in.Title}
+				req = &slidesv1.RenderDeckRequest{Title: in.Title}
 				for _, sl := range in.Slides {
-					req.Slides = append(req.Slides, &artifactv1.Slide{Title: sl.Title, Bullets: sl.Bullets, Notes: sl.Notes})
+					req.Slides = append(req.Slides, &slidesv1.Slide{Title: sl.Title, Bullets: sl.Bullets, Notes: sl.Notes})
 				}
 			}
 			if err != nil {
@@ -416,21 +416,21 @@ func (s *Server) addTools(srv *sdk.Server) {
 			if len(req.GetSlides()) == 0 {
 				return nil, usagef("the deck has no slides")
 			}
-			res, err := c.RenderSlides(ctx, req)
+			res, err := c.RenderDeck(ctx, req)
 			if err != nil {
 				return nil, err
 			}
-			return map[string]any{"artifactId": res.GetArtifact().GetId(), "mediaType": res.GetArtifact().GetMediaType(),
+			return map[string]any{"id": res.GetDeck().GetId(), "mediaType": res.GetDeck().GetMediaType(),
 				"duplicate": res.GetDuplicate()}, nil
 		})
 
-	tool(srv, s, &sdk.Tool{Name: "artifact_get", Title: "Get an artifact", Annotations: readOnly,
-		Description: `Load an artifact by its ID. Returns {"artifact": {"id", "mediaType", "content" (base64), …}}, or with out {"artifactId", "mediaType", "file"}.`},
-		func(ctx context.Context, c *core.Client, in artifactIn) (any, error) {
+	tool(srv, s, &sdk.Tool{Name: "slides_get", Title: "Get a slide deck", Annotations: readOnly,
+		Description: `Load a slide deck by its ID, with its input and the rendered deck. Returns {"deck": {"id", "title", "slides", "authorParticipantId", "createTime", "mediaType", "content" (base64), …}}, or with out {"id", "mediaType", "file"}.`},
+		func(ctx context.Context, c *core.Client, in deckIn) (any, error) {
 			if blank(in.ID) {
 				return nil, usagef("id is required")
 			}
-			a, err := c.GetArtifact(ctx, in.ID)
+			a, err := c.GetDeck(ctx, in.ID)
 			if err != nil {
 				return nil, err
 			}
@@ -438,9 +438,9 @@ func (s *Server) addTools(srv *sdk.Server) {
 				if err := os.WriteFile(in.Out, a.GetContent(), 0o600); err != nil {
 					return nil, err
 				}
-				return map[string]any{"artifactId": a.GetId(), "mediaType": a.GetMediaType(), "file": in.Out}, nil
+				return map[string]any{"id": a.GetId(), "mediaType": a.GetMediaType(), "file": in.Out}, nil
 			}
-			return map[string]any{"artifact": core.MessageJSON(a)}, nil
+			return map[string]any{"deck": core.MessageJSON(a)}, nil
 		})
 
 	tool(srv, s, &sdk.Tool{Name: "decision_record", Title: "Record a decision", Annotations: additive,

@@ -96,7 +96,8 @@ hub/                      bb-office-hub: wiring of the hub (binary office-hub)
     note/api/             if-note-api: contract and generated code
   tasks/                  bb-tasks: tasks as local YAML drafts in the archive
     api/                  if-task-api: contract and generated code
-  artifacts/ artifacts/api/  bb-artifact-service, if-artifact-api
+  slides/                 bb-slides: slide decks, input as YAML and output as HTML in the archive
+    api/                  if-slides-api: contract and generated code
   stage/                  bb-stage, realizes if-stage-web
 client/                   bb-participant-client: wiring of the client (binary office)
   core/                   bb-client-core, if-client-core: shared core of CLI, MCP server and ears;
@@ -126,7 +127,7 @@ All interfaces are defined in Protobuf and served with Connect RPC (`dec-connect
 | Minutes | `office.minutes.v1.MinutesService` | unary |
 | Notes | `office.note.v1.NoteService` | unary |
 | Tasks | `office.task.v1.TaskService` | unary |
-| Artifact API | `office.artifact.v1.ArtifactService` | unary |
+| Slides | `office.slides.v1.SlidesService` | unary |
 
 Rules that hold for all of them:
 
@@ -197,7 +198,7 @@ Transparency), and the hub signs its tree heads (`dec-merkle-log`). Package
 ### Archive
 
 The archive (`hub/archive`) stores the sessions, the records (decisions, minutes and notes,
-see [Records](#records-decisions-minutes-and-notes)) and the tasks (see [Tasks](#tasks)) of the hub in a local Git repository on the hub
+see [Records](#records-decisions-minutes-and-notes)), the tasks (see [Tasks](#tasks)) and the slide decks (see [Slides](#slides)) of the hub in a local Git repository on the hub
 host, by default `<data-dir>/archive` (`-archive-dir`). It creates the repository (branch `main`)
 on the first start. Every write is one commit. The push to a remote is mocked: it does nothing
 and reports success (#43). The hub needs the `git` command line tool in `PATH`. It runs git
@@ -352,25 +353,55 @@ command_ids:
 Like the records, a task write waits for its commit, and so for a session write that the archive
 is carrying out at that moment (#45).
 
-### Artifact tools
+### Slides
 
-The artifact tools (`hub/artifacts`) render slides. The package comment in
-`hub/artifacts/doc.go` has the details. In short:
+The slides part (`hub/slides`, `office.slides.v1.SlidesService`) renders slide decks and keeps
+them. The package comment in `hub/slides/doc.go` has the details. In short:
 
-- `RenderSlides` takes a deck: an optional title and at least one slide. Every slide has a title,
-  and may have bullets and notes. The result is an artifact with the ID `slides/<n>` (n starts at
-  1) and the media type `text/html; charset=utf-8`.
-- The content is one self-contained HTML document for a screen share: one section per slide,
+- `RenderDeck` takes a deck: an optional title and at least one slide. Every slide has a title,
+  and may have bullets and notes. The result is a deck with the ID `slides/<n>` (n starts at 1).
+  It holds the input as the client sent it, the author and its kind (from the token), the time,
+  the command ID, and the rendered output with the media type `text/html; charset=utf-8`.
+- The output is one self-contained HTML document for a screen share: one section per slide,
   black on white, large text. It has no scripts and loads nothing. All text is HTML-escaped and
   shown as plain text. Notes are in the document but hidden.
-- The same deck always gives byte-equal content (`con-no-intelligence`): no time or random value
-  is in it. The ID and `created_at` are outside the content.
-- `RenderSlides` is idempotent by `command_id`. The same `command_id` with another deck fails
-  with `already_exists`. A new `command_id` with the same deck gives a new ID.
-- `GetArtifact` fetches by ID; an unknown ID fails with `not_found`. Any participant can fetch
-  every artifact. A stage link cannot use the artifact API: the stage renders on the hub.
-- The meeting session does not check that a shown artifact exists.
-- Artifacts are stored in `<data-dir>/artifacts.jsonl`, so they survive a restart of the hub.
+- The same deck always gives byte-equal output (`con-no-intelligence`): no time or random value
+  is in it. The ID and `create_time` are outside the output.
+- `RenderDeck` is idempotent by `command_id`. The same `command_id` with another deck or another
+  author fails with `already_exists`. A new `command_id` with the same deck gives a new ID.
+- `GetDeck` fetches a deck with its input and output by ID; an unknown ID fails with
+  `not_found`. Any participant can fetch every deck. A stage link cannot use the slides
+  interface: the stage renders on the hub.
+- **Artifact** is the general word for what the stage shows: `stage show` takes an ID with its
+  type in front. Today `slides/<n>` is the only type. The meeting session does not check that a
+  shown artifact exists; the stage shows a note for an unknown ID.
+
+Every deck is two files in the archive, written in one commit: `slides/000001.yaml` holds the
+input (the fields of the contract in snake_case, without the output), and `slides/000001.html`
+holds the rendered deck. The call returns after the commit. The hub reads all decks back when it
+starts. The output is stored, not rendered again: a deck stays exactly what was shown, even if a
+later hub renders differently. Rendering the stored input again gives the same output.
+
+```yaml
+id: "slides/1"
+title: "Budget 2027"
+slides:
+    - title: "Plan"
+      bullets:
+        - "Hire two people"
+        - "Open an office in Lyon"
+      notes: "Say the numbers slowly."
+    - title: "Questions"
+      bullets: []
+      notes: ""
+author_participant_id: "bot"
+author_kind: "AUTHOR_KIND_AGENT"
+create_time: "2026-11-07T18:59:31.48928053Z"
+command_id: "01a1b761-5420-7b0d-82a7-6d9a249506f9"
+```
+
+Like the records and the tasks, a render waits for its commit, and so for a session write that
+the archive is carrying out at that moment (#45).
 
 ### Stage
 
@@ -398,10 +429,9 @@ All files of the hub are in its data directory, by default `~/.config/agentic-of
 |---|---|
 | `admins` | Admin keys. You write it by hand. |
 | `identity.json` | Registered participants and keys. The hub writes it. |
-| `artifacts.jsonl` | Artifacts, one JSON object per line: command ID, input and artifact in the form of the API. The hub appends to it. |
 | `tls.crt`, `tls.key` | TLS certificate and key. The hub creates a self-signed pair if neither exists. |
 | `signing.key` | Ed25519 key that signs the tree heads of session logs (`-signing-key`). The hub creates it if it does not exist. Keep it: without it, old tree heads cannot be checked against the hub key. |
-| `archive/` | The Git repository of the archive (`-archive-dir`): sessions, decisions, minutes, notes and tasks. The hub creates it and commits into it. See [Archive](#archive). |
+| `archive/` | The Git repository of the archive (`-archive-dir`): sessions, decisions, minutes, notes, tasks and slide decks. The hub creates it and commits into it. See [Archive](#archive). |
 
 Flags of the hub (`bin/office-hub -h` lists them all):
 
@@ -547,14 +577,16 @@ session; `task update` changes the session only with an explicit `--session`. Wi
 **Slides:**
 
 ```sh
-ID=$(office slides render deck.md)   # prints the artifact ID, for example slides/42
+ID=$(office slides render deck.md)   # prints the deck ID, for example slides/42
 office stage show "$ID"
-office artifact get "$ID" --out deck.html
+office slides get "$ID" --out deck.html
+office slides get "$ID" --json      # {"deck": …}: the input and the output (content in base64)
 ```
 
 A deck in Markdown: `# ` is the deck title, `## ` starts a slide, `- ` or `* ` is a bullet, other
 text becomes the notes of the slide. A file that does not end with `.md` is JSON in the form of
-`RenderSlidesRequest`: `{"title": …, "slides": [{"title": …, "bullets": […], "notes": …}]}`.
+`RenderDeckRequest`: `{"title": …, "slides": [{"title": …, "bullets": […], "notes": …}]}`.
+With `--json`, `slides render` prints `{"id", "mediaType", "duplicate"}`.
 
 **The local log** is `<runtime dir>/<session>/<participant>.jsonl` (directories 0700, file 0600):
 one compact JSON line per event (the line form of `hub/session/api/logfile`, the same as in the
@@ -725,7 +757,7 @@ tool names.
 | `minutes_update` (text or file) | `minutes update` |
 | `stage_show` (artifactId), `stage_link` | `stage show`, `stage link` |
 | `slides_render` (title and slides, markdown, or file) | `slides render` |
-| `artifact_get` (id, out) | `artifact get` |
+| `slides_get` (id, out) | `slides get` |
 | `decision_record` (text, session), `decision_list` (afterId, limit, session) | `decision record`, `decision list` |
 | `note_add` (text, session), `note_list` (afterId, limit, session) | `note add`, `note list` |
 | `minutes_get` (session), `minutes_list` (afterId, limit, session) | `minutes show`, `minutes list` |
@@ -776,7 +808,7 @@ through its interfaces:
 - `tests/contract/stub_example_test.go` shows a test against a stub service.
 - `tests/contract/mcp_test.go` starts `office mcp` and talks to it over stdio with the MCP Go SDK
   client: every tool and its result, the log path that receives the events of all participants,
-  errors for bad input, server errors, the artifact tools, decisions, minutes, notes and tasks,
+  errors for bad input, server errors, the slides, decisions, minutes, notes and tasks,
   and that no writer is left
   when the MCP process closes or is killed. `tests/e2e/mcp_test.go`: an agent works only through
   MCP and follows its log with the `tail -f | grep` filter from the tool description.

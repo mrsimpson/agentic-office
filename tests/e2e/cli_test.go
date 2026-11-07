@@ -98,9 +98,9 @@ func TestTwoCLIParticipants(t *testing.T) {
 	if err := os.WriteFile(deck, []byte("# Budget\n\n## Costs\n- Rent: 4,000 EUR\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	artifactID := office(bot, "slides", "render", deck)["artifactId"].(string)
+	deckID := office(bot, "slides", "render", deck)["id"].(string)
 	office(bot, "hand", "raise", "--topic", "budget")
-	office(bot, "stage", "show", artifactID)
+	office(bot, "stage", "show", deckID)
 	office(bot, "minutes", "update", "Ada asked for the budget. Bot showed slides/1.")
 	waitFor(adaLog, "hand.raised of bot", func(ev *sessionv1.Event) bool {
 		return ev.GetType() == events.HandRaised && ev.GetHandRaised().GetParticipantId() == "bot"
@@ -110,9 +110,16 @@ func TestTwoCLIParticipants(t *testing.T) {
 	if shown.GetArtifactShown().GetArtifactId() != "slides/1" {
 		t.Fatalf("shown artifact %q, want slides/1", shown.GetArtifactShown().GetArtifactId())
 	}
-	html, errOut, code := contracttest.Run(t, "office", ada, "artifact", "get", shown.GetArtifactShown().GetArtifactId())
+	html, errOut, code := contracttest.Run(t, "office", ada, "slides", "get", shown.GetArtifactShown().GetArtifactId())
 	if code != 0 || !strings.Contains(html, "<h2>Costs</h2>") || !strings.Contains(html, "<li>Rent: 4,000 EUR</li>") {
-		t.Fatalf("artifact get: exit %d, %q, %q", code, html, errOut)
+		t.Fatalf("slides get: exit %d, %q, %q", code, html, errOut)
+	}
+	// The hub keeps the input and the rendered deck in its archive.
+	if y := contracttest.Git(t, srv.ArchiveDir(), "show", "HEAD:slides/000001.yaml"); !strings.Contains(y, "Rent: 4,000 EUR") {
+		t.Fatalf("input of the deck in the archive:\n%s", y)
+	}
+	if h := contracttest.Git(t, srv.ArchiveDir(), "show", "HEAD:slides/000001.html"); h != html {
+		t.Fatal("the rendered deck in the archive is not the one the hub returns")
 	}
 	// The stage of the session, opened with the link from the CLI, shows the slides, the raised
 	// hand and the minutes, and then the end of the session.

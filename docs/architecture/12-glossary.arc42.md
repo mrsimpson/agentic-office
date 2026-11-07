@@ -122,13 +122,26 @@ definition: A later listening mode for several speakers at one microphone, with 
 
 ## Artifact
 
-The result of the tool layer.
+The general word for what the stage shows. Each type of artifact has its own interface
+(`dec-records-per-type`); today slide decks are the only type.
 
 ```arc42
 :::glossary-term
 id: term-artifact
 title: Artifact
-definition: A result created by the tools, with an ID (for example a slide deck or a plan check), that can be shown on the stage
+definition: Anything that the stage can show by an ID with its type in front, for example the slide deck slides/42
+:::
+```
+
+## Slide deck
+
+One type of record of the hub, and today the only type of artifact.
+
+```arc42
+:::glossary-term
+id: term-slide-deck
+title: Slide deck
+definition: A set of slides (title, bullets, speaker notes) that the hub renders deterministically to one HTML document; the hub keeps its input and the rendered document in the archive
 :::
 ```
 

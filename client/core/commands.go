@@ -15,13 +15,13 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/mrsimpson/agentic-office/client/core/ids"
-	artifactv1 "github.com/mrsimpson/agentic-office/hub/artifacts/api"
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 	decisionv1 "github.com/mrsimpson/agentic-office/hub/records/decision/api"
 	minutesv1 "github.com/mrsimpson/agentic-office/hub/records/minutes/api"
 	notev1 "github.com/mrsimpson/agentic-office/hub/records/note/api"
 	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 	"github.com/mrsimpson/agentic-office/hub/session/api/events"
+	slidesv1 "github.com/mrsimpson/agentic-office/hub/slides/api"
 )
 
 // JoinOptions are the optional fields of a join.
@@ -338,29 +338,30 @@ func (c *Client) RevokeKey(ctx context.Context, keyID string) error {
 	})
 }
 
-// RenderSlides renders a deck. The author is the caller.
-func (c *Client) RenderSlides(ctx context.Context, req *artifactv1.RenderSlidesRequest) (*artifactv1.RenderSlidesResponse, error) {
+// RenderDeck renders a slide deck. The author is the caller.
+func (c *Client) RenderDeck(ctx context.Context, req *slidesv1.RenderDeckRequest) (*slidesv1.RenderDeckResponse, error) {
 	pid, err := c.ParticipantID(ctx)
 	if err != nil {
 		return nil, err
 	}
 	req.CommandId, req.AuthorParticipantId = ids.NewCommandID(), pid
-	var res *artifactv1.RenderSlidesResponse
+	var res *slidesv1.RenderDeckResponse
 	err = Retry(ctx, func() (err error) {
-		res, err = c.Artifact.RenderSlides(ctx, req)
+		res, err = c.Slides.RenderDeck(ctx, req)
 		return err
 	})
 	return res, err
 }
 
-// GetArtifact loads an artifact by its ID, for example "slides/42".
-func (c *Client) GetArtifact(ctx context.Context, id string) (*artifactv1.Artifact, error) {
-	var res *artifactv1.GetArtifactResponse
+// GetDeck loads a slide deck with its input and its rendered output by its ID, for example
+// "slides/42".
+func (c *Client) GetDeck(ctx context.Context, id string) (*slidesv1.Deck, error) {
+	var res *slidesv1.GetDeckResponse
 	err := Retry(ctx, func() (err error) {
-		res, err = c.Artifact.GetArtifact(ctx, &artifactv1.GetArtifactRequest{Id: id})
+		res, err = c.Slides.GetDeck(ctx, &slidesv1.GetDeckRequest{Id: id})
 		return err
 	})
-	return res.GetArtifact(), err
+	return res.GetDeck(), err
 }
 
 // RecordDecision records a decision. The author is the caller. sessionID may be empty.

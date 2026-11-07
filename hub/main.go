@@ -3,21 +3,21 @@
 // All services are mounted, and the stage at /stage/<session>?token=<stage link token>. Every call
 // needs an access token from the identity block, except GetChallenge and ExchangeChallenge. The server speaks only TLS. The meeting session keeps its
 // logs in memory, signs their tree heads with the signing key and writes them to the archive (a local Git
-// repository; the push is mocked). The records (decisions, minutes and notes) and the tasks (local
-// drafts) are YAML files in the archive too; the artifact tools keep their data in a file.
+// repository; the push is mocked). The records (decisions, minutes and notes), the tasks (local
+// drafts) and the slide decks are files in the archive too.
 //
 // Files in the data directory (-data-dir):
 //
 //	admins       admin keys, written by hand (see identity.LoadAdmins)
 //	identity.json registered participants and keys, written by the server
-//	artifacts.jsonl artifacts (rendered slides), one JSON object per line, appended by the server
 //	tls.crt      TLS certificate; created self-signed if neither it nor tls.key exists
 //	tls.key      TLS private key
 //	signing.key  Ed25519 key that signs the tree heads of session logs; created if it does not exist
 //	archive/     Git repository of the archive (-archive-dir); the meeting session writes its logs
 //	             there at the interval -archive-interval and when a session ends; decisions,
 //	             minutes and notes are committed there one by one (see package records), and so
-//	             is every new or changed task (see package tasks)
+//	             is every new or changed task (see package tasks) and every new slide deck, with
+//	             its input and its rendered output (see package slides)
 package main
 
 import (
@@ -40,8 +40,6 @@ import (
 	"connectrpc.com/connect/v2/connectinprocess"
 
 	"github.com/mrsimpson/agentic-office/hub/archive"
-	"github.com/mrsimpson/agentic-office/hub/artifacts"
-	"github.com/mrsimpson/agentic-office/hub/artifacts/api/artifactv1connect"
 	"github.com/mrsimpson/agentic-office/hub/identity"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/identityv1connect"
@@ -51,6 +49,8 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/records/note/api/notev1connect"
 	"github.com/mrsimpson/agentic-office/hub/session"
 	"github.com/mrsimpson/agentic-office/hub/session/api/sessionv1connect"
+	"github.com/mrsimpson/agentic-office/hub/slides"
+	"github.com/mrsimpson/agentic-office/hub/slides/api/slidesv1connect"
 	"github.com/mrsimpson/agentic-office/hub/stage"
 	"github.com/mrsimpson/agentic-office/hub/tasks"
 	"github.com/mrsimpson/agentic-office/hub/tasks/api/taskv1connect"
@@ -65,7 +65,7 @@ func defaultDataDir() string {
 
 func main() {
 	addr := flag.String("addr", "127.0.0.1:8740", "listen address (port 0 picks a free port)")
-	dataDir := flag.String("data-dir", defaultDataDir(), "directory for admin keys, registered keys, the artifacts, the archive and the TLS certificate")
+	dataDir := flag.String("data-dir", defaultDataDir(), "directory for admin keys, registered keys, the archive and the TLS certificate")
 	certFile := flag.String("tls-cert", "", "TLS certificate (PEM, may include the chain); default <data-dir>/tls.crt")
 	keyFile := flag.String("tls-key", "", "TLS private key (PEM); default <data-dir>/tls.key")
 	hostname, _ := os.Hostname()
@@ -126,13 +126,6 @@ func main() {
 		log.Fatal(err)
 	}
 
-	artifactStore, err := artifacts.OpenFileStore(filepath.Join(*dataDir, "artifacts.jsonl"))
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer artifactStore.Close()
-	arts := artifacts.New(artifactStore, artifacts.TokenCheck())
-
 	// The archive (dec-yaml-git-storage): a local Git repository; the push is mocked (#43).
 	arch, err := archive.Open(context.Background(), archive.Options{Dir: or(*archiveDir, "archive"), Push: archive.NoPush{}})
 	if err != nil {
@@ -152,6 +145,12 @@ func main() {
 		log.Fatal(err)
 	}
 	log.Printf("tasks: %d local drafts", tks.Count())
+	// Slide decks: input as YAML and output as HTML in the archive, read once at the start.
+	decks, err := slides.Open(context.Background(), arch)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("slides: %d decks", decks.Count())
 	sessions := session.New(session.NewMemoryStore(), session.TokenCheck(), recs, signingKey)
 	if err := sessions.UseArchive(session.ArchiveOptions{Archive: arch, Interval: *archiveInterval, Logf: log.Printf}); err != nil {
 		log.Fatal(err)
@@ -168,7 +167,7 @@ func main() {
 	minutesv1connect.RegisterMinutesServiceHandler(cs, recs)
 	notev1connect.RegisterNoteServiceHandler(cs, recs)
 	taskv1connect.RegisterTaskServiceHandler(cs, tks)
-	artifactv1connect.RegisterArtifactServiceHandler(cs, arts)
+	slidesv1connect.RegisterSlidesServiceHandler(cs, decks)
 	mux := http.NewServeMux()
 	connecthttp.Mount(mux, cs)
 	// The stage subscribes in-process through the token check, with the token of the link.
@@ -178,7 +177,7 @@ func main() {
 			c, err := ids.CheckToken(token)
 			return c.StageSessionID, err
 		},
-		Artifacts: arts,
+		Slides: decks,
 	}))
 
 	p := new(http.Protocols)

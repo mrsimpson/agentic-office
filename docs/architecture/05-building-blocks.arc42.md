@@ -6,7 +6,7 @@ dependencies in the code (`concept-module-boundaries`). Interfaces that only ext
 (CLI, MCP, stage view, audio input) are in chapter 3.
 
 At the top level the system has two parts. The **office hub** manages sessions, the records of
-the team (decisions, minutes and notes), the tasks, artifacts and the stage. The **participant client** runs on the computer of every participant,
+the team (decisions, minutes and notes), the tasks, the slide decks and the stage. The **participant client** runs on the computer of every participant,
 human or agent.
 
 ## Overview
@@ -26,11 +26,11 @@ flowchart LR
     bb_office_hub[Office hub]
     bb_participant_client[Participant client]
     bb_participant_client -->|if-session-commands| bb_office_hub
-    bb_participant_client -->|if-artifact-api| bb_office_hub
     bb_participant_client -->|if-decision-api| bb_office_hub
     bb_participant_client -->|if-minutes-api| bb_office_hub
     bb_participant_client -->|if-note-api| bb_office_hub
     bb_participant_client -->|if-task-api| bb_office_hub
+    bb_participant_client -->|if-slides-api| bb_office_hub
     bb_participant_client -->|if-auth-api| bb_office_hub
     bb_participant_client -->|if-session-stream| bb_office_hub
 ```
@@ -59,7 +59,7 @@ id: bb-office-hub-whitebox
 view: building-block
 notation: mermaid
 roots: bb-office-hub
-aliases: bb_office_hub=bb-office-hub, bb_archive=bb-archive, bb_artifact_service=bb-artifact-service, bb_identity=bb-identity, bb_records=bb-records, bb_session_service=bb-session-service, bb_stage=bb-stage, bb_tasks=bb-tasks
+aliases: bb_office_hub=bb-office-hub, bb_archive=bb-archive, bb_identity=bb-identity, bb_records=bb-records, bb_session_service=bb-session-service, bb_slides=bb-slides, bb_stage=bb-stage, bb_tasks=bb-tasks
 :::
 ```
 
@@ -67,21 +67,22 @@ aliases: bb_office_hub=bb-office-hub, bb_archive=bb-archive, bb_artifact_service
 flowchart LR
     subgraph bb_office_hub [Office hub]
         bb_archive[Archive]
-        bb_artifact_service[Artifact tools]
         bb_identity[Identity]
         bb_records[Records]
         bb_session_service[Meeting session]
+        bb_slides[Slides]
         bb_stage[Stage]
         bb_tasks[Tasks]
     end
-    bb_artifact_service -->|if-token-check| bb_identity
     bb_records -->|if-archive-storage| bb_archive
     bb_records -->|if-token-check| bb_identity
     bb_session_service -->|if-archive-storage| bb_archive
     bb_session_service -->|if-minutes-api| bb_records
     bb_session_service -->|if-token-check| bb_identity
+    bb_slides -->|if-archive-storage| bb_archive
+    bb_slides -->|if-token-check| bb_identity
     bb_stage -->|if-session-stream| bb_session_service
-    bb_stage -->|if-artifact-api| bb_artifact_service
+    bb_stage -->|if-slides-api| bb_slides
     bb_stage -->|if-auth-api| bb_identity
     bb_tasks -->|if-archive-storage| bb_archive
     bb_tasks -->|if-token-check| bb_identity
@@ -229,18 +230,27 @@ path: hub/tasks/api
 :::
 ```
 
-### Artifact API
+### Slides
 
-Create, render, check and fetch artifacts.
+Render a slide deck from a structured description (an optional title; slides with a title,
+bullets and speaker notes) and fetch a deck by its ID, with its input and its rendered output. A
+deck records its author and whether the author is a human or an agent. Each command carries an ID
+created by the client, so a repeated command has no extra effect. Rendering is deterministic
+(`con-no-intelligence`): the same input gives the same output. A sentence that is off the record
+must not go into a deck.
+
+A deck has an ID with the type in front, for example `slides/42`. The stage shows a deck by this
+ID. In general, an artifact is anything that the stage can show by an ID like this; today slide
+decks are the only type (`term-artifact`).
 
 ```arc42
 :::interface
-id: if-artifact-api
-title: Artifact API
+id: if-slides-api
+title: Slides
 provider: bb-office-hub
-x-realized-by: bb-artifact-service
-protocol: Connect RPC, unary (dec-connect-rpc)
-path: hub/artifacts/api
+x-realized-by: bb-slides
+protocol: Connect RPC, unary (dec-connect-rpc); in-process for the stage
+path: hub/slides/api
 :::
 ```
 
@@ -332,20 +342,29 @@ requires: if-token-check, if-archive-storage
 :::
 ```
 
-### Artifact tools
+### Slides part
 
-Stateless, deterministic tools without streaming. They render slides from a structured description
-and check business plans by calculation (consistency, unit economics, completeness). Artifacts have
-IDs (for example `slides/42`). The stage uses these IDs to show them.
+Renders slide decks and keeps them behind the slides interface (`dec-records-per-type`). Rendering
+is deterministic and without streaming. Every deck is stored in the archive in one commit
+(`dec-yaml-git-storage`): its input as YAML and its rendered output next to it. A command returns
+only after its commit. The output is stored and not rendered again on read, so a deck stays
+exactly what was shown in a meeting, even if a later version of the hub renders differently.
+Because rendering is deterministic, the stored input is enough to get the same output again.
+When the hub starts, the block reads its decks back from the archive, so they survive a restart.
+Like the records part, it writes synchronously and can wait behind a session write of the
+archive (#45).
+
+The check of business plans by calculation (consistency, unit economics, completeness) is a
+different type with its own interface when it is built (#3).
 
 ```arc42
 :::building-block
-id: bb-artifact-service
-title: Artifact tools
-technology: Go
+id: bb-slides
+title: Slides
+technology: Go / YAML and HTML in the archive
 parent: bb-office-hub
-path: hub/artifacts
-requires: if-token-check
+path: hub/slides
+requires: if-token-check, if-archive-storage
 :::
 ```
 
@@ -387,7 +406,7 @@ path: hub/archive/storage
 ### Stage
 
 One web page per session, shown in the meeting by screen share. It shows the running minutes,
-raised hands, artifacts, and who is captured or paused. It is only a view of the session log and
+raised hands, the shown artifact (a slide deck), and who is captured or paused. It is only a view of the session log and
 has no logic of its own.
 
 ```arc42
@@ -396,7 +415,7 @@ id: bb-stage
 title: Stage
 technology: Go, rendered by the hub / server-sent events
 parent: bb-office-hub
-requires: if-session-stream, if-artifact-api, if-auth-api
+requires: if-session-stream, if-slides-api, if-auth-api
 implements: concept-transparency
 path: hub/stage
 :::
@@ -497,7 +516,7 @@ path: client/cli
 ### MCP tools
 
 Tools such as `meeting.join`, `meeting.leave`, `hand.raise`, `minutes.update`, `stage.show`,
-`slides.render`, `plan.validate`, `decision.record`, `minutes.get`, `note.add`, `task.create`,
+`slides.render`, `slides.get`, `plan.validate`, `decision.record`, `minutes.get`, `note.add`, `task.create`,
 `task.update`.
 
 ```arc42
@@ -558,7 +577,7 @@ title: Client core
 technology: Go
 parent: bb-participant-client
 path: client/core
-requires: if-session-commands, if-auth-api, if-decision-api, if-minutes-api, if-note-api, if-task-api, if-artifact-api
+requires: if-session-commands, if-auth-api, if-decision-api, if-minutes-api, if-note-api, if-task-api, if-slides-api
 :::
 ```
 
@@ -582,7 +601,7 @@ path: client/core
 The main access for humans and for agents with a shell. `office meeting join <session> [--mic]`
 starts the replication and prints the log path. With `--mic`, the terminal shows the user's own
 utterances with their status (partial → final → sent / off the record). Keys let the user pause and
-mark a sentence off the record. Other commands cover artifacts, the stage, decisions, minutes,
+mark a sentence off the record. Other commands cover slides, the stage, decisions, minutes,
 notes and tasks.
 
 ```arc42
@@ -591,7 +610,7 @@ id: bb-cli
 title: office CLI
 technology: Go, single binary
 parent: bb-participant-client
-requires: if-client-core, if-replication, if-session-commands, if-artifact-api, if-auth-api
+requires: if-client-core, if-replication, if-session-commands, if-slides-api, if-auth-api
 implements: concept-read-file-write-tools
 path: client/cli
 :::
@@ -609,7 +628,7 @@ id: bb-mcp
 title: MCP server
 technology: Go / official MCP Go SDK
 parent: bb-participant-client
-requires: if-client-core, if-replication, if-session-commands, if-artifact-api, if-auth-api
+requires: if-client-core, if-replication, if-session-commands, if-slides-api, if-auth-api
 implements: concept-read-file-write-tools
 path: client/mcp
 :::

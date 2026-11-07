@@ -139,15 +139,17 @@ involves: bb-cli, bb-mcp, bb-ears, bb-client-core, bb-identity, bb-session-servi
 
 ## Agent raises its hand and shows an artifact
 
-The agent renders a slide through the CLI and raises its hand on the stage. When it gets the
-floor, it shows the artifact. The stage reads the same events from the session stream.
+The agent renders a slide deck through the CLI and raises its hand on the stage. The slides part
+stores the input and the rendered deck in the archive before it returns the ID. When the agent
+gets the floor, it shows the deck by its ID. The stage reads the same events from the session
+stream and loads the deck from the slides part inside the hub.
 
 ```arc42
 :::runtime-scenario
 id: rs-agent-shows-artifact
 title: Agent raises its hand and shows an artifact
 trigger: Agent decides after turn.end to raise its hand
-involves: bb-cli, bb-artifact-service, bb-session-service, bb-stage, bb-replicator, bb-participant-client, bb-office-hub
+involves: bb-cli, bb-slides, bb-archive, bb-session-service, bb-stage, bb-replicator, bb-participant-client, bb-office-hub
 :::
 ```
 
@@ -156,7 +158,7 @@ involves: bb-cli, bb-artifact-service, bb-session-service, bb-stage, bb-replicat
 id: seq-agent-shows-artifact
 notation: mermaid-sequence
 scenario: rs-agent-shows-artifact
-aliases: actor_agent=actor-agent, bb_cli=bb-cli, bb_artifacts=bb-artifact-service, bb_session=bb-session-service, bb_stage=bb-stage
+aliases: actor_agent=actor-agent, bb_cli=bb-cli, bb_slides=bb-slides, bb_archive=bb-archive, bb_session=bb-session-service, bb_stage=bb-stage
 :::
 ```
 
@@ -164,12 +166,14 @@ aliases: actor_agent=actor-agent, bb_cli=bb-cli, bb_artifacts=bb-artifact-servic
 sequenceDiagram
     participant actor_agent as Agent
     participant bb_cli as office CLI
-    participant bb_artifacts as Artifact tools
+    participant bb_slides as Slides
+    participant bb_archive as Archive
     participant bb_session as Meeting session
     participant bb_stage as Stage
     actor_agent->>bb_cli: office slides render deck.md
-    bb_cli->>bb_artifacts: render
-    bb_artifacts-->>bb_cli: artifact slides/42
+    bb_cli->>bb_slides: render
+    bb_slides->>bb_archive: commit input and output
+    bb_slides-->>bb_cli: deck slides/42
     actor_agent->>bb_cli: office hand raise --topic budget
     bb_cli->>bb_session: hand.raise
     bb_session-->>bb_stage: hand.raised
@@ -177,7 +181,7 @@ sequenceDiagram
     actor_agent->>bb_cli: office stage show slides/42
     bb_cli->>bb_session: stage.show
     bb_session-->>bb_stage: artifact.shown
-    bb_stage->>bb_artifacts: load artifact
+    bb_stage->>bb_slides: load deck slides/42
 ```
 
 ## Human marks a sentence off the record

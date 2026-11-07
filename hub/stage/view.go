@@ -9,7 +9,6 @@ import (
 
 	"connectrpc.com/connect/v2"
 
-	artifactv1 "github.com/mrsimpson/agentic-office/hub/artifacts/api"
 	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 )
 
@@ -98,8 +97,8 @@ func (v *view) lowerHand(id string) {
 	v.hands = slices.DeleteFunc(v.hands, func(h handView) bool { return h.Participant.ID == id })
 }
 
-// apply updates the view with one event. load fetches a shown artifact.
-func (v *view) apply(ctx context.Context, ev *sessionv1.Event, load func(context.Context, string) (*artifactv1.Artifact, error)) {
+// apply updates the view with one event. decks loads a shown deck.
+func (v *view) apply(ctx context.Context, ev *sessionv1.Event, decks Slides) {
 	switch p := ev.GetPayload().(type) {
 	case *sessionv1.Event_ParticipantJoined:
 		j := p.ParticipantJoined
@@ -138,31 +137,40 @@ func (v *view) apply(ctx context.Context, ev *sessionv1.Event, load func(context
 	case *sessionv1.Event_MinutesUpdated:
 		v.minutes = p.MinutesUpdated.GetText()
 	case *sessionv1.Event_ArtifactShown:
-		v.artifact = loadArtifact(ctx, p.ArtifactShown.GetArtifactId(), load)
+		v.artifact = loadArtifact(ctx, p.ArtifactShown.GetArtifactId(), decks)
 	case *sessionv1.Event_SessionEnded:
 		v.ended = true
 		v.hands = nil
 	}
 }
 
-func loadArtifact(ctx context.Context, id string, load func(context.Context, string) (*artifactv1.Artifact, error)) artifactView {
+// slidesPrefix starts the artifact ID of a deck, for example "slides/42".
+const slidesPrefix = "slides/"
+
+// loadArtifact loads a shown artifact. The part of its ID before the first slash names its type;
+// the stage shows decks of the slides interface and gives a note for every other ID.
+func loadArtifact(ctx context.Context, id string, decks Slides) artifactView {
 	av := artifactView{ID: id}
-	if load == nil {
-		av.Note = "The stage cannot load artifacts."
+	if !strings.HasPrefix(id, slidesPrefix) {
+		av.Note = "The stage cannot show the artifact " + id + "."
 		return av
 	}
-	a, err := load(ctx, id)
+	if decks == nil {
+		av.Note = "The stage cannot load slides."
+		return av
+	}
+	d, err := decks.Load(ctx, id)
 	switch {
 	case connect.CodeOf(err) == connect.CodeNotFound:
 		av.Note = "There is no artifact " + id + "."
 	case err != nil:
 		av.Note = "The artifact " + id + " could not be loaded."
-	case !strings.HasPrefix(a.GetMediaType(), "text/html"):
-		av.MediaType = a.GetMediaType()
-		av.Note = "The stage cannot show artifacts of type " + a.GetMediaType() + "."
+	case !strings.HasPrefix(d.GetMediaType(), "text/html"):
+		av.MediaType = d.GetMediaType()
+		av.Note = "The stage cannot show artifacts of type " + d.GetMediaType() + "."
 	default:
-		av.MediaType = a.GetMediaType()
-		av.Content = string(a.GetContent())
+		av.MediaType = d.GetMediaType()
+		av.Content = string(d.GetContent())
 	}
 	return av
 }

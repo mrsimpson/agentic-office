@@ -48,9 +48,9 @@ Meeting:
   stage show <artifact-id>
   stage link                         create a read-only link to the stage
 
-Artifacts:
-  slides render <deck.json | deck.md>
-  artifact get <id> [--out FILE]
+Slides (the ID, such as slides/42, is what stage show takes):
+  slides render <deck.json | deck.md>  render a deck and print its ID
+  slides get <id> [--out FILE]       the rendered deck (--json: input and output)
 
 Records (never put a sentence that is off the record into them):
   decision record <text> | --file F  record a decision (--session links it to a session)
@@ -128,7 +128,7 @@ func init() {
 		"stage show":               cmdStageShow,
 		"stage link":               cmdStageLink,
 		"slides render":            cmdSlidesRender,
-		"artifact get":             cmdArtifactGet,
+		"slides get":               cmdSlidesGet,
 		"decision record":          cmdDecisionRecord,
 		"decision list":            cmdDecisionList,
 		"note add":                 cmdNoteAdd,

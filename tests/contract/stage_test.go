@@ -305,7 +305,12 @@ type stageMeeting struct {
 
 func newStageMeeting(t *testing.T, args ...string) *stageMeeting {
 	t.Helper()
-	srv := contracttest.StartHub(t, nil, args...)
+	return newStageMeetingOn(t, contracttest.StartHub(t, nil, args...))
+}
+
+// newStageMeetingOn starts a stage meeting on a running hub.
+func newStageMeetingOn(t *testing.T, srv *contracttest.Hub) *stageMeeting {
+	t.Helper()
 	m := &meeting{t: t, srv: srv, sid: "budget/" + ids.NewCommandID(), actors: map[string]*contracttest.Actor{},
 		reader: srv.Participant(t, "reader", "Reader", agent)}
 	return &stageMeeting{meeting: m, link: stageLink(t, m.reader, m.sid)}
@@ -535,6 +540,15 @@ func TestStageShowsTheSession(t *testing.T) {
 	if notes := findAll(n, withAttr("data-artifact", "slides/999")); len(notes) != 1 || !strings.Contains(text(notes[0]), "slides/999") {
 		t.Errorf("no note for the unknown artifact: %q", text(n))
 	}
+	// An artifact ID of a type that the stage does not know gives a note too.
+	if _, err := m.s(bot).ShowArtifact(m.ctx(), &sessionv1.ShowArtifactRequest{SessionId: m.sid, CommandId: ids.NewCommandID(),
+		ParticipantId: bot, ArtifactId: "plans/1"}); err != nil {
+		t.Fatal(err)
+	}
+	n = st.wait("artifact", "a note for plans/1", func(n *html.Node) bool { return len(findAll(n, withAttr("data-artifact", "plans/1"))) == 1 })
+	if len(findAll(n, byTag("iframe"))) != 0 || !strings.Contains(text(n), "plans/1") {
+		t.Errorf("no note for an artifact of another type: %q", text(n))
+	}
 
 	// A second page that opens now sees the same state at once.
 	late := openStage(t, m.srv, m.link)
@@ -581,5 +595,27 @@ func TestStageLinkExpires(t *testing.T) {
 		if res, body := get(t, m.srv, target); res.StatusCode != http.StatusUnauthorized || strings.Contains(body, "Ada") {
 			t.Errorf("expired link %s: status %d, want 401 without session data", target, res.StatusCode)
 		}
+	}
+}
+
+// TestStageShowsDeckAfterRestart: a deck rendered before a restart of the hub is read back from
+// the archive, and the stage shows it by its ID.
+func TestStageShowsDeckAfterRestart(t *testing.T) {
+	srv := contracttest.StartHub(t, nil)
+	deck := render(t, srv.Participant(t, "ada", "Ada", human), budgetDeck())
+	if code, err := srv.Stop(5 * time.Second); err != nil || code != 0 {
+		t.Fatalf("stop: %d, %v", code, err)
+	}
+	srv = contracttest.StartHubIn(t, srv.DataDir, srv.AdminKey, nil)
+	m := newStageMeetingOn(t, srv)
+	st := openStage(t, m.srv, m.link)
+	bot := m.joinAs("Minute Bot", sessionv1.ParticipantKind_PARTICIPANT_KIND_AGENT, false)
+	if _, err := m.s(bot).ShowArtifact(m.ctx(), &sessionv1.ShowArtifactRequest{SessionId: m.sid, CommandId: ids.NewCommandID(),
+		ParticipantId: bot, ArtifactId: deck.GetId()}); err != nil {
+		t.Fatal(err)
+	}
+	n := st.wait("artifact", "iframe of "+deck.GetId(), func(n *html.Node) bool { return len(findAll(n, byTag("iframe"))) == 1 })
+	if srcdoc, _ := attr(findAll(n, byTag("iframe"))[0], "srcdoc"); srcdoc != string(deck.GetContent()) {
+		t.Error("the stage does not show the stored deck")
 	}
 }

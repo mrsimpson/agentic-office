@@ -451,8 +451,8 @@ func TestCLISessionChoice(t *testing.T) {
 	}
 }
 
-// TestCLIArtifacts: slides render and artifact get against the real artifact tools.
-func TestCLIArtifacts(t *testing.T) {
+// TestCLISlides: slides render and slides get against the real slides part of the hub.
+func TestCLISlides(t *testing.T) {
 	m := newMachine(t)
 	bot := m.user("bot", "Bot", "agent")
 	ada := m.user("ada", "Ada", "human")
@@ -469,36 +469,41 @@ func TestCLIArtifacts(t *testing.T) {
 	js := write("deck.json", `{"title":"Budget","slides":[{"title":"Plan","bullets":["one","<two>"],"notes":"say this"}]}`)
 
 	v := bot.ok("slides", "render", md)
-	if v["artifactId"] != "slides/1" || v["mediaType"] != "text/html; charset=utf-8" || v["duplicate"] != false {
+	if v["id"] != "slides/1" || v["mediaType"] != "text/html; charset=utf-8" || v["duplicate"] != false {
 		t.Fatalf("render Markdown: %v", v)
 	}
-	// The same deck as JSON is the same input: a new artifact with the same content.
+	// The same deck as JSON is the same input: a new deck with the same content.
 	if out, errOut, code := ada.run("slides", "render", js); code != 0 || out != "slides/2\n" {
 		t.Fatalf("render JSON without --json: exit %d, %q %q", code, out, errOut)
 	}
 
-	html1, _, code := ada.run("artifact", "get", "slides/1")
-	html2, _, code2 := bot.run("artifact", "get", "slides/2")
+	html1, _, code := ada.run("slides", "get", "slides/1")
+	html2, _, code2 := bot.run("slides", "get", "slides/2")
 	if code != 0 || code2 != 0 || html1 != html2 || !strings.Contains(html1, "<li>&lt;two&gt;</li>") {
-		t.Fatalf("artifact get: exit %d/%d, same %v:\n%s", code, code2, html1 == html2, html1)
+		t.Fatalf("slides get: exit %d/%d, same %v:\n%s", code, code2, html1 == html2, html1)
 	}
-	a, _ := bot.ok("artifact", "get", "slides/1")["artifact"].(map[string]any)
-	if a["id"] != "slides/1" || a["mediaType"] != "text/html; charset=utf-8" || a["authorParticipantId"] != "bot" ||
-		a["content"] == nil || a["createdAt"] == nil {
-		t.Fatalf("artifact get --json: %v", a)
+	// With --json: the input and the output.
+	a, _ := bot.ok("slides", "get", "slides/1")["deck"].(map[string]any)
+	sl, _ := a["slides"].([]any)
+	if a["id"] != "slides/1" || a["title"] != "Budget" || len(sl) != 1 || a["mediaType"] != "text/html; charset=utf-8" ||
+		a["authorParticipantId"] != "bot" || a["authorKind"] != "AUTHOR_KIND_AGENT" || a["content"] == nil || a["createTime"] == nil {
+		t.Fatalf("slides get --json: %v", a)
+	}
+	if first, _ := sl[0].(map[string]any); first["title"] != "Plan" || first["notes"] != "say this" {
+		t.Fatalf("slides get --json, first slide: %v", sl[0])
 	}
 	out := filepath.Join(dir, "out.html")
-	if v := ada.ok("artifact", "get", "slides/2", "--out", out); v["file"] != out || v["artifactId"] != "slides/2" {
-		t.Fatalf("artifact get --out: %v", v)
+	if v := ada.ok("slides", "get", "slides/2", "--out", out); v["file"] != out || v["id"] != "slides/2" {
+		t.Fatalf("slides get --out: %v", v)
 	}
 	if b, err := os.ReadFile(out); err != nil || string(b) != html1 {
 		t.Fatalf("--out file: %v", err)
 	}
 
-	bot.fails(1, "not_found", "artifact", "get", "slides/99")
+	bot.fails(1, "not_found", "slides", "get", "slides/99")
 	bot.fails(1, "invalid_argument", "slides", "render", write("blank.json", `{"slides":[{"title":" "}]}`))
 	bot.fails(2, "usage", "slides", "render", write("bad.md", "text before any slide\n"))
-	bot.fails(2, "usage", "artifact", "get")
+	bot.fails(2, "usage", "slides", "get")
 }
 
 // listOf returns the records under key of a list result with --json.
