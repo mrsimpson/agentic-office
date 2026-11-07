@@ -583,3 +583,45 @@ addresses: risk-forged-copy, qg-resumability
 :::
 ```
 
+## The end of a session is a milestone, not a stop
+
+**Context:** People keep working after a meeting: artifacts arrive later, and a meeting can go on
+another day. **Decision:** `session.ended` is a milestone that triggers other work, for example
+storing the minutes. It never blocks anything new. The triggered work runs in the background,
+and its result appears as an event in the session log. A later session command (join, speak,
+raise a hand, update the minutes) opens the session again; the log shows this as its own event.
+Records through their own interfaces (decisions, minutes, notes, tasks, slides) may refer to an
+ended session and never open it again. **Consequences:** Streams, replicators and agents keep
+following a session after its end until the participant leaves. Every end stores a new version of
+the minutes. **Rejected:** an end that rejects all later commands.
+
+```arc42
+:::decision
+id: dec-session-end-milestone
+title: The end of a session is a milestone, not a stop
+status: accepted
+date: 2026-11-07
+addresses: qg-usability, risk-archive-latency
+:::
+```
+
+## Records are written synchronously and before session writes
+
+**Context:** A client must learn whether its decision, note, task or slide deck was stored.
+Session logs are written in the background, and a Git commit can be slow. **Decision:** Records
+are written synchronously: a call returns only after the commit, and a failure reaches the
+client. Writes of records go before waiting writes of session logs, so a record waits at most for
+the one session write that is in progress, never for a queue. **Consequences:** Clients get a
+clear result. A slow repository slows records, but not the session itself. **Rejected:** records
+in the background (the client would not learn about a failure).
+
+```arc42
+:::decision
+id: dec-records-synchronous
+title: Records are written synchronously and before session writes
+status: accepted
+date: 2026-11-07
+addresses: risk-archive-latency, qg-usability
+:::
+```
+
