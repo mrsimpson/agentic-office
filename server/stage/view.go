@@ -71,11 +71,11 @@ type artifactView struct {
 }
 
 type utteranceView struct {
-	EventID   uint32
-	Speaker   *participantView
-	Text      string
-	Corrected bool
-	retracted bool
+	EventID      uint32
+	Speaker      *participantView
+	Text         string
+	Corrected    bool
+	offTheRecord bool
 }
 
 func newView() *view {
@@ -118,14 +118,14 @@ func (v *view) apply(ctx context.Context, ev *sessionv1.Event, load func(context
 		v.participant(p.ParticipantResumed.GetParticipantId()).paused = false
 	case *sessionv1.Event_UtteranceFinal:
 		u := &utteranceView{EventID: ev.GetId(), Speaker: v.participant(p.UtteranceFinal.GetParticipantId()),
-			Text: p.UtteranceFinal.GetText()}
+			Text: p.UtteranceFinal.GetText(), offTheRecord: p.UtteranceFinal.GetOffTheRecord()}
 		v.utterances = append(v.utterances, u)
 		v.byEvent[ev.GetId()] = u
 		// A raised hand is lowered when its participant speaks: they had the floor.
 		v.lowerHand(u.Speaker.ID)
-	case *sessionv1.Event_UtteranceRetracted:
-		if u := v.byEvent[p.UtteranceRetracted.GetUtteranceEventId()]; u != nil {
-			u.retracted = true
+	case *sessionv1.Event_UtteranceOffTheRecord:
+		if u := v.byEvent[p.UtteranceOffTheRecord.GetUtteranceEventId()]; u != nil {
+			u.offTheRecord = true
 		}
 	case *sessionv1.Event_UtteranceCorrected:
 		if u := v.byEvent[p.UtteranceCorrected.GetUtteranceEventId()]; u != nil {
@@ -197,11 +197,11 @@ func (v *view) Hands() []handView                { return v.hands }
 func (v *view) Artifact() artifactView           { return v.artifact }
 func (v *view) Minutes() string                  { return v.minutes }
 
-// Utterances returns the most recent utterances that are not retracted, oldest first.
+// Utterances returns the most recent utterances that are not off the record, oldest first.
 func (v *view) Utterances() []*utteranceView {
 	var out []*utteranceView
 	for i := len(v.utterances) - 1; i >= 0 && len(out) < recentUtterances; i-- {
-		if !v.utterances[i].retracted {
+		if !v.utterances[i].offTheRecord {
 			out = append(out, v.utterances[i])
 		}
 	}

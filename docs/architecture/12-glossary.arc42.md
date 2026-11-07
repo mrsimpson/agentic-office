@@ -158,12 +158,12 @@ definition: A participant with its own key pair; every human device and every ag
 
 ## Off the record
 
-A later classification of a sentence.
+A later mark on an own sentence.
 
 ```arc42
 :::glossary-term
 id: term-off-the-record
 title: Off the record
-definition: A classification of an utterance after it was said; the interfaces then deliver it only as a placeholder without its text
+definition: A mark that the speaker puts on their own utterance after it was said; the interfaces then deliver it only as a placeholder without its text
 :::
 ```

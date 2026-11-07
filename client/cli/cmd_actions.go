@@ -37,21 +37,21 @@ func parseEventID(s string) (uint32, error) {
 	return uint32(n), nil
 }
 
-func cmdRetract(e *env, fs *flag.FlagSet) func([]string) error {
-	last := fs.Bool("last", false, "retract the last own sentence that is not retracted (read from the local log)")
+func cmdOffTheRecord(e *env, fs *flag.FlagSet) func([]string) error {
+	last := fs.Bool("last", false, "mark the last own sentence off the record, if it is not yet (read from the local log)")
 	return func(args []string) error {
 		if *last == (len(args) == 1) || len(args) > 1 {
-			return usagef("usage: office utterance retract <event-id> | --last")
+			return usagef("usage: office utterance off-the-record <event-id> | --last")
 		}
 		return e.sessionCommand(func(c *core.Client, sid string) (*sessionv1.CommandResult, error) {
 			if *last {
-				return c.RetractLast(e.ctx, sid)
+				return c.MarkOffTheRecordLast(e.ctx, sid)
 			}
 			id, err := parseEventID(args[0])
 			if err != nil {
 				return nil, err
 			}
-			return c.Retract(e.ctx, sid, id)
+			return c.MarkOffTheRecord(e.ctx, sid, id)
 		})
 	}
 }
@@ -329,6 +329,45 @@ func cmdJournalList(e *env, fs *flag.FlagSet) func([]string) error {
 		for _, en := range entries {
 			fmt.Fprintf(e.stdout, "#%d %s %s: %s\n", en.GetId(), kindName(en.GetKind()), en.GetAuthorParticipantId(),
 				strings.ReplaceAll(en.GetText(), "\n", " "))
+		}
+		return nil
+	}
+}
+
+// cmdEvents reads the events after a cursor from the server (dec-events-from-cursor). It prints
+// them in the line format of the local log, so the same filters work.
+func cmdEvents(e *env, fs *flag.FlagSet) func([]string) error {
+	after := fs.Uint("after", 0, "only events with an ID greater than this (the cursor)")
+	limit := fs.Uint("limit", 0, "at most this many events (0: the server's default, at most 1000)")
+	return func(args []string) error {
+		if err := noArgs(args); err != nil {
+			return err
+		}
+		c, err := e.client()
+		if err != nil {
+			return err
+		}
+		sid, err := e.sessionID(c)
+		if err != nil {
+			return err
+		}
+		evs, more, err := c.Events(e.ctx, sid, uint32(*after), uint32(*limit))
+		if err != nil {
+			return err
+		}
+		if e.json {
+			out := make([]any, len(evs))
+			for i, ev := range evs {
+				out[i] = core.EventJSON(ev)
+			}
+			e.printJSON(map[string]any{"events": out, "more": more})
+			return nil
+		}
+		for _, ev := range evs {
+			fmt.Fprintln(e.stdout, string(core.EventJSON(ev)))
+		}
+		if more {
+			fmt.Fprintln(e.stderr, "more events: read again with --after", evs[len(evs)-1].GetId())
 		}
 		return nil
 	}

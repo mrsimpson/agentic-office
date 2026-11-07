@@ -25,7 +25,7 @@ service SessionService {
   rpc Leave(LeaveRequest) returns (LeaveResponse);
   // SubmitUtterance appends an utterance.final event.
   rpc SubmitUtterance(SubmitUtteranceRequest) returns (SubmitUtteranceResponse);
-  rpc RetractUtterance(RetractUtteranceRequest) returns (RetractUtteranceResponse);
+  rpc MarkOffTheRecord(MarkOffTheRecordRequest) returns (MarkOffTheRecordResponse);
   // SubmitSignal appends a turn.end, silence.long or addressed event.
   rpc SubmitSignal(SubmitSignalRequest) returns (SubmitSignalResponse);
   rpc Pause(PauseRequest) returns (PauseResponse);
@@ -34,6 +34,12 @@ service SessionService {
   rpc UpdateMinutes(UpdateMinutesRequest) returns (UpdateMinutesResponse);
   rpc ShowArtifact(ShowArtifactRequest) returns (ShowArtifactResponse);
   rpc EndSession(EndSessionRequest) returns (EndSessionResponse);
+
+  // GetEvents returns the events with an ID greater than after_event_id, at most limit of them
+  // (dec-events-from-cursor). A participant calls it when it finds a gap in its copy, or polls it
+  // instead of following a stream or a file. IDs have no gaps; an utterance that is off the record
+  // is a placeholder with its ID.
+  rpc GetEvents(GetEventsRequest) returns (GetEventsResponse);
 
   // Subscribe sends every event with an ID greater than after_event_id, then live events.
   // The stream closes after session.ended. It ends with unauthenticated when the token expires
@@ -86,14 +92,14 @@ message SubmitUtteranceResponse {
   CommandResult result = 1;
 }
 
-message RetractUtteranceRequest {
+message MarkOffTheRecordRequest {
   string session_id = 1;
   string command_id = 2;
   string participant_id = 3;
   uint32 utterance_event_id = 4;
 }
 
-message RetractUtteranceResponse {
+message MarkOffTheRecordResponse {
   CommandResult result = 1;
 }
 
@@ -183,4 +189,18 @@ message SubscribeRequest {
 
 message SubscribeResponse {
   Event event = 1;
+}
+
+message GetEventsRequest {
+  string session_id = 1;
+  // after_event_id is the cursor: the last event ID the caller has. 0 reads from the start.
+  uint32 after_event_id = 2;
+  // limit is the maximum number of events. 0 means 100; at most 1000.
+  uint32 limit = 3;
+}
+
+message GetEventsResponse {
+  repeated Event events = 1;
+  // more is true if there are more events after the last one returned.
+  bool more = 2;
 }

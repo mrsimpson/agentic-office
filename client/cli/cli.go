@@ -36,10 +36,11 @@ Meeting:
   meeting join <session> [--name N] [--foreground] [--mic | --wav FILE]
                                      join, start the log replicator, print the log path
   meeting log                        print the path of the local log
-  meeting view                       gateway view: own utterances; keys p pause, r retract, q quit
+  meeting view                       gateway view: own utterances; keys p pause, o off the record, q quit
+  meeting events [--after N] [--limit N]  events after a cursor, read from the server (for gaps or without a file system)
   meeting leave | pause | resume | end
   say <text>                         submit a typed utterance
-  utterance retract <event-id> | --last
+  utterance off-the-record <event-id> | --last
   signal turn-end [--participant P]
   signal silence-long --duration D
   signal addressed --participant P --utterance ID
@@ -89,33 +90,34 @@ var commands map[string]func(e *env, fs *flag.FlagSet) func(args []string) error
 
 func init() {
 	commands = map[string]func(e *env, fs *flag.FlagSet) func(args []string) error{
-		"key create":          cmdKeyCreate,
-		"key show":            cmdKeyShow,
-		"whoami":              cmdWhoami,
-		"admin key register":  cmdAdminRegister,
-		"admin key revoke":    cmdAdminRevoke,
-		"meeting join":        cmdJoin,
-		"meeting log":         cmdLogPath,
-		"meeting view":        cmdView,
-		"meeting leave":       cmdLeave,
-		"meeting pause":       cmdSimple("pause", (*core.Client).Pause),
-		"meeting resume":      cmdSimple("resume", (*core.Client).Resume),
-		"meeting end":         cmdSimple("end", (*core.Client).EndSession),
-		"say":                 cmdSay,
-		"utterance retract":   cmdRetract,
-		"signal turn-end":     cmdTurnEnd,
-		"signal silence-long": cmdSilenceLong,
-		"signal addressed":    cmdAddressed,
-		"hand raise":          cmdRaiseHand,
-		"minutes update":      cmdMinutes,
-		"stage show":          cmdStageShow,
-		"stage link":          cmdStageLink,
-		"slides render":       cmdSlidesRender,
-		"artifact get":        cmdArtifactGet,
-		"journal append":      cmdJournalAppend,
-		"journal list":        cmdJournalList,
-		"replicator run":      cmdReplicatorRun,
-		"mcp":                 cmdMCP,
+		"key create":               cmdKeyCreate,
+		"key show":                 cmdKeyShow,
+		"whoami":                   cmdWhoami,
+		"admin key register":       cmdAdminRegister,
+		"admin key revoke":         cmdAdminRevoke,
+		"meeting join":             cmdJoin,
+		"meeting log":              cmdLogPath,
+		"meeting events":           cmdEvents,
+		"meeting view":             cmdView,
+		"meeting leave":            cmdLeave,
+		"meeting pause":            cmdSimple("pause", (*core.Client).Pause),
+		"meeting resume":           cmdSimple("resume", (*core.Client).Resume),
+		"meeting end":              cmdSimple("end", (*core.Client).EndSession),
+		"say":                      cmdSay,
+		"utterance off-the-record": cmdOffTheRecord,
+		"signal turn-end":          cmdTurnEnd,
+		"signal silence-long":      cmdSilenceLong,
+		"signal addressed":         cmdAddressed,
+		"hand raise":               cmdRaiseHand,
+		"minutes update":           cmdMinutes,
+		"stage show":               cmdStageShow,
+		"stage link":               cmdStageLink,
+		"slides render":            cmdSlidesRender,
+		"artifact get":             cmdArtifactGet,
+		"journal append":           cmdJournalAppend,
+		"journal list":             cmdJournalList,
+		"replicator run":           cmdReplicatorRun,
+		"mcp":                      cmdMCP,
 	}
 }
 

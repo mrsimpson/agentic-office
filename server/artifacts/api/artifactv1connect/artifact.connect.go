@@ -11,12 +11,10 @@
 package artifactv1connect
 
 import (
-	context "context"
-	sync "sync"
-
 	connect "connectrpc.com/connect/v2"
-
+	context "context"
 	api "github.com/mrsimpson/agentic-office/server/artifacts/api"
+	sync "sync"
 )
 
 const (

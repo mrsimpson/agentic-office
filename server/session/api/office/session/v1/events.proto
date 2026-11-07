@@ -3,7 +3,7 @@
 // Every event has an ID that grows by one inside a session and starts at 1, and a type in dotted
 // form. The type is always set to the name of the payload, for example "utterance.final", so that
 // lines of the local log can be filtered with grep and jq. Existing events never change:
-// corrections and retractions are new events that point to the original.
+// corrections and off-the-record marks are new events that point to the original.
 syntax = "proto3";
 
 package office.session.v1;
@@ -31,7 +31,7 @@ message Event {
   oneof payload {
     // Utterances
     UtteranceFinal utterance_final = 10; // "utterance.final"
-    UtteranceRetracted utterance_retracted = 11; // "utterance.retracted"
+    UtteranceOffTheRecord utterance_off_the_record = 11; // "utterance.off_the_record"
     UtteranceCorrected utterance_corrected = 12; // "utterance.corrected"
     // Signals
     TurnEnd turn_end = 20; // "turn.end"
@@ -56,10 +56,14 @@ message UtteranceFinal {
   Modality modality = 3;
   // transcribed_at is when the speaker's ears had the final text. Empty for typed text.
   google.protobuf.Timestamp transcribed_at = 4;
+  // off_the_record is true if the speaker marked the utterance off the record
+  // (utterance.off_the_record). The event is then a placeholder: it keeps its ID, but text and
+  // transcribed_at are empty (dec-off-the-record).
+  bool off_the_record = 5;
 }
 
-message UtteranceRetracted {
-  // utterance_event_id is the ID of the utterance.final event that is retracted.
+message UtteranceOffTheRecord {
+  // utterance_event_id is the ID of the utterance.final event that is off the record.
   uint32 utterance_event_id = 1;
 }
 

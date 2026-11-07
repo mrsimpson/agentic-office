@@ -351,19 +351,20 @@ addresses: risk-no-filesystem, qg-resumability
 
 **Context:** A spoken sentence has been heard by everyone in the meeting, and agents have already
 read it. A retraction pretends that it was never said. **Decision:** What is said stays said.
-Utterances are never retracted or removed. A sentence can be classified afterwards, for example
-as off the record. The classification is a new event. The interfaces then suppress the text: they
-deliver a placeholder with the same ID, the stage hides it, and it does not go into minutes or the
-journal. Agents that already read it must respect the classification. The raw log keeps the
-original. OPEN: who may classify (the speaker only, or also the moderator), and which other
-classes exist. **Consequences:** The log stays complete and honest. Suppression works for every
-reader that uses the interfaces, but not for what an agent already holds in its context.
-**Rejected:** retraction; a hold period before publishing (it adds seconds of latency).
+Utterances are never retracted or removed. A participant can mark their own sentence off the
+record afterwards. This is its own command; the server checks that the caller is the speaker. The
+mark is a new event. The interfaces then suppress the text: they deliver a placeholder with the
+same ID, the stage hides it, and it does not go into minutes or the journal. Agents that already
+read it must respect the mark. The raw log keeps the original. Marking the sentences of others
+(moderation) is out of scope for the first stage (issue #31). **Consequences:** The log stays
+complete and honest. Suppression works for every reader that uses the interfaces, but not for
+what an agent already holds in its context. **Rejected:** retraction; a hold period before
+publishing (it adds seconds of latency); a general classification command (not needed yet).
 
 ```arc42
 :::decision
 id: dec-off-the-record
-title: Off the record by classification, no retraction
+title: Own sentences can be marked off the record; no retraction
 status: accepted
 date: 2026-11-07
 addresses: risk-retraction-leak, qg-confidentiality
@@ -375,7 +376,7 @@ addresses: risk-retraction-leak, qg-confidentiality
 **Context:** Capture and storage of speech need consent (GDPR, § 201 German Criminal Code).
 **Decision:** Joining with `--mic` is the consent to capture and to storage, also of the raw
 transcript. Only participants who join with the microphone are transcribed. The stage shows the
-capture status to everyone. Censorship is possible only as a later classification
+capture status to everyone. Censorship is possible only by marking a sentence off the record later
 (`dec-off-the-record`). **Consequences:** No extra step in the meeting. Raw audio still never
 leaves the device. OPEN: a data protection review before the first real use, and how long raw
 transcripts are kept.

@@ -5,20 +5,20 @@ import sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
 
 // Event types in dotted form.
 const (
-	UtteranceFinal     = "utterance.final"
-	UtteranceRetracted = "utterance.retracted"
-	UtteranceCorrected = "utterance.corrected"
-	TurnEnd            = "turn.end"
-	SilenceLong        = "silence.long"
-	Addressed          = "addressed"
-	HandRaised         = "hand.raised"
-	MinutesUpdated     = "minutes.updated"
-	ArtifactShown      = "artifact.shown"
-	ParticipantJoined  = "participant.joined"
-	ParticipantLeft    = "participant.left"
-	ParticipantPaused  = "participant.paused"
-	ParticipantResumed = "participant.resumed"
-	SessionEnded       = "session.ended"
+	UtteranceFinal        = "utterance.final"
+	UtteranceOffTheRecord = "utterance.off_the_record"
+	UtteranceCorrected    = "utterance.corrected"
+	TurnEnd               = "turn.end"
+	SilenceLong           = "silence.long"
+	Addressed             = "addressed"
+	HandRaised            = "hand.raised"
+	MinutesUpdated        = "minutes.updated"
+	ArtifactShown         = "artifact.shown"
+	ParticipantJoined     = "participant.joined"
+	ParticipantLeft       = "participant.left"
+	ParticipantPaused     = "participant.paused"
+	ParticipantResumed    = "participant.resumed"
+	SessionEnded          = "session.ended"
 )
 
 // TypeOf returns the dotted type that belongs to the payload of ev, or "" if it has none.
@@ -26,8 +26,8 @@ func TypeOf(ev *sessionv1.Event) string {
 	switch ev.GetPayload().(type) {
 	case *sessionv1.Event_UtteranceFinal:
 		return UtteranceFinal
-	case *sessionv1.Event_UtteranceRetracted:
-		return UtteranceRetracted
+	case *sessionv1.Event_UtteranceOffTheRecord:
+		return UtteranceOffTheRecord
 	case *sessionv1.Event_UtteranceCorrected:
 		return UtteranceCorrected
 	case *sessionv1.Event_TurnEnd:

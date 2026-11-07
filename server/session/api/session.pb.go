@@ -18,13 +18,12 @@
 package sessionv1
 
 import (
-	reflect "reflect"
-	sync "sync"
-	unsafe "unsafe"
-
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
+	reflect "reflect"
+	sync "sync"
+	unsafe "unsafe"
 )
 
 const (
@@ -450,7 +449,7 @@ func (x *SubmitUtteranceResponse) GetResult() *CommandResult {
 	return nil
 }
 
-type RetractUtteranceRequest struct {
+type MarkOffTheRecordRequest struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	SessionId        string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
 	CommandId        string                 `protobuf:"bytes,2,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
@@ -460,20 +459,20 @@ type RetractUtteranceRequest struct {
 	sizeCache        protoimpl.SizeCache
 }
 
-func (x *RetractUtteranceRequest) Reset() {
-	*x = RetractUtteranceRequest{}
+func (x *MarkOffTheRecordRequest) Reset() {
+	*x = MarkOffTheRecordRequest{}
 	mi := &file_office_session_v1_session_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *RetractUtteranceRequest) String() string {
+func (x *MarkOffTheRecordRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*RetractUtteranceRequest) ProtoMessage() {}
+func (*MarkOffTheRecordRequest) ProtoMessage() {}
 
-func (x *RetractUtteranceRequest) ProtoReflect() protoreflect.Message {
+func (x *MarkOffTheRecordRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_office_session_v1_session_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -485,60 +484,60 @@ func (x *RetractUtteranceRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use RetractUtteranceRequest.ProtoReflect.Descriptor instead.
-func (*RetractUtteranceRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use MarkOffTheRecordRequest.ProtoReflect.Descriptor instead.
+func (*MarkOffTheRecordRequest) Descriptor() ([]byte, []int) {
 	return file_office_session_v1_session_proto_rawDescGZIP(), []int{7}
 }
 
-func (x *RetractUtteranceRequest) GetSessionId() string {
+func (x *MarkOffTheRecordRequest) GetSessionId() string {
 	if x != nil {
 		return x.SessionId
 	}
 	return ""
 }
 
-func (x *RetractUtteranceRequest) GetCommandId() string {
+func (x *MarkOffTheRecordRequest) GetCommandId() string {
 	if x != nil {
 		return x.CommandId
 	}
 	return ""
 }
 
-func (x *RetractUtteranceRequest) GetParticipantId() string {
+func (x *MarkOffTheRecordRequest) GetParticipantId() string {
 	if x != nil {
 		return x.ParticipantId
 	}
 	return ""
 }
 
-func (x *RetractUtteranceRequest) GetUtteranceEventId() uint32 {
+func (x *MarkOffTheRecordRequest) GetUtteranceEventId() uint32 {
 	if x != nil {
 		return x.UtteranceEventId
 	}
 	return 0
 }
 
-type RetractUtteranceResponse struct {
+type MarkOffTheRecordResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Result        *CommandResult         `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *RetractUtteranceResponse) Reset() {
-	*x = RetractUtteranceResponse{}
+func (x *MarkOffTheRecordResponse) Reset() {
+	*x = MarkOffTheRecordResponse{}
 	mi := &file_office_session_v1_session_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *RetractUtteranceResponse) String() string {
+func (x *MarkOffTheRecordResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*RetractUtteranceResponse) ProtoMessage() {}
+func (*MarkOffTheRecordResponse) ProtoMessage() {}
 
-func (x *RetractUtteranceResponse) ProtoReflect() protoreflect.Message {
+func (x *MarkOffTheRecordResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_office_session_v1_session_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -550,12 +549,12 @@ func (x *RetractUtteranceResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use RetractUtteranceResponse.ProtoReflect.Descriptor instead.
-func (*RetractUtteranceResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use MarkOffTheRecordResponse.ProtoReflect.Descriptor instead.
+func (*MarkOffTheRecordResponse) Descriptor() ([]byte, []int) {
 	return file_office_session_v1_session_proto_rawDescGZIP(), []int{8}
 }
 
-func (x *RetractUtteranceResponse) GetResult() *CommandResult {
+func (x *MarkOffTheRecordResponse) GetResult() *CommandResult {
 	if x != nil {
 		return x.Result
 	}
@@ -1473,6 +1472,121 @@ func (x *SubscribeResponse) GetEvent() *Event {
 	return nil
 }
 
+type GetEventsRequest struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	SessionId string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	// after_event_id is the cursor: the last event ID the caller has. 0 reads from the start.
+	AfterEventId uint32 `protobuf:"varint,2,opt,name=after_event_id,json=afterEventId,proto3" json:"after_event_id,omitempty"`
+	// limit is the maximum number of events. 0 means 100; at most 1000.
+	Limit         uint32 `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetEventsRequest) Reset() {
+	*x = GetEventsRequest{}
+	mi := &file_office_session_v1_session_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetEventsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetEventsRequest) ProtoMessage() {}
+
+func (x *GetEventsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_office_session_v1_session_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetEventsRequest.ProtoReflect.Descriptor instead.
+func (*GetEventsRequest) Descriptor() ([]byte, []int) {
+	return file_office_session_v1_session_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *GetEventsRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *GetEventsRequest) GetAfterEventId() uint32 {
+	if x != nil {
+		return x.AfterEventId
+	}
+	return 0
+}
+
+func (x *GetEventsRequest) GetLimit() uint32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+type GetEventsResponse struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Events []*Event               `protobuf:"bytes,1,rep,name=events,proto3" json:"events,omitempty"`
+	// more is true if there are more events after the last one returned.
+	More          bool `protobuf:"varint,2,opt,name=more,proto3" json:"more,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetEventsResponse) Reset() {
+	*x = GetEventsResponse{}
+	mi := &file_office_session_v1_session_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetEventsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetEventsResponse) ProtoMessage() {}
+
+func (x *GetEventsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_office_session_v1_session_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetEventsResponse.ProtoReflect.Descriptor instead.
+func (*GetEventsResponse) Descriptor() ([]byte, []int) {
+	return file_office_session_v1_session_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *GetEventsResponse) GetEvents() []*Event {
+	if x != nil {
+		return x.Events
+	}
+	return nil
+}
+
+func (x *GetEventsResponse) GetMore() bool {
+	if x != nil {
+		return x.More
+	}
+	return false
+}
+
 var File_office_session_v1_session_proto protoreflect.FileDescriptor
 
 const file_office_session_v1_session_proto_rawDesc = "" +
@@ -1511,14 +1625,14 @@ const file_office_session_v1_session_proto_rawDesc = "" +
 	"\x0etranscribed_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\rtranscribedAt\"S\n" +
 	"\x17SubmitUtteranceResponse\x128\n" +
 	"\x06result\x18\x01 \x01(\v2 .office.session.v1.CommandResultR\x06result\"\xac\x01\n" +
-	"\x17RetractUtteranceRequest\x12\x1d\n" +
+	"\x17MarkOffTheRecordRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x02 \x01(\tR\tcommandId\x12%\n" +
 	"\x0eparticipant_id\x18\x03 \x01(\tR\rparticipantId\x12,\n" +
 	"\x12utterance_event_id\x18\x04 \x01(\rR\x10utteranceEventId\"T\n" +
-	"\x18RetractUtteranceResponse\x128\n" +
+	"\x18MarkOffTheRecordResponse\x128\n" +
 	"\x06result\x18\x01 \x01(\v2 .office.session.v1.CommandResultR\x06result\"\xc0\x02\n" +
 	"\x13SubmitSignalRequest\x12\x1d\n" +
 	"\n" +
@@ -1590,12 +1704,20 @@ const file_office_session_v1_session_proto_rawDesc = "" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12$\n" +
 	"\x0eafter_event_id\x18\x02 \x01(\rR\fafterEventId\"C\n" +
 	"\x11SubscribeResponse\x12.\n" +
-	"\x05event\x18\x01 \x01(\v2\x18.office.session.v1.EventR\x05event2\xca\b\n" +
+	"\x05event\x18\x01 \x01(\v2\x18.office.session.v1.EventR\x05event\"m\n" +
+	"\x10GetEventsRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\x12$\n" +
+	"\x0eafter_event_id\x18\x02 \x01(\rR\fafterEventId\x12\x14\n" +
+	"\x05limit\x18\x03 \x01(\rR\x05limit\"Y\n" +
+	"\x11GetEventsResponse\x120\n" +
+	"\x06events\x18\x01 \x03(\v2\x18.office.session.v1.EventR\x06events\x12\x12\n" +
+	"\x04more\x18\x02 \x01(\bR\x04more2\xa2\t\n" +
 	"\x0eSessionService\x12G\n" +
 	"\x04Join\x12\x1e.office.session.v1.JoinRequest\x1a\x1f.office.session.v1.JoinResponse\x12J\n" +
 	"\x05Leave\x12\x1f.office.session.v1.LeaveRequest\x1a .office.session.v1.LeaveResponse\x12h\n" +
 	"\x0fSubmitUtterance\x12).office.session.v1.SubmitUtteranceRequest\x1a*.office.session.v1.SubmitUtteranceResponse\x12k\n" +
-	"\x10RetractUtterance\x12*.office.session.v1.RetractUtteranceRequest\x1a+.office.session.v1.RetractUtteranceResponse\x12_\n" +
+	"\x10MarkOffTheRecord\x12*.office.session.v1.MarkOffTheRecordRequest\x1a+.office.session.v1.MarkOffTheRecordResponse\x12_\n" +
 	"\fSubmitSignal\x12&.office.session.v1.SubmitSignalRequest\x1a'.office.session.v1.SubmitSignalResponse\x12J\n" +
 	"\x05Pause\x12\x1f.office.session.v1.PauseRequest\x1a .office.session.v1.PauseResponse\x12M\n" +
 	"\x06Resume\x12 .office.session.v1.ResumeRequest\x1a!.office.session.v1.ResumeResponse\x12V\n" +
@@ -1603,7 +1725,8 @@ const file_office_session_v1_session_proto_rawDesc = "" +
 	"\rUpdateMinutes\x12'.office.session.v1.UpdateMinutesRequest\x1a(.office.session.v1.UpdateMinutesResponse\x12_\n" +
 	"\fShowArtifact\x12&.office.session.v1.ShowArtifactRequest\x1a'.office.session.v1.ShowArtifactResponse\x12Y\n" +
 	"\n" +
-	"EndSession\x12$.office.session.v1.EndSessionRequest\x1a%.office.session.v1.EndSessionResponse\x12X\n" +
+	"EndSession\x12$.office.session.v1.EndSessionRequest\x1a%.office.session.v1.EndSessionResponse\x12V\n" +
+	"\tGetEvents\x12#.office.session.v1.GetEventsRequest\x1a$.office.session.v1.GetEventsResponse\x12X\n" +
 	"\tSubscribe\x12#.office.session.v1.SubscribeRequest\x1a$.office.session.v1.SubscribeResponse0\x01BBZ@github.com/mrsimpson/agentic-office/server/session/api;sessionv1b\x06proto3"
 
 var (
@@ -1618,7 +1741,7 @@ func file_office_session_v1_session_proto_rawDescGZIP() []byte {
 	return file_office_session_v1_session_proto_rawDescData
 }
 
-var file_office_session_v1_session_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
+var file_office_session_v1_session_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
 var file_office_session_v1_session_proto_goTypes = []any{
 	(*CommandResult)(nil),            // 0: office.session.v1.CommandResult
 	(*JoinRequest)(nil),              // 1: office.session.v1.JoinRequest
@@ -1627,8 +1750,8 @@ var file_office_session_v1_session_proto_goTypes = []any{
 	(*LeaveResponse)(nil),            // 4: office.session.v1.LeaveResponse
 	(*SubmitUtteranceRequest)(nil),   // 5: office.session.v1.SubmitUtteranceRequest
 	(*SubmitUtteranceResponse)(nil),  // 6: office.session.v1.SubmitUtteranceResponse
-	(*RetractUtteranceRequest)(nil),  // 7: office.session.v1.RetractUtteranceRequest
-	(*RetractUtteranceResponse)(nil), // 8: office.session.v1.RetractUtteranceResponse
+	(*MarkOffTheRecordRequest)(nil),  // 7: office.session.v1.MarkOffTheRecordRequest
+	(*MarkOffTheRecordResponse)(nil), // 8: office.session.v1.MarkOffTheRecordResponse
 	(*SubmitSignalRequest)(nil),      // 9: office.session.v1.SubmitSignalRequest
 	(*SubmitSignalResponse)(nil),     // 10: office.session.v1.SubmitSignalResponse
 	(*PauseRequest)(nil),             // 11: office.session.v1.PauseRequest
@@ -1645,26 +1768,28 @@ var file_office_session_v1_session_proto_goTypes = []any{
 	(*EndSessionResponse)(nil),       // 22: office.session.v1.EndSessionResponse
 	(*SubscribeRequest)(nil),         // 23: office.session.v1.SubscribeRequest
 	(*SubscribeResponse)(nil),        // 24: office.session.v1.SubscribeResponse
-	(*Event)(nil),                    // 25: office.session.v1.Event
-	(ParticipantKind)(0),             // 26: office.session.v1.ParticipantKind
-	(Modality)(0),                    // 27: office.session.v1.Modality
-	(*timestamppb.Timestamp)(nil),    // 28: google.protobuf.Timestamp
-	(*TurnEnd)(nil),                  // 29: office.session.v1.TurnEnd
-	(*SilenceLong)(nil),              // 30: office.session.v1.SilenceLong
-	(*Addressed)(nil),                // 31: office.session.v1.Addressed
+	(*GetEventsRequest)(nil),         // 25: office.session.v1.GetEventsRequest
+	(*GetEventsResponse)(nil),        // 26: office.session.v1.GetEventsResponse
+	(*Event)(nil),                    // 27: office.session.v1.Event
+	(ParticipantKind)(0),             // 28: office.session.v1.ParticipantKind
+	(Modality)(0),                    // 29: office.session.v1.Modality
+	(*timestamppb.Timestamp)(nil),    // 30: google.protobuf.Timestamp
+	(*TurnEnd)(nil),                  // 31: office.session.v1.TurnEnd
+	(*SilenceLong)(nil),              // 32: office.session.v1.SilenceLong
+	(*Addressed)(nil),                // 33: office.session.v1.Addressed
 }
 var file_office_session_v1_session_proto_depIdxs = []int32{
-	25, // 0: office.session.v1.CommandResult.event:type_name -> office.session.v1.Event
-	26, // 1: office.session.v1.JoinRequest.kind:type_name -> office.session.v1.ParticipantKind
+	27, // 0: office.session.v1.CommandResult.event:type_name -> office.session.v1.Event
+	28, // 1: office.session.v1.JoinRequest.kind:type_name -> office.session.v1.ParticipantKind
 	0,  // 2: office.session.v1.JoinResponse.result:type_name -> office.session.v1.CommandResult
 	0,  // 3: office.session.v1.LeaveResponse.result:type_name -> office.session.v1.CommandResult
-	27, // 4: office.session.v1.SubmitUtteranceRequest.modality:type_name -> office.session.v1.Modality
-	28, // 5: office.session.v1.SubmitUtteranceRequest.transcribed_at:type_name -> google.protobuf.Timestamp
+	29, // 4: office.session.v1.SubmitUtteranceRequest.modality:type_name -> office.session.v1.Modality
+	30, // 5: office.session.v1.SubmitUtteranceRequest.transcribed_at:type_name -> google.protobuf.Timestamp
 	0,  // 6: office.session.v1.SubmitUtteranceResponse.result:type_name -> office.session.v1.CommandResult
-	0,  // 7: office.session.v1.RetractUtteranceResponse.result:type_name -> office.session.v1.CommandResult
-	29, // 8: office.session.v1.SubmitSignalRequest.turn_end:type_name -> office.session.v1.TurnEnd
-	30, // 9: office.session.v1.SubmitSignalRequest.silence_long:type_name -> office.session.v1.SilenceLong
-	31, // 10: office.session.v1.SubmitSignalRequest.addressed:type_name -> office.session.v1.Addressed
+	0,  // 7: office.session.v1.MarkOffTheRecordResponse.result:type_name -> office.session.v1.CommandResult
+	31, // 8: office.session.v1.SubmitSignalRequest.turn_end:type_name -> office.session.v1.TurnEnd
+	32, // 9: office.session.v1.SubmitSignalRequest.silence_long:type_name -> office.session.v1.SilenceLong
+	33, // 10: office.session.v1.SubmitSignalRequest.addressed:type_name -> office.session.v1.Addressed
 	0,  // 11: office.session.v1.SubmitSignalResponse.result:type_name -> office.session.v1.CommandResult
 	0,  // 12: office.session.v1.PauseResponse.result:type_name -> office.session.v1.CommandResult
 	0,  // 13: office.session.v1.ResumeResponse.result:type_name -> office.session.v1.CommandResult
@@ -1672,36 +1797,39 @@ var file_office_session_v1_session_proto_depIdxs = []int32{
 	0,  // 15: office.session.v1.UpdateMinutesResponse.result:type_name -> office.session.v1.CommandResult
 	0,  // 16: office.session.v1.ShowArtifactResponse.result:type_name -> office.session.v1.CommandResult
 	0,  // 17: office.session.v1.EndSessionResponse.result:type_name -> office.session.v1.CommandResult
-	25, // 18: office.session.v1.SubscribeResponse.event:type_name -> office.session.v1.Event
-	1,  // 19: office.session.v1.SessionService.Join:input_type -> office.session.v1.JoinRequest
-	3,  // 20: office.session.v1.SessionService.Leave:input_type -> office.session.v1.LeaveRequest
-	5,  // 21: office.session.v1.SessionService.SubmitUtterance:input_type -> office.session.v1.SubmitUtteranceRequest
-	7,  // 22: office.session.v1.SessionService.RetractUtterance:input_type -> office.session.v1.RetractUtteranceRequest
-	9,  // 23: office.session.v1.SessionService.SubmitSignal:input_type -> office.session.v1.SubmitSignalRequest
-	11, // 24: office.session.v1.SessionService.Pause:input_type -> office.session.v1.PauseRequest
-	13, // 25: office.session.v1.SessionService.Resume:input_type -> office.session.v1.ResumeRequest
-	15, // 26: office.session.v1.SessionService.RaiseHand:input_type -> office.session.v1.RaiseHandRequest
-	17, // 27: office.session.v1.SessionService.UpdateMinutes:input_type -> office.session.v1.UpdateMinutesRequest
-	19, // 28: office.session.v1.SessionService.ShowArtifact:input_type -> office.session.v1.ShowArtifactRequest
-	21, // 29: office.session.v1.SessionService.EndSession:input_type -> office.session.v1.EndSessionRequest
-	23, // 30: office.session.v1.SessionService.Subscribe:input_type -> office.session.v1.SubscribeRequest
-	2,  // 31: office.session.v1.SessionService.Join:output_type -> office.session.v1.JoinResponse
-	4,  // 32: office.session.v1.SessionService.Leave:output_type -> office.session.v1.LeaveResponse
-	6,  // 33: office.session.v1.SessionService.SubmitUtterance:output_type -> office.session.v1.SubmitUtteranceResponse
-	8,  // 34: office.session.v1.SessionService.RetractUtterance:output_type -> office.session.v1.RetractUtteranceResponse
-	10, // 35: office.session.v1.SessionService.SubmitSignal:output_type -> office.session.v1.SubmitSignalResponse
-	12, // 36: office.session.v1.SessionService.Pause:output_type -> office.session.v1.PauseResponse
-	14, // 37: office.session.v1.SessionService.Resume:output_type -> office.session.v1.ResumeResponse
-	16, // 38: office.session.v1.SessionService.RaiseHand:output_type -> office.session.v1.RaiseHandResponse
-	18, // 39: office.session.v1.SessionService.UpdateMinutes:output_type -> office.session.v1.UpdateMinutesResponse
-	20, // 40: office.session.v1.SessionService.ShowArtifact:output_type -> office.session.v1.ShowArtifactResponse
-	22, // 41: office.session.v1.SessionService.EndSession:output_type -> office.session.v1.EndSessionResponse
-	24, // 42: office.session.v1.SessionService.Subscribe:output_type -> office.session.v1.SubscribeResponse
-	31, // [31:43] is the sub-list for method output_type
-	19, // [19:31] is the sub-list for method input_type
-	19, // [19:19] is the sub-list for extension type_name
-	19, // [19:19] is the sub-list for extension extendee
-	0,  // [0:19] is the sub-list for field type_name
+	27, // 18: office.session.v1.SubscribeResponse.event:type_name -> office.session.v1.Event
+	27, // 19: office.session.v1.GetEventsResponse.events:type_name -> office.session.v1.Event
+	1,  // 20: office.session.v1.SessionService.Join:input_type -> office.session.v1.JoinRequest
+	3,  // 21: office.session.v1.SessionService.Leave:input_type -> office.session.v1.LeaveRequest
+	5,  // 22: office.session.v1.SessionService.SubmitUtterance:input_type -> office.session.v1.SubmitUtteranceRequest
+	7,  // 23: office.session.v1.SessionService.MarkOffTheRecord:input_type -> office.session.v1.MarkOffTheRecordRequest
+	9,  // 24: office.session.v1.SessionService.SubmitSignal:input_type -> office.session.v1.SubmitSignalRequest
+	11, // 25: office.session.v1.SessionService.Pause:input_type -> office.session.v1.PauseRequest
+	13, // 26: office.session.v1.SessionService.Resume:input_type -> office.session.v1.ResumeRequest
+	15, // 27: office.session.v1.SessionService.RaiseHand:input_type -> office.session.v1.RaiseHandRequest
+	17, // 28: office.session.v1.SessionService.UpdateMinutes:input_type -> office.session.v1.UpdateMinutesRequest
+	19, // 29: office.session.v1.SessionService.ShowArtifact:input_type -> office.session.v1.ShowArtifactRequest
+	21, // 30: office.session.v1.SessionService.EndSession:input_type -> office.session.v1.EndSessionRequest
+	25, // 31: office.session.v1.SessionService.GetEvents:input_type -> office.session.v1.GetEventsRequest
+	23, // 32: office.session.v1.SessionService.Subscribe:input_type -> office.session.v1.SubscribeRequest
+	2,  // 33: office.session.v1.SessionService.Join:output_type -> office.session.v1.JoinResponse
+	4,  // 34: office.session.v1.SessionService.Leave:output_type -> office.session.v1.LeaveResponse
+	6,  // 35: office.session.v1.SessionService.SubmitUtterance:output_type -> office.session.v1.SubmitUtteranceResponse
+	8,  // 36: office.session.v1.SessionService.MarkOffTheRecord:output_type -> office.session.v1.MarkOffTheRecordResponse
+	10, // 37: office.session.v1.SessionService.SubmitSignal:output_type -> office.session.v1.SubmitSignalResponse
+	12, // 38: office.session.v1.SessionService.Pause:output_type -> office.session.v1.PauseResponse
+	14, // 39: office.session.v1.SessionService.Resume:output_type -> office.session.v1.ResumeResponse
+	16, // 40: office.session.v1.SessionService.RaiseHand:output_type -> office.session.v1.RaiseHandResponse
+	18, // 41: office.session.v1.SessionService.UpdateMinutes:output_type -> office.session.v1.UpdateMinutesResponse
+	20, // 42: office.session.v1.SessionService.ShowArtifact:output_type -> office.session.v1.ShowArtifactResponse
+	22, // 43: office.session.v1.SessionService.EndSession:output_type -> office.session.v1.EndSessionResponse
+	26, // 44: office.session.v1.SessionService.GetEvents:output_type -> office.session.v1.GetEventsResponse
+	24, // 45: office.session.v1.SessionService.Subscribe:output_type -> office.session.v1.SubscribeResponse
+	33, // [33:46] is the sub-list for method output_type
+	20, // [20:33] is the sub-list for method input_type
+	20, // [20:20] is the sub-list for extension type_name
+	20, // [20:20] is the sub-list for extension extendee
+	0,  // [0:20] is the sub-list for field type_name
 }
 
 func init() { file_office_session_v1_session_proto_init() }
@@ -1721,7 +1849,7 @@ func file_office_session_v1_session_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_office_session_v1_session_proto_rawDesc), len(file_office_session_v1_session_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   25,
+			NumMessages:   27,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

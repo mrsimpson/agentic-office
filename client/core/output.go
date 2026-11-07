@@ -114,11 +114,11 @@ func ParseDeckMarkdown(b []byte) (*artifactv1.RenderSlidesRequest, error) {
 	return req, sc.Err()
 }
 
-// ErrNothingToRetract means that the local log has no own sentence that can be retracted.
-var ErrNothingToRetract = errors.New("the local log has no own sentence to retract")
+// ErrNothingOffTheRecord means that the local log has no own sentence that can be off the record.
+var ErrNothingOffTheRecord = errors.New("the local log has no own sentence to mark off the record")
 
-// RetractLast retracts the newest own sentence that is not retracted yet. It reads the local log.
-func (c *Client) RetractLast(ctx context.Context, sessionID string) (*sessionv1.CommandResult, error) {
+// MarkOffTheRecordLast marks off the record the newest own sentence that is not off the record yet. It reads the local log.
+func (c *Client) MarkOffTheRecordLast(ctx context.Context, sessionID string) (*sessionv1.CommandResult, error) {
 	pid, err := c.ParticipantID(ctx)
 	if err != nil {
 		return nil, err
@@ -137,7 +137,7 @@ func (c *Client) RetractLast(ctx context.Context, sessionID string) (*sessionv1.
 	}
 	u := g.LastSent()
 	if u == nil {
-		return nil, ErrNothingToRetract
+		return nil, ErrNothingOffTheRecord
 	}
-	return c.Retract(ctx, sessionID, u.EventID)
+	return c.MarkOffTheRecord(ctx, sessionID, u.EventID)
 }

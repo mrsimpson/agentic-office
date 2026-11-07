@@ -15,8 +15,8 @@ const (
 	StatusFinal Status = "final"
 	// StatusSent: the utterance is in the session log.
 	StatusSent Status = "sent"
-	// StatusRetracted: the utterance was retracted.
-	StatusRetracted Status = "retracted"
+	// StatusOffTheRecord: the speaker marked the utterance off the record.
+	StatusOffTheRecord Status = "off_the_record"
 )
 
 // Utterance is an own utterance in the gateway view.
@@ -69,7 +69,7 @@ func (g *Gateway) Local(cmdID, text string, status Status) Change {
 		g.byCmd[cmdID] = u
 		g.utts = append(g.utts, u)
 	}
-	if u.Status != StatusSent && u.Status != StatusRetracted {
+	if u.Status != StatusSent && u.Status != StatusOffTheRecord {
 		u.Text, u.Status = text, status
 	}
 	return Change{Utterance: copyOf(u)}
@@ -92,15 +92,21 @@ func (g *Gateway) Apply(ev *sessionv1.Event) []Change {
 				g.byCmd[u.CommandID] = u
 			}
 		}
-		u.EventID, u.Text, u.Status = ev.GetId(), p.GetText(), StatusSent
+		if p.GetOffTheRecord() {
+			// A placeholder: the sentence was marked off the record before this copy was made.
+			// Keep the text the gateway view already had, if any.
+			u.EventID, u.Status = ev.GetId(), StatusOffTheRecord
+		} else {
+			u.EventID, u.Text, u.Status = ev.GetId(), p.GetText(), StatusSent
+		}
 		g.byEvent[u.EventID] = u
 		return []Change{{Utterance: copyOf(u)}}
-	case events.UtteranceRetracted:
-		u := g.byEvent[ev.GetUtteranceRetracted().GetUtteranceEventId()]
+	case events.UtteranceOffTheRecord:
+		u := g.byEvent[ev.GetUtteranceOffTheRecord().GetUtteranceEventId()]
 		if u == nil {
 			return nil
 		}
-		u.Status = StatusRetracted
+		u.Status = StatusOffTheRecord
 		return []Change{{Utterance: copyOf(u)}}
 	case events.UtteranceCorrected:
 		u := g.byEvent[ev.GetUtteranceCorrected().GetUtteranceEventId()]
@@ -131,8 +137,8 @@ func (g *Gateway) Apply(ev *sessionv1.Event) []Change {
 	return nil
 }
 
-// LastSent returns the newest own utterance that is sent and not retracted, or nil. It is the
-// sentence that the retract key takes back.
+// LastSent returns the newest own utterance that is sent and not off the record, or nil. It is the
+// sentence that the off-the-record key marks.
 func (g *Gateway) LastSent() *Utterance {
 	for i := len(g.utts) - 1; i >= 0; i-- {
 		if g.utts[i].Status == StatusSent {

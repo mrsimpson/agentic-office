@@ -353,16 +353,27 @@ func TestCLICommandsAppearInLog(t *testing.T) {
 	do(bot, events.TurnEnd, "signal", "turn-end", "--participant", "ada")
 	do(bot, events.SilenceLong, "signal", "silence-long", "--duration", "12s")
 	do(bot, events.Addressed, "signal", "addressed", "--participant", "ada", "--utterance", strconv.Itoa(int(adaUtt.GetId())))
-	ret := do(bot, events.UtteranceRetracted, "utterance", "retract", strconv.Itoa(int(utt.GetId())))
-	if ret.GetUtteranceRetracted().GetUtteranceEventId() != utt.GetId() {
-		t.Fatalf("retract points to %d, want %d", ret.GetUtteranceRetracted().GetUtteranceEventId(), utt.GetId())
+	ret := do(bot, events.UtteranceOffTheRecord, "utterance", "off-the-record", strconv.Itoa(int(utt.GetId())))
+	if ret.GetUtteranceOffTheRecord().GetUtteranceEventId() != utt.GetId() {
+		t.Fatalf("mark off the record points to %d, want %d", ret.GetUtteranceOffTheRecord().GetUtteranceEventId(), utt.GetId())
 	}
-	// Retracting someone else's sentence fails; the server's code is passed on.
-	bot.fails(1, "permission_denied", "utterance", "retract", strconv.Itoa(int(adaUtt.GetId())))
-	// --last retracts the newest own sentence from the local log.
-	last := do(ada, events.UtteranceRetracted, "utterance", "retract", "--last")
-	if last.GetUtteranceRetracted().GetUtteranceEventId() != adaUtt.GetId() {
-		t.Fatalf("retract --last points to %d, want %d", last.GetUtteranceRetracted().GetUtteranceEventId(), adaUtt.GetId())
+	// Marking someone else's sentence off the record fails; the server's code is passed on.
+	bot.fails(1, "permission_denied", "utterance", "off-the-record", strconv.Itoa(int(adaUtt.GetId())))
+	// --last marks the newest own sentence from the local log off the record.
+	last := do(ada, events.UtteranceOffTheRecord, "utterance", "off-the-record", "--last")
+	if last.GetUtteranceOffTheRecord().GetUtteranceEventId() != adaUtt.GetId() {
+		t.Fatalf("mark off the record --last points to %d, want %d", last.GetUtteranceOffTheRecord().GetUtteranceEventId(), adaUtt.GetId())
+	}
+	// meeting events reads the events after a cursor from the server. Ada's sentence is now off the
+	// record, so it comes back as a placeholder with its ID and without its text.
+	got := bot.ok("meeting", "events", "--after", strconv.Itoa(int(adaUtt.GetId()-1)), "--limit", "1")
+	evs, _ := got["events"].([]any)
+	if len(evs) != 1 || got["more"] != true {
+		t.Fatalf("meeting events --limit 1: %v", got)
+	}
+	ev0, _ := evs[0].(map[string]any)
+	if u, _ := ev0["utteranceFinal"].(map[string]any); ev0["id"] != float64(adaUtt.GetId()) || u["offTheRecord"] != true || u["text"] != nil {
+		t.Fatalf("meeting events: placeholder expected, got %v", ev0)
 	}
 
 	// Minutes from stdin through --file -.
@@ -385,7 +396,7 @@ func TestCLICommandsAppearInLog(t *testing.T) {
 	}
 
 	// Every event appears exactly once, as the command returned it; the original utterance is
-	// still there unchanged: a retraction is a new line.
+	// still there unchanged: an off-the-record mark is a new line.
 	var maxID uint32
 	for id := range results {
 		maxID = max(maxID, id)
@@ -407,7 +418,7 @@ func TestCLICommandsAppearInLog(t *testing.T) {
 		}
 	}
 	if lines[utt.GetId()-1].ev.GetUtteranceFinal().GetText() != "I can summarize that" {
-		t.Fatalf("the retracted utterance changed: %s", lines[utt.GetId()-1].raw)
+		t.Fatalf("the off the record utterance changed: %s", lines[utt.GetId()-1].raw)
 	}
 
 	// Commands of a session that ended fail with the server's code.
@@ -708,18 +719,18 @@ func TestCLIGatewayView(t *testing.T) {
 	bot.join(sid)
 	bot.ok("say", "not for the view")
 
-	// r retracts the last sent sentence: a new line in the log, and the view shows it.
-	if _, err := view.Stdin.Write([]byte("r")); err != nil {
+	// o marks the last sent sentence off the record: a new line in the log, and the view shows it.
+	if _, err := view.Stdin.Write([]byte("o")); err != nil {
 		t.Fatal(err)
 	}
-	if id, _, st := utt(next("retracted")); uint32(id) != ev.GetId() || st != "retracted" {
-		t.Fatalf("after r: %v %s", id, st)
+	if id, _, st := utt(next("off_the_record")); uint32(id) != ev.GetId() || st != "off_the_record" {
+		t.Fatalf("after o: %v %s", id, st)
 	}
 	lines := readLog(t, j.LogPath)
 	last := lines[len(lines)-1].ev
-	if last.GetType() != events.UtteranceRetracted || last.GetUtteranceRetracted().GetUtteranceEventId() != ev.GetId() ||
+	if last.GetType() != events.UtteranceOffTheRecord || last.GetUtteranceOffTheRecord().GetUtteranceEventId() != ev.GetId() ||
 		lines[ev.GetId()-1].ev.GetUtteranceFinal().GetText() != "a new sentence" {
-		t.Fatalf("log after r: %s", lines[len(lines)-1].raw)
+		t.Fatalf("log after o: %s", lines[len(lines)-1].raw)
 	}
 
 	// p pauses, p again resumes.
@@ -765,7 +776,7 @@ func TestCLIGatewayView(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatalf("text view did not show the end of the session\n%s", view2.Stderr())
 	}
-	if !regexp.MustCompile(`(?m)^#\d+\s+retracted\s+a new sentence$`).MatchString(s) ||
+	if !regexp.MustCompile(`(?m)^#\d+\s+off_the_record\s+a new sentence$`).MatchString(s) ||
 		!strings.Contains(s, "session ended") || strings.Contains(s, "not for the view") {
 		t.Fatalf("text view:\n%s", s)
 	}

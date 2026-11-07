@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"connectrpc.com/connect/v2"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	journalv1 "github.com/mrsimpson/agentic-office/server/journal/api"
@@ -99,8 +100,8 @@ type participant struct {
 }
 
 type utterance struct {
-	speaker   string
-	retracted bool
+	speaker      string
+	offTheRecord bool
 }
 
 // apply updates the state with one event of the log.
@@ -123,9 +124,9 @@ func (st *state) apply(ev *sessionv1.Event) {
 		}
 	case *sessionv1.Event_UtteranceFinal:
 		st.utterances[ev.GetId()] = &utterance{speaker: p.UtteranceFinal.GetParticipantId()}
-	case *sessionv1.Event_UtteranceRetracted:
-		if u := st.utterances[p.UtteranceRetracted.GetUtteranceEventId()]; u != nil {
-			u.retracted = true
+	case *sessionv1.Event_UtteranceOffTheRecord:
+		if u := st.utterances[p.UtteranceOffTheRecord.GetUtteranceEventId()]; u != nil {
+			u.offTheRecord = true
 		}
 	case *sessionv1.Event_MinutesUpdated:
 		st.minutes = ev
@@ -356,25 +357,24 @@ func (s *Service) SubmitUtterance(ctx context.Context, req *sessionv1.SubmitUtte
 	return &sessionv1.SubmitUtteranceResponse{Result: res}, nil
 }
 
-// RetractUtterance appends utterance.retracted. A participant can retract only their own
-// utterances, and each one only once. OPEN: may a moderator retract the utterances of others?
-// Roles are not part of the contract yet (#14).
-func (s *Service) RetractUtterance(ctx context.Context, req *sessionv1.RetractUtteranceRequest) (*sessionv1.RetractUtteranceResponse, error) {
+// MarkOffTheRecord appends utterance.off_the_record (dec-off-the-record). Only the speaker can mark
+// an utterance off the record, and each one only once. A moderator role is out of scope (#31).
+func (s *Service) MarkOffTheRecord(ctx context.Context, req *sessionv1.MarkOffTheRecordRequest) (*sessionv1.MarkOffTheRecordResponse, error) {
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
-		types: []string{events.UtteranceRetracted},
+		types: []string{events.UtteranceOffTheRecord},
 		build: func(st *state, _ Caller) (*sessionv1.Event, error) {
 			u, err := knownUtterance(st, req.GetUtteranceEventId())
 			if err != nil {
 				return nil, err
 			}
 			if u.speaker != req.GetParticipantId() {
-				return nil, connect.NewError(connect.CodePermissionDenied, "only the speaker can retract an utterance")
+				return nil, connect.NewError(connect.CodePermissionDenied, "only the speaker can mark an utterance off the record")
 			}
-			if u.retracted {
-				return nil, precondition("the utterance is already retracted")
+			if u.offTheRecord {
+				return nil, precondition("the utterance is already off the record")
 			}
-			return &sessionv1.Event{Payload: &sessionv1.Event_UtteranceRetracted{UtteranceRetracted: &sessionv1.UtteranceRetracted{
+			return &sessionv1.Event{Payload: &sessionv1.Event_UtteranceOffTheRecord{UtteranceOffTheRecord: &sessionv1.UtteranceOffTheRecord{
 				UtteranceEventId: req.GetUtteranceEventId(),
 			}}}, nil
 		},
@@ -382,7 +382,7 @@ func (s *Service) RetractUtterance(ctx context.Context, req *sessionv1.RetractUt
 	if err != nil {
 		return nil, err
 	}
-	return &sessionv1.RetractUtteranceResponse{Result: res}, nil
+	return &sessionv1.MarkOffTheRecordResponse{Result: res}, nil
 }
 
 // SubmitSignal appends turn.end, silence.long or addressed.
@@ -609,6 +609,9 @@ func (s *Service) Subscribe(ctx context.Context, req *sessionv1.SubscribeRequest
 		if err != nil {
 			return connect.NewError(connect.CodeInternal, "read session log: "+err.Error())
 		}
+		if evs, err = s.placeholders(sid, evs); err != nil {
+			return err
+		}
 		for _, ev := range evs {
 			if err := stream.Send(&sessionv1.SubscribeResponse{Event: ev}); err != nil {
 				return err
@@ -643,4 +646,71 @@ func authorKind(k sessionv1.ParticipantKind) journalv1.AuthorKind {
 		return journalv1.AuthorKind_AUTHOR_KIND_AGENT
 	}
 	return journalv1.AuthorKind_AUTHOR_KIND_UNSPECIFIED
+}
+
+// GetEvents returns the events after a cursor, at most limit of them (dec-events-from-cursor).
+func (s *Service) GetEvents(ctx context.Context, req *sessionv1.GetEventsRequest) (*sessionv1.GetEventsResponse, error) {
+	sid := req.GetSessionId()
+	if sid == "" {
+		return nil, invalid("session_id is required")
+	}
+	caller, err := s.auth.Caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if caller.StageSessionID != "" && caller.StageSessionID != sid {
+		return nil, connect.NewError(connect.CodePermissionDenied, "the stage link is for another session")
+	}
+	limit := int(req.GetLimit())
+	switch {
+	case limit == 0:
+		limit = 100
+	case limit > 1000:
+		return nil, invalid("limit is at most 1000")
+	}
+	st, err := s.lock(sid)
+	if err != nil {
+		return nil, err
+	}
+	last := st.lastID
+	st.mu.Unlock()
+	cursor := req.GetAfterEventId()
+	if cursor > last {
+		return nil, connect.NewError(connect.CodeOutOfRange, "after_event_id is beyond the last event of the session")
+	}
+	evs, _, err := s.store.Read(sid, cursor)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, "read session log: "+err.Error())
+	}
+	more := len(evs) > limit
+	if more {
+		evs = evs[:limit]
+	}
+	if evs, err = s.placeholders(sid, evs); err != nil {
+		return nil, err
+	}
+	return &sessionv1.GetEventsResponse{Events: evs, More: more}, nil
+}
+
+// placeholders replaces every utterance that is off the record by a placeholder with the same ID
+// and without its text (dec-off-the-record). The log itself keeps the original.
+func (s *Service) placeholders(sid string, evs []*sessionv1.Event) ([]*sessionv1.Event, error) {
+	st, err := s.lock(sid)
+	if err != nil {
+		return nil, err
+	}
+	defer st.mu.Unlock()
+	out := make([]*sessionv1.Event, 0, len(evs))
+	for _, ev := range evs {
+		if ev.GetUtteranceFinal() != nil {
+			if u := st.utterances[ev.GetId()]; u != nil && u.offTheRecord {
+				c := proto.Clone(ev).(*sessionv1.Event)
+				f := c.GetUtteranceFinal()
+				f.Text, f.TranscribedAt, f.OffTheRecord = "", nil, true
+				ev = c
+			}
+		}
+		out = append(out, ev)
+	}
+	return out, nil
 }

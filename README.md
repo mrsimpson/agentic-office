@@ -226,7 +226,7 @@ comment in `server/stage/doc.go` has the details. In short:
   that browser window in the meeting tool.
 - The page shows the shown artifact, the recent contributions, all participants with their
   capture status (captured, paused, not captured, left; agents are marked "agent"), the raised
-  hands and the running minutes. Retracted contributions disappear. Large text, white on black.
+  hands and the running minutes. Off the record contributions disappear. Large text, white on black.
 - It is rendered on the server and updated live through server-sent events
   (`/stage/<session>/events?token=…`). There is no frontend build and nothing is loaded from
   outside. A shown artifact is embedded in a sandboxed iframe.
@@ -334,7 +334,7 @@ office minutes update --file minutes.md
 office meeting leave               # or: office meeting end (for everyone)
 ```
 
-Other session commands: `meeting pause | resume`, `utterance retract <event-id> | --last`,
+Other session commands: `meeting pause | resume`, `utterance off-the-record <event-id> | --last`,
 `signal turn-end | silence-long --duration D | addressed --participant P --utterance ID`,
 `stage link`.
 
@@ -363,7 +363,7 @@ text becomes the notes of the slide. A file that does not end with `.md` is JSON
 
 **The local log** is `<runtime dir>/<session>/<participant>.jsonl` (directories 0700, file 0600):
 one compact JSON line per event (`client/replicator/locallog`), with the dotted type and the event ID as a
-number. It is append-only: a retraction is a new `utterance.retracted` line. The runtime
+number. It is append-only: marking a sentence off the record adds a new `utterance.off_the_record` line. The runtime
 directory also holds the join state (`<participant>.join`, the stored join command ID, so a
 restarted client is the same participant), the PID of the replicator (`<participant>.pid`) and
 its output (`<participant>.replicator.log`). Session and participant IDs that are not safe as
@@ -389,9 +389,23 @@ complete line; after a network drop it reconnects with a backoff.
 ### Gateway view
 
 `office meeting view` shows your own utterances with their status (`final`, `sent`,
-`retracted`) and whether you are paused. It is a filtered view of the local log
-(`dec-gateway-cli`) and prints one line per change. Keys: `p` pauses or resumes, `r` retracts the
-last sent sentence, `q` quits. It ends with the session.
+`off_the_record`) and whether you are paused. It is a filtered view of the local log
+(`dec-gateway-cli`) and prints one line per change. Keys: `p` pauses or resumes, `o` marks the
+last sent sentence off the record, `q` quits. It ends with the session.
+
+### Off the record and reading events after a cursor
+
+What is said stays said (`dec-off-the-record`). A participant can mark **their own** sentence off
+the record (`office utterance off-the-record <event-id> | --last`); the server checks that the
+caller is the speaker. The log gets a new `utterance.off_the_record` line. Everyone who reads the
+session later, through the stream or `meeting events`, gets the sentence as a placeholder: the
+same ID, `"offTheRecord": true`, and no text. The stage hides it. Agents must not use such a
+sentence anywhere.
+
+Event IDs grow by one without gaps (`dec-events-from-cursor`). `office meeting events --after N
+[--limit N]` reads the events after a cursor from the server, in the line format of the local log
+(`--json`: `{"events": […], "more": bool}`). Use it to fill a gap in a copy, or poll it when you
+cannot follow a file.
 
 ### Ears: speak into the meeting
 
@@ -507,7 +521,8 @@ tool names.
 | `meeting_log` | `meeting log` |
 | `meeting_leave`, `meeting_pause`, `meeting_resume`, `meeting_end` | `meeting leave`, `pause`, `resume`, `end` |
 | `utterance_say` (text) | `say` |
-| `utterance_retract` (eventId or last) | `utterance retract` |
+| `utterance_off_the_record` (eventId or last) | `utterance off-the-record` |
+| `meeting_events` (after, limit) | `meeting events` |
 | `signal_turn_end`, `signal_silence_long`, `signal_addressed` | `signal …` |
 | `hand_raise` (topic) | `hand raise` |
 | `minutes_update` (text or file) | `minutes update` |
@@ -578,7 +593,7 @@ through its interfaces:
   `TestQualitySpeech` lets Ada speak the test sentences in a loop through the decrypting proxy,
   with a bot that follows its log and an open stage. Its subtests are named after the scenarios:
   `qs-no-raw-audio`, `qs-transcript-to-log` (maximum < 200 ms), `qs-speech-to-log`
-  (p95 ≤ 1.5 s) and `qs-sender-sees-status` (`sent` and `retracted` in the gateway view, and the
+  (p95 ≤ 1.5 s) and `qs-sender-sees-status` (`sent` and `off_the_record` in the gateway view, and the
   capture status on the stage, each ≤ 1 s). `TestQualityResumeAfterDrop/qs-resume-after-drop`
   cuts Ada's network while she speaks and the bot writes: 0 lost and 0 duplicate events, and
   Ada's local log is complete ≤ 2 s after the network is back. Each scenario prints a line that

@@ -33,7 +33,7 @@
 //     tools and embeds the HTML document in a sandboxed iframe (srcdoc, no scripts). An unknown
 //     ID or another media type gives a note instead.
 //   - Minutes: the text of the last minutes.updated. Utterances: the last eight that are not
-//     retracted, with corrections applied. A retracted utterance disappears.
+//     off the record, with corrections applied. A off the record utterance disappears.
 //   - After session.ended the status shows that the session has ended, and the stream sends "end"
 //     and closes. When the link expires, an open stream shows that and also sends "end".
 //   - No external assets, no frontend build. A Content-Security-Policy allows only the inline

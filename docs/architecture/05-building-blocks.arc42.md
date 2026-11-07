@@ -80,7 +80,7 @@ flowchart LR
 
 ### Session commands
 
-Synchronous calls that answer at once: `join`, `leave`, `utterance.submit`, `utterance.classify`,
+Synchronous calls that answer at once: `join`, `leave`, `utterance.submit`, `utterance.mark_off_the_record`,
 `pause`, `hand.raise`, `minutes.update`, `stage.show`. Each successful call creates one event in the
 log. Each call carries an ID created by the client, so a repeated call has no extra effect.
 

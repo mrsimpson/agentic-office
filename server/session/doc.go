@@ -6,7 +6,7 @@
 // How it works:
 //
 //   - The log in the Store is the only source of truth. The Service derives what it needs to
-//     check commands (participants, paused, left, retracted, ended) from the log, and can rebuild
+//     check commands (participants, paused, left, off the record, ended) from the log, and can rebuild
 //     it from the store at any time. The only Store for now is MemoryStore.
 //   - A session exists as soon as someone joins or subscribes. There is no command to create one.
 //   - Every call needs a caller from the Authorizer (the identity token check, #6). The
@@ -20,8 +20,8 @@
 //     Reusing a command_id for another command or another participant fails with AlreadyExists.
 //   - Error codes: a missing field is InvalidArgument; an unknown participant, utterance or
 //     referenced participant is NotFound; a command that does not fit the state (session ended,
-//     participant left, already paused, not paused, already retracted) is FailedPrecondition;
-//     retracting someone else's utterance, or a participant_id that is not the caller, is
+//     participant left, already paused, not paused, already off the record) is FailedPrecondition;
+//     marking off the record someone else's utterance, or a participant_id that is not the caller, is
 //     PermissionDenied; no valid token is Unauthenticated.
 //   - Signals (turn.end, silence.long, addressed) come only from clients through SubmitSignal.
 //     The session checks them but does not create signals itself. See SubmitSignal and #14.

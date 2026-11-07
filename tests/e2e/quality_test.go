@@ -312,17 +312,17 @@ func TestQualitySpeech(t *testing.T) {
 		sentLat = append(sentLat, seen.Sub(*s.SubmittedAt))
 	}
 
-	// Gateway view: retract the last sentences with the r key. The view shows them as retracted.
-	var retractLat latencies
+	// Gateway view: mark the last sentences off the record with the o key. The view shows them as off the record.
+	var otrLat latencies
 	for range min(5, len(sent)) {
 		i := len(e.viewSnapshot())
 		pressed := time.Now()
-		e.key("r")
-		seen := e.waitViewAfter("retracted", i, func(v map[string]any) bool {
+		e.key("o")
+		seen := e.waitViewAfter("off_the_record", i, func(v map[string]any) bool {
 			_, st := utteranceStatus(v)
-			return st == "retracted"
+			return st == "off_the_record"
 		}, 5*time.Second)
-		retractLat = append(retractLat, seen.Sub(pressed))
+		otrLat = append(otrLat, seen.Sub(pressed))
 	}
 
 	// Stage: pause and resume with the p key, three times. The p key toggles what the view read
@@ -415,11 +415,11 @@ func TestQualitySpeech(t *testing.T) {
 
 	t.Run("qs-sender-sees-status", func(t *testing.T) {
 		qs(t, "qs-sender-sees-status", "view-sent %s target=max<=%s", sentLat.summary(), ms(targetStatusVisible))
-		qs(t, "qs-sender-sees-status", "view-retracted %s target=max<=%s (from the key press)", retractLat.summary(), ms(targetStatusVisible))
+		qs(t, "qs-sender-sees-status", "view-off the record %s target=max<=%s (from the key press)", otrLat.summary(), ms(targetStatusVisible))
 		qs(t, "qs-sender-sees-status", "stage-capture %s target=max<=%s (join, 3x pause and resume, leave)", stageLat.summary(), ms(targetStatusVisible))
 		t.Logf("stage capture status from the start of the command: %s", stageLatStart.summary())
 		t.Logf("paused and resumed in the gateway view, from the key press: %s", pauseViewLat.summary())
-		for name, l := range map[string]latencies{"sent in the view": sentLat, "retracted in the view": retractLat,
+		for name, l := range map[string]latencies{"sent in the view": sentLat, "off the record in the view": otrLat,
 			"capture status on the stage": stageLatStart} {
 			if assertTiming && l.max() > targetStatusVisible {
 				t.Errorf("%s: max %v, want at most %v", name, l.max(), targetStatusVisible)

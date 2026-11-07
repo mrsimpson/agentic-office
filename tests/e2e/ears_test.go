@@ -431,9 +431,9 @@ func printLatency(t *testing.T, finals, sent []earsReport, got []*sessionv1.Even
 	}
 	t.Logf("max: transcript to bot's log %v, end of speech to bot's log %v", slices.Max(toLog).Round(100*time.Microsecond),
 		slices.Max(speechToLog).Round(time.Millisecond))
-	// Loose bounds that catch a broken pipeline. The quality scenarios (qs-speech-to-log,
-	// qs-transcript-to-log) are measured, not asserted here (see #13).
-	if bound && (slices.Max(speechToLog) > 5*time.Second || slices.Max(toLog) > time.Second) {
+	// Loose bounds that catch a broken pipeline, but only in the performance tests: the end-to-end
+	// tests never fail on timing (dec-performance-tests). The quality scenarios are in quality_test.go.
+	if assertTiming && bound && (slices.Max(speechToLog) > 5*time.Second || slices.Max(toLog) > time.Second) {
 		t.Fatalf("too slow: end of speech to log %v, transcript to log %v", slices.Max(speechToLog), slices.Max(toLog))
 	}
 }

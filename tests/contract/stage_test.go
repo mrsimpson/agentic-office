@@ -414,7 +414,7 @@ func TestStagePageNeedsStageLink(t *testing.T) {
 
 // TestStageShowsTheSession: every change of the session log appears in the live stream of the
 // stage: participants with their capture status and agents marked, raised hands, the shown
-// artifact (and a note for an unknown one), minutes, utterances (retracted ones disappear), and
+// artifact (and a note for an unknown one), minutes, utterances (off the record ones disappear), and
 // the end of the session.
 func TestStageShowsTheSession(t *testing.T) {
 	m := newStageMeeting(t)
@@ -503,17 +503,17 @@ func TestStageShowsTheSession(t *testing.T) {
 	}
 	st.wait("minutes", "the minutes", func(n *html.Node) bool { return strings.Contains(text(n), "# Minutes - Ada opened the meeting") })
 
-	// Utterances; a retracted one disappears.
+	// Utterances; a off the record one disappears.
 	m.say(ada, "Welcome everyone")
 	secret := m.say(ada, "my password is hunter2")
 	st.wait("utterances", "the secret", func(n *html.Node) bool { return strings.Contains(text(n), "hunter2") })
-	if _, err := m.s(ada).RetractUtterance(m.ctx(), &sessionv1.RetractUtteranceRequest{SessionId: m.sid,
+	if _, err := m.s(ada).MarkOffTheRecord(m.ctx(), &sessionv1.MarkOffTheRecordRequest{SessionId: m.sid,
 		CommandId: ids.NewCommandID(), ParticipantId: ada, UtteranceEventId: secret.GetId()}); err != nil {
 		t.Fatal(err)
 	}
 	n = st.wait("utterances", "the secret gone", func(n *html.Node) bool { return !strings.Contains(text(n), "hunter2") })
 	if !strings.Contains(text(n), "Ada: Welcome everyone") {
-		t.Errorf("utterances after the retraction: %q", text(n))
+		t.Errorf("utterances after the off-the-record mark: %q", text(n))
 	}
 
 	// When the bot speaks, its hand goes down; agent contributions are marked.

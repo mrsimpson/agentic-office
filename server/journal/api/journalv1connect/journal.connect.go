@@ -10,12 +10,10 @@
 package journalv1connect
 
 import (
-	context "context"
-	sync "sync"
-
 	connect "connectrpc.com/connect/v2"
-
+	context "context"
 	api "github.com/mrsimpson/agentic-office/server/journal/api"
+	sync "sync"
 )
 
 const (

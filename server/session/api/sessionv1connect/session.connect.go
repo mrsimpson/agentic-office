@@ -16,12 +16,10 @@
 package sessionv1connect
 
 import (
-	context "context"
-	sync "sync"
-
 	connect "connectrpc.com/connect/v2"
-
+	context "context"
 	api "github.com/mrsimpson/agentic-office/server/session/api"
+	sync "sync"
 )
 
 const (
@@ -44,9 +42,9 @@ const (
 	// SessionServiceSubmitUtteranceProcedure is the procedure name of the SessionService's
 	// SubmitUtterance RPC.
 	SessionServiceSubmitUtteranceProcedure = "/office.session.v1.SessionService/SubmitUtterance"
-	// SessionServiceRetractUtteranceProcedure is the procedure name of the SessionService's
-	// RetractUtterance RPC.
-	SessionServiceRetractUtteranceProcedure = "/office.session.v1.SessionService/RetractUtterance"
+	// SessionServiceMarkOffTheRecordProcedure is the procedure name of the SessionService's
+	// MarkOffTheRecord RPC.
+	SessionServiceMarkOffTheRecordProcedure = "/office.session.v1.SessionService/MarkOffTheRecord"
 	// SessionServiceSubmitSignalProcedure is the procedure name of the SessionService's SubmitSignal
 	// RPC.
 	SessionServiceSubmitSignalProcedure = "/office.session.v1.SessionService/SubmitSignal"
@@ -64,6 +62,8 @@ const (
 	SessionServiceShowArtifactProcedure = "/office.session.v1.SessionService/ShowArtifact"
 	// SessionServiceEndSessionProcedure is the procedure name of the SessionService's EndSession RPC.
 	SessionServiceEndSessionProcedure = "/office.session.v1.SessionService/EndSession"
+	// SessionServiceGetEventsProcedure is the procedure name of the SessionService's GetEvents RPC.
+	SessionServiceGetEventsProcedure = "/office.session.v1.SessionService/GetEvents"
 	// SessionServiceSubscribeProcedure is the procedure name of the SessionService's Subscribe RPC.
 	SessionServiceSubscribeProcedure = "/office.session.v1.SessionService/Subscribe"
 )
@@ -90,11 +90,11 @@ var (
 			Procedure:  SessionServiceSubmitUtteranceProcedure,
 		}
 	})
-	sessionServiceRetractUtteranceSpec = sync.OnceValue(func() connect.Spec {
+	sessionServiceMarkOffTheRecordSpec = sync.OnceValue(func() connect.Spec {
 		return connect.Spec{
 			StreamType: connect.StreamTypeUnary,
-			Schema:     api.File_office_session_v1_session_proto.Services().ByName("SessionService").Methods().ByName("RetractUtterance"),
-			Procedure:  SessionServiceRetractUtteranceProcedure,
+			Schema:     api.File_office_session_v1_session_proto.Services().ByName("SessionService").Methods().ByName("MarkOffTheRecord"),
+			Procedure:  SessionServiceMarkOffTheRecordProcedure,
 		}
 	})
 	sessionServiceSubmitSignalSpec = sync.OnceValue(func() connect.Spec {
@@ -146,6 +146,13 @@ var (
 			Procedure:  SessionServiceEndSessionProcedure,
 		}
 	})
+	sessionServiceGetEventsSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     api.File_office_session_v1_session_proto.Services().ByName("SessionService").Methods().ByName("GetEvents"),
+			Procedure:  SessionServiceGetEventsProcedure,
+		}
+	})
 	sessionServiceSubscribeSpec = sync.OnceValue(func() connect.Spec {
 		return connect.Spec{
 			StreamType: connect.StreamTypeServer,
@@ -164,7 +171,7 @@ type SessionServiceClient interface {
 	Leave(context.Context, *api.LeaveRequest) (*api.LeaveResponse, error)
 	// SubmitUtterance appends an utterance.final event.
 	SubmitUtterance(context.Context, *api.SubmitUtteranceRequest) (*api.SubmitUtteranceResponse, error)
-	RetractUtterance(context.Context, *api.RetractUtteranceRequest) (*api.RetractUtteranceResponse, error)
+	MarkOffTheRecord(context.Context, *api.MarkOffTheRecordRequest) (*api.MarkOffTheRecordResponse, error)
 	// SubmitSignal appends a turn.end, silence.long or addressed event.
 	SubmitSignal(context.Context, *api.SubmitSignalRequest) (*api.SubmitSignalResponse, error)
 	Pause(context.Context, *api.PauseRequest) (*api.PauseResponse, error)
@@ -173,6 +180,11 @@ type SessionServiceClient interface {
 	UpdateMinutes(context.Context, *api.UpdateMinutesRequest) (*api.UpdateMinutesResponse, error)
 	ShowArtifact(context.Context, *api.ShowArtifactRequest) (*api.ShowArtifactResponse, error)
 	EndSession(context.Context, *api.EndSessionRequest) (*api.EndSessionResponse, error)
+	// GetEvents returns the events with an ID greater than after_event_id, at most limit of them
+	// (dec-events-from-cursor). A participant calls it when it finds a gap in its copy, or polls it
+	// instead of following a stream or a file. IDs have no gaps; an utterance that is off the record
+	// is a placeholder with its ID.
+	GetEvents(context.Context, *api.GetEventsRequest) (*api.GetEventsResponse, error)
 	// Subscribe sends every event with an ID greater than after_event_id, then live events.
 	// The stream closes after session.ended. It ends with unauthenticated when the token expires
 	// or its key is revoked; the client authenticates again and resumes from its cursor.
@@ -214,7 +226,7 @@ type SessionServiceHandler interface {
 	Leave(context.Context, *api.LeaveRequest) (*api.LeaveResponse, error)
 	// SubmitUtterance appends an utterance.final event.
 	SubmitUtterance(context.Context, *api.SubmitUtteranceRequest) (*api.SubmitUtteranceResponse, error)
-	RetractUtterance(context.Context, *api.RetractUtteranceRequest) (*api.RetractUtteranceResponse, error)
+	MarkOffTheRecord(context.Context, *api.MarkOffTheRecordRequest) (*api.MarkOffTheRecordResponse, error)
 	// SubmitSignal appends a turn.end, silence.long or addressed event.
 	SubmitSignal(context.Context, *api.SubmitSignalRequest) (*api.SubmitSignalResponse, error)
 	Pause(context.Context, *api.PauseRequest) (*api.PauseResponse, error)
@@ -223,6 +235,11 @@ type SessionServiceHandler interface {
 	UpdateMinutes(context.Context, *api.UpdateMinutesRequest) (*api.UpdateMinutesResponse, error)
 	ShowArtifact(context.Context, *api.ShowArtifactRequest) (*api.ShowArtifactResponse, error)
 	EndSession(context.Context, *api.EndSessionRequest) (*api.EndSessionResponse, error)
+	// GetEvents returns the events with an ID greater than after_event_id, at most limit of them
+	// (dec-events-from-cursor). A participant calls it when it finds a gap in its copy, or polls it
+	// instead of following a stream or a file. IDs have no gaps; an utterance that is off the record
+	// is a placeholder with its ID.
+	GetEvents(context.Context, *api.GetEventsRequest) (*api.GetEventsResponse, error)
 	// Subscribe sends every event with an ID greater than after_event_id, then live events.
 	// The stream closes after session.ended. It ends with unauthenticated when the token expires
 	// or its key is revoked; the client authenticates again and resumes from its cursor.
@@ -237,7 +254,7 @@ func RegisterSessionServiceHandler(server *connect.Server, svc SessionServiceHan
 		connect.Method{Spec: sessionServiceJoinSpec(), Handler: adapter.join},
 		connect.Method{Spec: sessionServiceLeaveSpec(), Handler: adapter.leave},
 		connect.Method{Spec: sessionServiceSubmitUtteranceSpec(), Handler: adapter.submitUtterance},
-		connect.Method{Spec: sessionServiceRetractUtteranceSpec(), Handler: adapter.retractUtterance},
+		connect.Method{Spec: sessionServiceMarkOffTheRecordSpec(), Handler: adapter.markOffTheRecord},
 		connect.Method{Spec: sessionServiceSubmitSignalSpec(), Handler: adapter.submitSignal},
 		connect.Method{Spec: sessionServicePauseSpec(), Handler: adapter.pause},
 		connect.Method{Spec: sessionServiceResumeSpec(), Handler: adapter.resume},
@@ -245,6 +262,7 @@ func RegisterSessionServiceHandler(server *connect.Server, svc SessionServiceHan
 		connect.Method{Spec: sessionServiceUpdateMinutesSpec(), Handler: adapter.updateMinutes},
 		connect.Method{Spec: sessionServiceShowArtifactSpec(), Handler: adapter.showArtifact},
 		connect.Method{Spec: sessionServiceEndSessionSpec(), Handler: adapter.endSession},
+		connect.Method{Spec: sessionServiceGetEventsSpec(), Handler: adapter.getEvents},
 		connect.Method{Spec: sessionServiceSubscribeSpec(), Handler: adapter.subscribe},
 	)
 }
@@ -279,8 +297,8 @@ func (UnimplementedSessionServiceHandler) SubmitUtterance(context.Context, *api.
 	return nil, connect.NewError(connect.CodeUnimplemented, "office.session.v1.SessionService.SubmitUtterance is not implemented")
 }
 
-func (UnimplementedSessionServiceHandler) RetractUtterance(context.Context, *api.RetractUtteranceRequest) (*api.RetractUtteranceResponse, error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, "office.session.v1.SessionService.RetractUtterance is not implemented")
+func (UnimplementedSessionServiceHandler) MarkOffTheRecord(context.Context, *api.MarkOffTheRecordRequest) (*api.MarkOffTheRecordResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "office.session.v1.SessionService.MarkOffTheRecord is not implemented")
 }
 
 func (UnimplementedSessionServiceHandler) SubmitSignal(context.Context, *api.SubmitSignalRequest) (*api.SubmitSignalResponse, error) {
@@ -309,6 +327,10 @@ func (UnimplementedSessionServiceHandler) ShowArtifact(context.Context, *api.Sho
 
 func (UnimplementedSessionServiceHandler) EndSession(context.Context, *api.EndSessionRequest) (*api.EndSessionResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, "office.session.v1.SessionService.EndSession is not implemented")
+}
+
+func (UnimplementedSessionServiceHandler) GetEvents(context.Context, *api.GetEventsRequest) (*api.GetEventsResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "office.session.v1.SessionService.GetEvents is not implemented")
 }
 
 func (UnimplementedSessionServiceHandler) Subscribe(context.Context, *api.SubscribeRequest, SessionServiceSubscribeServerStream) error {
@@ -343,9 +365,9 @@ func (c *sessionServiceClient) SubmitUtterance(ctx context.Context, req *api.Sub
 	return &res, nil
 }
 
-func (c *sessionServiceClient) RetractUtterance(ctx context.Context, req *api.RetractUtteranceRequest) (*api.RetractUtteranceResponse, error) {
-	var res api.RetractUtteranceResponse
-	if err := c.client.CallUnary(ctx, sessionServiceRetractUtteranceSpec(), req, &res); err != nil {
+func (c *sessionServiceClient) MarkOffTheRecord(ctx context.Context, req *api.MarkOffTheRecordRequest) (*api.MarkOffTheRecordResponse, error) {
+	var res api.MarkOffTheRecordResponse
+	if err := c.client.CallUnary(ctx, sessionServiceMarkOffTheRecordSpec(), req, &res); err != nil {
 		return nil, err
 	}
 	return &res, nil
@@ -407,6 +429,14 @@ func (c *sessionServiceClient) EndSession(ctx context.Context, req *api.EndSessi
 	return &res, nil
 }
 
+func (c *sessionServiceClient) GetEvents(ctx context.Context, req *api.GetEventsRequest) (*api.GetEventsResponse, error) {
+	var res api.GetEventsResponse
+	if err := c.client.CallUnary(ctx, sessionServiceGetEventsSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
 func (c *sessionServiceClient) Subscribe(ctx context.Context, req *api.SubscribeRequest) (SessionServiceSubscribeClientStream, error) {
 	stream, err := c.client.CallServerStream(ctx, sessionServiceSubscribeSpec(), req)
 	if err != nil {
@@ -453,12 +483,12 @@ func (h sessionServiceHandler) submitUtterance(ctx context.Context, _ connect.Sp
 	return stream.Send(res)
 }
 
-func (h sessionServiceHandler) retractUtterance(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
-	var req api.RetractUtteranceRequest
+func (h sessionServiceHandler) markOffTheRecord(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req api.MarkOffTheRecordRequest
 	if err := stream.Receive(&req); err != nil {
 		return err
 	}
-	res, err := h.svc.RetractUtterance(ctx, &req)
+	res, err := h.svc.MarkOffTheRecord(ctx, &req)
 	if err != nil {
 		return err
 	}
@@ -543,6 +573,18 @@ func (h sessionServiceHandler) endSession(ctx context.Context, _ connect.Spec, s
 		return err
 	}
 	res, err := h.svc.EndSession(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h sessionServiceHandler) getEvents(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req api.GetEventsRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.GetEvents(ctx, &req)
 	if err != nil {
 		return err
 	}

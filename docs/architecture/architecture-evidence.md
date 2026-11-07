@@ -55,5 +55,6 @@ proposed it and it still needs confirmation.
 | Maintainer, review 9 | Headset decision mitigates risk-speaker-mode; dec-text-first serves usability | ch.9 | high | — |
 | Maintainer, review 9 | An agent polls the events after a cursor when something is missing; the order must be conflict-free | ch.9 dec-events-from-cursor | high | — |
 | agent inference | One writer per session log gives gap-free IDs; no predecessor ID needed; epoch for lost logs | ch.8, ch.9 dec-events-from-cursor | medium | OPEN: confirm the epoch |
-| Maintainer, review 9 | No retraction: what is said stays said; later marking as off the record | ch.6, ch.8, ch.9 dec-off-the-record | high | OPEN: who may classify |
+| Maintainer, review 9 | No retraction: what is said stays said; later marking as off the record | ch.6, ch.8, ch.9 dec-off-the-record | high | — |
 | Maintainer, review 9 | Joining with --mic is consent to storage, also of the raw form; censorship only by later classification that suppresses the message in the interfaces | ch.8, ch.9 dec-consent-by-mic | high | OPEN: retention period, data protection review |
+| Maintainer, review 10 | Everyone may mark only their own sentences off the record; own command, owner checked by the server; moderation out of scope (#31) | ch.6, ch.9 dec-off-the-record | high | — |

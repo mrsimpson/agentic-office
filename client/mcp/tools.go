@@ -37,8 +37,9 @@ const logHelp = `How to read the log file:
   tail -n +1 -f "$LOG" | grep --line-buffered '"type":"turn.end"\|"type":"addressed"'
   or read it again from time to time and keep the last id you handled:
   jq -c 'select(.id > 41 and (.type == "utterance.final" or .type == "addressed"))' "$LOG"
-- Event types: utterance.final (someone said or typed a sentence), utterance.retracted (a sentence was withdrawn; the original line stays, so drop it yourself), turn.end (a speaker finished; a good moment to answer), addressed (someone named a participant; check addressed.participantId), silence.long, hand.raised, minutes.updated, artifact.shown, participant.joined, participant.left, participant.paused, participant.resumed, session.ended (the last line; the file is complete).
-- Usually filter for turn.end and addressed, and read the utterance.final lines before them for the context.`
+- Event types: utterance.final (someone said or typed a sentence), utterance.off_the_record (the speaker marked a sentence off the record: never use or repeat that sentence, not in minutes and not in the journal; the original line stays in your file), turn.end (a speaker finished; a good moment to answer), addressed (someone named a participant; check addressed.participantId), silence.long, hand.raised, minutes.updated, artifact.shown, participant.joined, participant.left, participant.paused, participant.resumed, session.ended (the last line; the file is complete).
+- Usually filter for turn.end and addressed, and read the utterance.final lines before them for the context.
+- IDs have no gaps. If you see a gap (43 after 41), read the missing events with meeting_events (after 41). meeting_events also works without the file, if you poll it with your last id.`
 
 // tool adds a tool whose handler gets a client. The handler returns the output object, or an
 // error that becomes {"error":{"code","message"}} with IsError set.
@@ -95,9 +96,9 @@ type sayIn struct {
 	Session string `json:"session,omitempty" jsonschema:"Session ID. Default: the session given when the server was started, else the only session you joined from this machine."`
 }
 
-type retractIn struct {
-	EventID uint32 `json:"eventId,omitempty" jsonschema:"Event ID (the id of its utterance.final line) of your own sentence to retract."`
-	Last    bool   `json:"last,omitempty" jsonschema:"Retract your newest sentence that is not retracted yet, read from the local log. Use either eventId or last."`
+type offTheRecordIn struct {
+	EventID uint32 `json:"eventId,omitempty" jsonschema:"Event ID (the id of its utterance.final line) of your own sentence to mark off the record."`
+	Last    bool   `json:"last,omitempty" jsonschema:"Mark off the record your newest sentence that is not off the record yet, read from the local log. Use either eventId or last."`
 	Session string `json:"session,omitempty" jsonschema:"Session ID. Default: the session given when the server was started, else the only session you joined from this machine."`
 }
 
@@ -162,6 +163,12 @@ type journalListIn struct {
 	AfterEntryID uint32 `json:"afterEntryId,omitempty" jsonschema:"Only entries with an ID greater than this."`
 	Limit        uint32 `json:"limit,omitempty" jsonschema:"At most this many entries. 0: the server's default."`
 	Session      string `json:"session,omitempty" jsonschema:"Only entries of this session. Default: all."`
+}
+
+type eventsIn struct {
+	Session string `json:"session,omitempty" jsonschema:"The session. Default: the only session you joined from this machine."`
+	After   uint32 `json:"after,omitempty" jsonschema:"The cursor: only events with an ID greater than this. 0 reads from the start."`
+	Limit   uint32 `json:"limit,omitempty" jsonschema:"At most this many events. 0: the server's default (100); at most 1000."`
 }
 
 type noIn struct{}
@@ -242,7 +249,7 @@ func (s *Server) addTools(srv *sdk.Server) {
 		(*core.Client).EndSession)
 
 	sessionTool(srv, s, &sdk.Tool{Name: "utterance_say", Title: "Say something", Annotations: additive,
-		Description: `Say something in the meeting (a typed utterance, utterance.final with modality text). The stage shows it, and every participant reads it in their log. Returns {"event", "duplicate"}; event.id is the ID to retract it.`},
+		Description: `Say something in the meeting (a typed utterance, utterance.final with modality text). The stage shows it, and every participant reads it in their log. Returns {"event", "duplicate"}; event.id is the ID if you want to mark it off the record later.`},
 		func(in sayIn) string { return in.Session },
 		func(ctx context.Context, c *core.Client, sid string, in sayIn) (*sessionv1.CommandResult, error) {
 			if blank(in.Text) {
@@ -251,17 +258,17 @@ func (s *Server) addTools(srv *sdk.Server) {
 			return c.Say(ctx, sid, in.Text)
 		})
 
-	sessionTool(srv, s, &sdk.Tool{Name: "utterance_retract", Title: "Retract a sentence", Annotations: additive,
-		Description: `Retract one of your own sentences. This adds an utterance.retracted line that points to it; the original line stays. Give eventId, or last=true for your newest sentence. Returns {"event", "duplicate"}.`},
-		func(in retractIn) string { return in.Session },
-		func(ctx context.Context, c *core.Client, sid string, in retractIn) (*sessionv1.CommandResult, error) {
+	sessionTool(srv, s, &sdk.Tool{Name: "utterance_off_the_record", Title: "Mark a sentence off the record", Annotations: additive,
+		Description: `Mark one of your own sentences off the record. What is said stays said: this adds an utterance.off_the_record line that points to the sentence. Readers who read the session later get only a placeholder without its text, and nobody may use the sentence in minutes or the journal. You cannot undo it. Give eventId, or last=true for your newest sentence. Returns {"event", "duplicate"}.`},
+		func(in offTheRecordIn) string { return in.Session },
+		func(ctx context.Context, c *core.Client, sid string, in offTheRecordIn) (*sessionv1.CommandResult, error) {
 			switch {
 			case in.Last && in.EventID != 0, !in.Last && in.EventID == 0:
 				return nil, usagef("give eventId or last=true, not both and not neither")
 			case in.Last:
-				return c.RetractLast(ctx, sid)
+				return c.MarkOffTheRecordLast(ctx, sid)
 			}
-			return c.Retract(ctx, sid, in.EventID)
+			return c.MarkOffTheRecord(ctx, sid, in.EventID)
 		})
 
 	sessionTool(srv, s, &sdk.Tool{Name: "signal_turn_end", Title: "Signal the end of a turn", Annotations: additive,
@@ -443,6 +450,24 @@ func (s *Server) addTools(srv *sdk.Server) {
 				out[i] = core.MessageJSON(en)
 			}
 			return map[string]any{"entries": out}, nil
+		})
+
+	tool(srv, s, &sdk.Tool{Name: "meeting_events", Title: "Read events after a cursor", Annotations: readOnly,
+		Description: `Read the events of a session after a cursor from the server: {"events": […], "more": bool}. Event IDs grow by one without gaps. Use this when you see a gap in the IDs of your log (for example 43 after 41: read with after 41), or poll it with your last ID if you cannot follow a file. An utterance with "offTheRecord": true is a placeholder: its speaker marked it off the record. Do not use or repeat such a sentence anywhere, not in minutes and not in the journal.`},
+		func(ctx context.Context, c *core.Client, in eventsIn) (any, error) {
+			sid, err := s.sessionID(ctx, c, in.Session)
+			if err != nil {
+				return nil, err
+			}
+			evs, more, err := c.Events(ctx, sid, in.After, in.Limit)
+			if err != nil {
+				return nil, err
+			}
+			out := make([]any, len(evs))
+			for i, ev := range evs {
+				out[i] = core.EventJSON(ev)
+			}
+			return map[string]any{"events": out, "more": more}, nil
 		})
 
 	tool(srv, s, &sdk.Tool{Name: "whoami", Title: "Who am I", Annotations: readOnly,

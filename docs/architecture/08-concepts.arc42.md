@@ -26,8 +26,8 @@ ID that grows by one inside the session. So the order is free of conflicts, and 
 gaps: a participant that sees event 43 after 41 knows that 42 is missing and fetches the events
 after its cursor (`dec-events-from-cursor`). The cursor is the last event ID a client has read,
 which is also the last line of the local file. Utterances never change and are never removed.
-Corrections and classifications are new events that point to the original (`utterance.corrected`,
-`utterance.classified`). An utterance classified as off the record keeps its ID; the interfaces
+Corrections and off-the-record marks are new events that point to the original
+(`utterance.corrected`, `utterance.off_the_record`). An utterance off the record keeps its ID; the interfaces
 deliver a placeholder without its text, so no false gap appears (`dec-off-the-record`).
 
 **Resuming after a network drop:**

@@ -73,7 +73,7 @@ Use a new session name, for example `headset-<date>`.
 5. **Pause.** Press `p`. The view shows `-- paused`. Speak one sentence. Press `p` again. The
    view shows `-- resumed`.
 
-6. **Retract.** Speak one more sentence, wait for `sent`, then press `r`.
+6. **Mark off the record.** Speak one more sentence, wait for `sent`, then press `o`.
 
 7. **Quit.** Press `q`. Then run `bin/office meeting leave`.
 
@@ -90,7 +90,7 @@ Mark each item as pass or fail.
 | 5 | Nothing said while paused appears anywhere | view and observer log |
 | 6 | Pause closes the microphone | the system microphone indicator goes off; on Linux, `pactl list short source-outputs` has no `parec` entry while paused |
 | 7 | The stage shows `captured`, `paused` and `left` at the right moments | stage page (optional) |
-| 8 | The retracted sentence shows `retracted` in the view and disappears from the stage | view and stage |
+| 8 | The sentence off the record shows `off_the_record` in the view and disappears from the stage | view and stage |
 | 9 | No sentence was merged with another one or split into two | compare with what you said |
 
 That no audio leaves the device is checked automatically by `qs-no-raw-audio`

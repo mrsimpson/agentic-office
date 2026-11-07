@@ -16,12 +16,10 @@
 package identityv1connect
 
 import (
-	context "context"
-	sync "sync"
-
 	connect "connectrpc.com/connect/v2"
-
+	context "context"
 	api "github.com/mrsimpson/agentic-office/server/identity/api"
+	sync "sync"
 )
 
 const (

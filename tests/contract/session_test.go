@@ -246,7 +246,7 @@ func TestSessionCommandsAreIdempotent(t *testing.T) {
 	// Each request is built once, so the second call repeats the same command_id.
 	utt := &sessionv1.SubmitUtteranceRequest{SessionId: sid, CommandId: cmd(), ParticipantId: ada, Text: "Hello",
 		Modality: sessionv1.Modality_MODALITY_VOICE}
-	retract := &sessionv1.RetractUtteranceRequest{SessionId: sid, CommandId: cmd(), ParticipantId: ada,
+	otr := &sessionv1.MarkOffTheRecordRequest{SessionId: sid, CommandId: cmd(), ParticipantId: ada,
 		UtteranceEventId: said.GetId()}
 	turn := &sessionv1.SubmitSignalRequest{SessionId: sid, CommandId: cmd(), ParticipantId: ada,
 		Signal: &sessionv1.SubmitSignalRequest_TurnEnd{TurnEnd: &sessionv1.TurnEnd{ParticipantId: ada}}}
@@ -267,8 +267,8 @@ func TestSessionCommandsAreIdempotent(t *testing.T) {
 			r, err := m.s(utt.GetParticipantId()).SubmitUtterance(ctx, utt)
 			return r.GetResult(), err
 		}},
-		{"retract utterance", events.UtteranceRetracted, func(ctx context.Context) (*sessionv1.CommandResult, error) {
-			r, err := m.s(retract.GetParticipantId()).RetractUtterance(ctx, retract)
+		{"mark off the record utterance", events.UtteranceOffTheRecord, func(ctx context.Context) (*sessionv1.CommandResult, error) {
+			r, err := m.s(otr.GetParticipantId()).MarkOffTheRecord(ctx, otr)
 			return r.GetResult(), err
 		}},
 		{"turn.end", events.TurnEnd, func(ctx context.Context) (*sessionv1.CommandResult, error) {
@@ -432,8 +432,9 @@ func TestSessionRejectsInvalidCommands(t *testing.T) {
 	}
 }
 
-// A retraction is a new event that points to the utterance. The utterance itself stays as it was.
-func TestSessionRetractionIsANewEvent(t *testing.T) {
+// An off-the-record mark is a new event that points to the utterance. Only the speaker can mark it.
+// Later readers get the utterance as a placeholder with the same ID and without its text.
+func TestSessionOffTheRecordIsANewEvent(t *testing.T) {
 	m := newMeeting(t)
 	ada := m.join("Ada", sessionv1.ParticipantKind_PARTICIPANT_KIND_HUMAN)
 	bot := m.join("Bot", sessionv1.ParticipantKind_PARTICIPANT_KIND_AGENT)
@@ -441,37 +442,44 @@ func TestSessionRetractionIsANewEvent(t *testing.T) {
 	s, ctx, sid := m.s(ada), m.ctx(), m.sid
 
 	before := m.read(0, 3)
-	_, err := m.s(bot).RetractUtterance(ctx, &sessionv1.RetractUtteranceRequest{SessionId: sid, CommandId: ids.NewCommandID(),
+	_, err := m.s(bot).MarkOffTheRecord(ctx, &sessionv1.MarkOffTheRecordRequest{SessionId: sid, CommandId: ids.NewCommandID(),
 		ParticipantId: bot, UtteranceEventId: said.GetId()})
-	wantCode(t, "retract someone else's utterance", err, connect.CodePermissionDenied)
-	_, err = s.RetractUtterance(ctx, &sessionv1.RetractUtteranceRequest{SessionId: sid, CommandId: ids.NewCommandID(),
+	wantCode(t, "mark off the record someone else's utterance", err, connect.CodePermissionDenied)
+	_, err = s.MarkOffTheRecord(ctx, &sessionv1.MarkOffTheRecordRequest{SessionId: sid, CommandId: ids.NewCommandID(),
 		ParticipantId: ada, UtteranceEventId: 1})
-	wantCode(t, "retract an event that is not an utterance", err, connect.CodeNotFound)
+	wantCode(t, "mark off the record an event that is not an utterance", err, connect.CodeNotFound)
 
-	res, err := s.RetractUtterance(ctx, &sessionv1.RetractUtteranceRequest{SessionId: sid, CommandId: ids.NewCommandID(),
+	res, err := s.MarkOffTheRecord(ctx, &sessionv1.MarkOffTheRecordRequest{SessionId: sid, CommandId: ids.NewCommandID(),
 		ParticipantId: ada, UtteranceEventId: said.GetId()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	ev := res.GetResult().GetEvent()
-	if ev.GetId() != said.GetId()+1 || ev.GetType() != events.UtteranceRetracted ||
-		ev.GetUtteranceRetracted().GetUtteranceEventId() != said.GetId() || ev.GetActorParticipantId() != ada {
-		t.Fatalf("retraction: %v", ev)
+	if ev.GetId() != said.GetId()+1 || ev.GetType() != events.UtteranceOffTheRecord ||
+		ev.GetUtteranceOffTheRecord().GetUtteranceEventId() != said.GetId() || ev.GetActorParticipantId() != ada {
+		t.Fatalf("off the record: %v", ev)
 	}
-	_, err = s.RetractUtterance(ctx, &sessionv1.RetractUtteranceRequest{SessionId: sid, CommandId: ids.NewCommandID(),
+	_, err = s.MarkOffTheRecord(ctx, &sessionv1.MarkOffTheRecordRequest{SessionId: sid, CommandId: ids.NewCommandID(),
 		ParticipantId: ada, UtteranceEventId: said.GetId()})
-	wantCode(t, "retract twice", err, connect.CodeFailedPrecondition)
+	wantCode(t, "mark off the record twice", err, connect.CodeFailedPrecondition)
 
 	m.end(ada)
 	log := m.readAll(0)
 	checkLog(t, m.sid, log)
 	for i, ev := range before {
-		if !proto.Equal(log[i], ev) {
-			t.Fatalf("event %d changed after the retraction:\n%v\n%v", ev.GetId(), ev, log[i])
+		want := ev
+		if ev.GetId() == said.GetId() {
+			// Readers now get a placeholder: same ID, no text (dec-off-the-record).
+			want = proto.Clone(ev).(*sessionv1.Event)
+			f := want.GetUtteranceFinal()
+			f.Text, f.TranscribedAt, f.OffTheRecord = "", nil, true
+		}
+		if !proto.Equal(log[i], want) {
+			t.Fatalf("event %d after the off-the-record mark:\n%v\nwant %v", ev.GetId(), log[i], want)
 		}
 	}
 	if !proto.Equal(log[ev.GetId()-1], ev) {
-		t.Fatalf("retraction in the log: %v", log[ev.GetId()-1])
+		t.Fatalf("off-the-record mark in the log: %v", log[ev.GetId()-1])
 	}
 }
 
@@ -674,4 +682,59 @@ func actorKind(k sessionv1.ParticipantKind) identityv1.ActorKind {
 		return identityv1.ActorKind_ACTOR_KIND_AGENT
 	}
 	return identityv1.ActorKind_ACTOR_KIND_UNSPECIFIED
+}
+
+// GetEvents returns the events after a cursor, with a limit, and placeholders for utterances that
+// are off the record (dec-events-from-cursor).
+func TestSessionGetEventsAfterCursor(t *testing.T) {
+	m := newMeeting(t)
+	ada := m.join("Ada", sessionv1.ParticipantKind_PARTICIPANT_KIND_HUMAN)
+	bot := m.join("Bot", sessionv1.ParticipantKind_PARTICIPANT_KIND_AGENT)
+	first := m.say(ada, "Public sentence.")
+	secret := m.say(ada, "Secret sentence.")
+	m.say(bot, "Agent sentence.")
+	s, ctx, sid := m.s(bot), m.ctx(), m.sid
+	if _, err := m.s(ada).MarkOffTheRecord(ctx, &sessionv1.MarkOffTheRecordRequest{SessionId: sid,
+		CommandId: ids.NewCommandID(), ParticipantId: ada, UtteranceEventId: secret.GetId()}); err != nil {
+		t.Fatal(err)
+	}
+
+	all, err := s.GetEvents(ctx, &sessionv1.GetEventsRequest{SessionId: sid})
+	if err != nil {
+		t.Fatal(err)
+	}
+	evs := all.GetEvents()
+	if len(evs) == 0 || all.GetMore() {
+		t.Fatalf("read from the start: %d events, more %v", len(evs), all.GetMore())
+	}
+	for i, ev := range evs {
+		if ev.GetId() != uint32(i+1) {
+			t.Fatalf("event %d has ID %d: IDs must have no gaps", i+1, ev.GetId())
+		}
+	}
+	if u := evs[secret.GetId()-1].GetUtteranceFinal(); u == nil || !u.GetOffTheRecord() || u.GetText() != "" {
+		t.Fatalf("utterance off the record: %v", evs[secret.GetId()-1])
+	}
+	if u := evs[first.GetId()-1].GetUtteranceFinal(); u.GetOffTheRecord() || u.GetText() != "Public sentence." {
+		t.Fatalf("public utterance: %v", evs[first.GetId()-1])
+	}
+	last := evs[len(evs)-1].GetId()
+
+	page, err := s.GetEvents(ctx, &sessionv1.GetEventsRequest{SessionId: sid, AfterEventId: first.GetId() - 1, Limit: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.GetEvents()) != 2 || !page.GetMore() || page.GetEvents()[0].GetId() != first.GetId() {
+		t.Fatalf("page with limit 2: %v, more %v", page.GetEvents(), page.GetMore())
+	}
+	empty, err := s.GetEvents(ctx, &sessionv1.GetEventsRequest{SessionId: sid, AfterEventId: last})
+	if err != nil || len(empty.GetEvents()) != 0 || empty.GetMore() {
+		t.Fatalf("read after the last event: %v, %v", empty, err)
+	}
+	_, err = s.GetEvents(ctx, &sessionv1.GetEventsRequest{SessionId: sid, AfterEventId: last + 1})
+	wantCode(t, "cursor beyond the last event", err, connect.CodeOutOfRange)
+	_, err = s.GetEvents(ctx, &sessionv1.GetEventsRequest{SessionId: sid, Limit: 1001})
+	wantCode(t, "limit above 1000", err, connect.CodeInvalidArgument)
+	_, err = s.GetEvents(ctx, &sessionv1.GetEventsRequest{})
+	wantCode(t, "no session", err, connect.CodeInvalidArgument)
 }

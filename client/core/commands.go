@@ -217,10 +217,10 @@ func (c *Client) SubmitUtterance(ctx context.Context, sessionID, cmdID, text str
 	return res, err
 }
 
-// Retract retracts an own utterance by its event ID.
-func (c *Client) Retract(ctx context.Context, sessionID string, utteranceEventID uint32) (*sessionv1.CommandResult, error) {
+// MarkOffTheRecord marks an own utterance off the record by its event ID (dec-off-the-record).
+func (c *Client) MarkOffTheRecord(ctx context.Context, sessionID string, utteranceEventID uint32) (*sessionv1.CommandResult, error) {
 	return c.command(ctx, func(pid, id string) (*sessionv1.CommandResult, error) {
-		r, err := c.Session.RetractUtterance(ctx, &sessionv1.RetractUtteranceRequest{SessionId: sessionID, CommandId: id,
+		r, err := c.Session.MarkOffTheRecord(ctx, &sessionv1.MarkOffTheRecordRequest{SessionId: sessionID, CommandId: id,
 			ParticipantId: pid, UtteranceEventId: utteranceEventID})
 		return r.GetResult(), err
 	})
@@ -384,6 +384,18 @@ func (c *Client) ListJournal(ctx context.Context, req *journalv1.ListEntriesRequ
 		return err
 	})
 	return res.GetEntries(), err
+}
+
+// Events returns the events of a session after a cursor, at most limit of them (0: the server's
+// default), and whether there are more (dec-events-from-cursor). Event IDs have no gaps, so a
+// participant that finds a gap in its copy reads the missing events here.
+func (c *Client) Events(ctx context.Context, sessionID string, after, limit uint32) ([]*sessionv1.Event, bool, error) {
+	var res *sessionv1.GetEventsResponse
+	err := Retry(ctx, func() (err error) {
+		res, err = c.Session.GetEvents(ctx, &sessionv1.GetEventsRequest{SessionId: sessionID, AfterEventId: after, Limit: limit})
+		return err
+	})
+	return res.GetEvents(), res.GetMore(), err
 }
 
 // endedLog reports whether the local log at path ends with session.ended.

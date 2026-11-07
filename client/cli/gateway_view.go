@@ -21,7 +21,7 @@ import (
 // The gateway view (dec-gateway-cli) is a filtered view of the local log: the participant's own
 // utterances with their status, and whether it is paused. It prints one line per change, so it
 // works in a terminal and in a pipe. Keys (single key presses in a terminal, else bytes on
-// stdin): p pauses or resumes, r retracts the last sent sentence, q quits.
+// stdin): p pauses or resumes, o marks the last sent sentence off the record, q quits.
 
 // localStatus is the status of an utterance that the ears have not sent yet.
 type localStatus struct {
@@ -51,7 +51,7 @@ func (g *gatewayView) run(ctx context.Context) error {
 			g.nl = "\r\n"
 		}
 	}
-	fmt.Fprintf(g.e.stderr, "gateway: session %s as %s; keys: p pause/resume, r retract last sentence, q quit%s", g.sid, g.pid, g.nl)
+	fmt.Fprintf(g.e.stderr, "gateway: session %s as %s; keys: p pause/resume, o mark the last sentence off the record, q quit%s", g.sid, g.pid, g.nl)
 
 	evs := make(chan *sessionv1.Event, 64)
 	logErr := make(chan error, 1)
@@ -114,13 +114,13 @@ func (g *gatewayView) run(ctx context.Context) error {
 					_, err = g.c.Pause(ctx, g.sid)
 				}
 				g.report(err)
-			case 'r', 'R':
+			case 'o', 'O':
 				u := state.LastSent()
 				if u == nil {
-					g.report(errors.New("no sent sentence to retract"))
+					g.report(errors.New("no sent sentence to mark off the record"))
 					continue
 				}
-				_, err := g.c.Retract(ctx, g.sid, u.EventID)
+				_, err := g.c.MarkOffTheRecord(ctx, g.sid, u.EventID)
 				g.report(err)
 			}
 		}

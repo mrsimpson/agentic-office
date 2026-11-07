@@ -10,7 +10,7 @@ context of the agents that read it. It cannot be removed from an agent's context
 id: risk-retraction-leak
 title: Sentences marked off the record stay in agent context
 severity: high
-mitigation: The interfaces suppress classified text for every later reader (dec-off-the-record); the agent contract requires respecting the classification
+mitigation: The interfaces suppress the text of sentences off the record for every later reader (dec-off-the-record); the agent contract requires respecting the mark
 :::
 ```
 

@@ -159,7 +159,7 @@ func mcpJoined(t *testing.T, v map[string]any) (logPath, pid string, replicatorP
 
 // The tools of if-mcp. Names use "_" instead of "." (see README.md).
 var mcpTools = []string{"meeting_join", "meeting_log", "meeting_leave", "meeting_pause", "meeting_resume", "meeting_end",
-	"utterance_say", "utterance_retract", "signal_turn_end", "signal_silence_long", "signal_addressed", "hand_raise",
+	"utterance_say", "utterance_off_the_record", "signal_turn_end", "signal_silence_long", "signal_addressed", "hand_raise",
 	"minutes_update", "stage_show", "stage_link", "slides_render", "artifact_get", "journal_append", "journal_list", "whoami"}
 
 // TestMCPToolsDescribeTheLog: the server offers every tool, and tells an agent how to follow
@@ -193,7 +193,7 @@ func TestMCPToolsDescribeTheLog(t *testing.T) {
 		t.Fatal("no meeting_join")
 	}
 	for _, want := range []string{"logPath", "tail -n +1 -f", `"type":"turn.end"`, `"type":"addressed"`, "jq", events.UtteranceFinal,
-		events.UtteranceRetracted, events.SessionEnded} {
+		events.UtteranceOffTheRecord, events.SessionEnded} {
 		if !strings.Contains(join.Description, want) {
 			t.Errorf("meeting_join description does not mention %q", want)
 		}
@@ -273,17 +273,41 @@ func TestMCPJoinAndCommands(t *testing.T) {
 	do(events.TurnEnd, "signal_turn_end", map[string]any{"participant": "ada"})
 	do(events.SilenceLong, "signal_silence_long", map[string]any{"duration": "12s"})
 	do(events.Addressed, "signal_addressed", map[string]any{"participant": "bot", "utteranceEventId": adaUtt.GetId()})
-	_, ret := eventOf(t, do(events.UtteranceRetracted, "utterance_retract", map[string]any{"eventId": utt.GetId()}))
-	if ret.GetUtteranceRetracted().GetUtteranceEventId() != utt.GetId() {
-		t.Fatalf("retract points to %d, want %d", ret.GetUtteranceRetracted().GetUtteranceEventId(), utt.GetId())
+	_, ret := eventOf(t, do(events.UtteranceOffTheRecord, "utterance_off_the_record", map[string]any{"eventId": utt.GetId()}))
+	if ret.GetUtteranceOffTheRecord().GetUtteranceEventId() != utt.GetId() {
+		t.Fatalf("mark off the record points to %d, want %d", ret.GetUtteranceOffTheRecord().GetUtteranceEventId(), utt.GetId())
 	}
-	// last=true retracts the newest own sentence that is not retracted, read from the local log.
+	// last=true marks off the record the newest own sentence that is not off the record, read from the local log.
 	_, lastUtt := eventOf(t, do(events.UtteranceFinal, "utterance_say", map[string]any{"text": "Oops."}))
 	waitLog(t, logPath, lastUtt.GetId())
-	_, last := eventOf(t, do(events.UtteranceRetracted, "utterance_retract", map[string]any{"last": true}))
-	if last.GetUtteranceRetracted().GetUtteranceEventId() != lastUtt.GetId() {
-		t.Fatalf("retract last points to %d, want %d", last.GetUtteranceRetracted().GetUtteranceEventId(), lastUtt.GetId())
+	_, last := eventOf(t, do(events.UtteranceOffTheRecord, "utterance_off_the_record", map[string]any{"last": true}))
+	if last.GetUtteranceOffTheRecord().GetUtteranceEventId() != lastUtt.GetId() {
+		t.Fatalf("mark off the record last points to %d, want %d", last.GetUtteranceOffTheRecord().GetUtteranceEventId(), lastUtt.GetId())
 	}
+	// meeting_events reads the events after a cursor from the server: no gaps, and the sentences
+	// off the record are placeholders without text.
+	got := s.ok("meeting_events", map[string]any{"after": 0})
+	evs, _ := got["events"].([]any)
+	if len(evs) < int(last.GetId()) {
+		t.Fatalf("meeting_events: %d events, want at least %d", len(evs), last.GetId())
+	}
+	for i, raw := range evs {
+		ev, _ := raw.(map[string]any)
+		if id, _ := ev["id"].(float64); int(id) != i+1 {
+			t.Fatalf("meeting_events: event %d has id %v", i+1, ev["id"])
+		}
+		if int(ev["id"].(float64)) == int(utt.GetId()) {
+			u, _ := ev["utteranceFinal"].(map[string]any)
+			if u["offTheRecord"] != true || u["text"] != nil {
+				t.Fatalf("meeting_events: sentence off the record is not a placeholder: %v", ev)
+			}
+		}
+	}
+	page := s.ok("meeting_events", map[string]any{"after": utt.GetId() - 1, "limit": 1})
+	if p, _ := page["events"].([]any); len(p) != 1 || page["more"] != true {
+		t.Fatalf("meeting_events with limit 1: %v", page)
+	}
+
 	link := s.ok("stage_link", nil)
 	if u, _ := link["url"].(string); !strings.HasPrefix(u, "http") {
 		t.Fatalf("stage_link: %v", link)
@@ -450,9 +474,9 @@ func TestMCPErrors(t *testing.T) {
 		{"utterance_say", map[string]any{"text": ""}},
 		{"utterance_say", map[string]any{"txt": "typo"}},
 		{"utterance_say", map[string]any{"text": 42}},
-		{"utterance_retract", nil},
-		{"utterance_retract", map[string]any{"eventId": 1, "last": true}},
-		{"utterance_retract", map[string]any{"eventId": -1}},
+		{"utterance_off_the_record", nil},
+		{"utterance_off_the_record", map[string]any{"eventId": 1, "last": true}},
+		{"utterance_off_the_record", map[string]any{"eventId": -1}},
 		{"signal_silence_long", map[string]any{"duration": "long"}},
 		{"signal_silence_long", map[string]any{"duration": "-3s"}},
 		{"signal_addressed", map[string]any{"participant": "ada"}},
@@ -473,7 +497,7 @@ func TestMCPErrors(t *testing.T) {
 	}
 
 	// Errors of the server keep their Connect code.
-	s.fails("permission_denied", "utterance_retract", map[string]any{"eventId": adaUtt.GetId()})
+	s.fails("permission_denied", "utterance_off_the_record", map[string]any{"eventId": adaUtt.GetId()})
 
 	// Errors of the artifact tools keep their Connect code too.
 	s.fails("not_found", "artifact_get", map[string]any{"id": "slides/99"})

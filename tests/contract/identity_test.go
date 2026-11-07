@@ -186,8 +186,8 @@ func TestSessionRejectsCallsWithoutValidToken(t *testing.T) {
 					ParticipantId: "ada", Text: "x", Modality: sessionv1.Modality_MODALITY_TEXT})
 				return err
 			},
-			"retract": func() error {
-				_, err := s.RetractUtterance(ctx, &sessionv1.RetractUtteranceRequest{SessionId: "s", CommandId: cmd(),
+			"mark off the record": func() error {
+				_, err := s.MarkOffTheRecord(ctx, &sessionv1.MarkOffTheRecordRequest{SessionId: "s", CommandId: cmd(),
 					ParticipantId: "ada", UtteranceEventId: 1})
 				return err
 			},

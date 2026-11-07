@@ -183,11 +183,12 @@ sequenceDiagram
 ## Human marks a sentence off the record
 
 What is said stays said (`dec-off-the-record`). The human presses a key in the gateway terminal
-to mark a sentence off the record. The CLI sends `utterance.classify`. The log gets a new event
-that classifies the original utterance. Existing lines are never rewritten. From then on, the
+to mark their own sentence off the record. The CLI sends `utterance.mark_off_the_record`. The
+server checks that the caller is the speaker. The log gets a new event `utterance.off_the_record`
+that points to the original utterance. Existing lines are never rewritten. From then on, the
 interfaces deliver the utterance only as a placeholder without its text, the stage hides it, and
 it does not go into minutes or the journal. Agents that already read it must respect the
-classification.
+mark.
 
 ```arc42
 :::runtime-scenario
