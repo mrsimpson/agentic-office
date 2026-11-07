@@ -104,7 +104,6 @@ client/                   bb-participant-client: wiring of the client (binary of
   cli/                    bb-cli, if-cli
   mcp/                    bb-mcp, if-mcp
   replicator/             bb-replicator, if-replication (start, find and stop a replicator)
-    locallog/             if-local-log: the local session log, in the line form of api/logfile
   ears/                   bb-ears, if-audio-in
 tests/                    external actors: may use interfaces only
   architecture/           architecture test
@@ -255,8 +254,8 @@ the details. In short:
 
 ### Records: decisions, minutes and notes
 
-The records (`hub/records`) replace the journal (`dec-records-per-type`). Each type has its own
-interface. The package comment in `hub/records/doc.go` has the details. In short:
+The records (`hub/records`) hold decisions, minutes and notes (`dec-records-per-type`). Each type
+has its own interface. The package comment in `hub/records/doc.go` has the details. In short:
 
 - **Decisions** (`RecordDecision`, `ListDecisions`) and **notes** (`AddNote`, `ListNotes`) have
   a text, an optional session ID, the author and the author's kind (`human` or `agent`). The hub
@@ -274,8 +273,7 @@ interface. The package comment in `hub/records/doc.go` has the details. In short
 - The list calls return records after the cursor `after_id`, oldest first, optionally of one
   session. They return at most `limit` records (default 100, at most 1000). To read the next
   page, pass the ID of the last record. IDs start at 1 per type.
-- Tasks are not records here; they have their own part of the hub (see [Tasks](#tasks)). The
-  old journal kind `task` is gone.
+- Tasks are not records here; they have their own part of the hub (see [Tasks](#tasks)).
 - Do not put a sentence that is off the record into minutes, decisions or notes
   (`dec-off-the-record`). The hub does not check this.
 
@@ -298,8 +296,7 @@ command_id: "01a1b740-97c5-733b-bc48-e7e52a691139"
 
 Minutes have `session_id`, `text`, `author_participant_id`, `author_kind`, `time` and
 `command_id` (`office/session-end/<command ID of EndSession>`). The hub reads all records from
-the current commit of the archive when it starts, so they survive a restart. An older hub kept a
-journal in `<data-dir>/journal.jsonl`; the hub no longer reads it and logs a note if it exists.
+the current commit of the archive when it starts, so they survive a restart.
 
 ### Tasks
 
@@ -560,8 +557,8 @@ text becomes the notes of the slide. A file that does not end with `.md` is JSON
 `RenderSlidesRequest`: `{"title": …, "slides": [{"title": …, "bullets": […], "notes": …}]}`.
 
 **The local log** is `<runtime dir>/<session>/<participant>.jsonl` (directories 0700, file 0600):
-one compact JSON line per event (`client/replicator/locallog`, the line form of
-`hub/session/api/logfile`, the same as in the archive of the hub), with the dotted type and the event ID as a
+one compact JSON line per event (the line form of `hub/session/api/logfile`, the same as in the
+archive of the hub), with the dotted type and the event ID as a
 number. It is append-only: marking a sentence off the record adds a new `utterance.off_the_record` line. The runtime
 directory also holds the join state (`<participant>.join`, the stored join command ID, so a
 restarted client is the same participant), the PID of the replicator (`<participant>.pid`) and

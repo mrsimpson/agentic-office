@@ -22,10 +22,10 @@ import (
 	"time"
 
 	"github.com/mrsimpson/agentic-office/client/core/ids"
-	"github.com/mrsimpson/agentic-office/client/replicator/locallog"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 	"github.com/mrsimpson/agentic-office/hub/session/api/events"
+	"github.com/mrsimpson/agentic-office/hub/session/api/logfile"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
@@ -173,7 +173,7 @@ func watchLog(t *testing.T, path string) *logWatch {
 					if i < 0 {
 						break
 					}
-					if ev, err := locallog.UnmarshalLine(partial[:i+1]); err == nil {
+					if ev, err := logfile.UnmarshalLine(partial[:i+1]); err == nil {
 						w.mu.Lock()
 						w.evs, w.at = append(w.evs, ev), append(w.at, now)
 						w.mu.Unlock()

@@ -10,8 +10,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/mrsimpson/agentic-office/client/replicator/locallog"
 	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
+	"github.com/mrsimpson/agentic-office/hub/session/api/logfile"
 )
 
 // ReadLog reads all complete lines of a local session log. A missing file is an empty log.
@@ -55,7 +55,7 @@ func FollowLog(ctx context.Context, path string, follow bool, fn func(*sessionv1
 		chunk, err := r.ReadBytes('\n')
 		partial = append(partial, chunk...)
 		if err == nil {
-			ev, perr := locallog.UnmarshalLine(partial)
+			ev, perr := logfile.UnmarshalLine(partial)
 			partial = partial[:0]
 			if perr != nil {
 				return perr

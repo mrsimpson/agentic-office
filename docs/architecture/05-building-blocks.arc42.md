@@ -287,8 +287,8 @@ head signed by the hub over exactly that log (`dec-merkle-log`).
 
 ### Records
 
-The memory of the team: decisions, minutes and notes (`dec-records-per-type`). It replaces the
-journal, which held all kinds in one list. Each type has its own interface and its own types.
+The memory of the team: decisions, minutes and notes (`dec-records-per-type`). Each type has its
+own interface and its own types.
 Each record keeps its origin: who wrote it, and whether a human or an agent. Tasks are not part
 of this block; they have their own part of the hub.
 
@@ -474,7 +474,6 @@ flowchart LR
     end
     bb_cli -->|if-client-core| bb_client_core
     bb_cli -->|if-replication| bb_replicator
-    bb_client_core -->|if-local-log| bb_replicator
     bb_ears -->|if-client-core| bb_client_core
     bb_mcp -->|if-client-core| bb_client_core
     bb_mcp -->|if-replication| bb_replicator
@@ -526,7 +525,7 @@ title: Local session log
 provider: bb-participant-client
 x-realized-by: bb-replicator
 protocol: JSONL file (append-only)
-path: client/replicator/locallog
+path: client/replicator
 :::
 ```
 
@@ -559,7 +558,7 @@ title: Client core
 technology: Go
 parent: bb-participant-client
 path: client/core
-requires: if-session-commands, if-auth-api, if-decision-api, if-minutes-api, if-note-api, if-task-api, if-artifact-api, if-local-log
+requires: if-session-commands, if-auth-api, if-decision-api, if-minutes-api, if-note-api, if-task-api, if-artifact-api
 :::
 ```
 
@@ -644,6 +643,7 @@ running replicator and to stop it. The CLI runs the replicator as its own proces
 runs it inside its own process.
 
 ```arc42
+:::ignore H020 The local log is a file for actors, replication control is an in-process call; both are realized by the replicator :::
 :::interface
 id: if-replication
 title: Replication control

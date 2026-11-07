@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"github.com/mrsimpson/agentic-office/client/core/ids"
-	"github.com/mrsimpson/agentic-office/client/replicator/locallog"
 	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 	"github.com/mrsimpson/agentic-office/hub/session/api/events"
+	"github.com/mrsimpson/agentic-office/hub/session/api/logfile"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
@@ -34,7 +34,7 @@ func serverLog(t *testing.T, a *contracttest.Actor, sid string) []string {
 		if err != nil {
 			t.Fatalf("server log: %v", err)
 		}
-		line, err := locallog.MarshalLine(res.GetEvent())
+		line, err := logfile.MarshalLine(res.GetEvent())
 		if err != nil {
 			t.Fatal(err)
 		}

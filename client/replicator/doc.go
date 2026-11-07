@@ -1,7 +1,7 @@
 // Package replicator is the building block Log replicator (bb-replicator in docs/architecture/05-building-blocks.arc42.md).
 //
 // It copies the session stream into one local JSONL file per session and participant. Provides
-// if-local-log. The file format is client/replicator/locallog: one compact canonical JSON line per event, with
+// if-local-log. The file format is hub/session/api/logfile (the line form of the session stream): one compact canonical JSON line per event, with
 // the dotted type and the numeric event ID.
 //
 // How it works:

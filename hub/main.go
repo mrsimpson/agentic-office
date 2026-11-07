@@ -144,10 +144,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(*dataDir, "journal.jsonl")); err == nil {
-		log.Printf("%s is from an older hub; it is no longer read (the journal was split into decisions, minutes and notes)",
-			filepath.Join(*dataDir, "journal.jsonl"))
-	}
 	nd, nm, nn := recs.Counts()
 	log.Printf("records: %d decisions, %d minutes, %d notes", nd, nm, nn)
 	// Tasks: local drafts as YAML files in the archive, read once at the start (#40 syncs them later).

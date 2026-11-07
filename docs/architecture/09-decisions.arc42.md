@@ -471,10 +471,10 @@ lives. Teams already use tools of their own for some of them, for example issues
 notes, tasks and slides. Each interface owns its types (`concept-module-boundaries`). Behind
 every interface, the hub decides where the records are stored; the storage can be exchanged per
 type without changing the interface. The building blocks: one part of the hub for decisions,
-minutes and notes (replacing the journal), one for tasks, the artifact tools for slides, and one
+minutes and notes, one for tasks, the artifact tools for slides, and one
 archive part that all of them use for storage.
-**Consequences:** A new type is a new interface. An agent always knows what it writes. The
-journal as one interface for all kinds goes away. **Rejected:** one journal for all kinds (it mixes
+**Consequences:** A new type is a new interface. An agent always knows what it writes.
+**Rejected:** one journal for all kinds (it mixes
 records with different lives); tasks only in the hub (teams have their own task tools).
 
 ```arc42

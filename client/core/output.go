@@ -13,9 +13,9 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/mrsimpson/agentic-office/client/replicator/locallog"
 	artifactv1 "github.com/mrsimpson/agentic-office/hub/artifacts/api"
 	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
+	"github.com/mrsimpson/agentic-office/hub/session/api/logfile"
 )
 
 // This file holds what the CLI (--json) and the MCP server share in their output and input, so
@@ -23,7 +23,7 @@ import (
 
 // EventJSON returns the event as in the local log: its canonical, compact JSON.
 func EventJSON(ev *sessionv1.Event) json.RawMessage {
-	line, err := locallog.MarshalLine(ev)
+	line, err := logfile.MarshalLine(ev)
 	if err != nil {
 		return json.RawMessage("null")
 	}

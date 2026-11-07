@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mrsimpson/agentic-office/client/replicator/locallog"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 	"github.com/mrsimpson/agentic-office/hub/session/api/events"
+	"github.com/mrsimpson/agentic-office/hub/session/api/logfile"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
@@ -65,7 +65,7 @@ func TestTwoCLIParticipants(t *testing.T) {
 		b, _ := os.ReadFile(path)
 		var out []*sessionv1.Event
 		for _, l := range strings.SplitAfter(string(b), "\n") {
-			if ev, err := locallog.UnmarshalLine([]byte(l)); strings.HasSuffix(l, "\n") && err == nil {
+			if ev, err := logfile.UnmarshalLine([]byte(l)); strings.HasSuffix(l, "\n") && err == nil {
 				out = append(out, ev)
 			}
 		}

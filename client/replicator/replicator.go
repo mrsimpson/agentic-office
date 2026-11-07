@@ -14,9 +14,9 @@ import (
 
 	"connectrpc.com/connect/v2"
 
-	"github.com/mrsimpson/agentic-office/client/replicator/locallog"
 	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 	"github.com/mrsimpson/agentic-office/hub/session/api/events"
+	"github.com/mrsimpson/agentic-office/hub/session/api/logfile"
 	sessionv1connect "github.com/mrsimpson/agentic-office/hub/session/api/sessionv1connect"
 )
 
@@ -114,7 +114,7 @@ func (r *Replicator) load(f *os.File) error {
 	if len(data) > 0 {
 		body := data[:len(data)-1]
 		last := body[bytes.LastIndexByte(body, '\n')+1:]
-		ev, err := locallog.UnmarshalLine(last)
+		ev, err := logfile.UnmarshalLine(last)
 		if err != nil {
 			return fmt.Errorf("%s: read cursor from last line: %w", r.Path, err)
 		}
@@ -228,7 +228,7 @@ func (r *Replicator) follow(ctx context.Context) (got bool, reason Reason, err e
 
 // write appends one line with a single write call, so a crash leaves at most one torn line.
 func (r *Replicator) write(ev *sessionv1.Event) error {
-	line, err := locallog.MarshalLine(ev)
+	line, err := logfile.MarshalLine(ev)
 	if err != nil {
 		return err
 	}

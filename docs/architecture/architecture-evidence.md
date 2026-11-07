@@ -98,3 +98,5 @@ proposed it and it still needs confirmation.
 | Issue #38, agent decision | Statuses open, in progress, done and cancelled; any participant may change any task; assignee and session are not checked | ch.5 if-task-api, ch.12 term-task | medium | OPEN: rights by role (#14, #15, #22) |
 | Issue #38, agent decision | Task writes are synchronous like the records and share the wait behind a session write of the archive | ch.5 bb-tasks | medium | OPEN: #45 |
 | Issue #38, agent decision | Only the client core requires the task interface; the CLI and the MCP server reach tasks through it | ch.5 bb-client-core | medium | — |
+| Maintainer, review 15 | No backward compatibility before go-live: the locallog forwarder, the journal.jsonl note and the journal wording are removed | AGENTS.md, ch.5, ch.9 | high | — |
+| ch.5 if-local-log, if-replication | H020 ignored: the local log (file for actors) and replication control (in-process) are realized by the replicator and share its path | ch.5 | high | — |

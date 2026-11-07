@@ -32,9 +32,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mrsimpson/agentic-office/client/replicator/locallog"
 	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 	"github.com/mrsimpson/agentic-office/hub/session/api/events"
+	"github.com/mrsimpson/agentic-office/hub/session/api/logfile"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
@@ -586,7 +586,7 @@ func compareLogs(t *testing.T, adaPath, botPath string, n int) (lost, dup int) {
 	a, b := lines(adaPath), lines(botPath)
 	ids := map[uint32]int{}
 	for _, l := range a {
-		ev, err := locallog.UnmarshalLine([]byte(strings.TrimSuffix(l, "\n") + "\n"))
+		ev, err := logfile.UnmarshalLine([]byte(strings.TrimSuffix(l, "\n") + "\n"))
 		if err != nil {
 			t.Fatalf("Ada's log: %v", err)
 		}

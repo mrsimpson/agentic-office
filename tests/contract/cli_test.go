@@ -17,10 +17,10 @@ import (
 	"time"
 
 	"github.com/mrsimpson/agentic-office/client/core/ids"
-	"github.com/mrsimpson/agentic-office/client/replicator/locallog"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 	"github.com/mrsimpson/agentic-office/hub/session/api/events"
+	"github.com/mrsimpson/agentic-office/hub/session/api/logfile"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
@@ -170,7 +170,7 @@ func readLog(t *testing.T, path string) []logLine {
 		if !strings.HasSuffix(l, "\n") {
 			break // incomplete last line
 		}
-		ev, err := locallog.UnmarshalLine([]byte(l))
+		ev, err := logfile.UnmarshalLine([]byte(l))
 		if err != nil {
 			t.Fatalf("%s: bad line %q: %v", path, l, err)
 		}
@@ -200,11 +200,11 @@ func eventOf(t *testing.T, v map[string]any) (string, *sessionv1.Event) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ev, err := locallog.UnmarshalLine(raw)
+	ev, err := logfile.UnmarshalLine(raw)
 	if err != nil {
 		t.Fatalf("event %s: %v", raw, err)
 	}
-	line, _ := locallog.MarshalLine(ev)
+	line, _ := logfile.MarshalLine(ev)
 	return strings.TrimSuffix(string(line), "\n"), ev
 }
 
