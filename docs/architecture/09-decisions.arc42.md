@@ -471,9 +471,9 @@ lives. Teams already use tools of their own for some of them, for example issues
 **Decision:** The hub offers its own interface for every type: sessions, decisions, minutes,
 notes, tasks and slides. Each interface owns its types (`concept-module-boundaries`). Behind
 every interface, the hub decides where the records are stored; the storage can be exchanged per
-type without changing the interface. **Proposed, not yet accepted:** the building blocks: one
-part of the hub for decisions, minutes and notes (replacing the journal), one for tasks, the
-artifact tools for slides, and one archive part that all of them use for storage.
+type without changing the interface. The building blocks: one part of the hub for decisions,
+minutes and notes (replacing the journal), one for tasks, the artifact tools for slides, and one
+archive part that all of them use for storage.
 **Consequences:** A new type is a new interface. An agent always knows what it writes. The
 journal as one interface for all kinds goes away. **Rejected:** one journal for all kinds (it mixes
 records with different lives); tasks only in the hub (teams have their own task tools).
@@ -496,8 +496,9 @@ repository on the hub host and commits locally. The push to a remote is mocked. 
 drafts too. Later, tasks are synced with the task tool of the team (for example GitHub or GitLab
 issues), and the synced task replaces the local draft. **Consequences:** No external service is
 needed to start, and commits stay fast. Sessions are written in the background at an interval
-(`dec-session-persistence`). OPEN: the format of the session log (YAML like the others, or one
-line per event, which suits a log that only grows). **Rejected:** a database (not needed yet);
+(`dec-session-persistence`). The session log is the exception to YAML: it is stored with one
+line per event, in the same format as the local log of the peers, because it only grows and every
+write appends lines. **Rejected:** a database (not needed yet);
 external task tools from the start (slow and not predictable).
 
 ```arc42
