@@ -488,7 +488,7 @@ write to the archive (it does not cover the lost events); accepting a tail witho
 :::decision
 id: dec-signed-head-in-stream
 title: The stream carries signed tree heads; a restored session waits for peers
-status: proposed
+status: accepted
 date: 2026-11-07
 addresses: qg-resumability, risk-forged-copy
 :::
@@ -538,6 +538,48 @@ title: Every type as YAML in a local Git repository; push mocked
 status: accepted
 date: 2026-11-07
 addresses: risk-archive-latency, qg-performance
+:::
+```
+
+## The signing key of the hub is given at start
+
+**Context:** The hub signs tree heads. Clients and readers of the archive trust these signatures.
+A key that the hub creates by itself on first start is easy to lose or replace without anyone
+noticing. **Decision:** The operator gives the hub its signing key when the hub starts, at first
+as the name of a key file on the command line. The hub does not create a signing key by itself
+and does not start without one. **Consequences:** The operator controls the key and can keep it
+with other secrets. Replacing the key is a deliberate act. OPEN: how clients pin the public key
+of the hub (#41). **Rejected:** a key that the hub creates in its data directory.
+
+```arc42
+:::decision
+id: dec-hub-signing-key
+title: The signing key is given to the hub at start
+status: accepted
+date: 2026-11-07
+addresses: risk-forged-copy, qg-confidentiality
+:::
+```
+
+## A session belongs to exactly one schema
+
+**Context:** The leaves of the Merkle tree depend on the encoding of the events, and the encoding
+depends on the version of the session contract. A client with another version could compute
+other leaves and reject a correct copy. **Decision:** A session belongs to exactly one schema, the
+version of the session contract it was started with. The session records its schema. Changes of
+the schema are not taken over inside a running session: a hub with another schema does not
+continue a session of an older schema, and verifiers check a session with its own schema.
+**Consequences:** Copies and archived sessions stay verifiable after an update of the contract.
+An update of the hub ends the use of running sessions of the old schema for writing.
+**Rejected:** a leaf format that is independent of the contract (more work now, not needed yet).
+
+```arc42
+:::decision
+id: dec-session-schema
+title: A session belongs to exactly one schema
+status: accepted
+date: 2026-11-07
+addresses: risk-forged-copy, qg-resumability
 :::
 ```
 

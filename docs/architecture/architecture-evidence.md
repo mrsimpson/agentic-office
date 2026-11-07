@@ -111,3 +111,8 @@ proposed it and it still needs confirmation.
 | Issue #34, agent decision | A restored session that has not ended takes no commands until a peer copy fits or a configurable wait is over; no wait if the archive records a last write of every session at the stop | ch.5 bb-session-service, ch.9 dec-signed-head-in-stream (proposed) | medium | OPEN: a session never written to the archive before a crash; a peer that comes back after the wait forks |
 | Issue #34, agent decision | The replicator requires the session commands: it offers its copy and checks the root hash of the hub at its cursor before it goes on | ch.5 bb-replicator | medium | — |
 | Issue #34, contract and end-to-end tests | Forged, shorter, concurrent and forked copies; restart with a lost tail filled in by a replicator; clean stop without wait | ch.6 rs-hub-restart | high | — |
+| Maintainer, review 16 | The stream carries signed tree heads; a restored session waits for peers | ch.9 dec-signed-head-in-stream | high | — |
+| Maintainer, review 16 | The block name in dec-records-per-type is fine (#46) | ch.9 | high | — |
+| Maintainer, review 16 | The signing key is given at host start, at first as a file name on the command line | ch.9 dec-hub-signing-key | high | OPEN: client pinning (#41) |
+| Maintainer, review 16 | Schema changes are not taken over inside a session; a session belongs to exactly one schema | ch.9 dec-session-schema | high | — |
+
