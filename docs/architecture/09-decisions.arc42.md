@@ -587,13 +587,17 @@ addresses: risk-forged-copy, qg-resumability
 
 **Context:** People keep working after a meeting: artifacts arrive later, and a meeting can go on
 another day. **Decision:** `session.ended` is a milestone that triggers other work, for example
-storing the minutes. It never blocks anything new. The triggered work runs in the background,
-and its result appears as an event in the session log. A later session command (join, speak,
-raise a hand, update the minutes) opens the session again; the log shows this as its own event.
-Records through their own interfaces (decisions, minutes, notes, tasks, slides) may refer to an
-ended session and never open it again. **Consequences:** Streams, replicators and agents keep
-following a session after its end until the participant leaves. Every end stores a new version of
-the minutes. **Rejected:** an end that rejects all later commands.
+the write to the archive. It never blocks anything new; the triggered work runs in the
+background, and its result appears as an event in the session log. A later session command (join,
+speak, raise a hand, show on the stage, pause or resume) opens the session again; the log shows
+this as its own event. Artifacts through their own interfaces (decisions, minutes, notes, tasks,
+slides) may refer to an ended session and never open it again. Minutes are such an artifact: they
+are written only through the minutes interface and stored at once like every other artifact
+(`dec-records-synchronous`). While a session is open, the hub adds a notice to its log when its
+minutes change, so the stage and agents see them live. **Consequences:** Streams, replicators and
+agents keep following a session after its end until the participant leaves. The session itself
+no longer has a command to update minutes. **Rejected:** an end that rejects all later commands;
+minutes as a session command.
 
 ```arc42
 :::decision
