@@ -463,3 +463,50 @@ date: 2026-11-07
 addresses: qg-resumability
 :::
 ```
+
+## One interface of the hub for every type of record
+
+**Context:** Decisions, minutes, notes, tasks and slides are different things with different
+lives. Teams already use tools of their own for some of them, for example issues for tasks.
+**Decision:** The hub offers its own interface for every type: sessions, decisions, minutes,
+notes, tasks and slides. Each interface owns its types (`concept-module-boundaries`). Behind
+every interface, the hub decides where the records are stored; the storage can be exchanged per
+type without changing the interface. **Proposed, not yet accepted:** the building blocks: one
+part of the hub for decisions, minutes and notes (replacing the journal), one for tasks, the
+artifact tools for slides, and one archive part that all of them use for storage.
+**Consequences:** A new type is a new interface. An agent always knows what it writes. The
+journal as one interface for all kinds goes away. **Rejected:** one journal for all kinds (it mixes
+records with different lives); tasks only in the hub (teams have their own task tools).
+
+```arc42
+:::decision
+id: dec-records-per-type
+title: One interface of the hub for every type of record
+status: accepted
+date: 2026-11-07
+addresses: qg-usability
+:::
+```
+
+## Everything as YAML in a local Git repository first
+
+**Context:** The storage behind the interfaces should be local and predictably fast at first, and
+replaceable later. **Decision:** At first, the hub stores every type as YAML files in a local Git
+repository on the hub host and commits locally. The push to a remote is mocked. Tasks are local
+drafts too. Later, tasks are synced with the task tool of the team (for example GitHub or GitLab
+issues), and the synced task replaces the local draft. **Consequences:** No external service is
+needed to start, and commits stay fast. Sessions are written in the background at an interval
+(`dec-session-persistence`). OPEN: the format of the session log (YAML like the others, or one
+line per event, which suits a log that only grows). **Rejected:** a database (not needed yet);
+external task tools from the start (slow and not predictable).
+
+```arc42
+:::decision
+id: dec-yaml-git-storage
+title: Every type as YAML in a local Git repository; push mocked
+status: accepted
+date: 2026-11-07
+addresses: risk-archive-latency, qg-performance
+:::
+```
+

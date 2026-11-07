@@ -70,3 +70,9 @@ proposed it and it still needs confirmation.
 | agent inference | Writes in the background, at most one in progress, coalescing later events | ch.9 dec-session-persistence | medium | — |
 | Maintainer, review 12 | Keep a separately deployed hub; call it hub instead of server | ch.5, ch.7, ch.12 | high | — |
 | agent inference | The hub keeps identity and its signing key permanently | ch.7 | medium | — |
+| Maintainer, review 13 | First version: commit into a local Git repository in the hub; the push is mocked | ch.7, ch.9 dec-yaml-git-storage | high | — |
+| Maintainer, review 13 | Tasks belong to the task tools of the team; at first a local YAML draft, later synced and replaced | ch.9 dec-yaml-git-storage | high | — |
+| Maintainer, review 13 | Everything as YAML in the Git repository, local and predictably fast | ch.9 dec-yaml-git-storage | high | OPEN: format of the session log |
+| Maintainer, review 13 | A dedicated interface for every type; notes, minutes and decisions are different things | ch.9 dec-records-per-type | high | — |
+| agent inference | Building blocks: records part, tasks part, artifact tools, archive part | ch.9 dec-records-per-type | low | OPEN: confirm |
+

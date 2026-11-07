@@ -81,9 +81,10 @@ hosts: bb-mcp, bb-cli, bb-client-core, bb-replicator
 ## Office hub
 
 One server or container that runs the hub: the meeting session, the journal, the artifact tools and the stage.
-It writes session logs to an external Git repository (`dec-session-persistence`). It keeps its own
+It stores sessions and all other records as YAML in a local Git repository on this host
+(`dec-yaml-git-storage`); the push to a remote is mocked for now. It keeps its own
 state permanently: the participants and their keys (identity) and its signing key for the tree
-heads (`dec-merkle-log`). OPEN: where the journal and the artifacts are stored.
+heads (`dec-merkle-log`).
 
 ```arc42
 :::deployment-node
