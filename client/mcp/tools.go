@@ -172,6 +172,35 @@ type eventsIn struct {
 	Limit   uint32 `json:"limit,omitempty" jsonschema:"At most this many events. 0: the server's default (100); at most 1000."`
 }
 
+type taskCreateIn struct {
+	Title       string `json:"title" jsonschema:"Short title of the task."`
+	Description string `json:"description,omitempty" jsonschema:"What to do, as free text (Markdown). Never include a sentence that is off the record."`
+	Assignee    string `json:"assignee,omitempty" jsonschema:"Participant ID of who does the task. Default: nobody yet."`
+	Status      string `json:"status,omitempty" jsonschema:"open, in_progress, done or cancelled. Default: open."`
+	Session     string `json:"session,omitempty" jsonschema:"Link the task to this session. Default: no session (unlike the session commands)."`
+}
+
+type taskRefIn struct {
+	Ref string `json:"ref" jsonschema:"The ref of the task as the hub returned it, for example \"local:42\". Treat it as opaque."`
+}
+
+type taskListIn struct {
+	Statuses  []string `json:"statuses,omitempty" jsonschema:"Only tasks with one of these statuses: open, in_progress, done, cancelled. Default: all."`
+	Assignee  string   `json:"assignee,omitempty" jsonschema:"Only tasks of this participant. Default: all."`
+	Session   string   `json:"session,omitempty" jsonschema:"Only tasks linked to this session. Default: all."`
+	PageToken string   `json:"pageToken,omitempty" jsonschema:"The nextPageToken of the previous result, to read the next page."`
+	Limit     uint32   `json:"limit,omitempty" jsonschema:"At most this many tasks. 0: the hub's default (100); at most 1000."`
+}
+
+type taskUpdateIn struct {
+	Ref         string  `json:"ref" jsonschema:"The ref of the task, for example \"local:42\"."`
+	Title       *string `json:"title,omitempty" jsonschema:"New title."`
+	Description *string `json:"description,omitempty" jsonschema:"New description. Never include a sentence that is off the record."`
+	Assignee    *string `json:"assignee,omitempty" jsonschema:"New assignee (participant ID); an empty string removes the assignee."`
+	Status      *string `json:"status,omitempty" jsonschema:"New status: open, in_progress, done or cancelled."`
+	Session     *string `json:"session,omitempty" jsonschema:"Link the task to this session; an empty string removes the link."`
+}
+
 type noIn struct{}
 
 func (s *Server) addTools(srv *sdk.Server) {
@@ -494,6 +523,63 @@ func (s *Server) addTools(srv *sdk.Server) {
 				out[i] = core.MessageJSON(m)
 			}
 			return map[string]any{"minutes": out}, nil
+		})
+
+	const drafts = ` Tasks are local drafts in the hub for now; later the hub syncs them with the team's task tool (for example GitHub issues), and the ref then names the synced task. Treat a ref as opaque.`
+	tool(srv, s, &sdk.Tool{Name: "task_create", Title: "Create a task", Annotations: additive,
+		Description: `Create a task of the team, with you as its author, for example "Write the release notes" assigned to a participant. Give session to link it to a meeting. Never put a sentence that is off the record into a task. Returns {"task": {"ref", "status", …}, "duplicate"}.` + drafts},
+		func(ctx context.Context, c *core.Client, in taskCreateIn) (any, error) {
+			if blank(in.Title) {
+				return nil, usagef("title is required")
+			}
+			res, err := c.CreateTask(ctx, core.TaskDraft{Title: in.Title, Description: in.Description, Assignee: in.Assignee,
+				Status: in.Status, SessionID: in.Session})
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"task": core.MessageJSON(res.GetTask()), "duplicate": res.GetDuplicate()}, nil
+		})
+
+	tool(srv, s, &sdk.Tool{Name: "task_get", Title: "Get a task", Annotations: readOnly,
+		Description: `Get one task by its ref. Returns {"task"}; fails with not_found for an unknown ref.` + drafts},
+		func(ctx context.Context, c *core.Client, in taskRefIn) (any, error) {
+			if blank(in.Ref) {
+				return nil, usagef("ref is required")
+			}
+			t, err := c.GetTask(ctx, in.Ref)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"task": core.MessageJSON(t)}, nil
+		})
+
+	tool(srv, s, &sdk.Tool{Name: "task_list", Title: "List tasks", Annotations: readOnly,
+		Description: `List tasks, oldest first, filtered by statuses, assignee and session. Returns {"tasks": […], "nextPageToken"}; while nextPageToken is not empty, pass it as pageToken to read the next page.` + drafts},
+		func(ctx context.Context, c *core.Client, in taskListIn) (any, error) {
+			ts, next, err := c.ListTasks(ctx, core.TaskFilter{Statuses: in.Statuses, Assignee: in.Assignee, SessionID: in.Session,
+				PageToken: in.PageToken, Limit: in.Limit})
+			if err != nil {
+				return nil, err
+			}
+			out := make([]any, len(ts))
+			for i, t := range ts {
+				out[i] = core.MessageJSON(t)
+			}
+			return map[string]any{"tasks": out, "nextPageToken": next}, nil
+		})
+
+	tool(srv, s, &sdk.Tool{Name: "task_update", Title: "Update a task", Annotations: additive,
+		Description: `Change a task: give its ref and only the fields to change (title, description, assignee, status, session). For example status "done" when the work is finished. Every change is kept in the history of the archive. Returns {"task", "duplicate"}; the revision of the task grows with every change.` + drafts},
+		func(ctx context.Context, c *core.Client, in taskUpdateIn) (any, error) {
+			if blank(in.Ref) {
+				return nil, usagef("ref is required")
+			}
+			res, err := c.UpdateTask(ctx, in.Ref, core.TaskChange{Title: in.Title, Description: in.Description,
+				Assignee: in.Assignee, Status: in.Status, SessionID: in.Session})
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"task": core.MessageJSON(res.GetTask()), "duplicate": res.GetDuplicate()}, nil
 		})
 
 	tool(srv, s, &sdk.Tool{Name: "meeting_events", Title: "Read events after a cursor", Annotations: readOnly,

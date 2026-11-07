@@ -61,6 +61,15 @@ Records (never put a sentence that is off the record into them):
   minutes list [--after N] [--limit N]
   (the list commands take --session to show only the records of one session)
 
+Tasks (local drafts in the hub for now; a ref such as local:42 is opaque):
+  task create <title> [--description D | --description-file F] [--assignee P] [--status S]
+                                     create a task (--session links it to a session)
+  task get <ref>
+  task list [--status S[,S]] [--assignee P] [--page-token T] [--limit N]  (--session filters)
+  task update <ref> [--title T] [--description D | --description-file F] [--assignee P] [--status S]
+                                     change a task (--session S links it, --session "" removes the link)
+  (statuses: open, in_progress, done, cancelled)
+
 MCP:
   mcp                                run the MCP server on stdin/stdout (for an MCP client; see README.md)
 
@@ -126,6 +135,10 @@ func init() {
 		"note list":                cmdNoteList,
 		"minutes show":             cmdMinutesShow,
 		"minutes list":             cmdMinutesList,
+		"task create":              cmdTaskCreate,
+		"task get":                 cmdTaskGet,
+		"task list":                cmdTaskList,
+		"task update":              cmdTaskUpdate,
 		"replicator run":           cmdReplicatorRun,
 		"mcp":                      cmdMCP,
 	}

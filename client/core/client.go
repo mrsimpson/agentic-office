@@ -19,6 +19,7 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/records/minutes/api/minutesv1connect"
 	"github.com/mrsimpson/agentic-office/hub/records/note/api/notev1connect"
 	"github.com/mrsimpson/agentic-office/hub/session/api/sessionv1connect"
+	"github.com/mrsimpson/agentic-office/hub/tasks/api/taskv1connect"
 )
 
 // Client is an authenticated client of the office hub for one actor (one key).
@@ -32,6 +33,7 @@ type Client struct {
 	Decision decisionv1connect.DecisionServiceClient
 	Minutes  minutesv1connect.MinutesServiceClient
 	Note     notev1connect.NoteServiceClient
+	Task     taskv1connect.TaskServiceClient
 	Artifact artifactv1connect.ArtifactServiceClient
 }
 
@@ -62,6 +64,7 @@ func Dial(cfg Config) (*Client, error) {
 		Decision: decisionv1connect.NewDecisionServiceClient(cc),
 		Minutes:  minutesv1connect.NewMinutesServiceClient(cc),
 		Note:     notev1connect.NewNoteServiceClient(cc),
+		Task:     taskv1connect.NewTaskServiceClient(cc),
 		Artifact: artifactv1connect.NewArtifactServiceClient(cc),
 	}, nil
 }

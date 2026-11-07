@@ -43,6 +43,7 @@ import (
 	minutesv1connect "github.com/mrsimpson/agentic-office/hub/records/minutes/api/minutesv1connect"
 	notev1connect "github.com/mrsimpson/agentic-office/hub/records/note/api/notev1connect"
 	sessionv1connect "github.com/mrsimpson/agentic-office/hub/session/api/sessionv1connect"
+	taskv1connect "github.com/mrsimpson/agentic-office/hub/tasks/api/taskv1connect"
 )
 
 var (
@@ -330,6 +331,7 @@ type Clients struct {
 	Decision decisionv1connect.DecisionServiceClient
 	Minutes  minutesv1connect.MinutesServiceClient
 	Note     notev1connect.NoteServiceClient
+	Task     taskv1connect.TaskServiceClient
 	Artifact artifactv1connect.ArtifactServiceClient
 }
 
@@ -346,6 +348,7 @@ func NewClients(baseURL string, hc *http.Client, interceptors ...connect.ClientI
 		Decision: decisionv1connect.NewDecisionServiceClient(c),
 		Minutes:  minutesv1connect.NewMinutesServiceClient(c),
 		Note:     notev1connect.NewNoteServiceClient(c),
+		Task:     taskv1connect.NewTaskServiceClient(c),
 		Artifact: artifactv1connect.NewArtifactServiceClient(c),
 	}
 }

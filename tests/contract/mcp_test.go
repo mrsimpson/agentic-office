@@ -161,7 +161,7 @@ func mcpJoined(t *testing.T, v map[string]any) (logPath, pid string, replicatorP
 var mcpTools = []string{"meeting_join", "meeting_log", "meeting_leave", "meeting_pause", "meeting_resume", "meeting_end",
 	"utterance_say", "utterance_off_the_record", "signal_turn_end", "signal_silence_long", "signal_addressed", "hand_raise",
 	"minutes_update", "stage_show", "stage_link", "slides_render", "artifact_get", "decision_record", "decision_list", "minutes_get", "minutes_list", "note_add", "note_list",
-	"whoami"}
+	"task_create", "task_get", "task_list", "task_update", "whoami"}
 
 // TestMCPToolsDescribeTheLog: the server offers every tool, and tells an agent how to follow
 // the log file and which event types to filter for.
@@ -677,4 +677,85 @@ func TestMCPWithCLIReplicator(t *testing.T) {
 	}
 	_, ev = eventOf(t, bot.ok("say", "via CLI"))
 	waitLog(t, logPath, ev.GetId())
+}
+
+// TestMCPTasks: task_create, task_get, task_list and task_update against the real hub. The tool
+// descriptions say that tasks are local drafts for now.
+func TestMCPTasks(t *testing.T) {
+	m := newMachine(t)
+	bot := m.user("bot", "Bot", "agent")
+	ada := m.user("ada", "Ada", "human")
+	s := startMCP(t, bot)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	for tool, err := range s.cs.Tools(ctx, nil) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.HasPrefix(tool.Name, "task_") && !strings.Contains(tool.Description, "local drafts") {
+			t.Errorf("the description of %s does not say that tasks are local drafts: %s", tool.Name, tool.Description)
+		}
+		if (tool.Name == "task_create" || tool.Name == "task_update") && !strings.Contains(tool.Description+fmt.Sprint(tool.InputSchema), "off the record") {
+			t.Errorf("%s does not mention sentences off the record", tool.Name)
+		}
+	}
+
+	v := s.ok("task_create", map[string]any{"title": "Write the notes", "assignee": "ada", "session": "s1"})
+	t1, _ := v["task"].(map[string]any)
+	ref1, _ := t1["ref"].(string)
+	if v["duplicate"] != false || ref1 == "" || t1["status"] != "TASK_STATUS_OPEN" || t1["authorParticipantId"] != "bot" ||
+		t1["authorKind"] != "AUTHOR_KIND_AGENT" || t1["sessionId"] != "s1" || t1["source"] != "TASK_SOURCE_LOCAL" {
+		t.Fatalf("task_create: %v", v)
+	}
+	ref2, _ := ada.ok("task", "create", "Ada's task")["task"].(map[string]any)["ref"].(string)
+	t3, _ := s.ok("task_create", map[string]any{"title": "Done already", "status": "done"})["task"].(map[string]any)
+	ref3, _ := t3["ref"].(string)
+
+	if g, _ := s.ok("task_get", map[string]any{"ref": ref2})["task"].(map[string]any); g["authorParticipantId"] != "ada" {
+		t.Fatalf("task_get: %v", g)
+	}
+	for _, c := range []struct {
+		args map[string]any
+		want string
+	}{
+		{nil, ref1 + "," + ref2 + "," + ref3},
+		{map[string]any{"statuses": []any{"open"}}, ref1 + "," + ref2},
+		{map[string]any{"statuses": []any{"done", "in_progress"}}, ref3},
+		{map[string]any{"assignee": "ada"}, ref1},
+		{map[string]any{"session": "s1"}, ref1},
+	} {
+		if got := refsOfJSON(listOf(t, s.ok("task_list", c.args), "tasks")); got != c.want {
+			t.Fatalf("task_list %v: %s, want %s", c.args, got, c.want)
+		}
+	}
+	p1 := s.ok("task_list", map[string]any{"limit": 2})
+	next, _ := p1["nextPageToken"].(string)
+	if refsOfJSON(listOf(t, p1, "tasks")) != ref1+","+ref2 || next == "" {
+		t.Fatalf("task_list page 1: %v", p1)
+	}
+	if p2 := s.ok("task_list", map[string]any{"limit": 2, "pageToken": next}); refsOfJSON(listOf(t, p2, "tasks")) != ref3 || p2["nextPageToken"] != "" {
+		t.Fatalf("task_list page 2: %v", p2)
+	}
+
+	v = s.ok("task_update", map[string]any{"ref": ref1, "status": "in_progress", "assignee": ""})
+	if u, _ := v["task"].(map[string]any); v["duplicate"] != false || u["status"] != "TASK_STATUS_IN_PROGRESS" ||
+		u["assigneeParticipantId"] != nil || u["sessionId"] != "s1" || u["title"] != "Write the notes" || u["revision"] != float64(2) ||
+		u["updatedByParticipantId"] != "bot" {
+		t.Fatalf("task_update: %v", v)
+	}
+	if g, _ := ada.ok("task", "get", ref1)["task"].(map[string]any); g["status"] != "TASK_STATUS_IN_PROGRESS" {
+		t.Fatalf("the CLI sees another task: %v", g)
+	}
+
+	s.fails("usage", "task_create", nil)
+	s.fails("usage", "task_create", map[string]any{"title": "x", "status": "later"})
+	s.fails("usage", "task_get", nil)
+	s.fails("usage", "task_list", map[string]any{"statuses": []any{"someday"}})
+	s.fails("usage", "task_update", map[string]any{"ref": ref1})
+	s.fails("usage", "task_update", nil)
+	s.fails("not_found", "task_get", map[string]any{"ref": "local:999"})
+	s.fails("not_found", "task_update", map[string]any{"ref": "github:owner/repo#1", "status": "done"})
+	s.fails("invalid_argument", "task_update", map[string]any{"ref": ref1, "title": " "})
+	s.fails("invalid_argument", "task_list", map[string]any{"pageToken": "bad"})
 }

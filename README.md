@@ -94,6 +94,8 @@ hub/                      bb-office-hub: wiring of the hub (binary office-hub)
     decision/api/         if-decision-api: contract and generated code
     minutes/api/          if-minutes-api: contract and generated code
     note/api/             if-note-api: contract and generated code
+  tasks/                  bb-tasks: tasks as local YAML drafts in the archive
+    api/                  if-task-api: contract and generated code
   artifacts/ artifacts/api/  bb-artifact-service, if-artifact-api
   stage/                  bb-stage, realizes if-stage-web
 client/                   bb-participant-client: wiring of the client (binary office)
@@ -124,6 +126,7 @@ All interfaces are defined in Protobuf and served with Connect RPC (`dec-connect
 | Decisions | `office.decision.v1.DecisionService` | unary |
 | Minutes | `office.minutes.v1.MinutesService` | unary |
 | Notes | `office.note.v1.NoteService` | unary |
+| Tasks | `office.task.v1.TaskService` | unary |
 | Artifact API | `office.artifact.v1.ArtifactService` | unary |
 
 Rules that hold for all of them:
@@ -194,8 +197,8 @@ Transparency), and the hub signs its tree heads (`dec-merkle-log`). Package
 
 ### Archive
 
-The archive (`hub/archive`) stores the sessions and the records (decisions, minutes and notes,
-see [Records](#records-decisions-minutes-and-notes)) of the hub in a local Git repository on the hub
+The archive (`hub/archive`) stores the sessions, the records (decisions, minutes and notes,
+see [Records](#records-decisions-minutes-and-notes)) and the tasks (see [Tasks](#tasks)) of the hub in a local Git repository on the hub
 host, by default `<data-dir>/archive` (`-archive-dir`). It creates the repository (branch `main`)
 on the first start. Every write is one commit. The push to a remote is mocked: it does nothing
 and reports success (#43). The hub needs the `git` command line tool in `PATH`. It runs git
@@ -271,8 +274,8 @@ interface. The package comment in `hub/records/doc.go` has the details. In short
 - The list calls return records after the cursor `after_id`, oldest first, optionally of one
   session. They return at most `limit` records (default 100, at most 1000). To read the next
   page, pass the ID of the last record. IDs start at 1 per type.
-- Tasks are not records here; they get their own interface (#38). The old journal kind `task`
-  is gone.
+- Tasks are not records here; they have their own part of the hub (see [Tasks](#tasks)). The
+  old journal kind `task` is gone.
 - Do not put a sentence that is off the record into minutes, decisions or notes
   (`dec-off-the-record`). The hub does not check this.
 
@@ -297,6 +300,60 @@ Minutes have `session_id`, `text`, `author_participant_id`, `author_kind`, `time
 `command_id` (`office/session-end/<command ID of EndSession>`). The hub reads all records from
 the current commit of the archive when it starts, so they survive a restart. An older hub kept a
 journal in `<data-dir>/journal.jsonl`; the hub no longer reads it and logs a note if it exists.
+
+### Tasks
+
+The tasks (`hub/tasks`, `office.task.v1.TaskService`) are work items of the team. The package
+comment in `hub/tasks/doc.go` has the details. In short:
+
+- For now every task is a **local draft** of the hub (`dec-yaml-git-storage`). Later the hub syncs
+  tasks with the task tool of the team, and the synced task replaces the draft (#40).
+- A task is named by its **ref**, for example `local:42`. After the sync, refs of other schemes
+  appear (for example `github:owner/repo#12`). Treat a ref as opaque: keep it and pass it back.
+  `source` says where the task lives; today it is always `TASK_SOURCE_LOCAL`.
+- A task has a title, a description, an assignee (a participant ID), a status (`open`,
+  `in_progress`, `done`, `cancelled`) and an optional session ID. The hub checks neither the
+  assignee nor the session. It records the author and its kind from the token, who changed the
+  task last, the times, and a `revision` that starts at 1 and grows with every change.
+- `CreateTask` needs a title; the status defaults to open. `UpdateTask` changes only the fields
+  it sets; an empty assignee or session removes it. An update that changes nothing makes no new
+  revision. `GetTask` and `UpdateTask` answer `not_found` for an unknown ref.
+- `ListTasks` filters by statuses, assignee and session, oldest first, at most `limit` tasks
+  (default 100, at most 1000). If more tasks match, `next_page_token` is set: pass it as
+  `page_token` to read the next page.
+- Writes are idempotent by `command_id`. A repeated create or update returns the task with
+  `duplicate` set and changes nothing. A `command_id` used for another task or another kind of
+  command fails with `already_exists`.
+- Any participant may read and change every task. A stage link cannot use the tasks.
+
+Every task is one YAML file in the archive, `tasks/000001.yaml` (the local number with at least
+six digits). Creating it is one commit; every change rewrites the file in a new commit, so
+`git log -p -- tasks/000001.yaml` shows the history of the task. The fields are those of the
+contract in snake_case, plus `command_ids`: the commands that created and changed the task.
+The call returns after the commit. The hub reads all tasks back when it starts.
+
+```yaml
+ref: "local:1"
+source: "TASK_SOURCE_LOCAL"
+title: "Write the release notes"
+description: ""
+assignee_participant_id: "bot"
+status: "TASK_STATUS_DONE"
+session_id: "weekly"
+author_participant_id: "ada"
+author_kind: "AUTHOR_KIND_HUMAN"
+create_time: "2026-11-07T19:02:11.401253Z"
+updated_by_participant_id: "bot"
+update_time: "2026-11-07T19:40:03.118871Z"
+revision: 2
+command_id: "01a1b740-97c5-733b-bc48-e7e52a691139"
+command_ids:
+    - "01a1b740-97c5-733b-bc48-e7e52a691139"
+    - "01a1b7a2-1c3e-7e0a-9a55-02c4b1f4d6e2"
+```
+
+Like the records, a task write waits for its commit, and so for a session write that the archive
+is carrying out at that moment (#45).
 
 ### Artifact tools
 
@@ -347,7 +404,7 @@ All files of the hub are in its data directory, by default `~/.config/agentic-of
 | `artifacts.jsonl` | Artifacts, one JSON object per line: command ID, input and artifact in the form of the API. The hub appends to it. |
 | `tls.crt`, `tls.key` | TLS certificate and key. The hub creates a self-signed pair if neither exists. |
 | `signing.key` | Ed25519 key that signs the tree heads of session logs (`-signing-key`). The hub creates it if it does not exist. Keep it: without it, old tree heads cannot be checked against the hub key. |
-| `archive/` | The Git repository of the archive (`-archive-dir`): sessions, decisions, minutes and notes. The hub creates it and commits into it. See [Archive](#archive). |
+| `archive/` | The Git repository of the archive (`-archive-dir`): sessions, decisions, minutes, notes and tasks. The hub creates it and commits into it. See [Archive](#archive). |
 
 Flags of the hub (`bin/office-hub -h` lists them all):
 
@@ -470,6 +527,25 @@ office minutes list
 With `--json` they print `{"decision": …, "duplicate": …}` or `{"note": …, "duplicate": …}`; the
 lists print `{"decisions": […]}`, `{"notes": […]}` and `{"minutes": […]}`, and `minutes show`
 prints `{"minutes": …}`. Without `--json`, `minutes show` prints the text of the minutes.
+
+**Tasks** (local drafts in the hub for now, see [Tasks](#tasks)):
+
+```sh
+office task create "Write the release notes" --assignee bot --session weekly
+office task create "Book the room" --description-file room.md --status in_progress
+office task get local:1
+office task list --status open,in_progress --assignee bot
+office task list --limit 20 --page-token 20   # the token that the page before printed
+office task update local:1 --status done
+office task update local:1 --assignee "" --session ""   # remove the assignee and the session
+```
+
+Statuses are `open`, `in_progress` (or `in-progress`), `done` and `cancelled`. `task create`
+links the task to a session with `--session`; `task list --session S` shows the tasks of one
+session; `task update` changes the session only with an explicit `--session`. With `--json`,
+`task create`, `task get` and `task update` print `{"task": …}` (create and update also
+`"duplicate"`), and `task list` prints `{"tasks": […], "nextPageToken": …}`. Without `--json`,
+`task list` prints the token of the next page on stderr.
 
 **Slides:**
 
@@ -656,6 +732,8 @@ tool names.
 | `decision_record` (text, session), `decision_list` (afterId, limit, session) | `decision record`, `decision list` |
 | `note_add` (text, session), `note_list` (afterId, limit, session) | `note add`, `note list` |
 | `minutes_get` (session), `minutes_list` (afterId, limit, session) | `minutes show`, `minutes list` |
+| `task_create` (title, description, assignee, status, session), `task_get` (ref) | `task create`, `task get` |
+| `task_list` (statuses, assignee, session, pageToken, limit), `task_update` (ref and the fields to change) | `task list`, `task update` |
 | `whoami` | `whoami` |
 
 Session tools take an optional `session`. The default is `--session` or `OFFICE_SESSION`, else the
@@ -701,7 +779,7 @@ through its interfaces:
 - `tests/contract/stub_example_test.go` shows a test against a stub service.
 - `tests/contract/mcp_test.go` starts `office mcp` and talks to it over stdio with the MCP Go SDK
   client: every tool and its result, the log path that receives the events of all participants,
-  errors for bad input, server errors, the artifact tools, decisions, minutes and notes,
+  errors for bad input, server errors, the artifact tools, decisions, minutes, notes and tasks,
   and that no writer is left
   when the MCP process closes or is killed. `tests/e2e/mcp_test.go`: an agent works only through
   MCP and follows its log with the `tail -f | grep` filter from the tool description.

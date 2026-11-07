@@ -10,7 +10,7 @@
 //     clients cannot write minutes here;
 //   - notes (if-note-api, NoteService): add and list free notes, with or without a session.
 //
-// Service implements all three. Tasks are not records of this block (#38).
+// Service implements all three. Tasks have their own building block (package tasks).
 //
 // How it works:
 //

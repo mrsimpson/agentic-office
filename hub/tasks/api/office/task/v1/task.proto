@@ -1,0 +1,165 @@
+// Tasks (if-task-api): work items of the team, with a title, a description, an assignee, a status
+// and an optional link to a meeting session. One of the record types of the hub
+// (dec-records-per-type).
+//
+// For now every task is a local draft that the hub stores in its archive (dec-yaml-git-storage).
+// Later the hub syncs tasks with the task tool of the team (for example GitHub or GitLab issues),
+// and the synced task replaces the draft (#40). The contract is made for that step:
+//
+//   - A task is named by its ref, a string with a scheme, for example "local:42" today and
+//     "github:owner/repo#12" later. Clients must treat a ref as opaque: they store it and pass it
+//     back, and never build or parse one.
+//   - source tells where the task lives. Today it is always TASK_SOURCE_LOCAL.
+//   - The list call pages with an opaque page token, not with a number.
+//
+// Every call needs an access token of a participant (see identity.proto). A stage link cannot
+// read or write tasks. A sentence that is off the record must not go into a task
+// (dec-off-the-record).
+syntax = "proto3";
+
+package office.task.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/mrsimpson/agentic-office/hub/tasks/api;taskv1";
+
+service TaskService {
+  // CreateTask creates a task. It is idempotent by command_id: a repeated request returns the
+  // stored task with duplicate set. The same command_id with another title, description,
+  // assignee, status, session or author fails with already_exists.
+  rpc CreateTask(CreateTaskRequest) returns (CreateTaskResponse);
+  // GetTask returns one task. An unknown ref fails with not_found.
+  rpc GetTask(GetTaskRequest) returns (GetTaskResponse);
+  // ListTasks returns the tasks that match all given filters, in the order they were created.
+  rpc ListTasks(ListTasksRequest) returns (ListTasksResponse);
+  // UpdateTask changes the fields of a task that the request sets. It is idempotent by
+  // command_id: a repeated request returns the current task with duplicate set and changes
+  // nothing. A command_id that was used for another task, or to create a task, fails with
+  // already_exists. An unknown ref fails with not_found.
+  rpc UpdateTask(UpdateTaskRequest) returns (UpdateTaskResponse);
+}
+
+message Task {
+  // ref names the task, for example "local:42". It never changes. Treat it as opaque.
+  string ref = 1;
+  // source tells where the task lives.
+  TaskSource source = 2;
+  string title = 3;
+  // description is free text, for example Markdown. It may be empty.
+  string description = 4;
+  // assignee_participant_id is the participant who does the task. Empty: nobody yet. The hub
+  // does not check that the participant exists.
+  string assignee_participant_id = 5;
+  TaskStatus status = 6;
+  // session_id links the task to a meeting session. Empty: no session. It is not checked.
+  string session_id = 7;
+  // author_participant_id is the human or agent who created the task.
+  string author_participant_id = 8;
+  // author_kind tells whether the author is a human or an agent, at the time of creating.
+  AuthorKind author_kind = 9;
+  google.protobuf.Timestamp create_time = 10;
+  // updated_by_participant_id is the participant of the last change; at first the author.
+  string updated_by_participant_id = 11;
+  google.protobuf.Timestamp update_time = 12;
+  // revision is 1 when the task is created and grows by one with every change.
+  uint32 revision = 13;
+  // command_id is the command that created the task.
+  string command_id = 14;
+}
+
+message CreateTaskRequest {
+  // command_id is created by the client. A repeated request with the same command_id has no
+  // extra effect.
+  string command_id = 1;
+  // title is required.
+  string title = 2;
+  string description = 3;
+  string assignee_participant_id = 4;
+  // status of the new task. TASK_STATUS_UNSPECIFIED means TASK_STATUS_OPEN.
+  TaskStatus status = 5;
+  // session_id links the task to a meeting session. Optional; it is not checked.
+  string session_id = 6;
+  // author_participant_id must be the participant of the access token.
+  string author_participant_id = 7;
+}
+
+message CreateTaskResponse {
+  Task task = 1;
+  bool duplicate = 2;
+}
+
+message GetTaskRequest {
+  string ref = 1;
+}
+
+message GetTaskResponse {
+  Task task = 1;
+}
+
+message ListTasksRequest {
+  // statuses filters by status: a task matches if it has one of them. Empty: all statuses.
+  repeated TaskStatus statuses = 1;
+  // assignee_participant_id filters by assignee. Empty: all tasks, with or without assignee.
+  string assignee_participant_id = 2;
+  // session_id filters by session. Empty: the tasks of all sessions and without one.
+  string session_id = 3;
+  // page_token is the next_page_token of the previous response, to read the next page. Empty:
+  // the first page. Treat it as opaque; it is only valid with the same filters.
+  string page_token = 4;
+  // limit is the largest number of tasks in the response. 0 means the server's default.
+  uint32 limit = 5;
+}
+
+message ListTasksResponse {
+  repeated Task tasks = 1;
+  // next_page_token reads the next page. Empty: there are no more tasks.
+  string next_page_token = 2;
+}
+
+message UpdateTaskRequest {
+  // command_id is created by the client. A repeated request with the same command_id has no
+  // extra effect.
+  string command_id = 1;
+  string ref = 2;
+  // participant_id is who makes the change. It must be the participant of the access token.
+  string participant_id = 3;
+  // The fields to change. A field that is not set stays as it is. At least one must be set.
+  // title must not be blank. An empty assignee_participant_id or session_id removes it.
+  optional string title = 4;
+  optional string description = 5;
+  optional string assignee_participant_id = 6;
+  // status must not be TASK_STATUS_UNSPECIFIED.
+  optional TaskStatus status = 7;
+  optional string session_id = 8;
+}
+
+message UpdateTaskResponse {
+  // task is the task after the change. If the request changes no value, the task stays at its
+  // revision.
+  Task task = 1;
+  bool duplicate = 2;
+}
+
+// TaskStatus is where a task stands.
+enum TaskStatus {
+  TASK_STATUS_UNSPECIFIED = 0;
+  TASK_STATUS_OPEN = 1;
+  TASK_STATUS_IN_PROGRESS = 2;
+  TASK_STATUS_DONE = 3;
+  TASK_STATUS_CANCELLED = 4;
+}
+
+// TaskSource tells where a task lives. A later sync with the task tool of the team adds sources;
+// a synced task then replaces its local draft (#40).
+enum TaskSource {
+  TASK_SOURCE_UNSPECIFIED = 0;
+  // TASK_SOURCE_LOCAL is a local draft, stored in the archive of the hub.
+  TASK_SOURCE_LOCAL = 1;
+}
+
+// AuthorKind tells whether the author of a task is a human or an agent.
+enum AuthorKind {
+  AUTHOR_KIND_UNSPECIFIED = 0;
+  AUTHOR_KIND_HUMAN = 1;
+  AUTHOR_KIND_AGENT = 2;
+}

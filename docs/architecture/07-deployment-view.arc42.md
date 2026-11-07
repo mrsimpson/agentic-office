@@ -27,6 +27,7 @@ architecture-beta
     service bb-mcp(server)[MCP server] in dn-agent-runtime
     service bb-session-service(server)[Meeting session] in dn-office-hub
     service bb-records(database)[Records] in dn-office-hub
+    service bb-tasks(database)[Tasks] in dn-office-hub
     service bb-artifact-service(server)[Artifact tools] in dn-office-hub
     service bb-stage(internet)[Stage] in dn-office-hub
     service bb-identity(server)[Identity] in dn-office-hub
@@ -81,11 +82,10 @@ hosts: bb-mcp, bb-cli, bb-client-core, bb-replicator
 
 ## Office hub
 
-One server or container that runs the hub: the meeting session, the records, the artifact tools,
-the stage and the archive. The archive stores sessions, decisions, minutes and notes in a local Git
-repository on this host (`dec-yaml-git-storage`); the push to a remote is mocked for now. The
-host needs the Git command line tool. It keeps its own
-state permanently: the participants and their keys (identity) and its signing key for the tree
+One server or container that runs the hub: the meeting session, the records, the tasks, the
+artifact tools, the stage and the archive. The archive stores sessions, decisions, minutes, notes
+and tasks in a local Git repository on this host (`dec-yaml-git-storage`); the push to a remote
+is mocked for now. The host needs the Git command line tool. It keeps its own state permanently: the participants and their keys (identity) and its signing key for the tree
 heads (`dec-merkle-log`).
 
 ```arc42
@@ -94,6 +94,6 @@ id: dn-office-hub
 title: Office hub
 type: server
 parent: env-mvp
-hosts: bb-session-service, bb-records, bb-artifact-service, bb-stage, bb-identity, bb-archive
+hosts: bb-session-service, bb-records, bb-tasks, bb-artifact-service, bb-stage, bb-identity, bb-archive
 :::
 ```

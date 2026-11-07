@@ -144,6 +144,30 @@ definition: A decision, the minutes of a session or a note that the hub stores i
 :::
 ```
 
+## Task
+
+A work item of the team (`dec-records-per-type`).
+
+```arc42
+:::glossary-term
+id: term-task
+title: Task
+definition: A work item with a title, a description, an assignee, a status (open, in progress, done or cancelled) and an optional link to a session; for now a local draft that the hub stores in the archive, later synced with the task tool of the team
+:::
+```
+
+## Task reference
+
+How clients name a task.
+
+```arc42
+:::glossary-term
+id: term-task-reference
+title: Task reference
+definition: The stable name of a task, a text with a scheme such as local:42 for a draft of the hub or github:owner/repo#12 for an issue; clients keep it and pass it back but never build or read its parts
+:::
+```
+
 ## Actor
 
 Who authenticates against the office.

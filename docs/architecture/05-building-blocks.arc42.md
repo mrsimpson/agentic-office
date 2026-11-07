@@ -6,7 +6,7 @@ dependencies in the code (`concept-module-boundaries`). Interfaces that only ext
 (CLI, MCP, stage view, audio input) are in chapter 3.
 
 At the top level the system has two parts. The **office hub** manages sessions, the records of
-the team (decisions, minutes and notes), artifacts and the stage. The **participant client** runs on the computer of every participant,
+the team (decisions, minutes and notes), the tasks, artifacts and the stage. The **participant client** runs on the computer of every participant,
 human or agent.
 
 ## Overview
@@ -30,6 +30,7 @@ flowchart LR
     bb_participant_client -->|if-decision-api| bb_office_hub
     bb_participant_client -->|if-minutes-api| bb_office_hub
     bb_participant_client -->|if-note-api| bb_office_hub
+    bb_participant_client -->|if-task-api| bb_office_hub
     bb_participant_client -->|if-auth-api| bb_office_hub
     bb_participant_client -->|if-session-stream| bb_office_hub
 ```
@@ -58,7 +59,7 @@ id: bb-office-hub-whitebox
 view: building-block
 notation: mermaid
 roots: bb-office-hub
-aliases: bb_office_hub=bb-office-hub, bb_archive=bb-archive, bb_artifact_service=bb-artifact-service, bb_identity=bb-identity, bb_records=bb-records, bb_session_service=bb-session-service, bb_stage=bb-stage
+aliases: bb_office_hub=bb-office-hub, bb_archive=bb-archive, bb_artifact_service=bb-artifact-service, bb_identity=bb-identity, bb_records=bb-records, bb_session_service=bb-session-service, bb_stage=bb-stage, bb_tasks=bb-tasks
 :::
 ```
 
@@ -71,6 +72,7 @@ flowchart LR
         bb_records[Records]
         bb_session_service[Meeting session]
         bb_stage[Stage]
+        bb_tasks[Tasks]
     end
     bb_artifact_service -->|if-token-check| bb_identity
     bb_records -->|if-archive-storage| bb_archive
@@ -81,6 +83,8 @@ flowchart LR
     bb_stage -->|if-session-stream| bb_session_service
     bb_stage -->|if-artifact-api| bb_artifact_service
     bb_stage -->|if-auth-api| bb_identity
+    bb_tasks -->|if-archive-storage| bb_archive
+    bb_tasks -->|if-token-check| bb_identity
 ```
 
 ### Session commands
@@ -199,6 +203,32 @@ path: hub/records/note/api
 :::
 ```
 
+### Tasks
+
+Create a task, read one, list tasks and change them: title, description, assignee, status (open,
+in progress, done, cancelled) and a link to a session. List filters by status, assignee and
+session and reads page by page. A task records its author and whether the author is a human or
+an agent, and who changed it last. Each command carries an ID created by the client, so a
+repeated command has no extra effect. A sentence that is off the record must not go into a task.
+
+For now every task is a local draft of the hub (`dec-yaml-git-storage`). Later the hub syncs tasks
+with the task tool of the team, and the synced task replaces the draft. So that this step does
+not change the contract, a task is named by a stable reference with a scheme, for example
+`local:42` today and `github:owner/repo#12` later. Clients treat the reference as opaque: they
+keep it and pass it back. Each task also says where it lives; today that is always the hub.
+OPEN: how a synced task replaces its draft, and which side is the truth (#40).
+
+```arc42
+:::interface
+id: if-task-api
+title: Tasks
+provider: bb-office-hub
+x-realized-by: bb-tasks
+protocol: Connect RPC, unary (dec-connect-rpc)
+path: hub/tasks/api
+:::
+```
+
 ### Artifact API
 
 Create, render, check and fetch artifacts.
@@ -260,7 +290,7 @@ head signed by the hub over exactly that log (`dec-merkle-log`).
 The memory of the team: decisions, minutes and notes (`dec-records-per-type`). It replaces the
 journal, which held all kinds in one list. Each type has its own interface and its own types.
 Each record keeps its origin: who wrote it, and whether a human or an agent. Tasks are not part
-of this block; they get their own part of the hub.
+of this block; they have their own part of the hub.
 
 Every record is one YAML file in the archive, and every new record is one commit
 (`dec-yaml-git-storage`). A command returns only after its commit, so a record that a client got
@@ -275,6 +305,29 @@ title: Records (decisions, minutes, notes)
 technology: Go / YAML in the archive
 parent: bb-office-hub
 path: hub/records
+requires: if-token-check, if-archive-storage
+:::
+```
+
+### Tasks part
+
+Keeps the tasks of the team behind the task interface (`dec-records-per-type`). For now every
+task is a local draft: one YAML file in the archive per task (`dec-yaml-git-storage`). Creating a
+task is one commit, and every change rewrites the file in a new commit, so the archive keeps the
+history of every task. A command returns only after its commit. When the hub starts, the block
+reads its tasks back from the archive, so they survive a restart. Like the records part, it
+writes synchronously and can wait behind a session write of the archive (#45).
+
+A later sync with the task tool of the team (#40) belongs to this block. Only the hub will hold
+the credentials of that tool.
+
+```arc42
+:::building-block
+id: bb-tasks
+title: Tasks
+technology: Go / YAML in the archive
+parent: bb-office-hub
+path: hub/tasks
 requires: if-token-check, if-archive-storage
 :::
 ```
@@ -445,7 +498,8 @@ path: client/cli
 ### MCP tools
 
 Tools such as `meeting.join`, `meeting.leave`, `hand.raise`, `minutes.update`, `stage.show`,
-`slides.render`, `plan.validate`, `decision.record`, `minutes.get`, `note.add`.
+`slides.render`, `plan.validate`, `decision.record`, `minutes.get`, `note.add`, `task.create`,
+`task.update`.
 
 ```arc42
 :::interface
@@ -505,7 +559,7 @@ title: Client core
 technology: Go
 parent: bb-participant-client
 path: client/core
-requires: if-session-commands, if-auth-api, if-decision-api, if-minutes-api, if-note-api, if-artifact-api, if-local-log
+requires: if-session-commands, if-auth-api, if-decision-api, if-minutes-api, if-note-api, if-task-api, if-artifact-api, if-local-log
 :::
 ```
 
@@ -529,8 +583,8 @@ path: client/core
 The main access for humans and for agents with a shell. `office meeting join <session> [--mic]`
 starts the replication and prints the log path. With `--mic`, the terminal shows the user's own
 utterances with their status (partial → final → sent / off the record). Keys let the user pause and
-mark a sentence off the record. Other commands cover artifacts, the stage, decisions, minutes
-and notes.
+mark a sentence off the record. Other commands cover artifacts, the stage, decisions, minutes,
+notes and tasks.
 
 ```arc42
 :::building-block

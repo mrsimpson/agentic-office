@@ -3,8 +3,8 @@
 // All services are mounted, and the stage at /stage/<session>?token=<stage link token>. Every call
 // needs an access token from the identity block, except GetChallenge and ExchangeChallenge. The server speaks only TLS. The meeting session keeps its
 // logs in memory, signs their tree heads with the signing key and writes them to the archive (a local Git
-// repository; the push is mocked). The records (decisions, minutes and notes) are YAML files in the
-// archive too; the artifact tools keep their data in a file.
+// repository; the push is mocked). The records (decisions, minutes and notes) and the tasks (local
+// drafts) are YAML files in the archive too; the artifact tools keep their data in a file.
 //
 // Files in the data directory (-data-dir):
 //
@@ -16,7 +16,8 @@
 //	signing.key  Ed25519 key that signs the tree heads of session logs; created if it does not exist
 //	archive/     Git repository of the archive (-archive-dir); the meeting session writes its logs
 //	             there at the interval -archive-interval and when a session ends; decisions,
-//	             minutes and notes are committed there one by one (see package records)
+//	             minutes and notes are committed there one by one (see package records), and so
+//	             is every new or changed task (see package tasks)
 package main
 
 import (
@@ -51,6 +52,8 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/session"
 	"github.com/mrsimpson/agentic-office/hub/session/api/sessionv1connect"
 	"github.com/mrsimpson/agentic-office/hub/stage"
+	"github.com/mrsimpson/agentic-office/hub/tasks"
+	"github.com/mrsimpson/agentic-office/hub/tasks/api/taskv1connect"
 )
 
 func defaultDataDir() string {
@@ -147,6 +150,12 @@ func main() {
 	}
 	nd, nm, nn := recs.Counts()
 	log.Printf("records: %d decisions, %d minutes, %d notes", nd, nm, nn)
+	// Tasks: local drafts as YAML files in the archive, read once at the start (#40 syncs them later).
+	tks, err := tasks.Open(context.Background(), arch)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("tasks: %d local drafts", tks.Count())
 	sessions := session.New(session.NewMemoryStore(), session.TokenCheck(), recs, signingKey)
 	if err := sessions.UseArchive(session.ArchiveOptions{Archive: arch, Interval: *archiveInterval, Logf: log.Printf}); err != nil {
 		log.Fatal(err)
@@ -162,6 +171,7 @@ func main() {
 	decisionv1connect.RegisterDecisionServiceHandler(cs, recs)
 	minutesv1connect.RegisterMinutesServiceHandler(cs, recs)
 	notev1connect.RegisterNoteServiceHandler(cs, recs)
+	taskv1connect.RegisterTaskServiceHandler(cs, tks)
 	artifactv1connect.RegisterArtifactServiceHandler(cs, arts)
 	mux := http.NewServeMux()
 	connecthttp.Mount(mux, cs)

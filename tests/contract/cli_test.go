@@ -816,3 +816,108 @@ func TestCLIGatewayView(t *testing.T) {
 		t.Fatal("view did not stop on session.ended")
 	}
 }
+
+// refsOfJSON returns the refs of tasks in a --json or MCP result, joined with commas.
+func refsOfJSON(ts []map[string]any) string {
+	var got []string
+	for _, tk := range ts {
+		got = append(got, fmt.Sprint(tk["ref"]))
+	}
+	return strings.Join(got, ",")
+}
+
+// TestCLITasks: task create, get, list and update against the real hub. Refs are passed back as
+// printed; statuses have short names.
+func TestCLITasks(t *testing.T) {
+	m := newMachine(t)
+	bot := m.user("bot", "Bot", "agent")
+	ada := m.user("ada", "Ada", "human")
+
+	v := bot.ok("task", "create", "Write", "the", "notes", "--assignee", "ada", "--description", "Line one\nline two")
+	t1, _ := v["task"].(map[string]any)
+	ref1, _ := t1["ref"].(string)
+	if v["duplicate"] != false || ref1 == "" || t1["title"] != "Write the notes" || t1["status"] != "TASK_STATUS_OPEN" ||
+		t1["source"] != "TASK_SOURCE_LOCAL" || t1["assigneeParticipantId"] != "ada" || t1["authorParticipantId"] != "bot" ||
+		t1["authorKind"] != "AUTHOR_KIND_AGENT" || t1["description"] != "Line one\nline two" || t1["sessionId"] != nil ||
+		t1["revision"] != float64(1) {
+		t.Fatalf("task create: %v", v)
+	}
+	f := filepath.Join(t.TempDir(), "task.md")
+	if err := os.WriteFile(f, []byte("From a file"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t2, _ := ada.ok("task", "create", "Book the room", "--session", "s1", "--status", "in-progress", "--description-file", f)["task"].(map[string]any)
+	ref2, _ := t2["ref"].(string)
+	if t2["status"] != "TASK_STATUS_IN_PROGRESS" || t2["sessionId"] != "s1" || t2["description"] != "From a file" ||
+		t2["authorKind"] != "AUTHOR_KIND_HUMAN" {
+		t.Fatalf("task create with a session: %v", t2)
+	}
+	out, _, code := ada.run("task", "create", "Third")
+	ref3 := strings.TrimPrefix(strings.TrimSpace(out), "task ")
+	if code != 0 || !strings.HasPrefix(out, "task ") || ref3 == "" || ref3 == ref1 || ref3 == ref2 {
+		t.Fatalf("task create without --json: exit %d, %q", code, out)
+	}
+
+	if g, _ := ada.ok("task", "get", ref1)["task"].(map[string]any); g["ref"] != ref1 || g["title"] != "Write the notes" {
+		t.Fatalf("task get: %v", g)
+	}
+	if out, _, code := ada.run("task", "get", ref1); code != 0 ||
+		out != ref1+" [open] Write the notes\nassignee: ada\nauthor: bot\nrevision: 1\n\nLine one\nline two\n" {
+		t.Fatalf("task get without --json: exit %d, %q", code, out)
+	}
+
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{nil, ref1 + "," + ref2 + "," + ref3},
+		{[]string{"--status", "open"}, ref1 + "," + ref3},
+		{[]string{"--status", "in_progress,done"}, ref2},
+		{[]string{"--assignee", "ada"}, ref1},
+		{[]string{"--session", "s1"}, ref2},
+	} {
+		if got := refsOfJSON(listOf(t, bot.ok(append([]string{"task", "list"}, c.args...)...), "tasks")); got != c.want {
+			t.Fatalf("task list %v: %s, want %s", c.args, got, c.want)
+		}
+	}
+	p1 := bot.ok("task", "list", "--limit", "2")
+	next, _ := p1["nextPageToken"].(string)
+	if refsOfJSON(listOf(t, p1, "tasks")) != ref1+","+ref2 || next == "" {
+		t.Fatalf("task list --limit 2: %v", p1)
+	}
+	if p2 := bot.ok("task", "list", "--limit", "2", "--page-token", next); refsOfJSON(listOf(t, p2, "tasks")) != ref3 || p2["nextPageToken"] != "" {
+		t.Fatalf("task list page 2: %v", p2)
+	}
+	if out, errOut, code := ada.run("task", "list", "--limit", "1"); code != 0 || out != ref1+" [open] @ada Write the notes\n" ||
+		!strings.Contains(errOut, "--page-token") {
+		t.Fatalf("task list without --json: exit %d, %q, %q", code, out, errOut)
+	}
+
+	u, _ := ada.ok("task", "update", ref1, "--status", "done", "--title", "Notes written", "--session", "s2")["task"].(map[string]any)
+	if u["status"] != "TASK_STATUS_DONE" || u["title"] != "Notes written" || u["sessionId"] != "s2" || u["revision"] != float64(2) ||
+		u["updatedByParticipantId"] != "ada" || u["assigneeParticipantId"] != "ada" || u["description"] != "Line one\nline two" {
+		t.Fatalf("task update: %v", u)
+	}
+	u, _ = bot.ok("task", "update", ref1, "--assignee", "", "--session", "", "--description", "")["task"].(map[string]any)
+	if u["assigneeParticipantId"] != nil || u["sessionId"] != nil || u["description"] != nil || u["revision"] != float64(3) {
+		t.Fatalf("task update that removes fields: %v", u)
+	}
+	if out, _, code := bot.run("task", "update", ref2, "--status", "cancelled"); code != 0 || out != "task "+ref2+" revision 2\n" {
+		t.Fatalf("task update without --json: exit %d, %q", code, out)
+	}
+	if got := refsOfJSON(listOf(t, bot.ok("task", "list", "--status", "done,cancelled"), "tasks")); got != ref1+","+ref2 {
+		t.Fatalf("task list after updates: %s", got)
+	}
+
+	bot.fails(2, "usage", "task", "create")
+	bot.fails(2, "usage", "task", "create", "x", "--status", "later")
+	bot.fails(2, "usage", "task", "create", "x", "--description", "a", "--description-file", f)
+	bot.fails(2, "usage", "task", "get")
+	bot.fails(2, "usage", "task", "list", "extra")
+	bot.fails(2, "usage", "task", "list", "--status", "someday")
+	bot.fails(2, "usage", "task", "update", ref1)
+	bot.fails(2, "usage", "task", "update", ref1, "--status", "later")
+	bot.fails(1, "not_found", "task", "get", "local:999")
+	bot.fails(1, "not_found", "task", "update", "github:owner/repo#1", "--status", "done")
+	bot.fails(1, "invalid_argument", "task", "update", ref1, "--title", " ")
+}

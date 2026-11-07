@@ -218,6 +218,51 @@ involves: bb-mcp, bb-cli, bb-session-service, bb-records, bb-archive, bb-replica
 :::
 ```
 
+## Agent creates a task, a human finishes it
+
+In a meeting, a human asks the agent to note a task for a colleague. The agent calls
+`task.create` with a title, the assignee and the session. The tasks part checks the token, writes
+the task as one YAML file into the archive and commits it before it answers with the reference of
+the task (`dec-yaml-git-storage`). Later the assignee lists the open tasks assigned to them and
+sets the status to done. The tasks part rewrites the file in a new commit, so the archive keeps
+the history. Both commands carry an ID created by the client, so a repeat after a network drop
+changes nothing.
+
+```arc42
+:::runtime-scenario
+id: rs-task-lifecycle
+title: Agent creates a task, a human finishes it
+trigger: A human asks the agent in a meeting to note a task
+involves: bb-mcp, bb-cli, bb-client-core, bb-tasks, bb-identity, bb-archive, bb-participant-client, bb-office-hub
+:::
+```
+
+```arc42
+:::diagram
+id: seq-task-lifecycle
+notation: mermaid-sequence
+scenario: rs-task-lifecycle
+aliases: bb_mcp=bb-mcp, bb_cli=bb-cli, bb_tasks=bb-tasks, bb_archive=bb-archive
+:::
+```
+
+```mermaid
+sequenceDiagram
+    participant bb_mcp as MCP server
+    participant bb_cli as office CLI
+    participant bb_tasks as Tasks
+    participant bb_archive as Archive
+    bb_mcp->>bb_tasks: create task (title, assignee, session, command ID)
+    bb_tasks->>bb_archive: commit (one YAML file)
+    bb_archive-->>bb_tasks: commit ID
+    bb_tasks-->>bb_mcp: task with reference local:7
+    bb_cli->>bb_tasks: list tasks (status open, assignee)
+    bb_tasks-->>bb_cli: tasks
+    bb_cli->>bb_tasks: update task local:7 (status done, command ID)
+    bb_tasks->>bb_archive: commit (the file again)
+    bb_tasks-->>bb_cli: task, revision 2
+```
+
 ## Hub writes sessions to the archive
 
 While sessions run, the meeting session writes every session that changed to the archive, at a
