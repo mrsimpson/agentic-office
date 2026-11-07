@@ -11,7 +11,7 @@ the events that should wake it up, for example `turn.end` and `addressed`.
 id: rs-agent-joins
 title: Agent joins a meeting
 trigger: Agent calls meeting.join
-involves: bb-mcp, bb-client-core, bb-session-service, bb-replicator, bb-participant-client, bb-office-server
+involves: bb-mcp, bb-client-core, bb-session-service, bb-replicator, bb-participant-client, bb-office-hub
 :::
 ```
 
@@ -51,7 +51,7 @@ local file. The speaker's terminal shows the status "sent".
 id: rs-human-speaks
 title: Human speaks, agent receives the sentence
 trigger: End of sentence (VAD pause) in the headset signal
-involves: bb-ears, bb-client-core, bb-session-service, bb-replicator, bb-cli, bb-participant-client, bb-office-server
+involves: bb-ears, bb-client-core, bb-session-service, bb-replicator, bb-cli, bb-participant-client, bb-office-hub
 :::
 ```
 
@@ -93,7 +93,7 @@ reconnects with the ID of its last line and receives everything it missed.
 id: rs-network-drop
 title: Network drop and resume
 trigger: Network connection of a participant is lost and comes back
-involves: bb-ears, bb-session-service, bb-replicator, bb-participant-client, bb-office-server
+involves: bb-ears, bb-session-service, bb-replicator, bb-participant-client, bb-office-hub
 :::
 ```
 
@@ -133,7 +133,7 @@ expires, the client repeats the steps. This also happens after a network drop.
 id: rs-authenticate
 title: Participant authenticates with its key
 trigger: First call of a client, or the access token is about to expire
-involves: bb-cli, bb-mcp, bb-ears, bb-client-core, bb-identity, bb-session-service, bb-participant-client, bb-office-server
+involves: bb-cli, bb-mcp, bb-ears, bb-client-core, bb-identity, bb-session-service, bb-participant-client, bb-office-hub
 :::
 ```
 
@@ -147,7 +147,7 @@ floor, it shows the artifact. The stage reads the same events from the session s
 id: rs-agent-shows-artifact
 title: Agent raises its hand and shows an artifact
 trigger: Agent decides after turn.end to raise its hand
-involves: bb-cli, bb-artifact-service, bb-session-service, bb-stage, bb-replicator, bb-participant-client, bb-office-server
+involves: bb-cli, bb-artifact-service, bb-session-service, bb-stage, bb-replicator, bb-participant-client, bb-office-hub
 :::
 ```
 
@@ -184,7 +184,7 @@ sequenceDiagram
 
 What is said stays said (`dec-off-the-record`). The human presses a key in the gateway terminal
 to mark their own sentence off the record. The CLI sends `utterance.mark_off_the_record`. The
-server checks that the caller is the speaker. The log gets a new event `utterance.off_the_record`
+hub checks that the caller is the speaker. The log gets a new event `utterance.off_the_record`
 that points to the original utterance. Existing lines are never rewritten. From then on, the
 interfaces deliver the utterance only as a placeholder without its text, the stage hides it, and
 it does not go into minutes or the journal. Agents that already read it must respect the
@@ -195,7 +195,7 @@ mark.
 id: rs-off-the-record
 title: Human marks a sentence off the record
 trigger: A key in the gateway terminal
-involves: bb-cli, bb-session-service, bb-replicator, bb-stage, bb-participant-client, bb-office-server
+involves: bb-cli, bb-session-service, bb-replicator, bb-stage, bb-participant-client, bb-office-hub
 :::
 ```
 
@@ -210,6 +210,6 @@ replicators stop.
 id: rs-session-ends
 title: Session ends, minutes go to the journal
 trigger: The moderator ends the session
-involves: bb-mcp, bb-cli, bb-session-service, bb-journal, bb-replicator, bb-participant-client, bb-office-server
+involves: bb-mcp, bb-cli, bb-session-service, bb-journal, bb-replicator, bb-participant-client, bb-office-hub
 :::
 ```

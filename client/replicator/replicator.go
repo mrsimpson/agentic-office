@@ -15,9 +15,9 @@ import (
 	"connectrpc.com/connect/v2"
 
 	"github.com/mrsimpson/agentic-office/client/replicator/locallog"
-	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
-	"github.com/mrsimpson/agentic-office/server/session/api/events"
-	sessionv1connect "github.com/mrsimpson/agentic-office/server/session/api/sessionv1connect"
+	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
+	"github.com/mrsimpson/agentic-office/hub/session/api/events"
+	sessionv1connect "github.com/mrsimpson/agentic-office/hub/session/api/sessionv1connect"
 )
 
 // ErrRunning means that another replicator holds the lock of the file.

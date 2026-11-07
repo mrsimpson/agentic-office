@@ -8,10 +8,10 @@ import (
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	artifactv1 "github.com/mrsimpson/agentic-office/server/artifacts/api"
-	"github.com/mrsimpson/agentic-office/server/identity/api/auth"
-	journalv1 "github.com/mrsimpson/agentic-office/server/journal/api"
-	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
+	artifactv1 "github.com/mrsimpson/agentic-office/hub/artifacts/api"
+	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
+	journalv1 "github.com/mrsimpson/agentic-office/hub/journal/api"
+	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 
 	"github.com/mrsimpson/agentic-office/client/core"
 	"github.com/mrsimpson/agentic-office/client/replicator"

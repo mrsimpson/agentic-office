@@ -51,6 +51,6 @@ setup, without speaker recognition. Raw audio does not leave the device (see
 
 ## Stage by screen share
 
-We do not integrate meeting tools. Instead, the server renders a stage as a web page, and someone
+We do not integrate meeting tools. Instead, the hub renders a stage as a web page, and someone
 shares it in the meeting. The agent shows itself there: raised hands, minutes, artifacts (see
 `dec-stage-screenshare`).

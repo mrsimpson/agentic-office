@@ -171,6 +171,6 @@ title: Status of own sentences is visible
 quality: qg-usability
 stimulus: A sentence is sent or marked off the record
 response: The terminal shows the status; the stage shows the capture status
-metric: Status visible ≤ 1 s after the server confirms it (OPEN)
+metric: Status visible ≤ 1 s after the hub confirms it (OPEN)
 :::
 ```

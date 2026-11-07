@@ -32,8 +32,8 @@ import (
 	"time"
 
 	"github.com/mrsimpson/agentic-office/client/replicator/locallog"
-	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
-	"github.com/mrsimpson/agentic-office/server/session/api/events"
+	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
+	"github.com/mrsimpson/agentic-office/hub/session/api/events"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
@@ -189,7 +189,7 @@ type stageEvents struct {
 }
 
 // openStageEvents opens the event stream of a stage link (like openStage) and records each event.
-func openStageEvents(t *testing.T, srv *contracttest.Server, link string) *stageEvents {
+func openStageEvents(t *testing.T, srv *contracttest.Hub, link string) *stageEvents {
 	t.Helper()
 	u, err := url.Parse(link)
 	if err != nil {

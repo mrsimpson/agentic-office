@@ -2,7 +2,7 @@
 
 package e2e
 
-// End-to-end tests of the ears (bb-ears) with real processes: office-server, an agent "bot"
+// End-to-end tests of the ears (bb-ears) with real processes: office-hub, an agent "bot"
 // that only follows its local log, and a human "ada" who joins with "office meeting join
 // --wav" (or --mic with a mock recorder). They need the Whisper and the VAD model (see
 // earsModels). Without the models, the tests are skipped.
@@ -23,9 +23,9 @@ import (
 
 	"github.com/mrsimpson/agentic-office/client/core/ids"
 	"github.com/mrsimpson/agentic-office/client/replicator/locallog"
-	"github.com/mrsimpson/agentic-office/server/identity/api/auth"
-	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
-	"github.com/mrsimpson/agentic-office/server/session/api/events"
+	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
+	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
+	"github.com/mrsimpson/agentic-office/hub/session/api/events"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
@@ -84,7 +84,7 @@ func earsModels(t *testing.T) []string {
 // meeting is a server with an admin, and a runtime directory on one machine.
 type meeting struct {
 	t       *testing.T
-	srv     *contracttest.Server
+	srv     *contracttest.Hub
 	runtime string
 	admin   []string
 	sid     string
@@ -92,7 +92,7 @@ type meeting struct {
 
 func newMeeting(t *testing.T) *meeting {
 	t.Helper()
-	srv := contracttest.StartServer(t, nil)
+	srv := contracttest.StartHub(t, nil)
 	m := &meeting{t: t, srv: srv, runtime: filepath.Join(t.TempDir(), "run"), sid: "ears-" + ids.NewCommandID()[:8]}
 	adminKey := filepath.Join(t.TempDir(), "admin.pem")
 	if err := auth.WriteKey(adminKey, srv.AdminKey); err != nil {
@@ -103,7 +103,7 @@ func newMeeting(t *testing.T) *meeting {
 }
 
 func (m *meeting) envFor(key, server string) []string {
-	return []string{"OFFICE_SERVER=" + server, "OFFICE_CA_CERT=" + m.srv.CertFile, "OFFICE_KEY=" + key,
+	return []string{"OFFICE_HUB=" + server, "OFFICE_CA_CERT=" + m.srv.CertFile, "OFFICE_KEY=" + key,
 		"OFFICE_RUNTIME_DIR=" + m.runtime, "OFFICE_SESSION=", "OFFICE_JSON="}
 }
 

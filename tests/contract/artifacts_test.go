@@ -1,7 +1,7 @@
 package contract
 
 // Contract tests of the artifact tools (bb-artifact-service) through if-artifact-api. They start
-// the real office-server and use only the Connect clients.
+// the real office-hub and use only the Connect clients.
 
 import (
 	"bytes"
@@ -16,8 +16,8 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/mrsimpson/agentic-office/client/core/ids"
-	artifactv1 "github.com/mrsimpson/agentic-office/server/artifacts/api"
-	identityv1 "github.com/mrsimpson/agentic-office/server/identity/api"
+	artifactv1 "github.com/mrsimpson/agentic-office/hub/artifacts/api"
+	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
@@ -108,7 +108,7 @@ func parsePage(t *testing.T, b []byte) page {
 // TestArtifactsRenderAndGet: a deck becomes an HTML artifact "slides/<n>" that anyone with a
 // participant token can fetch by its ID.
 func TestArtifactsRenderAndGet(t *testing.T) {
-	srv := contracttest.StartServer(t, nil)
+	srv := contracttest.StartHub(t, nil)
 	bot := srv.Participant(t, "bot", "Bot", agent)
 	ada := srv.Participant(t, "ada", "Ada", human)
 
@@ -161,7 +161,7 @@ func TestArtifactsRenderAndGet(t *testing.T) {
 // TestArtifactsDeterministic: the same deck gives byte-equal content, whoever renders it, with
 // another command ID, on another server (con-no-intelligence). Another deck gives other content.
 func TestArtifactsDeterministic(t *testing.T) {
-	srv := contracttest.StartServer(t, nil)
+	srv := contracttest.StartHub(t, nil)
 	bot := srv.Participant(t, "bot", "Bot", agent)
 	ada := srv.Participant(t, "ada", "Ada", human)
 
@@ -202,14 +202,14 @@ func TestArtifactsDeterministic(t *testing.T) {
 // srv2Render renders budgetDeck on a fresh server and returns the content.
 func srv2Render(t *testing.T) []byte {
 	t.Helper()
-	srv := contracttest.StartServer(t, nil)
+	srv := contracttest.StartHub(t, nil)
 	return render(t, srv.Participant(t, "carl", "Carl", human), budgetDeck()).GetContent()
 }
 
 // TestArtifactsIdempotent: a repeated render returns the stored artifact; a reused command ID
 // with another deck or author fails.
 func TestArtifactsIdempotent(t *testing.T) {
-	srv := contracttest.StartServer(t, nil)
+	srv := contracttest.StartHub(t, nil)
 	bot := srv.Participant(t, "bot", "Bot", agent)
 	ada := srv.Participant(t, "ada", "Ada", human)
 
@@ -241,7 +241,7 @@ func TestArtifactsIdempotent(t *testing.T) {
 
 // TestArtifactsErrors: bad requests, a wrong author, no token, stage links and unknown IDs.
 func TestArtifactsErrors(t *testing.T) {
-	srv := contracttest.StartServer(t, nil)
+	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
 	ok := func() *artifactv1.RenderSlidesRequest {
 		r := budgetDeck()
@@ -308,7 +308,7 @@ func TestArtifactsErrors(t *testing.T) {
 
 // TestArtifactsEscapeText: all text of a deck is shown as text. Nothing in it becomes markup.
 func TestArtifactsEscapeText(t *testing.T) {
-	srv := contracttest.StartServer(t, nil)
+	srv := contracttest.StartHub(t, nil)
 	bot := srv.Participant(t, "bot", "Bot", agent)
 	hostile := []string{
 		`<script>alert(1)</script>`,
@@ -356,10 +356,10 @@ func TestArtifactsEscapeText(t *testing.T) {
 	}
 }
 
-// TestArtifactsSurviveRestart: the office server keeps artifacts in its data directory, so IDs
+// TestArtifactsSurviveRestart: the office hub keeps artifacts in its data directory, so IDs
 // do not start again and a repeat after a restart is still a duplicate.
 func TestArtifactsSurviveRestart(t *testing.T) {
-	srv := contracttest.StartServer(t, nil)
+	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
 	req := budgetDeck()
 	req.CommandId, req.AuthorParticipantId = ids.NewCommandID(), "ada"
@@ -385,7 +385,7 @@ func TestArtifactsSurviveRestart(t *testing.T) {
 	}
 	f.Close()
 
-	srv = contracttest.StartServerIn(t, srv.DataDir, srv.AdminKey, nil)
+	srv = contracttest.StartHubIn(t, srv.DataDir, srv.AdminKey, nil)
 	ada = srv.WithKey(t, ada.Key)
 	if got := getArtifact(t, ada, a1.GetId()); !proto.Equal(got, a1) {
 		t.Fatalf("after restart: %v, want %v", got, a1)

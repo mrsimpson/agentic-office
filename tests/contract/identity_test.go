@@ -1,7 +1,7 @@
 package contract
 
 // Contract tests of Identity (bb-identity) through if-auth-api, and of the token check
-// (if-token-check) as the session uses it. They start the real office-server and use only its
+// (if-token-check) as the session uses it. They start the real office-hub and use only its
 // interfaces and the shared client helpers in server/identity/api/auth.
 
 import (
@@ -18,10 +18,10 @@ import (
 	"connectrpc.com/connect/v2"
 
 	"github.com/mrsimpson/agentic-office/client/core/ids"
-	identityv1 "github.com/mrsimpson/agentic-office/server/identity/api"
-	"github.com/mrsimpson/agentic-office/server/identity/api/auth"
-	journalv1 "github.com/mrsimpson/agentic-office/server/journal/api"
-	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
+	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
+	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
+	journalv1 "github.com/mrsimpson/agentic-office/hub/journal/api"
+	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
@@ -82,7 +82,7 @@ func join(t *testing.T, c contracttest.Clients, sid string) *sessionv1.JoinRespo
 
 // A valid signature of a fresh challenge gives a token bound to the key. Everything else fails.
 func TestIdentityChallengeAndResponse(t *testing.T) {
-	srv := contracttest.StartServer(t, nil)
+	srv := contracttest.StartHub(t, nil)
 	anon := srv.Anonymous(t).Identity
 	ctx := ctx10(t)
 	key := newKey(t)
@@ -162,7 +162,7 @@ func TestIdentityChallengeAndResponse(t *testing.T) {
 
 // The session rejects every command and the stream without a valid token.
 func TestSessionRejectsCallsWithoutValidToken(t *testing.T) {
-	srv := contracttest.StartServer(t, nil)
+	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
 	join(t, ada.Clients, "s")
 
@@ -265,7 +265,7 @@ func endAndRead(t *testing.T, a *contracttest.Actor, sid string) []*sessionv1.Ev
 
 // Only admins register and revoke keys. A participant can have several keys.
 func TestIdentityAdminRegistersKeys(t *testing.T) {
-	srv := contracttest.StartServer(t, nil)
+	srv := contracttest.StartHub(t, nil)
 	admin := srv.Admin(t).Identity
 	ctx := ctx10(t)
 	key := newKey(t)
@@ -332,7 +332,7 @@ func TestIdentityAdminRegistersKeys(t *testing.T) {
 
 // A removed key and its tokens stop working at once. Other keys of the participant still work.
 func TestIdentityRevokedKey(t *testing.T) {
-	srv := contracttest.StartServer(t, nil)
+	srv := contracttest.StartHub(t, nil)
 	admin := srv.Admin(t).Identity
 	laptop := srv.Participant(t, "ada", "Ada", human)
 	phone := srv.Participant(t, "ada", "", identityv1.ActorKind_ACTOR_KIND_UNSPECIFIED)
@@ -375,7 +375,7 @@ func TestIdentityRevokedKey(t *testing.T) {
 // Stage links expire after -stage-link-ttl.
 func TestIdentityTokenExpires(t *testing.T) {
 	const ttl = time.Second
-	srv := contracttest.StartServer(t, nil, "-token-ttl", ttl.String(), "-stage-link-ttl", ttl.String())
+	srv := contracttest.StartHub(t, nil, "-token-ttl", ttl.String(), "-stage-link-ttl", ttl.String())
 	ada := srv.Participant(t, "ada", "Ada", human)
 	join(t, ada.Clients, "s")
 	token, err := ada.Tokens.Token(ctx10(t))
@@ -430,7 +430,7 @@ func stageToken(t *testing.T, link string) string {
 
 // A stage link is read-only and for one session: it can read the session stream and nothing else.
 func TestStageLinkIsReadOnly(t *testing.T) {
-	srv := contracttest.StartServer(t, nil)
+	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
 	ctx := ctx10(t)
 	sid := "team meeting/1"
@@ -497,7 +497,7 @@ func TestStageLinkIsReadOnly(t *testing.T) {
 
 // The server speaks only TLS, and clients must trust its certificate.
 func TestServerSpeaksOnlyTLS(t *testing.T) {
-	srv := contracttest.StartServer(t, nil)
+	srv := contracttest.StartHub(t, nil)
 	plain := "http://" + strings.TrimPrefix(srv.URL, "https://")
 	res, err := http.Post(plain+"/office.identity.v1.IdentityService/GetChallenge", "application/json", strings.NewReader("{}"))
 	if err == nil {
@@ -516,7 +516,7 @@ func TestServerSpeaksOnlyTLS(t *testing.T) {
 // Registered keys, revocations and the certificate survive a restart of the server.
 // Tokens do not: clients authenticate again.
 func TestIdentitySurvivesRestart(t *testing.T) {
-	srv := contracttest.StartServer(t, nil)
+	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
 	gone := srv.Participant(t, "bot", "Bot", agent)
 	if _, err := srv.Admin(t).Identity.RevokeKey(ctx10(t), &identityv1.RevokeKeyRequest{CommandId: ids.NewCommandID(),
@@ -531,7 +531,7 @@ func TestIdentitySurvivesRestart(t *testing.T) {
 		t.Fatalf("stop: %d, %v", code, err)
 	}
 
-	srv = contracttest.StartServerIn(t, srv.DataDir, srv.AdminKey, nil)
+	srv = contracttest.StartHubIn(t, srv.DataDir, srv.AdminKey, nil)
 	_, err = srv.WithToken(t, old).Session.Join(ctx10(t), &sessionv1.JoinRequest{SessionId: "s", CommandId: ids.NewCommandID()})
 	wantCode(t, "token from before the restart", err, connect.CodeUnauthenticated)
 	if again := srv.WithKey(t, ada.Key); again.ParticipantID != "ada" {

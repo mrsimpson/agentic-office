@@ -15,11 +15,11 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/mrsimpson/agentic-office/client/core/ids"
-	artifactv1 "github.com/mrsimpson/agentic-office/server/artifacts/api"
-	identityv1 "github.com/mrsimpson/agentic-office/server/identity/api"
-	journalv1 "github.com/mrsimpson/agentic-office/server/journal/api"
-	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
-	"github.com/mrsimpson/agentic-office/server/session/api/events"
+	artifactv1 "github.com/mrsimpson/agentic-office/hub/artifacts/api"
+	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
+	journalv1 "github.com/mrsimpson/agentic-office/hub/journal/api"
+	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
+	"github.com/mrsimpson/agentic-office/hub/session/api/events"
 )
 
 // JoinOptions are the optional fields of a join.

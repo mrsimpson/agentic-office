@@ -14,9 +14,9 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/mrsimpson/agentic-office/client/replicator/locallog"
-	artifactv1 "github.com/mrsimpson/agentic-office/server/artifacts/api"
-	journalv1 "github.com/mrsimpson/agentic-office/server/journal/api"
-	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
+	artifactv1 "github.com/mrsimpson/agentic-office/hub/artifacts/api"
+	journalv1 "github.com/mrsimpson/agentic-office/hub/journal/api"
+	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 )
 
 // This file holds what the CLI (--json) and the MCP server share in their output and input, so

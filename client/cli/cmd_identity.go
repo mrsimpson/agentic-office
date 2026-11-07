@@ -4,8 +4,8 @@ import (
 	"flag"
 	"fmt"
 
-	identityv1 "github.com/mrsimpson/agentic-office/server/identity/api"
-	"github.com/mrsimpson/agentic-office/server/identity/api/auth"
+	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
+	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 )
 
 func (e *env) printKey(path string, pub []byte, created bool) {

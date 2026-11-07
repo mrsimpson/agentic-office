@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/mrsimpson/agentic-office/server/identity/api/auth"
+	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 )
 
 // Proxy is a TCP proxy between clients and a server. Tests point a client at Proxy.URL instead

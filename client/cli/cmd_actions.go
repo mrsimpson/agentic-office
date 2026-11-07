@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	artifactv1 "github.com/mrsimpson/agentic-office/server/artifacts/api"
-	journalv1 "github.com/mrsimpson/agentic-office/server/journal/api"
-	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
+	artifactv1 "github.com/mrsimpson/agentic-office/hub/artifacts/api"
+	journalv1 "github.com/mrsimpson/agentic-office/hub/journal/api"
+	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 
 	"github.com/mrsimpson/agentic-office/client/core"
 )

@@ -188,6 +188,19 @@ The fingerprint of a session log.
 :::glossary-term
 id: term-tree-head
 title: Tree head
-definition: The root hash and size of the Merkle tree over the events of a session, signed by the server
+definition: The root hash and size of the Merkle tree over the events of a session, signed by the hub
 :::
 ```
+
+## Hub
+
+The central part of the office.
+
+```arc42
+:::glossary-term
+id: term-hub
+title: Office hub
+definition: The separately deployed part that orders and distributes the events of a session, checks identities, renders the stage and is the gateway to the archive; it does not store sessions itself
+:::
+```
+

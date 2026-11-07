@@ -30,7 +30,7 @@ You need:
 ### whisper.cpp and the models
 
 The ears use whisper.cpp through cgo, also for voice activity detection. Every build needs it in
-`third_party/whisper.cpp` (not committed), also the build of the server, because `go.mod` points
+`third_party/whisper.cpp` (not committed), also the build of the hub, because `go.mod` points
 the Go bindings of whisper.cpp there:
 
 ```sh
@@ -52,7 +52,7 @@ without make, export them as in the Makefile.
 
 | Command | What it does |
 |---|---|
-| `make build` | Builds all packages and the binaries `bin/office-server` and `bin/office` (needs whisper.cpp) |
+| `make build` | Builds all packages and the binaries `bin/office-hub` and `bin/office` (needs whisper.cpp) |
 | `make arch` | Validates the architecture with the arc42 CLI and runs the architecture test (`tests/architecture/`); needs Node.js |
 | `make test` | Runs `make arch`, `go vet` and the contract tests (`tests/contract/`) |
 | `make e2e` | Runs the end-to-end tests with real processes (`tests/e2e/`, build tag `e2e`). They check behaviour only and never fail on timing. The ears tests need the models and are skipped without them |
@@ -60,26 +60,26 @@ without make, export them as in the Makefile.
 | `make lint` | Checks the Protobuf contracts with `buf lint` |
 | `make generate` | Regenerates the Go code of the contracts next to their `.proto` files |
 
-Run the server by hand:
+Run the hub by hand:
 
 ```sh
-bin/office-server -addr 127.0.0.1:8740
+bin/office-hub -addr 127.0.0.1:8740
 ```
 
-The server speaks only TLS and needs an access token for every call. See
-[Server setup](#server-setup) for the first start.
+The hub speaks only TLS and needs an access token for every call. See
+[Hub setup](#hub-setup) for the first start.
 
 ## Layout
 
 The layout follows the building blocks of chapter 5 of the architecture. Every building block and
 every interface has exactly one path. An interface lies inside the path of its provider and owns
-its types. An interface that crosses the boundary of the server or the client belongs to that
+its types. An interface that crosses the boundary of the hub or the client belongs to that
 black box and is realized by one part (for example the meeting session realizes the session
-commands of the office server). There is no shared package. `make arch` checks that every import between building
+commands of the office hub). There is no shared package. `make arch` checks that every import between building
 blocks goes through an interface that the importing block requires (concept-module-boundaries).
 
 ```
-server/                   bb-office-server: wiring of the server (binary office-server)
+hub/                      bb-office-hub: wiring of the hub (binary office-hub)
   session/                bb-session-service
     api/                  if-session-commands, if-session-stream: contract, generated code,
                           event types in dotted form (api/events)
@@ -127,10 +127,10 @@ Rules that hold for all of them:
 - Every call carries an access token in the header `Authorization: Bearer <token>`, except
   `GetChallenge` and `ExchangeChallenge`. See [Identity](#identity).
 - Connect's own protocol is plain HTTP with JSON. You can call any command with `curl`
-  (`--cacert` trusts the self-signed certificate of the server):
+  (`--cacert` trusts the self-signed certificate of the hub):
 
   ```sh
-  curl --cacert ~/.config/agentic-office/server/tls.crt \
+  curl --cacert ~/.config/agentic-office/hub/tls.crt \
     -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN" \
     -d '{"sessionId":"demo","commandId":"…"}' \
     https://127.0.0.1:8740/office.session.v1.SessionService/Join
@@ -138,8 +138,8 @@ Rules that hold for all of them:
 
 ### Meeting session
 
-The meeting session (`server/session`) is implemented. It keeps its logs in memory, so a restart
-of the server loses all sessions. The package comment in `server/session/doc.go` has the details.
+The meeting session (`hub/session`) is implemented. It keeps its logs in memory, so a restart
+of the hub loses all sessions. The package comment in `hub/session/doc.go` has the details.
 In short:
 
 - A session exists as soon as someone joins or subscribes.
@@ -160,34 +160,34 @@ In short:
 
 ### Identity
 
-Identity (`server/identity`) is implemented. The package comment in `server/identity/doc.go` has
+Identity (`hub/identity`) is implemented. The package comment in `hub/identity/doc.go` has
 the details. In short:
 
 - Every actor (each human device, each agent) has its own Ed25519 key pair, created locally with
-  `server/identity/api/auth`. Only the public key goes to the server.
+  `hub/identity/api/auth`. Only the public key goes to the hub.
 - An admin registers a public key for a participant with `RegisterKey`. The admin chooses the
   participant ID, for example `ada`. A participant can have several keys. `RevokeKey` removes a
   key; its tokens stop working at once.
 - A client gets a challenge (`GetChallenge`), signs it and exchanges it for an access token
   (`ExchangeChallenge`). The token lives 15 minutes (`-token-ttl`). `auth.TokenSource` does this
   and renews the token before it expires; `auth.Bearer` attaches it to every Connect call.
-- `CreateStageLink` returns a read-only link `https://<server>/stage/<session>?token=<token>`
+- `CreateStageLink` returns a read-only link `https://<hub>/stage/<session>?token=<token>`
   for one session. Its token only allows `Subscribe` for that session. It lives 24 hours
   (`-stage-link-ttl`). Open it in a browser to see the stage (below).
 - Registered keys are stored in `<data-dir>/identity.json`. Tokens are kept in memory only, so
-  clients authenticate again after a restart of the server.
+  clients authenticate again after a restart of the hub.
 
 ### Journal
 
-The journal (`server/journal`) is implemented. The package comment in `server/journal/doc.go` has
+The journal (`hub/journal`) is implemented. The package comment in `hub/journal/doc.go` has
 the details. In short:
 
 - An entry has a kind (`decision`, `task`, `minutes`, `note`), a text, an optional session ID, the
-  author and the author's kind (`human` or `agent`). The server takes the author and the kind
+  author and the author's kind (`human` or `agent`). The hub takes the author and the kind
   from the access token: `author_participant_id` must be the participant of the token. A stage
   link cannot use the journal.
 - `AppendEntry` is idempotent by `command_id`. Command IDs that start with `office/` are reserved
-  for the server.
+  for the hub.
 - `ListEntries` returns entries after the cursor `after_entry_id`, oldest first, filtered by kind
   and session. It returns at most `limit` entries (default 100, at most 1000). To read the next
   page, pass the ID of the last entry.
@@ -195,12 +195,12 @@ the details. In short:
   `minutes.updated` event as a `minutes` entry of the session, then writes `session.ended`. Its
   author is the participant who wrote that version. A session without minutes, or with blank
   minutes, stores nothing. What "confirmed minutes" means is still open (#22).
-- The journal is stored in `<data-dir>/journal.jsonl`, so it survives a restart of the server.
+- The journal is stored in `<data-dir>/journal.jsonl`, so it survives a restart of the hub.
 
 ### Artifact tools
 
-The artifact tools (`server/artifacts`) render slides. The package comment in
-`server/artifacts/doc.go` has the details. In short:
+The artifact tools (`hub/artifacts`) render slides. The package comment in
+`hub/artifacts/doc.go` has the details. In short:
 
 - `RenderSlides` takes a deck: an optional title and at least one slide. Every slide has a title,
   and may have bullets and notes. The result is an artifact with the ID `slides/<n>` (n starts at
@@ -213,44 +213,44 @@ The artifact tools (`server/artifacts`) render slides. The package comment in
 - `RenderSlides` is idempotent by `command_id`. The same `command_id` with another deck fails
   with `already_exists`. A new `command_id` with the same deck gives a new ID.
 - `GetArtifact` fetches by ID; an unknown ID fails with `not_found`. Any participant can fetch
-  every artifact. A stage link cannot use the artifact API: the stage renders on the server.
+  every artifact. A stage link cannot use the artifact API: the stage renders on the hub.
 - The meeting session does not check that a shown artifact exists.
-- Artifacts are stored in `<data-dir>/artifacts.jsonl`, so they survive a restart of the server.
+- Artifacts are stored in `<data-dir>/artifacts.jsonl`, so they survive a restart of the hub.
 
 ### Stage
 
-The stage (`server/stage`) is the web page of one session for the screen share. The package
-comment in `server/stage/doc.go` has the details. In short:
+The stage (`hub/stage`) is the web page of one session for the screen share. The package
+comment in `hub/stage/doc.go` has the details. In short:
 
 - Create a link with `office stage link` (or `CreateStageLink`) and open it in a browser. Share
   that browser window in the meeting tool.
 - The page shows the shown artifact, the recent contributions, all participants with their
   capture status (captured, paused, not captured, left; agents are marked "agent"), the raised
   hands and the running minutes. Off the record contributions disappear. Large text, white on black.
-- It is rendered on the server and updated live through server-sent events
+- It is rendered on the hub and updated live through server-sent events
   (`/stage/<session>/events?token=…`). There is no frontend build and nothing is loaded from
   outside. A shown artifact is embedded in a sandboxed iframe.
 - A hand stays raised until its participant speaks, raises it again or leaves (#24).
 - Without a valid stage link for the session, the page fails with 401 (no, unknown or expired
   token) or 403 (a participant token, or a link for another session) and shows no session data.
 
-## Server setup
+## Hub setup
 
-All files of the server are in its data directory, by default `~/.config/agentic-office/server`
+All files of the hub are in its data directory, by default `~/.config/agentic-office/hub`
 (`-data-dir`):
 
 | File | What it is |
 |---|---|
 | `admins` | Admin keys. You write it by hand. |
-| `identity.json` | Registered participants and keys. The server writes it. |
-| `journal.jsonl` | Journal entries, one JSON object per line in the form of the API. The server appends to it. |
-| `artifacts.jsonl` | Artifacts, one JSON object per line: command ID, input and artifact in the form of the API. The server appends to it. |
-| `tls.crt`, `tls.key` | TLS certificate and key. The server creates a self-signed pair if neither exists. |
+| `identity.json` | Registered participants and keys. The hub writes it. |
+| `journal.jsonl` | Journal entries, one JSON object per line in the form of the API. The hub appends to it. |
+| `artifacts.jsonl` | Artifacts, one JSON object per line: command ID, input and artifact in the form of the API. The hub appends to it. |
+| `tls.crt`, `tls.key` | TLS certificate and key. The hub creates a self-signed pair if neither exists. |
 
 ### First admin
 
 An admin is a key in the `admins` file. Only admin keys may call `RegisterKey` and `RevokeKey`.
-Each line has a participant ID, the public key (base64 of the 32 raw bytes, see `server/identity/api/auth`) and
+Each line has a participant ID, the public key (base64 of the 32 raw bytes, see `hub/identity/api/auth`) and
 an optional display name:
 
 ```
@@ -259,8 +259,8 @@ ada            hGs7aXk0n1V6lH1d3mFzWQ0bX2j7zv8nq3C4oD5pE6A=  Ada Lovelace
 ```
 
 1. Create a key pair on your device: `office key create` prints the public key.
-2. Write the public key into `admins` on the server host.
-3. Start or restart the server. It reads the file at start.
+2. Write the public key into `admins` on the hub host.
+3. Start or restart the hub. It reads the file at start.
 4. Authenticate with your key; your token may now register the keys of the other participants
    with `office admin key register` (see [Participant client](#participant-client-office-cli)).
 
@@ -268,7 +268,7 @@ To remove an admin, delete the line and restart. Admin keys cannot be revoked th
 
 ### TLS and your own certificate
 
-On the first start, the server creates a self-signed certificate for `localhost`, `127.0.0.1`,
+On the first start, the hub creates a self-signed certificate for `localhost`, `127.0.0.1`,
 `::1` and the host name (`-tls-hosts` changes the list) and logs its SHA-256 fingerprint.
 Clients trust it by its file: copy `tls.crt` to the client and pass it to `auth.TLSConfig` or
 `auth.HTTPClient` (or to `curl --cacert`).
@@ -276,17 +276,17 @@ Clients trust it by its file: copy `tls.crt` to the client and pass it to `auth.
 To use your own certificate, for example from your CA or Let's Encrypt:
 
 ```sh
-bin/office-server -tls-cert /etc/office/fullchain.pem -tls-key /etc/office/privkey.pem \
+bin/office-hub -tls-cert /etc/office/fullchain.pem -tls-key /etc/office/privkey.pem \
   -public-url https://office.example.org:8740
 ```
 
 - The certificate file is PEM and may hold the whole chain. The key file is PEM (PKCS #8, PKCS #1
   or SEC 1).
-- Or put both into the data directory as `tls.crt` and `tls.key`. The server never overwrites
+- Or put both into the data directory as `tls.crt` and `tls.key`. The hub never overwrites
   existing files.
 - Clients then trust the system roots: pass an empty certificate file to `auth.TLSConfig`.
 - `-public-url` is the address in stage links. It defaults to `https://<listen address>`.
-- The server reads the certificate at start. Restart it after you renew the certificate.
+- The hub reads the certificate at start. Restart it after you renew the certificate.
 
 ## Participant client (office CLI)
 
@@ -312,14 +312,14 @@ Every command takes these flags. The environment variables set the defaults.
 
 | Flag | Variable | Default |
 |---|---|---|
-| `--server` | `OFFICE_SERVER` | `https://127.0.0.1:8740` |
-| `--ca-cert` | `OFFICE_CA_CERT` | `~/.config/agentic-office/client/server.crt` if it exists, else the system roots |
+| `--hub` | `OFFICE_HUB` | `https://127.0.0.1:8740` |
+| `--ca-cert` | `OFFICE_CA_CERT` | `~/.config/agentic-office/client/hub.crt` if it exists, else the system roots |
 | `--key` | `OFFICE_KEY` | `~/.config/agentic-office/client/key.pem` |
 | `--runtime-dir` | `OFFICE_RUNTIME_DIR` | `$XDG_RUNTIME_DIR/agentic-office`, else `/tmp/agentic-office-<uid>` |
 | `--session` | `OFFICE_SESSION` | the only session this participant joined on this machine |
 | `--json` | `OFFICE_JSON=1` | off |
 
-For a self-signed server, copy its `tls.crt` to `~/.config/agentic-office/client/server.crt`.
+For a self-signed hub, copy its `tls.crt` to `~/.config/agentic-office/client/hub.crt`.
 Several participants on one machine (for example a human and an agent) use one key file each.
 
 ### Join a meeting and read the log
@@ -381,7 +381,7 @@ complete line; after a network drop it reconnects with a backoff.
   child and stops when `join` ends, also when it is killed. Use it when the caller runs the
   command as a background task, or with `&` in a shell that stays open.
 - Run `office meeting join` again to restart a replicator that was killed. It resumes the file.
-- While the server is unreachable, a replicator keeps trying. To stop a detached one without
+- While the hub is unreachable, a replicator keeps trying. To stop a detached one without
   leaving, kill the PID in `<participant>.pid`.
 - Local logs stay until the runtime directory is cleaned (at logout for `$XDG_RUNTIME_DIR`).
   The retention rule is still open (`concept-transparency`).
@@ -396,14 +396,14 @@ last sent sentence off the record, `q` quits. It ends with the session.
 ### Off the record and reading events after a cursor
 
 What is said stays said (`dec-off-the-record`). A participant can mark **their own** sentence off
-the record (`office utterance off-the-record <event-id> | --last`); the server checks that the
+the record (`office utterance off-the-record <event-id> | --last`); the hub checks that the
 caller is the speaker. The log gets a new `utterance.off_the_record` line. Everyone who reads the
 session later, through the stream or `meeting events`, gets the sentence as a placeholder: the
 same ID, `"offTheRecord": true`, and no text. The stage hides it. Agents must not use such a
 sentence anywhere.
 
 Event IDs grow by one without gaps (`dec-events-from-cursor`). `office meeting events --after N
-[--limit N]` reads the events after a cursor from the server, in the line format of the local log
+[--limit N]` reads the events after a cursor from the hub, in the line format of the local log
 (`--json`: `{"events": […], "more": bool}`). Use it to fill a gap in a copy, or poll it when you
 cannot follow a file.
 
@@ -411,7 +411,7 @@ cannot follow a file.
 
 `office meeting join <session> --mic` joins as captured, runs the ears and shows the gateway
 view. The ears transcribe your own speech locally with Whisper. Only the text and its metadata go
-to the server; the audio never leaves your computer (`concept-edge-transcription`).
+to the hub; the audio never leaves your computer (`concept-edge-transcription`).
 
 - Each sentence ends after a short silence (default 500 ms). Whisper then transcribes it, and the
   view shows it as `final`. It becomes `sent` when it is in your local log.
@@ -468,7 +468,7 @@ stdout, also when it fails. Agents can pipe it to `jq`.
 - `meeting join` prints `{"sessionId", "participantId", "logPath", "replicatorPid", "event",
   "duplicate"}`.
 - On failure: `{"error": {"code": "permission_denied", "message": "…"}}`. The code is the
-  Connect code of the server (`invalid_argument`, `not_found`, `failed_precondition`,
+  Connect code of the hub (`invalid_argument`, `not_found`, `failed_precondition`,
   `unimplemented`, …) or a code of the CLI: `usage`, `no_key`, `no_session`, `error`.
 - `meeting view --json` prints one JSON object per change, for example
   `{"utterance":{"eventId":12,"commandId":"…","text":"…","status":"sent"}}`, `{"paused":true}`,
@@ -479,7 +479,7 @@ stdout, also when it fails. Agents can pipe it to `jq`.
 Without `--json`, a session command prints `event <id> <type>`; `join` and `meeting log` print the
 path only. Errors go to stderr.
 
-Exit codes: `0` success, `1` error (also from the server), `2` usage error.
+Exit codes: `0` success, `1` error (also from the hub), `2` usage error.
 
 ## MCP server
 
@@ -493,7 +493,7 @@ Add it to Claude Code:
 
 ```sh
 claude mcp add office -e OFFICE_KEY=$HOME/.config/agentic-office/agent/key.pem \
-  -e OFFICE_SERVER=https://office.example.org:8740 -- /path/to/bin/office mcp
+  -e OFFICE_HUB=https://office.example.org:8740 -- /path/to/bin/office mcp
 ```
 
 Or in the JSON configuration of a client (for example `.mcp.json`):
@@ -505,7 +505,7 @@ Or in the JSON configuration of a client (for example `.mcp.json`):
       "command": "/path/to/bin/office",
       "args": ["mcp"],
       "env": { "OFFICE_KEY": "/home/me/.config/agentic-office/agent/key.pem",
-               "OFFICE_SERVER": "https://office.example.org:8740" }
+               "OFFICE_HUB": "https://office.example.org:8740" }
     }
   }
 }
@@ -551,7 +551,7 @@ tail -n +1 -f "$LOG" | grep --line-buffered '"type":"turn.end"\|"type":"addresse
 jq -c 'select(.id > 41 and (.type == "utterance.final" or .type == "addressed"))' "$LOG"
 ```
 
-The description of `meeting_join` and the server instructions explain this and the event types
+The description of `meeting_join` and the hub instructions explain this and the event types
 to the agent.
 
 **Not in the MCP server:**
@@ -568,8 +568,8 @@ We write no unit tests (`dec-contract-tests`). Every building block is tested as
 through its interfaces:
 
 - A contract test starts the block with `tests/contracttest` (as a real process, or as a fake that
-  follows the same contract) and uses only its interfaces. `contracttest.StartServer` starts
-  `office-server` with TLS and an admin key; `Server.Participant` registers a key for a test
+  follows the same contract) and uses only its interfaces. `contracttest.StartHub` starts
+  `office-hub` with TLS and an admin key; `Hub.Participant` registers a key for a test
   participant and returns authenticated clients. It never imports the package that
   implements the block.
 - `tests/contract/stub_example_test.go` shows a test against a stub service.
@@ -585,7 +585,7 @@ through its interfaces:
   sentences reach another participant's local log in order; a network drop (a proxy from
   `contracttest.StartProxy` is cut and restored) loses and duplicates nothing; a pause
   transcribes nothing; `--mic` with a mock recorder. It also checks that no raw audio leaves the
-  device: `contracttest.StartDecryptingProxy` ends TLS with the server's own test certificate and
+  device: `contracttest.StartDecryptingProxy` ends TLS with the hub's own test certificate and
   records the plaintext. Every recorded byte must decode as a known RPC request
   (`contracttest.DecodeRequests`) with no unknown fields and no long field except the
   transcripts. The tests print the measured times and byte counts (`go test -v`).

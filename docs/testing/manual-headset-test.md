@@ -13,7 +13,7 @@ Plan about 30 minutes. You need a second person or a second terminal to watch th
 - A recorder program for your user. On Linux: `parec` (package `pulseaudio-utils`, also for
   PipeWire), `arecord` (`alsa-utils`) or `rec` (`sox`). On macOS: `rec` (SoX) or `ffmpeg`.
 - Go, make, git, a C/C++ compiler and cmake (see "Setup" in the README).
-- Access to an office server, and a registered key for the laptop user. An admin registers it
+- Access to an office hub, and a registered key for the laptop user. An admin registers it
   (see "First start" in the README).
 - A second participant who follows the log: another person, or a second terminal on the same
   laptop with its own key (for example an agent key called `observer`).
@@ -27,11 +27,11 @@ Plan about 30 minutes. You need a second person or a second terminal to watch th
    make whisper models build
    ```
 
-2. Point the CLI to the server and create your key:
+2. Point the CLI to the hub and create your key:
 
    ```sh
-   export OFFICE_SERVER=https://<server>:8740
-   export OFFICE_CA_CERT=<path to the server certificate, if it is self-signed>
+   export OFFICE_HUB=https://<hub>:8740
+   export OFFICE_CA_CERT=<path to the hub certificate, if it is self-signed>
    bin/office key create          # send the printed public key to an admin
    ```
 

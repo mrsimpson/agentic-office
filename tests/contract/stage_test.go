@@ -1,6 +1,6 @@
 package contract
 
-// Contract tests of the stage (bb-stage) through if-stage-web. They start the real office-server,
+// Contract tests of the stage (bb-stage) through if-stage-web. They start the real office-hub,
 // create stage links through the identity API, load the page with an HTTP client, parse it with
 // an HTML parser, and read the server-sent events directly. No browser is needed.
 
@@ -21,8 +21,8 @@ import (
 	"golang.org/x/net/html/atom"
 
 	"github.com/mrsimpson/agentic-office/client/core/ids"
-	identityv1 "github.com/mrsimpson/agentic-office/server/identity/api"
-	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
+	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
+	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
@@ -68,7 +68,7 @@ func withToken(t *testing.T, link, token string) string {
 	return u.String()
 }
 
-func get(t *testing.T, srv *contracttest.Server, link string) (*http.Response, string) {
+func get(t *testing.T, srv *contracttest.Hub, link string) (*http.Response, string) {
 	t.Helper()
 	req, err := http.NewRequestWithContext(ctx10(t), http.MethodGet, link, nil)
 	if err != nil {
@@ -170,7 +170,7 @@ type stageStream struct {
 	cancel context.CancelFunc
 }
 
-func openStage(t *testing.T, srv *contracttest.Server, link string) *stageStream {
+func openStage(t *testing.T, srv *contracttest.Hub, link string) *stageStream {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -305,7 +305,7 @@ type stageMeeting struct {
 
 func newStageMeeting(t *testing.T, args ...string) *stageMeeting {
 	t.Helper()
-	srv := contracttest.StartServer(t, nil, args...)
+	srv := contracttest.StartHub(t, nil, args...)
 	m := &meeting{t: t, srv: srv, sid: "budget/" + ids.NewCommandID(), actors: map[string]*contracttest.Actor{},
 		reader: srv.Participant(t, "reader", "Reader", agent)}
 	return &stageMeeting{meeting: m, link: stageLink(t, m.reader, m.sid)}

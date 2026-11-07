@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/mrsimpson/agentic-office/client/replicator/locallog"
-	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
+	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 )
 
 // ReadLog reads all complete lines of a local session log. A missing file is an empty log.

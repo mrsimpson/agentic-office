@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	identityv1 "github.com/mrsimpson/agentic-office/server/identity/api"
+	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 
 	"github.com/mrsimpson/agentic-office/client/core/ids"
-	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
+	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
@@ -21,7 +21,7 @@ import (
 // TLS and joins a session. Later work packages add the real end-to-end scenarios (voice to agent
 // log, resume, latency).
 func TestSmoke(t *testing.T) {
-	srv := contracttest.StartServer(t, nil)
+	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", identityv1.ActorKind_ACTOR_KIND_HUMAN)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

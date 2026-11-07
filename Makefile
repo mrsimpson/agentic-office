@@ -18,7 +18,7 @@ all: build
 
 build:
 	$(GO) build ./...
-	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/office-server ./server
+	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/office-hub ./hub
 	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/office ./client
 
 # Architecture test: the code follows the building blocks and interfaces of docs/architecture/

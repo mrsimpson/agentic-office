@@ -58,7 +58,7 @@ addresses: con-privacy-law, con-headset-only, qg-confidentiality, risk-speaker-m
 ## Stage by screen share instead of a meeting tool integration
 
 **Context:** Bots for Zoom, Teams or Meet are costly and tied to one platform. **Decision:** The
-server renders a stage as a web page that is shown by screen share. **Consequences:** It works with
+hub renders a stage as a web page that is shown by screen share. **Consequences:** It works with
 any tool. The agent's presence is visual. People without a client still see what happens.
 
 ```arc42
@@ -175,10 +175,10 @@ addresses: qg-performance
 
 **Context:** After a network drop, a client does not know if its last command arrived.
 **Decision:** Every command carries an ID that the client creates. The IDs are unique and sortable
-by time. The server stores the ID with the event. If the same ID arrives again, the server returns
+by time. The hub stores the ID with the event. If the same ID arrives again, the hub returns
 the existing event and creates no new one. This also applies to `join`: the client keeps its join
 command ID, so a restarted client stays the same participant. **Consequences:** Clients can simply
-repeat commands after a drop. The server must keep the IDs at least for the life of the session.
+repeat commands after a drop. The hub must keep the IDs at least for the life of the session.
 The spike confirmed this: 0 lost and 0 duplicate events while the replicator was killed three
 times.
 
@@ -197,7 +197,7 @@ addresses: qg-resumability
 **Context:** We want one typed contract for synchronous commands and for the session stream.
 **Decision:** Define both interfaces in Protobuf and serve them with Connect RPC: unary calls for
 commands, server streaming for the session stream. The lines of the local JSONL file use the
-canonical JSON form of the same event messages. **Consequences:** One schema for server, clients
+canonical JSON form of the same event messages. **Consequences:** One schema for hub, clients
 and file format. Connect also speaks gRPC and gRPC-Web, and its own protocol is plain HTTP with
 JSON, so other clients can join without a special library. Maturity differs by language (see
 `risk-connect-maturity`); with Go we use the stable connect-go. **Rejected:** plain gRPC (needs
@@ -219,7 +219,7 @@ addresses: qg-performance, qg-resumability, risk-connect-maturity
 **Context:** We want one toolchain in one monorepo. The CLI should be easy to install. The ears need
 local Whisper. **Decision:** All parts are written in **Go**: server, CLI, MCP server, log
 replicator, ears and stage. They live in one monorepo with one shared core. The stage is rendered on
-the server with Go templates and gets live updates through server-sent events. It needs no
+the hub with Go templates and gets live updates through server-sent events. It needs no
 TypeScript and no frontend build. **Reasons:** connect-go is stable (v2); there is an official MCP
 SDK for Go; Go builds one static binary for the CLI; whisper.cpp has Go bindings, so the ears need
 no Python. **Consequences:** One language, one build, shared types between all parts. The ears use
@@ -241,8 +241,8 @@ addresses: risk-connect-maturity, risk-whisper-latency, qg-performance
 ## Local key pairs, one actor per agent
 
 **Context:** Participants and agents must prove who they are. We want no secrets stored on the
-server. **Decision:** Every participant, including every agent, has its own Ed25519 key pair,
-created locally. Only the public key is sent to the server. In the first stage, keys are registered
+hub. **Decision:** Every participant, including every agent, has its own Ed25519 key pair,
+created locally. Only the public key is sent to the hub. In the first stage, keys are registered
 by hand at first contact. Agents act as themselves, not on behalf of a human. The stage is opened
 with a read-only link. A participant can have several keys (several devices), and an admin can
 remove a key. **Proposed details:** challenge and response with a short-lived access token bound
@@ -250,7 +250,7 @@ to the key. **Consequences:** No shared secrets; agents
 need only a key file. Enrollment needs a manual step for now (issue #2). **Considered:** OIDC with
 an existing identity provider (standard, but heavy for a small team); mTLS with client certificates
 (strong, but certificate management and awkward in the browser); static API tokens (secret on the
-server, no binding to a device); passkeys (good for humans in the browser, not for CLI and agents).
+hub, no binding to a device); passkeys (good for humans in the browser, not for CLI and agents).
 
 ```arc42
 :::decision
@@ -327,11 +327,11 @@ addresses: qg-performance
 
 **Context:** A participant may miss events (a gap in its copy), and some agents have no file
 system to follow. **Decision:** The session stream also answers a one-time request: "give me the
-events after cursor N". The server is the only writer of a session log and gives every event an
+events after cursor N". The hub is the only writer of a session log and gives every event an
 ID that grows by one, so the order is free of conflicts and a gap is visible from the IDs alone.
 A participant polls this request when it finds a gap, or instead of a local file. No event needs
 the ID of its predecessor. **Consequences:** Agents without a file system can take part by
-polling. A suppressed utterance must keep its ID (`dec-off-the-record`). If the server loses a
+polling. A suppressed utterance must keep its ID (`dec-off-the-record`). If the hub loses a
 log, it restores it from the archive and the peers, so cursors stay valid
 (`dec-restore-from-peers`). **Rejected:** a long-poll tool only for MCP; a predecessor ID in every event (not needed with a
 single writer).
@@ -351,7 +351,7 @@ addresses: risk-no-filesystem, qg-resumability
 **Context:** A spoken sentence has been heard by everyone in the meeting, and agents have already
 read it. A retraction pretends that it was never said. **Decision:** What is said stays said.
 Utterances are never retracted or removed. A participant can mark their own sentence off the
-record afterwards. This is its own command; the server checks that the caller is the speaker. The
+record afterwards. This is its own command; the hub checks that the caller is the speaker. The
 mark is a new event. The interfaces then suppress the text: they deliver a placeholder with the
 same ID, the stage hides it, and it does not go into minutes or the journal. Agents that already
 read it must respect the mark. The raw log keeps the original. Marking the sentences of others

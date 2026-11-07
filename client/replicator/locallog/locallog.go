@@ -8,7 +8,7 @@ import (
 
 	"google.golang.org/protobuf/encoding/protojson"
 
-	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
+	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 )
 
 // MarshalLine returns the line for ev, including the final newline.

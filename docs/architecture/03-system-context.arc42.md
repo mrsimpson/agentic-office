@@ -1,6 +1,6 @@
 # System Scope and Context
 
-The system has two parts: the **office server** and the **participant client** (CLI, MCP server,
+The system has two parts: the **office hub** and the **participant client** (CLI, MCP server,
 log replicator and, optionally, the ears). The actors see both only as black boxes with their
 interfaces. Outside the system are the participants themselves
 (humans and agents) and the meeting tool. The meeting tool only carries the shared stage.
@@ -12,7 +12,7 @@ interfaces. Outside the system are the participants themselves
 id: context-overview
 view: context
 notation: mermaid
-aliases: actor_agent=actor-agent, actor_human=actor-human, actor_meeting_tool=actor-meeting-tool, bb_office_server=bb-office-server, bb_participant_client=bb-participant-client
+aliases: actor_agent=actor-agent, actor_human=actor-human, actor_meeting_tool=actor-meeting-tool, bb_office_hub=bb-office-hub, bb_participant_client=bb-participant-client
 :::
 ```
 
@@ -22,7 +22,7 @@ flowchart LR
     actor_human([Human participant])
     actor_meeting_tool([Meeting tool])
     subgraph office [Agentic Office]
-        bb_office_server[Office server]
+        bb_office_hub[Office hub]
         bb_participant_client[Participant client]
     end
     actor_agent -->|if-mcp| bb_participant_client
@@ -31,8 +31,8 @@ flowchart LR
     actor_human -->|if-cli| bb_participant_client
     actor_human -->|if-audio-in| bb_participant_client
     actor_human -->|if-local-log| bb_participant_client
-    actor_human -->|if-stage-web| bb_office_server
-    actor_meeting_tool -->|if-stage-web| bb_office_server
+    actor_human -->|if-stage-web| bb_office_hub
+    actor_meeting_tool -->|if-stage-web| bb_office_hub
 ```
 
 ## Human participant

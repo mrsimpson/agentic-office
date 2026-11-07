@@ -15,8 +15,8 @@ import (
 
 	"github.com/mrsimpson/agentic-office/client/core/ids"
 	"github.com/mrsimpson/agentic-office/client/replicator/locallog"
-	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
-	"github.com/mrsimpson/agentic-office/server/session/api/events"
+	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
+	"github.com/mrsimpson/agentic-office/hub/session/api/events"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
@@ -250,7 +250,7 @@ func TestReplicatorCatchesUpAfterNetworkDrop(t *testing.T) {
 	bot := m.user("bot", "Bot", "agent")
 	proxy := contracttest.StartProxy(t, m.srv.URL)
 	viaProxy := *bot
-	viaProxy.env = append(append([]string{}, bot.env...), "OFFICE_SERVER="+proxy.URL)
+	viaProxy.env = append(append([]string{}, bot.env...), "OFFICE_HUB="+proxy.URL)
 	writer := m.srv.Participant(t, "writer", "Writer", agent)
 	sid := newSession()
 	if _, err := writer.Session.Join(ctx10(t), &sessionv1.JoinRequest{SessionId: sid, CommandId: ids.NewCommandID()}); err != nil {

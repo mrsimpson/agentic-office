@@ -2,10 +2,10 @@ version: v2
 # One module per interface. Each interface owns its contract and its types (see chapter 5 and
 # concept-module-boundaries in docs/architecture/). There are no shared proto files.
 modules:
-  - path: server/session/api
-  - path: server/identity/api
-  - path: server/journal/api
-  - path: server/artifacts/api
+  - path: hub/session/api
+  - path: hub/identity/api
+  - path: hub/journal/api
+  - path: hub/artifacts/api
 lint:
   use:
     - STANDARD

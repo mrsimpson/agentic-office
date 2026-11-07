@@ -13,19 +13,19 @@ import (
 
 // Environment variables that ConfigFromEnv reads.
 const (
-	EnvServer     = "OFFICE_SERVER"
+	EnvHub        = "OFFICE_HUB"
 	EnvCACert     = "OFFICE_CA_CERT"
 	EnvKey        = "OFFICE_KEY"
 	EnvRuntimeDir = "OFFICE_RUNTIME_DIR"
 )
 
-// DefaultServer is the server URL if OFFICE_SERVER is not set.
-const DefaultServer = "https://127.0.0.1:8740"
+// DefaultHub is the hub URL if OFFICE_HUB is not set.
+const DefaultHub = "https://127.0.0.1:8740"
 
 // Config tells a client where the server is and where its local files live.
 type Config struct {
-	// Server is the base URL of the office server, for example "https://127.0.0.1:8740".
-	Server string
+	// Hub is the base URL of the office hub, for example "https://127.0.0.1:8740".
+	Hub string
 	// CACert is a PEM file with the certificate of the server (its tls.crt if it is
 	// self-signed). Empty means: trust the system roots only.
 	CACert string
@@ -38,21 +38,21 @@ type Config struct {
 // ConfigFromEnv returns the configuration from the OFFICE_* environment variables and the
 // defaults:
 //
-//   - Server: OFFICE_SERVER, else DefaultServer.
-//   - CACert: OFFICE_CA_CERT, else <config dir>/agentic-office/client/server.crt if it exists,
+//   - Hub: OFFICE_HUB, else DefaultHub.
+//   - CACert: OFFICE_CA_CERT, else <config dir>/agentic-office/client/hub.crt if it exists,
 //     else empty (system roots).
 //   - KeyFile: OFFICE_KEY, else <config dir>/agentic-office/client/key.pem.
 //   - RuntimeDir: OFFICE_RUNTIME_DIR, else $XDG_RUNTIME_DIR/agentic-office, else
 //     <temp dir>/agentic-office-<uid>.
 func ConfigFromEnv() Config {
-	c := Config{Server: os.Getenv(EnvServer), CACert: os.Getenv(EnvCACert), KeyFile: os.Getenv(EnvKey),
+	c := Config{Hub: os.Getenv(EnvHub), CACert: os.Getenv(EnvCACert), KeyFile: os.Getenv(EnvKey),
 		RuntimeDir: os.Getenv(EnvRuntimeDir)}
-	if c.Server == "" {
-		c.Server = DefaultServer
+	if c.Hub == "" {
+		c.Hub = DefaultHub
 	}
 	cfgDir := clientConfigDir()
 	if c.CACert == "" {
-		if p := filepath.Join(cfgDir, "server.crt"); fileExists(p) {
+		if p := filepath.Join(cfgDir, "hub.crt"); fileExists(p) {
 			c.CACert = p
 		}
 	}
@@ -71,7 +71,7 @@ func ConfigFromEnv() Config {
 
 // Env returns the configuration as OFFICE_* environment variables, for a child process.
 func (c Config) Env() []string {
-	return []string{EnvServer + "=" + c.Server, EnvCACert + "=" + c.CACert, EnvKey + "=" + c.KeyFile,
+	return []string{EnvHub + "=" + c.Hub, EnvCACert + "=" + c.CACert, EnvKey + "=" + c.KeyFile,
 		EnvRuntimeDir + "=" + c.RuntimeDir}
 }
 

@@ -21,7 +21,7 @@ category: domain
 
 ## Event log with cursor
 
-Each session has an append-only log with exactly one writer, the server. It gives every event an
+Each session has an append-only log with exactly one writer, the hub. It gives every event an
 ID that grows by one inside the session. So the order is free of conflicts, and the IDs have no
 gaps: a participant that sees event 43 after 41 knows that 42 is missing and fetches the events
 after its cursor (`dec-events-from-cursor`). The cursor is the last event ID a client has read,
@@ -42,7 +42,7 @@ the rest (`dec-restore-from-peers`).
 - Readers (replicator, stage) reconnect with their last event ID and receive every event after it.
   Nothing is lost, and nothing arrives twice.
 - Writers (ears, CLI, MCP) give every command an ID that they create themselves. If they send a
-  command again after a drop, the server recognises the ID and returns the existing event.
+  command again after a drop, the hub recognises the ID and returns the existing event.
 - This includes `join`: a client keeps its join command ID, so after a restart it is still the
   same participant.
 - The ears queue utterances locally while offline (text only) and send them in order.
@@ -127,7 +127,7 @@ agent does not act on behalf of a human; it acts as itself.
 **First contact.** In the first stage, we trust a new public key because we meet the person. An
 admin registers the key by hand. A real enrollment flow is issue #2.
 
-**Authentication.** Challenge and response: the client signs a challenge from the server and gets
+**Authentication.** Challenge and response: the client signs a challenge from the hub and gets
 an access token that lives about 15 minutes and is bound to its key. Every call carries the token.
 All connections use TLS.
 
@@ -153,7 +153,7 @@ category: security
 **No unit tests.** Every building block is tested as a black box through its interfaces
 (`con-no-unit-tests`, `con-contract-tests`). The interfaces in chapter 5 are the contracts.
 
-**Automated end-to-end tests** run on a server host without a microphone. They feed a recorded
+**Automated end-to-end tests** run on a host without a microphone. They feed a recorded
 WAV file through the ears in real time. This covers the whole pipeline after audio capture: voice
 activity detection, Whisper, submitting the utterance, the session log and the local copy. The
 tests also cover resume after the replicator is killed.
@@ -171,7 +171,7 @@ accuracy on real speech. A person joins with a headset on a participant laptop a
 sentences. We do this before we judge recognition quality, because the test WAV is synthetic and
 cleaner than a headset in a meeting.
 
-**Not planned:** a virtual microphone on the server host. It needs administrator rights and adds
+**Not planned:** a virtual microphone on the hub host. It needs administrator rights and adds
 little.
 
 ```arc42

@@ -5,7 +5,7 @@ block lists in `requires`, pointing to the provider. The architecture test enfor
 dependencies in the code (`concept-module-boundaries`). Interfaces that only external actors use
 (CLI, MCP, stage view, audio input) are in chapter 3.
 
-At the top level the system has two parts. The **office server** manages sessions, the journal,
+At the top level the system has two parts. The **office hub** manages sessions, the journal,
 artifacts and the stage. The **participant client** runs on the computer of every participant,
 human or agent.
 
@@ -16,53 +16,53 @@ human or agent.
 id: bb-overview
 view: building-block
 notation: mermaid
-roots: bb-office-server, bb-participant-client
-aliases: bb_office_server=bb-office-server, bb_participant_client=bb-participant-client
+roots: bb-office-hub, bb-participant-client
+aliases: bb_office_hub=bb-office-hub, bb_participant_client=bb-participant-client
 :::
 ```
 
 ```mermaid
 flowchart LR
-    bb_office_server[Office server]
+    bb_office_hub[Office hub]
     bb_participant_client[Participant client]
-    bb_participant_client -->|if-session-commands| bb_office_server
-    bb_participant_client -->|if-artifact-api| bb_office_server
-    bb_participant_client -->|if-journal-api| bb_office_server
-    bb_participant_client -->|if-auth-api| bb_office_server
-    bb_participant_client -->|if-session-stream| bb_office_server
+    bb_participant_client -->|if-session-commands| bb_office_hub
+    bb_participant_client -->|if-artifact-api| bb_office_hub
+    bb_participant_client -->|if-journal-api| bb_office_hub
+    bb_participant_client -->|if-auth-api| bb_office_hub
+    bb_participant_client -->|if-session-stream| bb_office_hub
 ```
 
-## Office server
+## Office hub
 
 The central, headless part. It holds the state of the team and of running meetings, offers
 deterministic tools and renders the stage. It contains no LLM.
 
 ```arc42
 :::building-block
-id: bb-office-server
-title: Office server
+id: bb-office-hub
+title: Office hub
 technology: Go (monorepo)
 implements: concept-event-log, concept-participant-model, concept-module-boundaries
-path: server
+path: hub
 :::
 ```
 
-White box: the parts of the office server and how they use each other. An arrow to a part that
-realizes an interface of the office server points to that part.
+White box: the parts of the office hub and how they use each other. An arrow to a part that
+realizes an interface of the office hub points to that part.
 
 ```arc42
 :::diagram
-id: bb-office-server-whitebox
+id: bb-office-hub-whitebox
 view: building-block
 notation: mermaid
-roots: bb-office-server
-aliases: bb_office_server=bb-office-server, bb_artifact_service=bb-artifact-service, bb_identity=bb-identity, bb_journal=bb-journal, bb_session_service=bb-session-service, bb_stage=bb-stage
+roots: bb-office-hub
+aliases: bb_office_hub=bb-office-hub, bb_artifact_service=bb-artifact-service, bb_identity=bb-identity, bb_journal=bb-journal, bb_session_service=bb-session-service, bb_stage=bb-stage
 :::
 ```
 
 ```mermaid
 flowchart LR
-    subgraph bb_office_server [Office server]
+    subgraph bb_office_hub [Office hub]
         bb_artifact_service[Artifact tools]
         bb_identity[Identity]
         bb_journal[Journal]
@@ -89,10 +89,10 @@ log. Each call carries an ID created by the client, so a repeated call has no ex
 :::interface
 id: if-session-commands
 title: Session commands
-provider: bb-office-server
+provider: bb-office-hub
 x-realized-by: bb-session-service
 protocol: Connect RPC, unary (dec-connect-rpc)
-path: server/session/api
+path: hub/session/api
 :::
 ```
 
@@ -107,10 +107,10 @@ finds a gap in its copy, or to follow the session without a file system (`dec-ev
 :::interface
 id: if-session-stream
 title: Session stream (replication from a cursor)
-provider: bb-office-server
+provider: bb-office-hub
 x-realized-by: bb-session-service
 protocol: Connect RPC, server streaming (dec-connect-rpc)
-path: server/session/api
+path: hub/session/api
 :::
 ```
 
@@ -123,10 +123,10 @@ short-lived access token that is bound to its key. Also: create a read-only stag
 :::interface
 id: if-auth-api
 title: Auth API
-provider: bb-office-server
+provider: bb-office-hub
 x-realized-by: bb-identity
 protocol: Connect RPC, unary (dec-connect-rpc)
-path: server/identity/api
+path: hub/identity/api
 :::
 ```
 
@@ -139,10 +139,10 @@ session log (`journal.listen`)?
 :::interface
 id: if-journal-api
 title: Journal API
-provider: bb-office-server
+provider: bb-office-hub
 x-realized-by: bb-journal
 protocol: Connect RPC, unary (dec-connect-rpc)
-path: server/journal/api
+path: hub/journal/api
 :::
 ```
 
@@ -154,10 +154,10 @@ Create, render, check and fetch artifacts.
 :::interface
 id: if-artifact-api
 title: Artifact API
-provider: bb-office-server
+provider: bb-office-hub
 x-realized-by: bb-artifact-service
 protocol: Connect RPC, unary (dec-connect-rpc)
-path: server/artifacts/api
+path: hub/artifacts/api
 :::
 ```
 
@@ -169,10 +169,10 @@ A browser view of one session, opened by a link.
 :::interface
 id: if-stage-web
 title: Stage view
-provider: bb-office-server
+provider: bb-office-hub
 x-realized-by: bb-stage
 protocol: HTTPS (browser)
-path: server/stage
+path: hub/stage
 :::
 ```
 
@@ -188,10 +188,10 @@ who spoke.
 id: bb-session-service
 title: Meeting session
 technology: Go / connect-go
-parent: bb-office-server
+parent: bb-office-hub
 implements: concept-event-log, concept-participant-model, concept-identity
 requires: if-journal-api, if-token-check
-path: server/session
+path: hub/session
 :::
 ```
 
@@ -205,9 +205,9 @@ human or agent. When a session ends, the confirmed minutes are stored here.
 id: bb-journal
 title: Journal (system of record)
 technology: Go (OPEN: persistence)
-parent: bb-office-server
+parent: bb-office-hub
 implements: concept-event-log
-path: server/journal
+path: hub/journal
 requires: if-token-check
 :::
 ```
@@ -223,8 +223,8 @@ IDs (for example `slides/42`). The stage uses these IDs to show them.
 id: bb-artifact-service
 title: Artifact tools
 technology: Go
-parent: bb-office-server
-path: server/artifacts
+parent: bb-office-hub
+path: hub/artifacts
 requires: if-token-check
 :::
 ```
@@ -239,11 +239,11 @@ has no logic of its own.
 :::building-block
 id: bb-stage
 title: Stage
-technology: Go, rendered on the server / server-sent events
-parent: bb-office-server
+technology: Go, rendered by the hub / server-sent events
+parent: bb-office-hub
 requires: if-session-stream, if-artifact-api, if-auth-api
 implements: concept-transparency
-path: server/stage
+path: hub/stage
 :::
 ```
 
@@ -260,15 +260,15 @@ read-only links for the stage.
 id: bb-identity
 title: Identity
 technology: Go
-parent: bb-office-server
+parent: bb-office-hub
 implements: concept-identity
-path: server/identity
+path: hub/identity
 :::
 ```
 
 #### Token check
 
-Other server parts check access tokens here and learn which participant a token belongs to.
+Other parts of the hub check access tokens here and learn which participant a token belongs to.
 
 ```arc42
 :::interface
@@ -276,7 +276,7 @@ id: if-token-check
 title: Token check
 provider: bb-identity
 protocol: In-process Go call
-path: server/identity/tokencheck
+path: hub/identity/tokencheck
 :::
 ```
 
@@ -392,7 +392,7 @@ path: client/ears
 
 The shared core of the CLI, the MCP server and the ears ("one core, two adapters",
 `dec-cli-and-mcp`). It holds the configuration of a participant, authenticates with Identity,
-creates the command IDs and calls the interfaces of the office server. The adapters add only their
+creates the command IDs and calls the interfaces of the office hub. The adapters add only their
 own way of talking to a human or an agent.
 
 ```arc42
@@ -409,7 +409,7 @@ requires: if-session-commands, if-auth-api, if-journal-api, if-artifact-api, if-
 #### Client core API
 
 The in-process interface of the client core for the adapters: configuration, authenticated
-clients of the office server, command IDs and the commands of a participant.
+clients of the office hub, command IDs and the commands of a participant.
 
 ```arc42
 :::interface

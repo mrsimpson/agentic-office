@@ -16,7 +16,7 @@ one difference: humans can also switch on a microphone. Their speech is then tra
 | Join a meeting | A human or an agent joins a session and gets a local log file that is replicated continuously |
 | Capture speech | Local Whisper transcribes only the device owner (headset) and sends text, never audio |
 | Take minutes and raise a hand | An agent keeps the minutes, raises its hand on the stage and shows artifacts |
-| Show the stage | A web view of the server is shared by screen share in any meeting tool |
+| Show the stage | A web view of the hub is shared by screen share in any meeting tool |
 | Create artifacts | Slides, plan checks and journal entries through CLI or MCP, without streaming |
 | Transparency | Every participant sees what was recorded and sent from them, and can pause or mark it off the record |
 
@@ -42,4 +42,4 @@ quality catalog with priorities and measurable scenarios.
 | Agents (for example Claude Code, custom Agent SDK agents) | — | A simple, file-based interface; no special client features needed |
 | Agent developers | OPEN | Stable CLI and MCP contracts, a machine-readable event format |
 | Data protection (GDPR, § 201 German Criminal Code) | OPEN | Consent, data minimisation, deletion, traceability |
-| Operations | OPEN | Easy self-hosting of the server (OPEN: self-hosted or cloud?) |
+| Operations | OPEN | Easy self-hosting of the hub (OPEN: self-hosted or cloud?) |

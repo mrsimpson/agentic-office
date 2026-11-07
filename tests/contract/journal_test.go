@@ -2,7 +2,7 @@ package contract
 
 // Contract tests of the journal (bb-journal) through if-journal-api, and of the minutes that the
 // meeting session stores in the journal when a session ends (rs-session-ends). They start the
-// real office-server and use only the Connect clients.
+// real office-hub and use only the Connect clients.
 
 import (
 	"fmt"
@@ -14,9 +14,9 @@ import (
 	"connectrpc.com/connect/v2"
 
 	"github.com/mrsimpson/agentic-office/client/core/ids"
-	identityv1 "github.com/mrsimpson/agentic-office/server/identity/api"
-	journalv1 "github.com/mrsimpson/agentic-office/server/journal/api"
-	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
+	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
+	journalv1 "github.com/mrsimpson/agentic-office/hub/journal/api"
+	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
@@ -70,7 +70,7 @@ func wantIDs(t *testing.T, what string, es []*journalv1.JournalEntry, want ...ui
 // TestJournalAppendAndList: entries keep what the author wrote, record the author and its kind
 // from the token, get growing IDs and a time, and come back oldest first.
 func TestJournalAppendAndList(t *testing.T) {
-	srv := contracttest.StartServer(t, nil)
+	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
 	bot := srv.Participant(t, "bot", "Bot", agent)
 
@@ -121,7 +121,7 @@ func TestJournalAppendAndList(t *testing.T) {
 
 // TestJournalFilterAndCursor: filters by kind and session combine with the cursor and the limit.
 func TestJournalFilterAndCursor(t *testing.T) {
-	srv := contracttest.StartServer(t, nil)
+	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
 	kinds := []journalv1.EntryKind{decision, task, minutes, note}
 	for i := range 12 {
@@ -175,7 +175,7 @@ func TestJournalFilterAndCursor(t *testing.T) {
 // TestJournalDefaultLimit: without a limit the server returns at most 100 entries, and never
 // more than 1000.
 func TestJournalDefaultLimit(t *testing.T) {
-	srv := contracttest.StartServer(t, nil)
+	srv := contracttest.StartHub(t, nil)
 	bot := srv.Participant(t, "bot", "Bot", agent)
 	for i := range 105 {
 		appendEntry(t, bot, note, fmt.Sprintf("note %d", i+1), "")
@@ -191,7 +191,7 @@ func TestJournalDefaultLimit(t *testing.T) {
 // TestJournalIdempotent: a repeated command_id returns the stored entry; reusing it for another
 // entry fails.
 func TestJournalIdempotent(t *testing.T) {
-	srv := contracttest.StartServer(t, nil)
+	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
 	bot := srv.Participant(t, "bot", "Bot", agent)
 	req := &journalv1.AppendEntryRequest{CommandId: ids.NewCommandID(), Kind: decision, Text: "We ship.",
@@ -231,7 +231,7 @@ func TestJournalIdempotent(t *testing.T) {
 
 // TestJournalErrors: bad requests, a wrong author, no token and stage links.
 func TestJournalErrors(t *testing.T) {
-	srv := contracttest.StartServer(t, nil)
+	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
 	ok := func() *journalv1.AppendEntryRequest {
 		return &journalv1.AppendEntryRequest{CommandId: ids.NewCommandID(), Kind: note, Text: "x", AuthorParticipantId: "ada"}
@@ -279,9 +279,9 @@ func TestJournalErrors(t *testing.T) {
 	}
 }
 
-// TestJournalSurvivesRestart: the office server keeps the journal in its data directory.
+// TestJournalSurvivesRestart: the office hub keeps the journal in its data directory.
 func TestJournalSurvivesRestart(t *testing.T) {
-	srv := contracttest.StartServer(t, nil)
+	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
 	e1 := appendEntry(t, ada, decision, "We ship.", "s1")
 	e2 := appendEntry(t, ada, task, "Ada writes the plan.", "")
@@ -302,7 +302,7 @@ func TestJournalSurvivesRestart(t *testing.T) {
 	}
 	f.Close()
 
-	srv = contracttest.StartServerIn(t, srv.DataDir, srv.AdminKey, nil)
+	srv = contracttest.StartHubIn(t, srv.DataDir, srv.AdminKey, nil)
 	ada = srv.WithKey(t, ada.Key)
 	got := list(t, ada, &journalv1.ListEntriesRequest{})
 	if len(got) != 2 || got[0].String() != e1.String() || got[1].String() != e2.String() {
@@ -323,7 +323,7 @@ func TestJournalSurvivesRestart(t *testing.T) {
 // journal as one minutes entry of that session, written by the minute taker (rs-session-ends).
 // A session without minutes, or with blank minutes at the end, stores nothing.
 func TestSessionEndStoresMinutes(t *testing.T) {
-	srv := contracttest.StartServer(t, nil)
+	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
 	scribe := srv.Participant(t, "scribe", "Scribe", agent)
 	join := func(a *contracttest.Actor, sid string) {
@@ -415,7 +415,7 @@ func TestSessionEndStoresMinutes(t *testing.T) {
 // TestSessionEndStoresMinutesAfterRestart: session logs are lost in a restart, the journal is
 // not. A session with the same ID after the restart stores its minutes as a new entry.
 func TestSessionEndStoresMinutesAfterRestart(t *testing.T) {
-	srv := contracttest.StartServer(t, nil)
+	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
 	run := func(text string) {
 		t.Helper()
@@ -436,7 +436,7 @@ func TestSessionEndStoresMinutesAfterRestart(t *testing.T) {
 	if code, err := srv.Stop(5 * time.Second); err != nil || code != 0 {
 		t.Fatalf("stop: %d, %v", code, err)
 	}
-	srv = contracttest.StartServerIn(t, srv.DataDir, srv.AdminKey, nil)
+	srv = contracttest.StartHubIn(t, srv.DataDir, srv.AdminKey, nil)
 	ada = srv.WithKey(t, ada.Key)
 	run("Tuesday")
 	got := list(t, ada, &journalv1.ListEntriesRequest{SessionId: "standup", Kind: minutes})

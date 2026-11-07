@@ -1,8 +1,8 @@
 package core
 
 import (
-	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
-	"github.com/mrsimpson/agentic-office/server/session/api/events"
+	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
+	"github.com/mrsimpson/agentic-office/hub/session/api/events"
 )
 
 // Status of an own utterance in the gateway view (dec-gateway-cli).

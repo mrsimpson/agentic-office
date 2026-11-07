@@ -14,8 +14,8 @@ import (
 
 	"connectrpc.com/connect/v2"
 
-	journalv1 "github.com/mrsimpson/agentic-office/server/journal/api"
-	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
+	journalv1 "github.com/mrsimpson/agentic-office/hub/journal/api"
+	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 
 	"github.com/mrsimpson/agentic-office/client/core"
 )
@@ -65,7 +65,7 @@ Other:
 Flags of every command:
   --json            print one JSON object on stdout (env OFFICE_JSON=1)
   --session S       the session; default: the only session joined from this machine (env OFFICE_SESSION)
-  --server URL      office server (env OFFICE_SERVER, default https://127.0.0.1:8740)
+  --hub URL         office hub (env OFFICE_HUB, default https://127.0.0.1:8740)
   --ca-cert FILE    trust this server certificate (env OFFICE_CA_CERT)
   --key FILE        private key of this actor (env OFFICE_KEY)
   --runtime-dir D   directory for local logs and state (env OFFICE_RUNTIME_DIR)
@@ -178,7 +178,7 @@ func RunContext(ctx context.Context, args []string, stdin io.Reader, stdout, std
 	fs.SetOutput(io.Discard)
 	fs.BoolVar(&e.json, "json", e.json, "print one JSON object on stdout")
 	fs.StringVar(&e.session, "session", e.session, "session ID")
-	fs.StringVar(&e.cfg.Server, "server", e.cfg.Server, "office server URL")
+	fs.StringVar(&e.cfg.Hub, "hub", e.cfg.Hub, "office hub URL")
 	fs.StringVar(&e.cfg.CACert, "ca-cert", e.cfg.CACert, "server certificate to trust (PEM)")
 	fs.StringVar(&e.cfg.KeyFile, "key", e.cfg.KeyFile, "private key file")
 	fs.StringVar(&e.cfg.RuntimeDir, "runtime-dir", e.cfg.RuntimeDir, "directory for local logs and state")

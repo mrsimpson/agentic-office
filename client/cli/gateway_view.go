@@ -13,7 +13,7 @@ import (
 
 	"golang.org/x/term"
 
-	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
+	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 
 	"github.com/mrsimpson/agentic-office/client/core"
 )

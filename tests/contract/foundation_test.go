@@ -11,18 +11,18 @@ import (
 
 	"connectrpc.com/connect/v2"
 
-	artifactv1 "github.com/mrsimpson/agentic-office/server/artifacts/api"
-	identityv1 "github.com/mrsimpson/agentic-office/server/identity/api"
-	journalv1 "github.com/mrsimpson/agentic-office/server/journal/api"
-	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
+	artifactv1 "github.com/mrsimpson/agentic-office/hub/artifacts/api"
+	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
+	journalv1 "github.com/mrsimpson/agentic-office/hub/journal/api"
+	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
-// The office server mounts every service of chapter 5 that crosses a process boundary. Each
+// The office hub mounts every service of chapter 5 that crosses a process boundary. Each
 // answers with its own result or error, not "not found" or "unimplemented". session_test.go,
 // identity_test.go, journal_test.go and artifacts_test.go cover the services.
 func TestServerMountsEveryInterface(t *testing.T) {
-	srv := contracttest.StartServer(t, nil)
+	srv := contracttest.StartHub(t, nil)
 	c := srv.Admin(t)
 	ctx := context.Background()
 
@@ -44,7 +44,7 @@ func TestServerMountsEveryInterface(t *testing.T) {
 // Connect's own protocol is plain HTTP with JSON over TLS, so clients need no special library.
 // The token goes into the Authorization header.
 func TestPlainHTTPWithJSON(t *testing.T) {
-	srv := contracttest.StartServer(t, nil)
+	srv := contracttest.StartHub(t, nil)
 	hc := srv.HTTPClient(t)
 	post := func(path, token, body string) (int, []byte) {
 		t.Helper()
@@ -123,7 +123,7 @@ func TestPlainHTTPWithJSON(t *testing.T) {
 }
 
 func TestServerStopsCleanly(t *testing.T) {
-	srv := contracttest.StartServer(t, nil)
+	srv := contracttest.StartHub(t, nil)
 	code, err := srv.Stop(5 * time.Second)
 	if err != nil || code != 0 {
 		t.Fatalf("exit code %d, err %v", code, err)

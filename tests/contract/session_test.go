@@ -1,7 +1,7 @@
 package contract
 
 // Contract tests of the meeting session (bb-session-service) through if-session-commands and
-// if-session-stream. They start the real office-server and use only the Connect clients.
+// if-session-stream. They start the real office-hub and use only the Connect clients.
 
 import (
 	"context"
@@ -13,24 +13,24 @@ import (
 	"testing"
 	"time"
 
-	identityv1 "github.com/mrsimpson/agentic-office/server/identity/api"
+	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 
 	"connectrpc.com/connect/v2"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/mrsimpson/agentic-office/client/core/ids"
-	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
-	"github.com/mrsimpson/agentic-office/server/session/api/events"
-	sessionv1connect "github.com/mrsimpson/agentic-office/server/session/api/sessionv1connect"
+	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
+	"github.com/mrsimpson/agentic-office/hub/session/api/events"
+	sessionv1connect "github.com/mrsimpson/agentic-office/hub/session/api/sessionv1connect"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
-// meeting is one session on a fresh office-server. Every participant has its own key and
+// meeting is one session on a fresh office-hub. Every participant has its own key and
 // clients; reader is a participant that only subscribes.
 type meeting struct {
 	t      *testing.T
-	srv    *contracttest.Server
+	srv    *contracttest.Hub
 	sid    string
 	actors map[string]*contracttest.Actor
 	reader *contracttest.Actor
@@ -38,7 +38,7 @@ type meeting struct {
 
 func newMeeting(t *testing.T) *meeting {
 	t.Helper()
-	srv := contracttest.StartServer(t, nil)
+	srv := contracttest.StartHub(t, nil)
 	return &meeting{t: t, srv: srv, sid: "s-" + ids.NewCommandID(), actors: map[string]*contracttest.Actor{},
 		reader: srv.Participant(t, "reader", "Reader", identityv1.ActorKind_ACTOR_KIND_AGENT)}
 }

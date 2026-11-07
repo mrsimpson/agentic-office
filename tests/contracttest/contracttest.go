@@ -4,7 +4,7 @@
 // contract) and talks to it only through its provided interfaces. It must not import the
 // packages that implement the block.
 //
-// StartServer starts a real office-server with TLS (a self-signed certificate in a temporary data
+// StartHub starts a real office-hub with TLS (a self-signed certificate in a temporary data
 // directory) and an admin key. Server.Participant registers a key for a test participant and
 // returns an Actor with authenticated clients; Server.Anonymous returns clients without a token.
 //
@@ -35,12 +35,12 @@ import (
 	"connectrpc.com/connect/v2/connecthttp"
 
 	"github.com/mrsimpson/agentic-office/client/core/ids"
-	artifactv1connect "github.com/mrsimpson/agentic-office/server/artifacts/api/artifactv1connect"
-	identityv1 "github.com/mrsimpson/agentic-office/server/identity/api"
-	"github.com/mrsimpson/agentic-office/server/identity/api/auth"
-	identityv1connect "github.com/mrsimpson/agentic-office/server/identity/api/identityv1connect"
-	journalv1connect "github.com/mrsimpson/agentic-office/server/journal/api/journalv1connect"
-	sessionv1connect "github.com/mrsimpson/agentic-office/server/session/api/sessionv1connect"
+	artifactv1connect "github.com/mrsimpson/agentic-office/hub/artifacts/api/artifactv1connect"
+	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
+	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
+	identityv1connect "github.com/mrsimpson/agentic-office/hub/identity/api/identityv1connect"
+	journalv1connect "github.com/mrsimpson/agentic-office/hub/journal/api/journalv1connect"
+	sessionv1connect "github.com/mrsimpson/agentic-office/hub/session/api/sessionv1connect"
 )
 
 var (
@@ -49,7 +49,7 @@ var (
 	buildDir string
 )
 
-// Binary returns the path of a command from cmd/, for example "office-server".
+// Binary returns the path of a command from cmd/, for example "office-hub".
 func Binary(t testing.TB, name string) string {
 	t.Helper()
 	if dir := os.Getenv("OFFICE_BIN_DIR"); dir != "" {
@@ -203,11 +203,11 @@ func (p *Process) WaitStderr(t testing.TB, re *regexp.Regexp, timeout time.Durat
 
 var listening = regexp.MustCompile(`listening on (https://\S+)`)
 
-// AdminID is the participant ID of the admin that StartServer creates.
+// AdminID is the participant ID of the admin that StartHub creates.
 const AdminID = "admin"
 
-// Server is a running office-server with TLS and an admin key.
-type Server struct {
+// Server is a running office-hub with TLS and an admin key.
+type Hub struct {
 	*Process
 	URL string
 	// DataDir is the data directory of the server.
@@ -218,9 +218,9 @@ type Server struct {
 	AdminKey ed25519.PrivateKey
 }
 
-// StartServer starts office-server on a free port and waits until it listens. It creates a data
+// StartHub starts office-hub on a free port and waits until it listens. It creates a data
 // directory with an admin key. args are extra flags, for example "-token-ttl", "2s".
-func StartServer(t testing.TB, env []string, args ...string) *Server {
+func StartHub(t testing.TB, env []string, args ...string) *Hub {
 	t.Helper()
 	dir := t.TempDir()
 	key, err := auth.NewKey()
@@ -231,20 +231,20 @@ func StartServer(t testing.TB, env []string, args ...string) *Server {
 	if err := os.WriteFile(filepath.Join(dir, "admins"), []byte(line), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	return StartServerIn(t, dir, key, env, args...)
+	return StartHubIn(t, dir, key, env, args...)
 }
 
-// StartServerIn starts office-server with an existing data directory, for example to restart a
+// StartHubIn starts office-hub with an existing data directory, for example to restart a
 // server. adminKey is the key of AdminID in the admin file of dir.
-func StartServerIn(t testing.TB, dir string, adminKey ed25519.PrivateKey, env []string, args ...string) *Server {
+func StartHubIn(t testing.TB, dir string, adminKey ed25519.PrivateKey, env []string, args ...string) *Hub {
 	t.Helper()
-	p := Start(t, "office-server", env, append([]string{"-addr", "127.0.0.1:0", "-data-dir", dir}, args...)...)
-	return &Server{Process: p, URL: p.WaitStderr(t, listening, 10*time.Second), DataDir: dir,
+	p := Start(t, "office-hub", env, append([]string{"-addr", "127.0.0.1:0", "-data-dir", dir}, args...)...)
+	return &Hub{Process: p, URL: p.WaitStderr(t, listening, 10*time.Second), DataDir: dir,
 		CertFile: filepath.Join(dir, "tls.crt"), AdminKey: adminKey}
 }
 
 // HTTPClient returns an HTTP client that trusts the certificate of the server.
-func (s *Server) HTTPClient(t testing.TB) *http.Client {
+func (s *Hub) HTTPClient(t testing.TB) *http.Client {
 	t.Helper()
 	hc, err := auth.HTTPClient(s.CertFile)
 	if err != nil {
@@ -254,12 +254,12 @@ func (s *Server) HTTPClient(t testing.TB) *http.Client {
 }
 
 // Anonymous returns clients without a token.
-func (s *Server) Anonymous(t testing.TB) Clients {
+func (s *Hub) Anonymous(t testing.TB) Clients {
 	return NewClients(s.URL, s.HTTPClient(t))
 }
 
 // WithToken returns clients that send a fixed token, for example the token of a stage link.
-func (s *Server) WithToken(t testing.TB, token string) Clients {
+func (s *Hub) WithToken(t testing.TB, token string) Clients {
 	return NewClients(s.URL, s.HTTPClient(t), auth.StaticToken(token))
 }
 
@@ -273,7 +273,7 @@ type Actor struct {
 }
 
 // WithKey returns an actor that authenticates with key. The key must be registered.
-func (s *Server) WithKey(t testing.TB, key ed25519.PrivateKey) *Actor {
+func (s *Hub) WithKey(t testing.TB, key ed25519.PrivateKey) *Actor {
 	t.Helper()
 	hc := s.HTTPClient(t)
 	ts := auth.NewTokenSource(NewClients(s.URL, hc).Identity, key)
@@ -290,10 +290,10 @@ func (s *Server) WithKey(t testing.TB, key ed25519.PrivateKey) *Actor {
 }
 
 // Admin returns the admin actor.
-func (s *Server) Admin(t testing.TB) *Actor { return s.WithKey(t, s.AdminKey) }
+func (s *Hub) Admin(t testing.TB) *Actor { return s.WithKey(t, s.AdminKey) }
 
 // RegisterKey registers key for a participant as the admin and returns the key ID.
-func (s *Server) RegisterKey(t testing.TB, participantID, displayName string, kind identityv1.ActorKind, key ed25519.PrivateKey) string {
+func (s *Hub) RegisterKey(t testing.TB, participantID, displayName string, kind identityv1.ActorKind, key ed25519.PrivateKey) string {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -308,7 +308,7 @@ func (s *Server) RegisterKey(t testing.TB, participantID, displayName string, ki
 // Participant registers a new key for a participant and returns the authenticated actor. The
 // participant is created if it is new; participantID can be called several times (several
 // keys of one participant).
-func (s *Server) Participant(t testing.TB, participantID, displayName string, kind identityv1.ActorKind) *Actor {
+func (s *Hub) Participant(t testing.TB, participantID, displayName string, kind identityv1.ActorKind) *Actor {
 	t.Helper()
 	key, err := auth.NewKey()
 	if err != nil {

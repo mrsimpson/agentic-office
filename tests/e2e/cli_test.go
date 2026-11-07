@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/mrsimpson/agentic-office/client/replicator/locallog"
-	"github.com/mrsimpson/agentic-office/server/identity/api/auth"
-	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
-	"github.com/mrsimpson/agentic-office/server/session/api/events"
+	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
+	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
+	"github.com/mrsimpson/agentic-office/hub/session/api/events"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
@@ -23,10 +23,10 @@ import (
 // CLI. The agent reacts to what it reads in its local log, only with CLI commands. Both local
 // logs end with session.ended and are equal.
 func TestTwoCLIParticipants(t *testing.T) {
-	srv := contracttest.StartServer(t, nil)
+	srv := contracttest.StartHub(t, nil)
 	runtime := filepath.Join(t.TempDir(), "run")
 	envFor := func(key string) []string {
-		return []string{"OFFICE_SERVER=" + srv.URL, "OFFICE_CA_CERT=" + srv.CertFile, "OFFICE_KEY=" + key,
+		return []string{"OFFICE_HUB=" + srv.URL, "OFFICE_CA_CERT=" + srv.CertFile, "OFFICE_KEY=" + key,
 			"OFFICE_RUNTIME_DIR=" + runtime, "OFFICE_SESSION=", "OFFICE_JSON="}
 	}
 	office := func(env []string, args ...string) map[string]any {

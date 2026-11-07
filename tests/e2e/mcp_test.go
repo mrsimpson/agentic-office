@@ -17,8 +17,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/mrsimpson/agentic-office/client/replicator/locallog"
-	"github.com/mrsimpson/agentic-office/server/identity/api/auth"
-	"github.com/mrsimpson/agentic-office/server/session/api/events"
+	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
+	"github.com/mrsimpson/agentic-office/hub/session/api/events"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
@@ -26,10 +26,10 @@ import (
 // follows its log with the filter that meeting_join describes (tail -f | grep), wakes up on
 // turn.end, and answers through the tools. The human reads the answers in their own log.
 func TestAgentThroughMCP(t *testing.T) {
-	srv := contracttest.StartServer(t, nil)
+	srv := contracttest.StartHub(t, nil)
 	runtime := filepath.Join(t.TempDir(), "run")
 	envFor := func(key string) []string {
-		return []string{"OFFICE_SERVER=" + srv.URL, "OFFICE_CA_CERT=" + srv.CertFile, "OFFICE_KEY=" + key,
+		return []string{"OFFICE_HUB=" + srv.URL, "OFFICE_CA_CERT=" + srv.CertFile, "OFFICE_KEY=" + key,
 			"OFFICE_RUNTIME_DIR=" + runtime, "OFFICE_SESSION=", "OFFICE_JSON="}
 	}
 	office := func(env []string, args ...string) map[string]any {

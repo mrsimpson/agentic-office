@@ -22,7 +22,7 @@ type stage struct {
 }
 
 // openStage loads the stage page of a link and opens its event stream.
-func openStage(t *testing.T, srv *contracttest.Server, link string) *stage {
+func openStage(t *testing.T, srv *contracttest.Hub, link string) *stage {
 	t.Helper()
 	hc := srv.HTTPClient(t)
 	res, err := hc.Get(link)

@@ -7,7 +7,7 @@
 // Conventions:
 //
 //   - Flags may come before or after the positional arguments. Every command takes the common
-//     flags --json, --session, --server, --ca-cert, --key and --runtime-dir.
+//     flags --json, --session, --hub, --ca-cert, --key and --runtime-dir.
 //   - With --json, stdout carries exactly one JSON object, also on failure
 //     ({"error":{"code":…,"message":…}}). Events have the form of their line in the local log.
 //   - Exit codes: 0 success, 1 error, 2 usage error.

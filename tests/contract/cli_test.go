@@ -1,7 +1,7 @@
 package contract
 
 // Contract tests of the office CLI (bb-cli) through if-cli: they run the real office binary
-// against a real office-server and check its output, its exit codes and the local log it
+// against a real office-hub and check its output, its exit codes and the local log it
 // leaves (if-local-log). Helpers for both CLI and replicator tests are in this file.
 
 import (
@@ -18,23 +18,23 @@ import (
 
 	"github.com/mrsimpson/agentic-office/client/core/ids"
 	"github.com/mrsimpson/agentic-office/client/replicator/locallog"
-	"github.com/mrsimpson/agentic-office/server/identity/api/auth"
-	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
-	"github.com/mrsimpson/agentic-office/server/session/api/events"
+	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
+	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
+	"github.com/mrsimpson/agentic-office/hub/session/api/events"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
 // machine is one computer with a runtime directory, shared by several CLI users.
 type machine struct {
 	t       *testing.T
-	srv     *contracttest.Server
+	srv     *contracttest.Hub
 	runtime string
 	admin   *officeUser
 }
 
 func newMachine(t *testing.T) *machine {
 	t.Helper()
-	srv := contracttest.StartServer(t, nil)
+	srv := contracttest.StartHub(t, nil)
 	m := &machine{t: t, srv: srv, runtime: filepath.Join(t.TempDir(), "run")}
 	adminKey := filepath.Join(t.TempDir(), "admin.pem")
 	if err := auth.WriteKey(adminKey, srv.AdminKey); err != nil {
@@ -52,7 +52,7 @@ type officeUser struct {
 }
 
 func (m *machine) userWithKey(keyFile string) *officeUser {
-	return &officeUser{m: m, key: keyFile, env: []string{"OFFICE_SERVER=" + m.srv.URL, "OFFICE_CA_CERT=" + m.srv.CertFile,
+	return &officeUser{m: m, key: keyFile, env: []string{"OFFICE_HUB=" + m.srv.URL, "OFFICE_CA_CERT=" + m.srv.CertFile,
 		"OFFICE_KEY=" + keyFile, "OFFICE_RUNTIME_DIR=" + m.runtime, "OFFICE_SESSION=", "OFFICE_JSON="}}
 }
 

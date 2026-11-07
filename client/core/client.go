@@ -12,14 +12,14 @@ import (
 	"connectrpc.com/connect/v2"
 	"connectrpc.com/connect/v2/connecthttp"
 
-	"github.com/mrsimpson/agentic-office/server/artifacts/api/artifactv1connect"
-	"github.com/mrsimpson/agentic-office/server/identity/api/auth"
-	"github.com/mrsimpson/agentic-office/server/identity/api/identityv1connect"
-	"github.com/mrsimpson/agentic-office/server/journal/api/journalv1connect"
-	"github.com/mrsimpson/agentic-office/server/session/api/sessionv1connect"
+	"github.com/mrsimpson/agentic-office/hub/artifacts/api/artifactv1connect"
+	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
+	"github.com/mrsimpson/agentic-office/hub/identity/api/identityv1connect"
+	"github.com/mrsimpson/agentic-office/hub/journal/api/journalv1connect"
+	"github.com/mrsimpson/agentic-office/hub/session/api/sessionv1connect"
 )
 
-// Client is an authenticated client of the office server for one actor (one key).
+// Client is an authenticated client of the office hub for one actor (one key).
 type Client struct {
 	Config
 	Key    ed25519.PrivateKey
@@ -48,7 +48,7 @@ func Dial(cfg Config) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	base := strings.TrimRight(cfg.Server, "/")
+	base := strings.TrimRight(cfg.Hub, "/")
 	// The identity client inside the token source must not use Bearer itself.
 	ts := auth.NewTokenSource(identityv1connect.NewIdentityServiceClient(newConnect(hc, base)), key)
 	cc := newConnect(hc, base, auth.Bearer(ts))
