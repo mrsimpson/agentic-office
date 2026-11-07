@@ -353,7 +353,7 @@ read it. A retraction pretends that it was never said. **Decision:** What is sai
 Utterances are never retracted or removed. A participant can mark their own sentence off the
 record afterwards. This is its own command; the hub checks that the caller is the speaker. The
 mark is a new event. The interfaces then suppress the text: they deliver a placeholder with the
-same ID, the stage hides it, and it does not go into minutes or the journal. Agents that already
+same ID, the stage hides it, and it does not go into minutes, decisions or notes. Agents that already
 read it must respect the mark. The raw log keeps the original. Marking the sentences of others
 (moderation) is out of scope for the first stage (issue #31). **Consequences:** The log stays
 complete and honest. Suppression works for every reader that uses the interfaces, but not for
@@ -406,8 +406,7 @@ and a write that takes longer than the interval makes the next write take everyt
 come since. More frequent is better; the interval only has to stay above the usual commit time.
 Peers do not publish. **Consequences:** One place writes, so there is no race between writers.
 A Git commit is slow, so the archive is always a little behind; the peers' copies cover the
-rest (`dec-restore-from-peers`). OPEN: which repository, and whether the journal and the
-artifacts move to the archive as well. **Rejected:** every peer publishes (redundant when the
+rest (`dec-restore-from-peers`). OPEN: which remote repository. **Rejected:** every peer publishes (redundant when the
 hub has the log); a commit per event that the session waits for (it slows every command);
 fully peer-to-peer ordering without a hub.
 
