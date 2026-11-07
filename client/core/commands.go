@@ -17,7 +17,9 @@ import (
 	"github.com/mrsimpson/agentic-office/client/core/ids"
 	artifactv1 "github.com/mrsimpson/agentic-office/hub/artifacts/api"
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
-	journalv1 "github.com/mrsimpson/agentic-office/hub/journal/api"
+	decisionv1 "github.com/mrsimpson/agentic-office/hub/records/decision/api"
+	minutesv1 "github.com/mrsimpson/agentic-office/hub/records/minutes/api"
+	notev1 "github.com/mrsimpson/agentic-office/hub/records/note/api"
 	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 	"github.com/mrsimpson/agentic-office/hub/session/api/events"
 )
@@ -361,29 +363,77 @@ func (c *Client) GetArtifact(ctx context.Context, id string) (*artifactv1.Artifa
 	return res.GetArtifact(), err
 }
 
-// AppendJournal writes a journal entry. The author is the caller. sessionID may be empty.
-func (c *Client) AppendJournal(ctx context.Context, kind journalv1.EntryKind, text, sessionID string) (*journalv1.AppendEntryResponse, error) {
+// RecordDecision records a decision. The author is the caller. sessionID may be empty.
+func (c *Client) RecordDecision(ctx context.Context, text, sessionID string) (*decisionv1.RecordDecisionResponse, error) {
 	pid, err := c.ParticipantID(ctx)
 	if err != nil {
 		return nil, err
 	}
-	req := &journalv1.AppendEntryRequest{CommandId: ids.NewCommandID(), Kind: kind, Text: text, AuthorParticipantId: pid, SessionId: sessionID}
-	var res *journalv1.AppendEntryResponse
+	req := &decisionv1.RecordDecisionRequest{CommandId: ids.NewCommandID(), Text: text, AuthorParticipantId: pid, SessionId: sessionID}
+	var res *decisionv1.RecordDecisionResponse
 	err = Retry(ctx, func() (err error) {
-		res, err = c.Journal.AppendEntry(ctx, req)
+		res, err = c.Decision.RecordDecision(ctx, req)
 		return err
 	})
 	return res, err
 }
 
-// ListJournal lists journal entries.
-func (c *Client) ListJournal(ctx context.Context, req *journalv1.ListEntriesRequest) ([]*journalv1.JournalEntry, error) {
-	var res *journalv1.ListEntriesResponse
+// ListDecisions lists decisions after a cursor. sessionID may be empty (all); limit 0 is the
+// default of the hub.
+func (c *Client) ListDecisions(ctx context.Context, after uint32, sessionID string, limit uint32) ([]*decisionv1.Decision, error) {
+	var res *decisionv1.ListDecisionsResponse
 	err := Retry(ctx, func() (err error) {
-		res, err = c.Journal.ListEntries(ctx, req)
+		res, err = c.Decision.ListDecisions(ctx, &decisionv1.ListDecisionsRequest{AfterId: after, SessionId: sessionID, Limit: limit})
 		return err
 	})
-	return res.GetEntries(), err
+	return res.GetDecisions(), err
+}
+
+// AddNote adds a note. The author is the caller. sessionID may be empty.
+func (c *Client) AddNote(ctx context.Context, text, sessionID string) (*notev1.AddNoteResponse, error) {
+	pid, err := c.ParticipantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	req := &notev1.AddNoteRequest{CommandId: ids.NewCommandID(), Text: text, AuthorParticipantId: pid, SessionId: sessionID}
+	var res *notev1.AddNoteResponse
+	err = Retry(ctx, func() (err error) {
+		res, err = c.Note.AddNote(ctx, req)
+		return err
+	})
+	return res, err
+}
+
+// ListNotes lists notes after a cursor. sessionID may be empty (all); limit 0 is the default of
+// the hub.
+func (c *Client) ListNotes(ctx context.Context, after uint32, sessionID string, limit uint32) ([]*notev1.Note, error) {
+	var res *notev1.ListNotesResponse
+	err := Retry(ctx, func() (err error) {
+		res, err = c.Note.ListNotes(ctx, &notev1.ListNotesRequest{AfterId: after, SessionId: sessionID, Limit: limit})
+		return err
+	})
+	return res.GetNotes(), err
+}
+
+// GetMinutes returns the stored minutes of an ended session.
+func (c *Client) GetMinutes(ctx context.Context, sessionID string) (*minutesv1.Minutes, error) {
+	var res *minutesv1.GetMinutesResponse
+	err := Retry(ctx, func() (err error) {
+		res, err = c.Minutes.GetMinutes(ctx, &minutesv1.GetMinutesRequest{SessionId: sessionID})
+		return err
+	})
+	return res.GetMinutes(), err
+}
+
+// ListMinutes lists stored minutes after a cursor. sessionID may be empty (all); limit 0 is the
+// default of the hub.
+func (c *Client) ListMinutes(ctx context.Context, after uint32, sessionID string, limit uint32) ([]*minutesv1.Minutes, error) {
+	var res *minutesv1.ListMinutesResponse
+	err := Retry(ctx, func() (err error) {
+		res, err = c.Minutes.ListMinutes(ctx, &minutesv1.ListMinutesRequest{AfterId: after, SessionId: sessionID, Limit: limit})
+		return err
+	})
+	return res.GetMinutes(), err
 }
 
 // Events returns the events of a session after a cursor, at most limit of them (0: the server's

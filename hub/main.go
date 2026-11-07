@@ -3,19 +3,20 @@
 // All services are mounted, and the stage at /stage/<session>?token=<stage link token>. Every call
 // needs an access token from the identity block, except GetChallenge and ExchangeChallenge. The server speaks only TLS. The meeting session keeps its
 // logs in memory, signs their tree heads with the signing key and writes them to the archive (a local Git
-// repository; the push is mocked); the journal and the artifact tools keep their data in files.
+// repository; the push is mocked). The records (decisions, minutes and notes) are YAML files in the
+// archive too; the artifact tools keep their data in a file.
 //
 // Files in the data directory (-data-dir):
 //
 //	admins       admin keys, written by hand (see identity.LoadAdmins)
 //	identity.json registered participants and keys, written by the server
-//	journal.jsonl journal entries, one JSON object per line, appended by the server
 //	artifacts.jsonl artifacts (rendered slides), one JSON object per line, appended by the server
 //	tls.crt      TLS certificate; created self-signed if neither it nor tls.key exists
 //	tls.key      TLS private key
 //	signing.key  Ed25519 key that signs the tree heads of session logs; created if it does not exist
 //	archive/     Git repository of the archive (-archive-dir); the meeting session writes its logs
-//	             there at the interval -archive-interval and when a session ends
+//	             there at the interval -archive-interval and when a session ends; decisions,
+//	             minutes and notes are committed there one by one (see package records)
 package main
 
 import (
@@ -43,8 +44,10 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/identity"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/identityv1connect"
-	"github.com/mrsimpson/agentic-office/hub/journal"
-	"github.com/mrsimpson/agentic-office/hub/journal/api/journalv1connect"
+	"github.com/mrsimpson/agentic-office/hub/records"
+	"github.com/mrsimpson/agentic-office/hub/records/decision/api/decisionv1connect"
+	"github.com/mrsimpson/agentic-office/hub/records/minutes/api/minutesv1connect"
+	"github.com/mrsimpson/agentic-office/hub/records/note/api/notev1connect"
 	"github.com/mrsimpson/agentic-office/hub/session"
 	"github.com/mrsimpson/agentic-office/hub/session/api/sessionv1connect"
 	"github.com/mrsimpson/agentic-office/hub/stage"
@@ -59,7 +62,7 @@ func defaultDataDir() string {
 
 func main() {
 	addr := flag.String("addr", "127.0.0.1:8740", "listen address (port 0 picks a free port)")
-	dataDir := flag.String("data-dir", defaultDataDir(), "directory for admin keys, registered keys, the journal, the artifacts, the archive and the TLS certificate")
+	dataDir := flag.String("data-dir", defaultDataDir(), "directory for admin keys, registered keys, the artifacts, the archive and the TLS certificate")
 	certFile := flag.String("tls-cert", "", "TLS certificate (PEM, may include the chain); default <data-dir>/tls.crt")
 	keyFile := flag.String("tls-key", "", "TLS private key (PEM); default <data-dir>/tls.key")
 	hostname, _ := os.Hostname()
@@ -120,13 +123,6 @@ func main() {
 		log.Fatal(err)
 	}
 
-	journalStore, err := journal.OpenFileStore(filepath.Join(*dataDir, "journal.jsonl"))
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer journalStore.Close()
-	jrn := journal.New(journalStore, journal.TokenCheck())
-
 	artifactStore, err := artifacts.OpenFileStore(filepath.Join(*dataDir, "artifacts.jsonl"))
 	if err != nil {
 		log.Fatal(err)
@@ -140,7 +136,18 @@ func main() {
 		log.Fatal(err)
 	}
 	log.Printf("archive %s, sessions written every %s and when they end; push mocked", arch.Dir(), *archiveInterval)
-	sessions := session.New(session.NewMemoryStore(), session.TokenCheck(), jrn, signingKey)
+	// Decisions, minutes and notes: YAML files in the archive, read once at the start.
+	recs, err := records.Open(context.Background(), arch)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(*dataDir, "journal.jsonl")); err == nil {
+		log.Printf("%s is from an older hub; it is no longer read (the journal was split into decisions, minutes and notes)",
+			filepath.Join(*dataDir, "journal.jsonl"))
+	}
+	nd, nm, nn := recs.Counts()
+	log.Printf("records: %d decisions, %d minutes, %d notes", nd, nm, nn)
+	sessions := session.New(session.NewMemoryStore(), session.TokenCheck(), recs, signingKey)
 	if err := sessions.UseArchive(session.ArchiveOptions{Archive: arch, Interval: *archiveInterval, Logf: log.Printf}); err != nil {
 		log.Fatal(err)
 	}
@@ -152,7 +159,9 @@ func main() {
 	cs := connect.NewServer(ids.Interceptor())
 	sessionv1connect.RegisterSessionServiceHandler(cs, sessions)
 	identityv1connect.RegisterIdentityServiceHandler(cs, ids)
-	journalv1connect.RegisterJournalServiceHandler(cs, jrn)
+	decisionv1connect.RegisterDecisionServiceHandler(cs, recs)
+	minutesv1connect.RegisterMinutesServiceHandler(cs, recs)
+	notev1connect.RegisterNoteServiceHandler(cs, recs)
 	artifactv1connect.RegisterArtifactServiceHandler(cs, arts)
 	mux := http.NewServeMux()
 	connecthttp.Mount(mux, cs)

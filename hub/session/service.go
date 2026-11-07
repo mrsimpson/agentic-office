@@ -13,7 +13,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	journalv1 "github.com/mrsimpson/agentic-office/hub/journal/api"
+	minutesv1 "github.com/mrsimpson/agentic-office/hub/records/minutes/api"
 	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 	"github.com/mrsimpson/agentic-office/hub/session/api/events"
 	"github.com/mrsimpson/agentic-office/hub/session/api/merkle"
@@ -51,23 +51,23 @@ func (denyAll) Caller(context.Context) (Caller, error) {
 	return Caller{}, connect.NewError(connect.CodeUnauthenticated, "no token check configured")
 }
 
-// Journal is the part of the journal API (if-journal-api) that the session needs: it stores the
-// minutes when a session ends (rs-session-ends). journal.Service implements it.
-type Journal interface {
-	// Record appends an entry. It is idempotent by the command ID of the entry: a repeated call
-	// returns the stored entry and true.
-	Record(ctx context.Context, e *journalv1.JournalEntry) (*journalv1.JournalEntry, bool, error)
+// Minutes is the part of the minutes (if-minutes-api) that the session needs: it stores the
+// minutes when a session ends (rs-session-ends). records.Service implements it.
+type Minutes interface {
+	// StoreMinutes stores the minutes of a session. It is idempotent by the command ID of the
+	// minutes: a repeated call returns the stored minutes and true.
+	StoreMinutes(ctx context.Context, m *minutesv1.Minutes) (*minutesv1.Minutes, bool, error)
 }
 
-// MinutesCommandPrefix starts the command ID of the minutes entry that the session writes into
-// the journal. The rest is the command ID of the EndSession command.
+// MinutesCommandPrefix starts the command ID of the minutes that the session stores. The rest is
+// the command ID of the EndSession command.
 const MinutesCommandPrefix = "office/session-end/"
 
 // Service implements the session commands and the session stream.
 type Service struct {
 	store   Store
 	auth    Authorizer
-	journal Journal
+	minutes Minutes
 	key     ed25519.PrivateKey // signs tree heads (dec-merkle-log)
 
 	mu       sync.Mutex
@@ -82,11 +82,11 @@ type Service struct {
 
 var _ sessionv1connect.SessionServiceHandler = (*Service)(nil)
 
-// New returns a Service that keeps its logs in store and stores the minutes of ended sessions in
-// journal. It signs tree heads with key. If auth is nil, every call fails with Unauthenticated.
-// If journal is nil, the minutes are not stored. If key is nil, the service creates a key in
+// New returns a Service that keeps its logs in store and stores the minutes of ended sessions
+// with minutes. It signs tree heads with key. If auth is nil, every call fails with
+// Unauthenticated. If minutes is nil, the minutes are not stored. If key is nil, the service creates a key in
 // memory, so its signatures cannot be checked after a restart.
-func New(store Store, auth Authorizer, journal Journal, key ed25519.PrivateKey) *Service {
+func New(store Store, auth Authorizer, minutes Minutes, key ed25519.PrivateKey) *Service {
 	if auth == nil {
 		auth = denyAll{}
 	}
@@ -97,7 +97,7 @@ func New(store Store, auth Authorizer, journal Journal, key ed25519.PrivateKey) 
 		}
 		key = k
 	}
-	return &Service{store: store, auth: auth, journal: journal, key: key, sessions: map[string]*state{}}
+	return &Service{store: store, auth: auth, minutes: minutes, key: key, sessions: map[string]*state{}}
 }
 
 // UseArchive makes the service write its sessions to an archive. Call it before the service
@@ -568,18 +568,18 @@ func (s *Service) ShowArtifact(ctx context.Context, req *sessionv1.ShowArtifactR
 	return &sessionv1.ShowArtifactResponse{Result: res}, nil
 }
 
-// EndSession stores the confirmed minutes in the journal and then appends session.ended
+// EndSession stores the confirmed minutes (if-minutes-api) and then appends session.ended
 // (rs-session-ends). session.ended carries the signed tree head of the log before it. After it, every new command fails with FailedPrecondition; a repeated
 // command_id still returns its stored event. Any participant can end the session for now: roles
 // are open (#14).
 //
 // The confirmed minutes are the text of the last minutes.updated event: ending the session
-// confirms it. There is no separate confirm step yet (#22). The journal entry has
-// kind minutes, the session ID, and as author the participant who wrote that last version, with
-// the kind it joined with. If the session has no minutes, or the last text is blank, nothing is
-// stored. The command ID of the entry is MinutesCommandPrefix plus the command ID of EndSession,
-// so a repeated EndSession does not store the minutes twice. If the journal fails, the session
-// does not end and EndSession fails with Internal; the client can repeat it.
+// confirms it. There is no separate confirm step yet (#22). The stored minutes have the session
+// ID, and as author the participant who wrote that last version, with the kind it joined with.
+// If the session has no minutes, or the last text is blank, nothing is stored. The command ID of
+// the minutes is MinutesCommandPrefix plus the command ID of EndSession, so a repeated EndSession
+// does not store the minutes twice. If storing fails, the session does not end and EndSession
+// fails with Internal; the client can repeat it.
 func (s *Service) EndSession(ctx context.Context, req *sessionv1.EndSessionRequest) (*sessionv1.EndSessionResponse, error) {
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
@@ -600,9 +600,9 @@ func (s *Service) EndSession(ctx context.Context, req *sessionv1.EndSessionReque
 	return &sessionv1.EndSessionResponse{Result: res}, nil
 }
 
-// storeMinutes writes the last minutes of the session into the journal. The caller holds st.mu.
+// storeMinutes stores the last minutes of the session. The caller holds st.mu.
 func (s *Service) storeMinutes(ctx context.Context, st *state, req *sessionv1.EndSessionRequest) error {
-	if s.journal == nil || st.minutes == nil {
+	if s.minutes == nil || st.minutes == nil {
 		return nil
 	}
 	text := st.minutes.GetMinutesUpdated().GetText()
@@ -614,12 +614,12 @@ func (s *Service) storeMinutes(ctx context.Context, st *state, req *sessionv1.En
 	if pt := st.participants[author]; pt != nil {
 		kind = pt.joined.GetParticipantJoined().GetKind()
 	}
-	_, _, err := s.journal.Record(ctx, &journalv1.JournalEntry{
-		CommandId: MinutesCommandPrefix + req.GetCommandId(), Kind: journalv1.EntryKind_ENTRY_KIND_MINUTES,
-		Text: text, AuthorParticipantId: author, AuthorKind: authorKind(kind), SessionId: req.GetSessionId(),
+	_, _, err := s.minutes.StoreMinutes(ctx, &minutesv1.Minutes{
+		CommandId: MinutesCommandPrefix + req.GetCommandId(), SessionId: req.GetSessionId(),
+		Text: text, AuthorParticipantId: author, AuthorKind: authorKind(kind),
 	})
 	if err != nil {
-		return connect.NewError(connect.CodeInternal, "store the minutes in the journal: "+err.Error())
+		return connect.NewError(connect.CodeInternal, "store the minutes: "+err.Error())
 	}
 	return nil
 }
@@ -692,16 +692,16 @@ func (s *Service) Subscribe(ctx context.Context, req *sessionv1.SubscribeRequest
 	}
 }
 
-// authorKind maps the kind of a participant to the kind of a journal author. The journal owns its
-// own type (if-journal-api), so the session maps it here.
-func authorKind(k sessionv1.ParticipantKind) journalv1.AuthorKind {
+// authorKind maps the kind of a participant to the kind of the author of minutes. The minutes
+// own their type (if-minutes-api), so the session maps it here.
+func authorKind(k sessionv1.ParticipantKind) minutesv1.AuthorKind {
 	switch k {
 	case sessionv1.ParticipantKind_PARTICIPANT_KIND_HUMAN:
-		return journalv1.AuthorKind_AUTHOR_KIND_HUMAN
+		return minutesv1.AuthorKind_AUTHOR_KIND_HUMAN
 	case sessionv1.ParticipantKind_PARTICIPANT_KIND_AGENT:
-		return journalv1.AuthorKind_AUTHOR_KIND_AGENT
+		return minutesv1.AuthorKind_AUTHOR_KIND_AGENT
 	}
-	return journalv1.AuthorKind_AUTHOR_KIND_UNSPECIFIED
+	return minutesv1.AuthorKind_AUTHOR_KIND_UNSPECIFIED
 }
 
 // GetEvents returns the events after a cursor, at most limit of them (dec-events-from-cursor).

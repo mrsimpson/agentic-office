@@ -199,8 +199,8 @@ The building block view (chapter 5) is the map of the code, and a test enforces 
   path is where its code lives. A child lies under the path of its parent.
 - **An interface belongs to its provider.** Its path lies inside the path of the provider. The
   types of an interface are part of the interface: every provider defines its own types, even if
-  another interface has a similar one (for example the kind of a participant, of an actor and of a
-  journal author). Consumers map between them.
+  another interface has a similar one (for example the kind of a participant, of an actor and of
+  the author of a decision). Consumers map between them.
 - **No shared package.** There is no common or core package that everyone may use. Code that
   several building blocks need is either an interface of one of them, or a missing building block,
   or acceptable duplication. Cross-cutting concepts (this chapter) are rules, not places.

@@ -14,7 +14,6 @@ import (
 
 	"connectrpc.com/connect/v2"
 
-	journalv1 "github.com/mrsimpson/agentic-office/hub/journal/api"
 	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 
 	"github.com/mrsimpson/agentic-office/client/core"
@@ -49,11 +48,18 @@ Meeting:
   stage show <artifact-id>
   stage link                         create a read-only link to the stage
 
-Artifacts and journal:
+Artifacts:
   slides render <deck.json | deck.md>
   artifact get <id> [--out FILE]
-  journal append --kind decision|task|minutes|note <text> | --file F
-  journal list [--kind K] [--after N] [--limit N]
+
+Records (never put a sentence that is off the record into them):
+  decision record <text> | --file F  record a decision (--session links it to a session)
+  decision list [--after N] [--limit N]
+  note add <text> | --file F         add a note (--session links it to a session)
+  note list [--after N] [--limit N]
+  minutes show [<session>]           the minutes stored when the session ended
+  minutes list [--after N] [--limit N]
+  (the list commands take --session to show only the records of one session)
 
 MCP:
   mcp                                run the MCP server on stdin/stdout (for an MCP client; see README.md)
@@ -114,8 +120,12 @@ func init() {
 		"stage link":               cmdStageLink,
 		"slides render":            cmdSlidesRender,
 		"artifact get":             cmdArtifactGet,
-		"journal append":           cmdJournalAppend,
-		"journal list":             cmdJournalList,
+		"decision record":          cmdDecisionRecord,
+		"decision list":            cmdDecisionList,
+		"note add":                 cmdNoteAdd,
+		"note list":                cmdNoteList,
+		"minutes show":             cmdMinutesShow,
+		"minutes list":             cmdMinutesList,
 		"replicator run":           cmdReplicatorRun,
 		"mcp":                      cmdMCP,
 	}
@@ -332,5 +342,3 @@ func cmdSimple(_ string, f func(*core.Client, context.Context, string) (*session
 		}
 	}
 }
-
-func entryJSON(en *journalv1.JournalEntry) json.RawMessage { return core.MessageJSON(en) }

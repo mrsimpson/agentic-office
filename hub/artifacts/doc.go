@@ -33,7 +33,7 @@
 //     appends every artifact to a file, one JSON object per line with the command ID, the input
 //     and the artifact in the JSON form of the API. The office hub uses a FileStore in its data
 //     directory. We chose this because the session logs name artifacts by ID, so IDs must not
-//     start again at 1 after a restart, and it is the same simple form as the journal. A later
+//     start again at 1 after a restart. Slides move to the archive with #39. A later
 //     store can import the file with no conversion.
 //   - Error codes: a missing or bad field, or a rendered deck larger than MaxContentBytes, is
 //     InvalidArgument; an unknown ID is NotFound; a participant that is not the caller, or a stage

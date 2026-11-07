@@ -39,7 +39,9 @@ import (
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	identityv1connect "github.com/mrsimpson/agentic-office/hub/identity/api/identityv1connect"
-	journalv1connect "github.com/mrsimpson/agentic-office/hub/journal/api/journalv1connect"
+	decisionv1connect "github.com/mrsimpson/agentic-office/hub/records/decision/api/decisionv1connect"
+	minutesv1connect "github.com/mrsimpson/agentic-office/hub/records/minutes/api/minutesv1connect"
+	notev1connect "github.com/mrsimpson/agentic-office/hub/records/note/api/notev1connect"
 	sessionv1connect "github.com/mrsimpson/agentic-office/hub/session/api/sessionv1connect"
 )
 
@@ -325,7 +327,9 @@ func (s *Hub) Participant(t testing.TB, participantID, displayName string, kind 
 type Clients struct {
 	Session  sessionv1connect.SessionServiceClient
 	Identity identityv1connect.IdentityServiceClient
-	Journal  journalv1connect.JournalServiceClient
+	Decision decisionv1connect.DecisionServiceClient
+	Minutes  minutesv1connect.MinutesServiceClient
+	Note     notev1connect.NoteServiceClient
 	Artifact artifactv1connect.ArtifactServiceClient
 }
 
@@ -339,7 +343,9 @@ func NewClients(baseURL string, hc *http.Client, interceptors ...connect.ClientI
 	return Clients{
 		Session:  sessionv1connect.NewSessionServiceClient(c),
 		Identity: identityv1connect.NewIdentityServiceClient(c),
-		Journal:  journalv1connect.NewJournalServiceClient(c),
+		Decision: decisionv1connect.NewDecisionServiceClient(c),
+		Minutes:  minutesv1connect.NewMinutesServiceClient(c),
+		Note:     notev1connect.NewNoteServiceClient(c),
 		Artifact: artifactv1connect.NewArtifactServiceClient(c),
 	}
 }

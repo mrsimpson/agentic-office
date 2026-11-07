@@ -160,7 +160,8 @@ func mcpJoined(t *testing.T, v map[string]any) (logPath, pid string, replicatorP
 // The tools of if-mcp. Names use "_" instead of "." (see README.md).
 var mcpTools = []string{"meeting_join", "meeting_log", "meeting_leave", "meeting_pause", "meeting_resume", "meeting_end",
 	"utterance_say", "utterance_off_the_record", "signal_turn_end", "signal_silence_long", "signal_addressed", "hand_raise",
-	"minutes_update", "stage_show", "stage_link", "slides_render", "artifact_get", "journal_append", "journal_list", "whoami"}
+	"minutes_update", "stage_show", "stage_link", "slides_render", "artifact_get", "decision_record", "decision_list", "minutes_get", "minutes_list", "note_add", "note_list",
+	"whoami"}
 
 // TestMCPToolsDescribeTheLog: the server offers every tool, and tells an agent how to follow
 // the log file and which event types to filter for.
@@ -487,9 +488,10 @@ func TestMCPErrors(t *testing.T) {
 		{"slides_render", map[string]any{"markdown": "# t\n## s", "slides": []any{map[string]any{"title": "x"}}}},
 		{"slides_render", map[string]any{"markdown": "text before any slide"}},
 		{"artifact_get", nil},
-		{"journal_append", map[string]any{"kind": "gossip", "text": "x"}},
-		{"journal_append", map[string]any{"kind": "decision", "text": ""}},
-		{"journal_list", map[string]any{"kind": "gossip"}},
+		{"decision_record", nil},
+		{"decision_record", map[string]any{"text": " "}},
+		{"note_add", map[string]any{"text": ""}},
+		{"decision_list", map[string]any{"kind": "decision"}},
 		{"whoami", map[string]any{"extra": 1}},
 	}
 	for _, u := range usage {
@@ -524,54 +526,79 @@ func TestMCPErrors(t *testing.T) {
 	s2.fails("no_key", "whoami", nil)
 }
 
-// TestMCPJournal: journal_append and journal_list against the real journal, and the minutes that
-// meeting_end stores in it.
-func TestMCPJournal(t *testing.T) {
+// TestMCPRecords: decision_record, decision_list, note_add, note_list, minutes_get and
+// minutes_list against the real hub, with the minutes that meeting_end stores. The tool
+// descriptions remind the agent of sentences that are off the record.
+func TestMCPRecords(t *testing.T) {
 	m := newMachine(t)
 	bot := m.user("bot", "Bot", "agent")
 	ada := m.user("ada", "Ada", "human")
 	s := startMCP(t, bot)
 
-	v := s.ok("journal_append", map[string]any{"kind": "decision", "text": "We ship."})
-	e, _ := v["entry"].(map[string]any)
-	if v["duplicate"] != false || e["id"] != float64(1) || e["kind"] != "ENTRY_KIND_DECISION" ||
-		e["authorParticipantId"] != "bot" || e["authorKind"] != "AUTHOR_KIND_AGENT" || e["sessionId"] != nil {
-		t.Fatalf("journal_append: %v", v)
-	}
-	ada.ok("journal", "append", "--kind", "task", "--session", "s1", "Ada writes the plan.")
-	s.ok("journal_append", map[string]any{"kind": "note", "text": "A note.", "session": "s1"})
-
-	ids := func(args map[string]any) string {
-		t.Helper()
-		var got []string
-		for _, e := range entriesOf(t, s.ok("journal_list", args)) {
-			got = append(got, fmt.Sprint(e["id"]))
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	for tool, err := range s.cs.Tools(ctx, nil) {
+		if err != nil {
+			t.Fatal(err)
 		}
-		return strings.Join(got, ",")
+		switch tool.Name {
+		case "decision_record", "note_add", "minutes_update", "minutes_get":
+			if !strings.Contains(tool.Description, "off the record") {
+				t.Errorf("the description of %s does not mention sentences off the record: %s", tool.Name, tool.Description)
+			}
+		}
 	}
+
+	v := s.ok("decision_record", map[string]any{"text": "We ship."})
+	d, _ := v["decision"].(map[string]any)
+	if v["duplicate"] != false || d["id"] != float64(1) || d["text"] != "We ship." ||
+		d["authorParticipantId"] != "bot" || d["authorKind"] != "AUTHOR_KIND_AGENT" || d["sessionId"] != nil {
+		t.Fatalf("decision_record: %v", v)
+	}
+	ada.ok("decision", "record", "--session", "s1", "Ada writes the plan.")
+	s.ok("decision_record", map[string]any{"text": "We wait.", "session": "s1"})
 	for _, c := range []struct {
 		args map[string]any
 		want string
 	}{
 		{nil, "1,2,3"},
-		{map[string]any{"kind": "task"}, "2"},
 		{map[string]any{"session": "s1"}, "2,3"},
-		{map[string]any{"afterEntryId": 1, "limit": 1}, "2"},
-		{map[string]any{"afterEntryId": 3}, ""},
+		{map[string]any{"afterId": 1, "limit": 1}, "2"},
+		{map[string]any{"afterId": 3}, ""},
 	} {
-		if got := ids(c.args); got != c.want {
-			t.Fatalf("journal_list %v: %s, want %s", c.args, got, c.want)
+		if got := idsOf(listOf(t, s.ok("decision_list", c.args), "decisions")); got != c.want {
+			t.Fatalf("decision_list %v: %s, want %s", c.args, got, c.want)
 		}
 	}
 
-	// The minutes of the session go into the journal when it ends.
+	v = s.ok("note_add", map[string]any{"text": "A note.", "session": "s1"})
+	if n, _ := v["note"].(map[string]any); v["duplicate"] != false || n["id"] != float64(1) || n["sessionId"] != "s1" ||
+		n["authorParticipantId"] != "bot" || n["authorKind"] != "AUTHOR_KIND_AGENT" {
+		t.Fatalf("note_add: %v", v)
+	}
+	ada.ok("note", "add", "Ada's note.")
+	if got := idsOf(listOf(t, s.ok("note_list", nil), "notes")); got != "1,2" {
+		t.Fatalf("note_list: %s", got)
+	}
+	if got := listOf(t, s.ok("note_list", map[string]any{"afterId": 1}), "notes"); len(got) != 1 || got[0]["authorParticipantId"] != "ada" {
+		t.Fatalf("note_list after 1: %v", got)
+	}
+
+	// The minutes of the session are stored when it ends.
 	sid := newSession()
 	s.ok("meeting_join", map[string]any{"session": sid})
 	s.ok("minutes_update", map[string]any{"text": "Final: we ship"})
+	s.fails("not_found", "minutes_get", map[string]any{"session": sid})
 	s.ok("meeting_end", nil)
-	got := entriesOf(t, s.ok("journal_list", map[string]any{"session": sid, "kind": "minutes"}))
-	if len(got) != 1 || got[0]["text"] != "Final: we ship" || got[0]["authorParticipantId"] != "bot" {
-		t.Fatalf("minutes of the session: %v", got)
+	mm, _ := s.ok("minutes_get", map[string]any{"session": sid})["minutes"].(map[string]any)
+	if mm["text"] != "Final: we ship" || mm["authorParticipantId"] != "bot" || mm["sessionId"] != sid {
+		t.Fatalf("minutes_get: %v", mm)
+	}
+	if got := listOf(t, s.ok("minutes_list", map[string]any{"session": sid}), "minutes"); len(got) != 1 || got[0]["text"] != "Final: we ship" {
+		t.Fatalf("minutes_list: %v", got)
+	}
+	if got := listOf(t, s.ok("minutes_list", map[string]any{"afterId": 1}), "minutes"); len(got) != 0 {
+		t.Fatalf("minutes_list after 1: %v", got)
 	}
 }
 

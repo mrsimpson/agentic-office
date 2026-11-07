@@ -141,19 +141,20 @@ func TestTwoCLIParticipants(t *testing.T) {
 		t.Fatal("the two local logs differ")
 	}
 
-	// The minutes are in the journal (rs-session-ends), next to a decision of the agent.
-	office(bot, "journal", "append", "--kind", "decision", "--session", sid, "Budget agreed.")
-	list := office(ada, "journal", "list", "--session", sid)
-	entries, _ := list["entries"].([]any)
-	if len(entries) != 2 {
-		t.Fatalf("journal of the session: %v", list)
+	// The minutes are stored (rs-session-ends), and the agent records a decision of the session.
+	mins, _ := office(ada, "minutes", "show", sid)["minutes"].(map[string]any)
+	if mins["text"] != "Ada asked for the budget. Bot showed slides/1." || mins["sessionId"] != sid ||
+		mins["authorParticipantId"] != "bot" || mins["authorKind"] != "AUTHOR_KIND_AGENT" {
+		t.Fatalf("minutes of the session: %v", mins)
 	}
-	m, _ := entries[0].(map[string]any)
-	d, _ := entries[1].(map[string]any)
-	if m["kind"] != "ENTRY_KIND_MINUTES" || m["text"] != "Ada asked for the budget. Bot showed slides/1." ||
-		m["authorParticipantId"] != "bot" || m["authorKind"] != "AUTHOR_KIND_AGENT" ||
-		d["kind"] != "ENTRY_KIND_DECISION" || d["authorParticipantId"] != "bot" {
-		t.Fatalf("journal of the session: %v", list)
+	office(bot, "decision", "record", "--session", sid, "Budget agreed.")
+	list := office(ada, "decision", "list", "--session", sid)
+	ds, _ := list["decisions"].([]any)
+	if len(ds) != 1 {
+		t.Fatalf("decisions of the session: %v", list)
+	}
+	if d, _ := ds[0].(map[string]any); d["text"] != "Budget agreed." || d["authorParticipantId"] != "bot" {
+		t.Fatalf("decisions of the session: %v", list)
 	}
 }
 

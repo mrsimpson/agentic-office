@@ -15,7 +15,9 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/artifacts/api/artifactv1connect"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/identityv1connect"
-	"github.com/mrsimpson/agentic-office/hub/journal/api/journalv1connect"
+	"github.com/mrsimpson/agentic-office/hub/records/decision/api/decisionv1connect"
+	"github.com/mrsimpson/agentic-office/hub/records/minutes/api/minutesv1connect"
+	"github.com/mrsimpson/agentic-office/hub/records/note/api/notev1connect"
 	"github.com/mrsimpson/agentic-office/hub/session/api/sessionv1connect"
 )
 
@@ -27,7 +29,9 @@ type Client struct {
 
 	Session  sessionv1connect.SessionServiceClient
 	Identity identityv1connect.IdentityServiceClient
-	Journal  journalv1connect.JournalServiceClient
+	Decision decisionv1connect.DecisionServiceClient
+	Minutes  minutesv1connect.MinutesServiceClient
+	Note     notev1connect.NoteServiceClient
 	Artifact artifactv1connect.ArtifactServiceClient
 }
 
@@ -55,7 +59,9 @@ func Dial(cfg Config) (*Client, error) {
 	return &Client{Config: cfg, Key: key, Tokens: ts,
 		Session:  sessionv1connect.NewSessionServiceClient(cc),
 		Identity: identityv1connect.NewIdentityServiceClient(cc),
-		Journal:  journalv1connect.NewJournalServiceClient(cc),
+		Decision: decisionv1connect.NewDecisionServiceClient(cc),
+		Minutes:  minutesv1connect.NewMinutesServiceClient(cc),
+		Note:     notev1connect.NewNoteServiceClient(cc),
 		Artifact: artifactv1connect.NewArtifactServiceClient(cc),
 	}, nil
 }

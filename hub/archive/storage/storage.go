@@ -16,12 +16,20 @@ import (
 
 // Archive stores files in a repository. An Archive is safe for use by many goroutines; it
 // carries out one change at a time.
+//
+// A part of the hub reads its records back with Read, for example to rebuild its index when the
+// hub starts.
 type Archive interface {
 	// Commit writes the files of c and records them as one commit with the message of c. It
 	// returns the ID of the commit. A change that does not alter any file creates no commit and
 	// returns the ID of the current commit. Commit fails if a path is not valid (see CheckPath).
 	// Commit may take a long time; callers that must not wait call it in the background.
 	Commit(ctx context.Context, c Change) (string, error)
+	// Read returns the files under the directory dir as they are in the current commit, ordered
+	// by path. dir is a valid path (see CheckPath). A directory that is not in the current
+	// commit, or a repository without commits, has no files. Files of a change whose commit
+	// failed are not returned.
+	Read(ctx context.Context, dir string) ([]File, error)
 }
 
 // Change is a set of files that is written as one commit.

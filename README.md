@@ -85,12 +85,15 @@ hub/                      bb-office-hub: wiring of the hub (binary office-hub)
                           event types in dotted form (api/events), Merkle code (api/merkle),
                           stored form of a session log: lines and tree head (api/logfile)
   archive/                bb-archive: local Git repository, push mocked
-    storage/              if-archive-storage: write files as one commit (in-process)
+    storage/              if-archive-storage: write files as one commit, read them back (in-process)
   identity/               bb-identity
     api/                  if-auth-api: contract, generated code, client side (api/auth: key files,
                           challenge signing, tokens, TLS trust)
     tokencheck/           if-token-check: who makes a call (in-process)
-  journal/  journal/api/  bb-journal, if-journal-api
+  records/                bb-records: decisions, minutes and notes as YAML in the archive
+    decision/api/         if-decision-api: contract and generated code
+    minutes/api/          if-minutes-api: contract and generated code
+    note/api/             if-note-api: contract and generated code
   artifacts/ artifacts/api/  bb-artifact-service, if-artifact-api
   stage/                  bb-stage, realizes if-stage-web
 client/                   bb-participant-client: wiring of the client (binary office)
@@ -118,7 +121,9 @@ All interfaces are defined in Protobuf and served with Connect RPC (`dec-connect
 | Session commands | `office.session.v1.SessionService` | unary |
 | Session stream | `office.session.v1.SessionService/Subscribe` | server stream from a cursor |
 | Auth API | `office.identity.v1.IdentityService` | unary |
-| Journal API | `office.journal.v1.JournalService` | unary |
+| Decisions | `office.decision.v1.DecisionService` | unary |
+| Minutes | `office.minutes.v1.MinutesService` | unary |
+| Notes | `office.note.v1.NoteService` | unary |
 | Artifact API | `office.artifact.v1.ArtifactService` | unary |
 
 Rules that hold for all of them:
@@ -189,7 +194,8 @@ Transparency), and the hub signs its tree heads (`dec-merkle-log`). Package
 
 ### Archive
 
-The archive (`hub/archive`) stores the records of the hub in a local Git repository on the hub
+The archive (`hub/archive`) stores the sessions and the records (decisions, minutes and notes,
+see [Records](#records-decisions-minutes-and-notes)) of the hub in a local Git repository on the hub
 host, by default `<data-dir>/archive` (`-archive-dir`). It creates the repository (branch `main`)
 on the first start. Every write is one commit. The push to a remote is mocked: it does nothing
 and reports success (#43). The hub needs the `git` command line tool in `PATH`. It runs git
@@ -244,25 +250,53 @@ the details. In short:
 - Registered keys are stored in `<data-dir>/identity.json`. Tokens are kept in memory only, so
   clients authenticate again after a restart of the hub.
 
-### Journal
+### Records: decisions, minutes and notes
 
-The journal (`hub/journal`) is implemented. The package comment in `hub/journal/doc.go` has
-the details. In short:
+The records (`hub/records`) replace the journal (`dec-records-per-type`). Each type has its own
+interface. The package comment in `hub/records/doc.go` has the details. In short:
 
-- An entry has a kind (`decision`, `task`, `minutes`, `note`), a text, an optional session ID, the
-  author and the author's kind (`human` or `agent`). The hub takes the author and the kind
-  from the access token: `author_participant_id` must be the participant of the token. A stage
-  link cannot use the journal.
-- `AppendEntry` is idempotent by `command_id`. Command IDs that start with `office/` are reserved
-  for the hub.
-- `ListEntries` returns entries after the cursor `after_entry_id`, oldest first, filtered by kind
-  and session. It returns at most `limit` entries (default 100, at most 1000). To read the next
-  page, pass the ID of the last entry.
-- **Minutes at the end of a session.** `EndSession` stores the text of the last
-  `minutes.updated` event as a `minutes` entry of the session, then writes `session.ended`. Its
-  author is the participant who wrote that version. A session without minutes, or with blank
-  minutes, stores nothing. What "confirmed minutes" means is still open (#22).
-- The journal is stored in `<data-dir>/journal.jsonl`, so it survives a restart of the hub.
+- **Decisions** (`RecordDecision`, `ListDecisions`) and **notes** (`AddNote`, `ListNotes`) have
+  a text, an optional session ID, the author and the author's kind (`human` or `agent`). The hub
+  takes the author and the kind from the access token: `author_participant_id` must be the
+  participant of the token. A stage link cannot use the records.
+- **Minutes** (`GetMinutes`, `ListMinutes`) are read only. While a session runs, its
+  participants write the running minutes with `minutes update` (`minutes.updated` in the log).
+  `EndSession` stores the text of the last `minutes.updated` event as the minutes of the
+  session, then writes `session.ended`. Their author is the participant who wrote that version.
+  A session without minutes, or with blank minutes, stores nothing. What "confirmed minutes"
+  means is still open (#22). `GetMinutes` returns the newest stored minutes of a session, or
+  `not_found`.
+- Writes are idempotent by `command_id`, per type. The same `command_id` with another text,
+  author or session fails with `already_exists`.
+- The list calls return records after the cursor `after_id`, oldest first, optionally of one
+  session. They return at most `limit` records (default 100, at most 1000). To read the next
+  page, pass the ID of the last record. IDs start at 1 per type.
+- Tasks are not records here; they get their own interface (#38). The old journal kind `task`
+  is gone.
+- Do not put a sentence that is off the record into minutes, decisions or notes
+  (`dec-off-the-record`). The hub does not check this.
+
+Every record is one YAML file in the archive, committed before the call returns, one commit per
+record: `decisions/000001.yaml`, `minutes/000001.yaml`, `notes/000001.yaml` (the ID with at least
+six digits). The fields are those of the contract in snake_case; a text with line breaks is a
+literal block:
+
+```yaml
+id: 1
+text: |-
+    We ship on Friday.
+    Ada writes the release notes.
+author_participant_id: "ada"
+author_kind: "AUTHOR_KIND_HUMAN"
+session_id: "weekly"
+time: "2026-11-07T18:23:46.117670700Z"
+command_id: "01a1b740-97c5-733b-bc48-e7e52a691139"
+```
+
+Minutes have `session_id`, `text`, `author_participant_id`, `author_kind`, `time` and
+`command_id` (`office/session-end/<command ID of EndSession>`). The hub reads all records from
+the current commit of the archive when it starts, so they survive a restart. An older hub kept a
+journal in `<data-dir>/journal.jsonl`; the hub no longer reads it and logs a note if it exists.
 
 ### Artifact tools
 
@@ -310,11 +344,10 @@ All files of the hub are in its data directory, by default `~/.config/agentic-of
 |---|---|
 | `admins` | Admin keys. You write it by hand. |
 | `identity.json` | Registered participants and keys. The hub writes it. |
-| `journal.jsonl` | Journal entries, one JSON object per line in the form of the API. The hub appends to it. |
 | `artifacts.jsonl` | Artifacts, one JSON object per line: command ID, input and artifact in the form of the API. The hub appends to it. |
 | `tls.crt`, `tls.key` | TLS certificate and key. The hub creates a self-signed pair if neither exists. |
 | `signing.key` | Ed25519 key that signs the tree heads of session logs (`-signing-key`). The hub creates it if it does not exist. Keep it: without it, old tree heads cannot be checked against the hub key. |
-| `archive/` | The Git repository of the archive (`-archive-dir`). The hub creates it and commits into it. See [Archive](#archive). |
+| `archive/` | The Git repository of the archive (`-archive-dir`): sessions, decisions, minutes and notes. The hub creates it and commits into it. See [Archive](#archive). |
 
 Flags of the hub (`bin/office-hub -h` lists them all):
 
@@ -421,16 +454,22 @@ Other session commands: `meeting pause | resume`, `utterance off-the-record <eve
 `signal turn-end | silence-long --duration D | addressed --participant P --utterance ID`,
 `stage link`.
 
-**The journal:**
+**Decisions, minutes and notes:**
 
 ```sh
-office journal append --kind decision "We ship on Friday."
-office journal append --kind minutes --file minutes.md --session weekly
-office journal list --kind decision --after 10 --limit 20
-office journal list --session weekly    # also the minutes stored when "weekly" ended
+office decision record "We ship on Friday."
+office decision record --session weekly --file decision.md
+office decision list --after 10 --limit 20
+office note add "Ask the bank about the loan."
+office note list --session weekly
+office minutes show weekly           # the minutes stored when "weekly" ended
+office minutes list
 ```
 
-`journal append` links the entry to a session only with an explicit `--session`.
+`decision record` and `note add` link the record to a session only with an explicit `--session`.
+With `--json` they print `{"decision": …, "duplicate": …}` or `{"note": …, "duplicate": …}`; the
+lists print `{"decisions": […]}`, `{"notes": […]}` and `{"minutes": […]}`, and `minutes show`
+prints `{"minutes": …}`. Without `--json`, `minutes show` prints the text of the minutes.
 
 **Slides:**
 
@@ -614,7 +653,9 @@ tool names.
 | `stage_show` (artifactId), `stage_link` | `stage show`, `stage link` |
 | `slides_render` (title and slides, markdown, or file) | `slides render` |
 | `artifact_get` (id, out) | `artifact get` |
-| `journal_append` (kind, text, session), `journal_list` (kind, session, afterEntryId, limit) | `journal append`, `journal list` |
+| `decision_record` (text, session), `decision_list` (afterId, limit, session) | `decision record`, `decision list` |
+| `note_add` (text, session), `note_list` (afterId, limit, session) | `note add`, `note list` |
+| `minutes_get` (session), `minutes_list` (afterId, limit, session) | `minutes show`, `minutes list` |
 | `whoami` | `whoami` |
 
 Session tools take an optional `session`. The default is `--session` or `OFFICE_SESSION`, else the
@@ -660,8 +701,8 @@ through its interfaces:
 - `tests/contract/stub_example_test.go` shows a test against a stub service.
 - `tests/contract/mcp_test.go` starts `office mcp` and talks to it over stdio with the MCP Go SDK
   client: every tool and its result, the log path that receives the events of all participants,
-  errors for bad input, server errors, the artifact tools, the journal, and
-  that no writer is left
+  errors for bad input, server errors, the artifact tools, decisions, minutes and notes,
+  and that no writer is left
   when the MCP process closes or is killed. `tests/e2e/mcp_test.go`: an agent works only through
   MCP and follows its log with the `tail -f | grep` filter from the tool description.
 - `tests/contract/cli_test.go` and `replicator_test.go` run the real `office` binary and check

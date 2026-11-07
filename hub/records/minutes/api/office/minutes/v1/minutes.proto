@@ -1,0 +1,71 @@
+// Minutes (if-minutes-api): the minutes of meeting sessions. One of the record types of the hub
+// (dec-records-per-type). The hub stores the minutes in the archive.
+//
+// While a session runs, its participants write the running minutes through the session commands
+// (minutes.update in session.proto). When the session ends, the hub stores the last version as
+// the minutes of the session (rs-session-ends). This interface reads the stored minutes. Clients
+// do not write minutes here.
+//
+// Every call needs an access token of a participant (see identity.proto). A stage link cannot
+// read the minutes. A sentence that is off the record must not go into minutes
+// (dec-off-the-record).
+syntax = "proto3";
+
+package office.minutes.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/mrsimpson/agentic-office/hub/records/minutes/api;minutesv1";
+
+service MinutesService {
+  // GetMinutes returns the newest stored minutes of a session. It fails with not_found if the
+  // session has no stored minutes.
+  rpc GetMinutes(GetMinutesRequest) returns (GetMinutesResponse);
+  // ListMinutes returns stored minutes with an ID greater than after_id, oldest first.
+  rpc ListMinutes(ListMinutesRequest) returns (ListMinutesResponse);
+}
+
+message Minutes {
+  // id grows by one with every stored minutes and starts at 1.
+  uint32 id = 1;
+  // session_id is the session of the minutes.
+  string session_id = 2;
+  // text is the full text of the minutes (Markdown).
+  string text = 3;
+  // author_participant_id is the participant who wrote the last version (the minute taker).
+  string author_participant_id = 4;
+  // author_kind tells whether the author is a human or an agent, as it joined the session.
+  AuthorKind author_kind = 5;
+  // time is when the hub stored the minutes.
+  google.protobuf.Timestamp time = 6;
+  // command_id is "office/session-end/" plus the command ID of the command that ended the
+  // session.
+  string command_id = 7;
+}
+
+message GetMinutesRequest {
+  string session_id = 1;
+}
+
+message GetMinutesResponse {
+  Minutes minutes = 1;
+}
+
+message ListMinutesRequest {
+  uint32 after_id = 1;
+  // session_id filters by session. Empty returns the minutes of all sessions.
+  string session_id = 2;
+  // limit is the largest number of minutes in the response. 0 means the server's default.
+  uint32 limit = 3;
+}
+
+message ListMinutesResponse {
+  repeated Minutes minutes = 1;
+}
+
+// AuthorKind tells whether the author of the minutes is a human or an agent.
+enum AuthorKind {
+  AUTHOR_KIND_UNSPECIFIED = 0;
+  AUTHOR_KIND_HUMAN = 1;
+  AUTHOR_KIND_AGENT = 2;
+}

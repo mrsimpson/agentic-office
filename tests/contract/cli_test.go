@@ -501,10 +501,13 @@ func TestCLIArtifacts(t *testing.T) {
 	bot.fails(2, "usage", "artifact", "get")
 }
 
-// entriesOf returns the entries of a "journal list --json" result.
-func entriesOf(t *testing.T, v map[string]any) []map[string]any {
+// listOf returns the records under key of a list result with --json.
+func listOf(t *testing.T, v map[string]any, key string) []map[string]any {
 	t.Helper()
-	raw, _ := v["entries"].([]any)
+	raw, ok := v[key].([]any)
+	if !ok && v[key] != nil {
+		t.Fatalf("%s is not a list: %v", key, v)
+	}
 	out := make([]map[string]any, len(raw))
 	for i, r := range raw {
 		out[i], _ = r.(map[string]any)
@@ -512,78 +515,105 @@ func entriesOf(t *testing.T, v map[string]any) []map[string]any {
 	return out
 }
 
-// TestCLIJournal: journal append and list against the real journal, and the minutes that a
-// session stores when it ends.
-func TestCLIJournal(t *testing.T) {
+// idsOf returns the IDs of records, joined with commas.
+func idsOf(rs []map[string]any) string {
+	var got []string
+	for _, r := range rs {
+		got = append(got, fmt.Sprint(r["id"]))
+	}
+	return strings.Join(got, ",")
+}
+
+// TestCLIRecords: decision record and list, note add and list, and minutes show and list
+// against the real hub, with the minutes that a session stores when it ends.
+func TestCLIRecords(t *testing.T) {
 	m := newMachine(t)
 	bot := m.user("bot", "Bot", "agent")
 	ada := m.user("ada", "Ada", "human")
 
-	v := bot.ok("journal", "append", "--kind", "decision", "We ship")
-	e, _ := v["entry"].(map[string]any)
-	if v["duplicate"] != false || e["id"] != float64(1) || e["kind"] != "ENTRY_KIND_DECISION" || e["text"] != "We ship" ||
-		e["authorParticipantId"] != "bot" || e["authorKind"] != "AUTHOR_KIND_AGENT" || e["sessionId"] != nil ||
-		e["commandId"] == nil || e["time"] == nil {
-		t.Fatalf("append: %v", v)
+	v := bot.ok("decision", "record", "We ship")
+	d, _ := v["decision"].(map[string]any)
+	if v["duplicate"] != false || d["id"] != float64(1) || d["text"] != "We ship" ||
+		d["authorParticipantId"] != "bot" || d["authorKind"] != "AUTHOR_KIND_AGENT" || d["sessionId"] != nil ||
+		d["commandId"] == nil || d["time"] == nil {
+		t.Fatalf("decision record: %v", v)
 	}
-	ada.ok("journal", "append", "--kind", "note", "--session", "s1", "A note")
-	f := filepath.Join(t.TempDir(), "minutes.md")
+	f := filepath.Join(t.TempDir(), "decision.md")
 	if err := os.WriteFile(f, []byte("Line one\nline two"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if e := ada.ok("journal", "append", "--kind", "minutes", "--file", f)["entry"].(map[string]any); e["text"] != "Line one\nline two" ||
-		e["authorKind"] != "AUTHOR_KIND_HUMAN" {
-		t.Fatalf("append from a file: %v", e)
+	if d := ada.ok("decision", "record", "--session", "s1", "--file", f)["decision"].(map[string]any); d["text"] != "Line one\nline two" ||
+		d["authorKind"] != "AUTHOR_KIND_HUMAN" || d["sessionId"] != "s1" {
+		t.Fatalf("decision record from a file: %v", d)
 	}
-	if out, errOut, code := ada.run("journal", "append", "--kind", "task"); code != 2 || !strings.Contains(errOut, "usage") {
-		t.Fatalf("append without text: exit %d, %q %q", code, out, errOut)
-	}
-	if out, _, code := ada.run("journal", "append", "--kind", "task", "Ada plans"); code != 0 || out != "entry 4\n" {
-		t.Fatalf("append without --json: exit %d, %q", code, out)
-	}
-
-	ids := func(args ...string) string {
-		t.Helper()
-		var got []string
-		for _, e := range entriesOf(t, bot.ok(append([]string{"journal", "list"}, args...)...)) {
-			got = append(got, fmt.Sprint(e["id"]))
-		}
-		return strings.Join(got, ",")
+	if out, _, code := ada.run("decision", "record", "We wait"); code != 0 || out != "decision 3\n" {
+		t.Fatalf("decision record without --json: exit %d, %q", code, out)
 	}
 	for _, c := range []struct {
 		args []string
 		want string
 	}{
-		{nil, "1,2,3,4"},
-		{[]string{"--kind", "note"}, "2"},
+		{nil, "1,2,3"},
 		{[]string{"--session", "s1"}, "2"},
-		{[]string{"--after", "1", "--limit", "2"}, "2,3"},
-		{[]string{"--after", "4"}, ""},
+		{[]string{"--after", "1", "--limit", "1"}, "2"},
+		{[]string{"--after", "3"}, ""},
 	} {
-		if got := ids(c.args...); got != c.want {
-			t.Fatalf("journal list %v: %s, want %s", c.args, got, c.want)
+		if got := idsOf(listOf(t, bot.ok(append([]string{"decision", "list"}, c.args...)...), "decisions")); got != c.want {
+			t.Fatalf("decision list %v: %s, want %s", c.args, got, c.want)
 		}
 	}
-	out, _, code := ada.run("journal", "list", "--kind", "minutes")
-	if code != 0 || out != "#3 minutes ada: Line one line two\n" {
-		t.Fatalf("journal list without --json: exit %d, %q", code, out)
+	if out, _, code := ada.run("decision", "list", "--session", "s1"); code != 0 || out != "#2 ada: Line one line two\n" {
+		t.Fatalf("decision list without --json: exit %d, %q", code, out)
 	}
 
-	bot.fails(2, "usage", "journal", "append", "--kind", "gossip", "x")
-	bot.fails(2, "usage", "journal", "append", "We ship")
-	bot.fails(2, "usage", "journal", "list", "--kind", "gossip")
+	v = ada.ok("note", "add", "--session", "s1", "A note")
+	n, _ := v["note"].(map[string]any)
+	if v["duplicate"] != false || n["id"] != float64(1) || n["text"] != "A note" || n["authorParticipantId"] != "ada" ||
+		n["authorKind"] != "AUTHOR_KIND_HUMAN" || n["sessionId"] != "s1" {
+		t.Fatalf("note add: %v", v)
+	}
+	if out, _, code := bot.run("note", "add", "Another note"); code != 0 || out != "note 2\n" {
+		t.Fatalf("note add without --json: exit %d, %q", code, out)
+	}
+	if got := idsOf(listOf(t, bot.ok("note", "list"), "notes")); got != "1,2" {
+		t.Fatalf("note list: %s", got)
+	}
+	if got := idsOf(listOf(t, bot.ok("note", "list", "--session", "s1"), "notes")); got != "1" {
+		t.Fatalf("note list --session: %s", got)
+	}
+	if out, _, code := bot.run("note", "list", "--after", "1"); code != 0 || out != "#2 bot: Another note\n" {
+		t.Fatalf("note list without --json: exit %d, %q", code, out)
+	}
 
-	// The minutes of a session go into the journal when it ends.
+	bot.fails(2, "usage", "decision", "record")
+	bot.fails(2, "usage", "decision", "record", "  ")
+	bot.fails(2, "usage", "note", "add")
+	bot.fails(2, "usage", "decision", "list", "extra")
+	bot.fails(2, "usage", "minutes", "show", "a", "b")
+	bot.fails(2, "usage", "journal", "list")
+	bot.fails(1, "not_found", "minutes", "show", "no-such-session")
+
+	// The minutes of a session are stored when it ends.
 	sid := newSession()
 	bot.join(sid)
 	ada.join(sid)
 	bot.ok("minutes", "update", "--session", sid, "Draft")
 	bot.ok("minutes", "update", "--session", sid, "Final: we ship")
+	bot.fails(1, "not_found", "minutes", "show", sid)
 	ada.ok("meeting", "end", "--session", sid)
-	got := entriesOf(t, ada.ok("journal", "list", "--session", sid, "--kind", "minutes"))
-	if len(got) != 1 || got[0]["text"] != "Final: we ship" || got[0]["authorParticipantId"] != "bot" ||
-		got[0]["authorKind"] != "AUTHOR_KIND_AGENT" {
-		t.Fatalf("minutes of the session: %v", got)
+	mm, _ := ada.ok("minutes", "show", sid)["minutes"].(map[string]any)
+	if mm["text"] != "Final: we ship" || mm["authorParticipantId"] != "bot" || mm["authorKind"] != "AUTHOR_KIND_AGENT" ||
+		mm["sessionId"] != sid || mm["id"] != float64(1) {
+		t.Fatalf("minutes show: %v", mm)
+	}
+	if out, _, code := ada.run("minutes", "show", "--session", sid); code != 0 || out != "Final: we ship\n" {
+		t.Fatalf("minutes show without --json: exit %d, %q", code, out)
+	}
+	if got := listOf(t, ada.ok("minutes", "list", "--session", sid), "minutes"); len(got) != 1 || got[0]["text"] != "Final: we ship" {
+		t.Fatalf("minutes list --session: %v", got)
+	}
+	if out, _, code := ada.run("minutes", "list"); code != 0 || out != "#1 "+sid+" bot: Final: we ship\n" {
+		t.Fatalf("minutes list without --json: exit %d, %q", code, out)
 	}
 }
 

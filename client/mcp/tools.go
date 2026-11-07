@@ -10,7 +10,6 @@ import (
 
 	artifactv1 "github.com/mrsimpson/agentic-office/hub/artifacts/api"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
-	journalv1 "github.com/mrsimpson/agentic-office/hub/journal/api"
 	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 
 	"github.com/mrsimpson/agentic-office/client/core"
@@ -37,7 +36,7 @@ const logHelp = `How to read the log file:
   tail -n +1 -f "$LOG" | grep --line-buffered '"type":"turn.end"\|"type":"addressed"'
   or read it again from time to time and keep the last id you handled:
   jq -c 'select(.id > 41 and (.type == "utterance.final" or .type == "addressed"))' "$LOG"
-- Event types: utterance.final (someone said or typed a sentence), utterance.off_the_record (the speaker marked a sentence off the record: never use or repeat that sentence, not in minutes and not in the journal; the original line stays in your file), turn.end (a speaker finished; a good moment to answer), addressed (someone named a participant; check addressed.participantId), silence.long, hand.raised, minutes.updated, artifact.shown, participant.joined, participant.left, participant.paused, participant.resumed, session.ended (the last line; the file is complete).
+- Event types: utterance.final (someone said or typed a sentence), utterance.off_the_record (the speaker marked a sentence off the record: never use or repeat that sentence, not in minutes, decisions or notes; the original line stays in your file), turn.end (a speaker finished; a good moment to answer), addressed (someone named a participant; check addressed.participantId), silence.long, hand.raised, minutes.updated, artifact.shown, participant.joined, participant.left, participant.paused, participant.resumed, session.ended (the last line; the file is complete).
 - Usually filter for turn.end and addressed, and read the utterance.final lines before them for the context.
 - IDs have no gaps. If you see a gap (43 after 41), read the missing events with meeting_events (after 41). meeting_events also works without the file, if you poll it with your last id.`
 
@@ -152,17 +151,19 @@ type artifactIn struct {
 	Out string `json:"out,omitempty" jsonschema:"Write the content to this local file instead of returning it (base64) in the result."`
 }
 
-type journalAppendIn struct {
-	Kind    string `json:"kind" jsonschema:"decision, task, minutes or note."`
-	Text    string `json:"text" jsonschema:"The entry."`
-	Session string `json:"session,omitempty" jsonschema:"Link the entry to this session. Default: no session (unlike the session commands)."`
+type recordIn struct {
+	Text    string `json:"text" jsonschema:"The text. Never include a sentence that is off the record."`
+	Session string `json:"session,omitempty" jsonschema:"Link the record to this session. Default: no session (unlike the session commands)."`
 }
 
-type journalListIn struct {
-	Kind         string `json:"kind,omitempty" jsonschema:"Only entries of this kind: decision, task, minutes or note."`
-	AfterEntryID uint32 `json:"afterEntryId,omitempty" jsonschema:"Only entries with an ID greater than this."`
-	Limit        uint32 `json:"limit,omitempty" jsonschema:"At most this many entries. 0: the server's default."`
-	Session      string `json:"session,omitempty" jsonschema:"Only entries of this session. Default: all."`
+type listIn struct {
+	AfterID uint32 `json:"afterId,omitempty" jsonschema:"Only records with an ID greater than this (the last ID you have)."`
+	Limit   uint32 `json:"limit,omitempty" jsonschema:"At most this many records. 0: the hub's default (100); at most 1000."`
+	Session string `json:"session,omitempty" jsonschema:"Only records of this session. Default: all."`
+}
+
+type minutesGetIn struct {
+	Session string `json:"session,omitempty" jsonschema:"The ended session. Default: the session given when the server was started, else the only session you joined from this machine."`
 }
 
 type eventsIn struct {
@@ -259,7 +260,7 @@ func (s *Server) addTools(srv *sdk.Server) {
 		})
 
 	sessionTool(srv, s, &sdk.Tool{Name: "utterance_off_the_record", Title: "Mark a sentence off the record", Annotations: additive,
-		Description: `Mark one of your own sentences off the record. What is said stays said: this adds an utterance.off_the_record line that points to the sentence. Readers who read the session later get only a placeholder without its text, and nobody may use the sentence in minutes or the journal. You cannot undo it. Give eventId, or last=true for your newest sentence. Returns {"event", "duplicate"}.`},
+		Description: `Mark one of your own sentences off the record. What is said stays said: this adds an utterance.off_the_record line that points to the sentence. Readers who read the session later get only a placeholder without its text, and nobody may use the sentence in minutes, decisions or notes. You cannot undo it. Give eventId, or last=true for your newest sentence. Returns {"event", "duplicate"}.`},
 		func(in offTheRecordIn) string { return in.Session },
 		func(ctx context.Context, c *core.Client, sid string, in offTheRecordIn) (*sessionv1.CommandResult, error) {
 			switch {
@@ -307,7 +308,7 @@ func (s *Server) addTools(srv *sdk.Server) {
 		})
 
 	sessionTool(srv, s, &sdk.Tool{Name: "minutes_update", Title: "Update the minutes", Annotations: additive,
-		Description: `Replace the running minutes of the meeting (minutes.updated). Send the full new text, not a diff. Give text, or file for a local file. Returns {"event", "duplicate"}.`},
+		Description: `Replace the running minutes of the meeting (minutes.updated). Send the full new text, not a diff. Never include a sentence that is off the record. When the session ends, the hub stores the last version (see minutes_get). Give text, or file for a local file. Returns {"event", "duplicate"}.`},
 		func(in minutesIn) string { return in.Session },
 		func(ctx context.Context, c *core.Client, sid string, in minutesIn) (*sessionv1.CommandResult, error) {
 			text := in.Text
@@ -413,47 +414,90 @@ func (s *Server) addTools(srv *sdk.Server) {
 			return map[string]any{"artifact": core.MessageJSON(a)}, nil
 		})
 
-	tool(srv, s, &sdk.Tool{Name: "journal_append", Title: "Write a journal entry", Annotations: additive,
-		Description: `Write an entry into the shared journal: a decision, task, minutes or note. Returns {"entry", "duplicate"}.`},
-		func(ctx context.Context, c *core.Client, in journalAppendIn) (any, error) {
-			k, err := core.ParseEntryKind(in.Kind)
-			if err != nil {
-				return nil, err
-			}
-			if k == 0 {
-				return nil, usagef("kind is required: decision, task, minutes or note")
-			}
+	tool(srv, s, &sdk.Tool{Name: "decision_record", Title: "Record a decision", Annotations: additive,
+		Description: `Record a decision of the team, for example "We ship on Friday.", with you as its author. Never put a sentence that is off the record into a decision. Give session to link it to a meeting. Returns {"decision", "duplicate"}.`},
+		func(ctx context.Context, c *core.Client, in recordIn) (any, error) {
 			if blank(in.Text) {
 				return nil, usagef("text is required")
 			}
-			res, err := c.AppendJournal(ctx, k, in.Text, in.Session)
+			res, err := c.RecordDecision(ctx, in.Text, in.Session)
 			if err != nil {
 				return nil, err
 			}
-			return map[string]any{"entry": core.MessageJSON(res.GetEntry()), "duplicate": res.GetDuplicate()}, nil
+			return map[string]any{"decision": core.MessageJSON(res.GetDecision()), "duplicate": res.GetDuplicate()}, nil
 		})
 
-	tool(srv, s, &sdk.Tool{Name: "journal_list", Title: "List journal entries", Annotations: readOnly,
-		Description: `List journal entries. Page with afterEntryId (the last ID you have). Returns {"entries": […]}.`},
-		func(ctx context.Context, c *core.Client, in journalListIn) (any, error) {
-			k, err := core.ParseEntryKind(in.Kind)
+	tool(srv, s, &sdk.Tool{Name: "decision_list", Title: "List decisions", Annotations: readOnly,
+		Description: `List the recorded decisions, oldest first. Page with afterId (the last ID you have). Returns {"decisions": […]}.`},
+		func(ctx context.Context, c *core.Client, in listIn) (any, error) {
+			ds, err := c.ListDecisions(ctx, in.AfterID, in.Session, in.Limit)
 			if err != nil {
 				return nil, err
 			}
-			entries, err := c.ListJournal(ctx, &journalv1.ListEntriesRequest{AfterEntryId: in.AfterEntryID, Kind: k,
-				SessionId: in.Session, Limit: in.Limit})
+			out := make([]any, len(ds))
+			for i, d := range ds {
+				out[i] = core.MessageJSON(d)
+			}
+			return map[string]any{"decisions": out}, nil
+		})
+
+	tool(srv, s, &sdk.Tool{Name: "note_add", Title: "Add a note", Annotations: additive,
+		Description: `Add a free note, with you as its author. Never put a sentence that is off the record into a note. Give session to link it to a meeting. Returns {"note", "duplicate"}.`},
+		func(ctx context.Context, c *core.Client, in recordIn) (any, error) {
+			if blank(in.Text) {
+				return nil, usagef("text is required")
+			}
+			res, err := c.AddNote(ctx, in.Text, in.Session)
 			if err != nil {
 				return nil, err
 			}
-			out := make([]any, len(entries))
-			for i, en := range entries {
-				out[i] = core.MessageJSON(en)
+			return map[string]any{"note": core.MessageJSON(res.GetNote()), "duplicate": res.GetDuplicate()}, nil
+		})
+
+	tool(srv, s, &sdk.Tool{Name: "note_list", Title: "List notes", Annotations: readOnly,
+		Description: `List the notes, oldest first. Page with afterId (the last ID you have). Returns {"notes": […]}.`},
+		func(ctx context.Context, c *core.Client, in listIn) (any, error) {
+			ns, err := c.ListNotes(ctx, in.AfterID, in.Session, in.Limit)
+			if err != nil {
+				return nil, err
 			}
-			return map[string]any{"entries": out}, nil
+			out := make([]any, len(ns))
+			for i, n := range ns {
+				out[i] = core.MessageJSON(n)
+			}
+			return map[string]any{"notes": out}, nil
+		})
+
+	tool(srv, s, &sdk.Tool{Name: "minutes_get", Title: "Get the minutes of a session", Annotations: readOnly,
+		Description: `Get the minutes that the hub stored when a session ended: the last version written with minutes_update. Returns {"minutes": {"sessionId", "text", "authorParticipantId", …}}; fails with not_found if the session has no stored minutes (for example while it still runs; then read the minutes.updated lines of your log). While you write minutes, never include a sentence that is off the record.`},
+		func(ctx context.Context, c *core.Client, in minutesGetIn) (any, error) {
+			sid, err := s.sessionID(ctx, c, in.Session)
+			if err != nil {
+				return nil, err
+			}
+			m, err := c.GetMinutes(ctx, sid)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"minutes": core.MessageJSON(m)}, nil
+		})
+
+	tool(srv, s, &sdk.Tool{Name: "minutes_list", Title: "List stored minutes", Annotations: readOnly,
+		Description: `List the minutes of ended sessions, oldest first. Page with afterId (the last ID you have). Returns {"minutes": […]}.`},
+		func(ctx context.Context, c *core.Client, in listIn) (any, error) {
+			ms, err := c.ListMinutes(ctx, in.AfterID, in.Session, in.Limit)
+			if err != nil {
+				return nil, err
+			}
+			out := make([]any, len(ms))
+			for i, m := range ms {
+				out[i] = core.MessageJSON(m)
+			}
+			return map[string]any{"minutes": out}, nil
 		})
 
 	tool(srv, s, &sdk.Tool{Name: "meeting_events", Title: "Read events after a cursor", Annotations: readOnly,
-		Description: `Read the events of a session after a cursor from the server: {"events": […], "more": bool}. Event IDs grow by one without gaps. Use this when you see a gap in the IDs of your log (for example 43 after 41: read with after 41), or poll it with your last ID if you cannot follow a file. An utterance with "offTheRecord": true is a placeholder: its speaker marked it off the record. Do not use or repeat such a sentence anywhere, not in minutes and not in the journal.`},
+		Description: `Read the events of a session after a cursor from the server: {"events": […], "more": bool}. Event IDs grow by one without gaps. Use this when you see a gap in the IDs of your log (for example 43 after 41: read with after 41), or poll it with your last ID if you cannot follow a file. An utterance with "offTheRecord": true is a placeholder: its speaker marked it off the record. Do not use or repeat such a sentence anywhere, not in minutes, decisions or notes.`},
 		func(ctx context.Context, c *core.Client, in eventsIn) (any, error) {
 			sid, err := s.sessionID(ctx, c, in.Session)
 			if err != nil {

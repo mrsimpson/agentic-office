@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -93,7 +94,16 @@ func (r *Repo) Dir() string { return r.dir }
 
 // run runs git in the repository and returns its standard output.
 func (r *Repo) run(ctx context.Context, args ...string) (string, error) {
+	out, err := r.runInput(ctx, nil, args...)
+	return string(out), err
+}
+
+// runInput runs git in the repository with stdin and returns its standard output.
+func (r *Repo) runInput(ctx context.Context, stdin []byte, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, r.git, args...)
+	if stdin != nil {
+		cmd.Stdin = bytes.NewReader(stdin)
+	}
 	cmd.Dir = r.dir
 	dieWithHub(cmd)
 	// No system or global configuration of the user: no hooks, no signing, no pager, no editor.
@@ -104,9 +114,9 @@ func (r *Repo) run(ctx context.Context, args ...string) (string, error) {
 	var out, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &stderr
 	if err := cmd.Run(); err != nil {
-		return out.String(), &gitError{args: args, err: err, stderr: strings.TrimSpace(stderr.String())}
+		return out.Bytes(), &gitError{args: args, err: err, stderr: strings.TrimSpace(stderr.String())}
 	}
-	return out.String(), nil
+	return out.Bytes(), nil
 }
 
 type gitError struct {
@@ -176,6 +186,60 @@ func (r *Repo) Commit(ctx context.Context, c storage.Change) (string, error) {
 		r.logf("archive: push of %s failed, the next push takes it along: %v", id, err)
 	}
 	return id, nil
+}
+
+// Read implements storage.Archive. It lists the files of dir in the current commit and reads
+// their content in one more run of git. It does not wait for a running change.
+func (r *Repo) Read(ctx context.Context, dir string) ([]storage.File, error) {
+	if err := storage.CheckPath(dir); err != nil {
+		return nil, err
+	}
+	head, err := r.head(ctx)
+	if err != nil || head == "" {
+		return nil, err
+	}
+	// One entry per file: "<mode> <type> <object>\t<path>", separated by NUL.
+	list, err := r.run(ctx, "ls-tree", "-r", "-z", "--full-tree", head, "--", dir+"/")
+	if err != nil {
+		return nil, err
+	}
+	var files []storage.File
+	var objects bytes.Buffer
+	for _, entry := range strings.Split(list, "\x00") {
+		meta, p, ok := strings.Cut(entry, "\t")
+		if !ok {
+			continue
+		}
+		f := strings.Fields(meta)
+		if len(f) != 3 || f[1] != "blob" {
+			continue
+		}
+		files = append(files, storage.File{Path: p})
+		objects.WriteString(f[2] + "\n")
+	}
+	if len(files) == 0 {
+		return nil, nil
+	}
+	out, err := r.runInput(ctx, objects.Bytes(), "cat-file", "--batch")
+	if err != nil {
+		return nil, err
+	}
+	// The output has per object a line "<object> blob <size>", the content and a newline.
+	for i := range files {
+		line, rest, ok := bytes.Cut(out, []byte("\n"))
+		f := strings.Fields(string(line))
+		var size int
+		if ok && len(f) == 3 && f[1] == "blob" {
+			_, err = fmt.Sscan(f[2], &size)
+		}
+		if !ok || len(f) != 3 || f[1] != "blob" || err != nil || len(rest) < size+1 {
+			return nil, fmt.Errorf("archive: unexpected output of git cat-file for %s", files[i].Path)
+		}
+		files[i].Data = rest[:size:size]
+		out = rest[size+1:]
+	}
+	slices.SortFunc(files, func(a, b storage.File) int { return strings.Compare(a.Path, b.Path) })
+	return files, nil
 }
 
 // head returns the ID of the current commit, or "" in a repository without commits.

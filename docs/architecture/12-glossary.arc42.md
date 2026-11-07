@@ -132,15 +132,15 @@ definition: A result created by the tools, with an ID (for example a slide deck 
 :::
 ```
 
-## Journal
+## Record
 
-The system of record of the team.
+What the hub keeps for the team, one type per interface (`dec-records-per-type`).
 
 ```arc42
 :::glossary-term
-id: term-journal
-title: Journal
-definition: The memory of the team (decisions, tasks, minutes), with the origin of each entry
+id: term-record
+title: Record
+definition: A decision, the minutes of a session or a note that the hub stores in the archive, with its author and whether the author is a human or an agent; it replaces the earlier journal entry
 :::
 ```
 

@@ -15,7 +15,6 @@ import (
 
 	"github.com/mrsimpson/agentic-office/client/replicator/locallog"
 	artifactv1 "github.com/mrsimpson/agentic-office/hub/artifacts/api"
-	journalv1 "github.com/mrsimpson/agentic-office/hub/journal/api"
 	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 )
 
@@ -51,24 +50,6 @@ func ResultJSON(res *sessionv1.CommandResult) map[string]any {
 
 // ErrBadInput marks input that a caller must fix (a usage error).
 var ErrBadInput = errors.New("bad input")
-
-// ParseEntryKind parses a journal entry kind: decision, task, minutes or note. Empty is
-// ENTRY_KIND_UNSPECIFIED.
-func ParseEntryKind(s string) (journalv1.EntryKind, error) {
-	if s == "" {
-		return journalv1.EntryKind_ENTRY_KIND_UNSPECIFIED, nil
-	}
-	k, ok := journalv1.EntryKind_value["ENTRY_KIND_"+strings.ToUpper(s)]
-	if !ok || k == 0 {
-		return 0, fmt.Errorf("%w: kind must be decision, task, minutes or note, not %q", ErrBadInput, s)
-	}
-	return journalv1.EntryKind(k), nil
-}
-
-// KindName returns the short name of an entry kind, for example "decision".
-func KindName(k journalv1.EntryKind) string {
-	return strings.ToLower(strings.TrimPrefix(k.String(), "ENTRY_KIND_"))
-}
 
 // ParseDeck reads a deck from a file named name: Markdown if the name ends with ".md" (see
 // ParseDeckMarkdown), else JSON in the form of RenderSlidesRequest ({"title": …, "slides":

@@ -5,8 +5,8 @@ block lists in `requires`, pointing to the provider. The architecture test enfor
 dependencies in the code (`concept-module-boundaries`). Interfaces that only external actors use
 (CLI, MCP, stage view, audio input) are in chapter 3.
 
-At the top level the system has two parts. The **office hub** manages sessions, the journal,
-artifacts and the stage. The **participant client** runs on the computer of every participant,
+At the top level the system has two parts. The **office hub** manages sessions, the records of
+the team (decisions, minutes and notes), artifacts and the stage. The **participant client** runs on the computer of every participant,
 human or agent.
 
 ## Overview
@@ -27,7 +27,9 @@ flowchart LR
     bb_participant_client[Participant client]
     bb_participant_client -->|if-session-commands| bb_office_hub
     bb_participant_client -->|if-artifact-api| bb_office_hub
-    bb_participant_client -->|if-journal-api| bb_office_hub
+    bb_participant_client -->|if-decision-api| bb_office_hub
+    bb_participant_client -->|if-minutes-api| bb_office_hub
+    bb_participant_client -->|if-note-api| bb_office_hub
     bb_participant_client -->|if-auth-api| bb_office_hub
     bb_participant_client -->|if-session-stream| bb_office_hub
 ```
@@ -56,7 +58,7 @@ id: bb-office-hub-whitebox
 view: building-block
 notation: mermaid
 roots: bb-office-hub
-aliases: bb_office_hub=bb-office-hub, bb_archive=bb-archive, bb_artifact_service=bb-artifact-service, bb_identity=bb-identity, bb_journal=bb-journal, bb_session_service=bb-session-service, bb_stage=bb-stage
+aliases: bb_office_hub=bb-office-hub, bb_archive=bb-archive, bb_artifact_service=bb-artifact-service, bb_identity=bb-identity, bb_records=bb-records, bb_session_service=bb-session-service, bb_stage=bb-stage
 :::
 ```
 
@@ -66,14 +68,15 @@ flowchart LR
         bb_archive[Archive]
         bb_artifact_service[Artifact tools]
         bb_identity[Identity]
-        bb_journal[Journal]
+        bb_records[Records]
         bb_session_service[Meeting session]
         bb_stage[Stage]
     end
     bb_artifact_service -->|if-token-check| bb_identity
-    bb_journal -->|if-token-check| bb_identity
+    bb_records -->|if-archive-storage| bb_archive
+    bb_records -->|if-token-check| bb_identity
     bb_session_service -->|if-archive-storage| bb_archive
-    bb_session_service -->|if-journal-api| bb_journal
+    bb_session_service -->|if-minutes-api| bb_records
     bb_session_service -->|if-token-check| bb_identity
     bb_stage -->|if-session-stream| bb_session_service
     bb_stage -->|if-artifact-api| bb_artifact_service
@@ -143,19 +146,56 @@ path: hub/identity/api
 :::
 ```
 
-### Journal API
+### Decisions
 
-Read journal entries and append new ones. OPEN: subscribe to the journal as a file, like the
-session log (`journal.listen`)?
+Record a decision and list the decisions, oldest first, by session and from a cursor. A decision
+records its author and whether the author is a human or an agent. Each command carries an ID
+created by the client, so a repeated command has no extra effect. A sentence that is off the
+record must not go into a decision (`dec-off-the-record`).
 
 ```arc42
 :::interface
-id: if-journal-api
-title: Journal API
+id: if-decision-api
+title: Decisions
 provider: bb-office-hub
-x-realized-by: bb-journal
+x-realized-by: bb-records
 protocol: Connect RPC, unary (dec-connect-rpc)
-path: hub/journal/api
+path: hub/records/decision/api
+:::
+```
+
+### Minutes
+
+The minutes of a session. While the session runs, participants write the running minutes
+through the session commands (`minutes.update`). When the session ends, the meeting session
+stores the last version through this interface (`rs-session-ends`). Clients read the stored
+minutes of a session and list all stored minutes; they do not write them here. A sentence that
+is off the record must not go into the minutes.
+
+```arc42
+:::interface
+id: if-minutes-api
+title: Minutes
+provider: bb-office-hub
+x-realized-by: bb-records
+protocol: Connect RPC, unary (dec-connect-rpc); in-process for the meeting session
+path: hub/records/minutes/api
+:::
+```
+
+### Notes
+
+Add a free note, with or without a session, and list the notes like the decisions. A sentence
+that is off the record must not go into a note.
+
+```arc42
+:::interface
+id: if-note-api
+title: Notes
+provider: bb-office-hub
+x-realized-by: bb-records
+protocol: Connect RPC, unary (dec-connect-rpc)
+path: hub/records/note/api
 :::
 ```
 
@@ -203,7 +243,7 @@ title: Meeting session
 technology: Go / connect-go
 parent: bb-office-hub
 implements: concept-event-log, concept-participant-model, concept-identity
-requires: if-journal-api, if-token-check, if-archive-storage
+requires: if-minutes-api, if-token-check, if-archive-storage
 path: hub/session
 :::
 ```
@@ -215,20 +255,27 @@ slow write makes the next write take everything that has come since. Every write
 log (with the original text of sentences that are off the record, and their marks) and the tree
 head signed by the hub over exactly that log (`dec-merkle-log`).
 
-### Journal
+### Records
 
-The memory of the team: decisions, tasks, minutes and notes. Each entry records its origin: who,
-human or agent. When a session ends, the confirmed minutes are stored here.
+The memory of the team: decisions, minutes and notes (`dec-records-per-type`). It replaces the
+journal, which held all kinds in one list. Each type has its own interface and its own types.
+Each record keeps its origin: who wrote it, and whether a human or an agent. Tasks are not part
+of this block; they get their own part of the hub.
+
+Every record is one YAML file in the archive, and every new record is one commit
+(`dec-yaml-git-storage`). A command returns only after its commit, so a record that a client got
+back is stored. Local commits are fast, so this does not slow the meeting; the commit of the
+minutes is part of ending a session. When the hub starts, the block reads its records back from
+the archive, so they survive a restart.
 
 ```arc42
 :::building-block
-id: bb-journal
-title: Journal (system of record)
-technology: Go (OPEN: persistence)
+id: bb-records
+title: Records (decisions, minutes, notes)
+technology: Go / YAML in the archive
 parent: bb-office-hub
-implements: concept-event-log
-path: hub/journal
-requires: if-token-check
+path: hub/records
+requires: if-token-check, if-archive-storage
 :::
 ```
 
@@ -254,7 +301,8 @@ requires: if-token-check
 The storage that all record parts of the hub use (`dec-records-per-type`). It stores records as
 files in a local Git repository on the hub host and commits locally (`dec-yaml-git-storage`).
 Every change of a caller is one commit. The archive does not know the records: the caller
-decides the files and their content. After every commit, the archive pushes to a remote. The
+decides the files and their content. Callers read their files back from the current commit, for
+example to rebuild their index at start. After every commit, the archive pushes to a remote. The
 push is mocked for now: it does nothing and reports success. A commit can be slow, so callers
 that must not wait call it in the background.
 
@@ -270,8 +318,8 @@ path: hub/archive
 
 #### Archive storage
 
-The in-process interface of the archive: write a set of files as one commit. Paths are relative
-to the repository.
+The in-process interface of the archive: write a set of files as one commit, and read the files
+of a directory as they are in the current commit. Paths are relative to the repository.
 
 ```arc42
 :::interface
@@ -397,7 +445,7 @@ path: client/cli
 ### MCP tools
 
 Tools such as `meeting.join`, `meeting.leave`, `hand.raise`, `minutes.update`, `stage.show`,
-`slides.render`, `plan.validate`, `journal.append`.
+`slides.render`, `plan.validate`, `decision.record`, `minutes.get`, `note.add`.
 
 ```arc42
 :::interface
@@ -457,7 +505,7 @@ title: Client core
 technology: Go
 parent: bb-participant-client
 path: client/core
-requires: if-session-commands, if-auth-api, if-journal-api, if-artifact-api, if-local-log
+requires: if-session-commands, if-auth-api, if-decision-api, if-minutes-api, if-note-api, if-artifact-api, if-local-log
 :::
 ```
 
@@ -481,7 +529,8 @@ path: client/core
 The main access for humans and for agents with a shell. `office meeting join <session> [--mic]`
 starts the replication and prints the log path. With `--mic`, the terminal shows the user's own
 utterances with their status (partial → final → sent / off the record). Keys let the user pause and
-mark a sentence off the record. Other commands cover artifacts, the stage and the journal.
+mark a sentence off the record. Other commands cover artifacts, the stage, decisions, minutes
+and notes.
 
 ```arc42
 :::building-block
@@ -489,7 +538,7 @@ id: bb-cli
 title: office CLI
 technology: Go, single binary
 parent: bb-participant-client
-requires: if-client-core, if-replication, if-session-commands, if-artifact-api, if-journal-api, if-auth-api
+requires: if-client-core, if-replication, if-session-commands, if-artifact-api, if-auth-api
 implements: concept-read-file-write-tools
 path: client/cli
 :::
@@ -507,7 +556,7 @@ id: bb-mcp
 title: MCP server
 technology: Go / official MCP Go SDK
 parent: bb-participant-client
-requires: if-client-core, if-replication, if-session-commands, if-artifact-api, if-journal-api, if-auth-api
+requires: if-client-core, if-replication, if-session-commands, if-artifact-api, if-auth-api
 implements: concept-read-file-write-tools
 path: client/mcp
 :::

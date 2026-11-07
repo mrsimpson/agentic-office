@@ -19,9 +19,14 @@
 //     renames it, then adds the files and commits them. A change that alters nothing creates no
 //     commit. If the commit fails, the files stay in the work tree; the next change commits
 //     them too.
+//   - Read returns the files of a directory as they are in the current commit (git ls-tree and
+//     git cat-file), not the work tree, so the files of a failed commit are not read. It does
+//     not wait for a running change. The records of the hub use it to rebuild their index at
+//     start.
 //   - A failed push does not fail the commit: the commit is in the local repository, and the
 //     next push takes it along. The error is logged.
 //
 // The archive does not know the formats of the records. The meeting session decides the layout
-// of a session (see package session).
+// of a session (see package session), the records part the layout of decisions, minutes and
+// notes (see package records).
 package archive

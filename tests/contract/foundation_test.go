@@ -13,14 +13,16 @@ import (
 
 	artifactv1 "github.com/mrsimpson/agentic-office/hub/artifacts/api"
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
-	journalv1 "github.com/mrsimpson/agentic-office/hub/journal/api"
+	decisionv1 "github.com/mrsimpson/agentic-office/hub/records/decision/api"
+	minutesv1 "github.com/mrsimpson/agentic-office/hub/records/minutes/api"
+	notev1 "github.com/mrsimpson/agentic-office/hub/records/note/api"
 	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
 // The office hub mounts every service of chapter 5 that crosses a process boundary. Each
 // answers with its own result or error, not "not found" or "unimplemented". session_test.go,
-// identity_test.go, journal_test.go and artifacts_test.go cover the services.
+// identity_test.go, records_test.go and artifacts_test.go cover the services.
 func TestServerMountsEveryInterface(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	c := srv.Admin(t)
@@ -32,8 +34,15 @@ func TestServerMountsEveryInterface(t *testing.T) {
 	if _, err := c.Identity.CreateStageLink(ctx, &identityv1.CreateStageLinkRequest{SessionId: "s", CommandId: "c"}); err != nil {
 		t.Errorf("auth API: %v", err)
 	}
-	if _, err := c.Journal.ListEntries(ctx, &journalv1.ListEntriesRequest{}); err != nil {
-		t.Errorf("journal API: %v", err)
+	if _, err := c.Decision.ListDecisions(ctx, &decisionv1.ListDecisionsRequest{}); err != nil {
+		t.Errorf("decisions: %v", err)
+	}
+	if _, err := c.Note.ListNotes(ctx, &notev1.ListNotesRequest{}); err != nil {
+		t.Errorf("notes: %v", err)
+	}
+	// The minutes answer: the session has no stored minutes.
+	if _, err := c.Minutes.GetMinutes(ctx, &minutesv1.GetMinutesRequest{SessionId: "s"}); connect.CodeOf(err) != connect.CodeNotFound {
+		t.Errorf("minutes: want code not_found, got %v", err)
 	}
 	// The artifact service answers: the artifact does not exist yet.
 	if _, err := c.Artifact.GetArtifact(ctx, &artifactv1.GetArtifactRequest{Id: "slides/1"}); connect.CodeOf(err) != connect.CodeNotFound {
@@ -90,17 +99,17 @@ func TestPlainHTTPWithJSON(t *testing.T) {
 		t.Fatalf("join: status %d, body %s", status, body)
 	}
 
-	status, body = post("/office.journal.v1.JournalService/AppendEntry", token,
-		`{"commandId":"c","kind":"ENTRY_KIND_DECISION","text":"We ship.","authorParticipantId":"admin"}`)
-	var entry struct {
-		Entry struct {
-			ID   int    `json:"id"`
-			Kind string `json:"kind"`
-		} `json:"entry"`
+	status, body = post("/office.decision.v1.DecisionService/RecordDecision", token,
+		`{"commandId":"c","text":"We ship.","authorParticipantId":"admin"}`)
+	var dec struct {
+		Decision struct {
+			ID     int    `json:"id"`
+			Author string `json:"authorParticipantId"`
+		} `json:"decision"`
 	}
-	if err := json.Unmarshal(body, &entry); err != nil || status != http.StatusOK || entry.Entry.ID != 1 ||
-		entry.Entry.Kind != "ENTRY_KIND_DECISION" {
-		t.Fatalf("journal append: status %d, body %s", status, body)
+	if err := json.Unmarshal(body, &dec); err != nil || status != http.StatusOK || dec.Decision.ID != 1 ||
+		dec.Decision.Author != contracttest.AdminID {
+		t.Fatalf("record a decision: status %d, body %s", status, body)
 	}
 
 	status, body = post("/office.artifact.v1.ArtifactService/RenderSlides", token,

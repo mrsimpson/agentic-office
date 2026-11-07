@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -10,8 +11,9 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+
 	artifactv1 "github.com/mrsimpson/agentic-office/hub/artifacts/api"
-	journalv1 "github.com/mrsimpson/agentic-office/hub/journal/api"
 	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 
 	"github.com/mrsimpson/agentic-office/client/core"
@@ -251,61 +253,89 @@ func cmdArtifactGet(e *env, fs *flag.FlagSet) func([]string) error {
 	}
 }
 
-func parseEntryKind(s string) (journalv1.EntryKind, error) {
-	k, err := core.ParseEntryKind(s)
+// recordJSON returns a record (a decision, minutes or a note) in the JSON form of its contract.
+func recordJSON(m proto.Message) json.RawMessage { return core.MessageJSON(m) }
+
+// oneLine returns a text on one line, for the text output of lists.
+func oneLine(s string) string { return strings.ReplaceAll(strings.TrimSpace(s), "\n", " ") }
+
+// readRecordText reads the text of a new record from the arguments or --file.
+func (e *env) readRecordText(args []string, file, use string) (string, error) {
+	text, err := e.readText(args, file)
 	if err != nil {
-		return 0, usagef("--kind must be decision, task, minutes or note, not %q", s)
+		return "", err
 	}
-	return k, nil
+	if strings.TrimSpace(text) == "" {
+		return "", usagef("usage: office %s <text> | --file F", use)
+	}
+	return text, nil
 }
 
-func kindName(k journalv1.EntryKind) string { return core.KindName(k) }
+// listFlags adds the flags of the list commands: the cursor and the limit.
+func listFlags(fs *flag.FlagSet, what string) (after, limit *uint) {
+	after = fs.Uint("after", 0, "only "+what+" with an ID greater than this")
+	limit = fs.Uint("limit", 0, "at most this many "+what+" (0: the hub's default)")
+	return after, limit
+}
 
-func cmdJournalAppend(e *env, fs *flag.FlagSet) func([]string) error {
-	kind := fs.String("kind", "", "decision, task, minutes or note")
+func cmdDecisionRecord(e *env, fs *flag.FlagSet) func([]string) error {
 	file := fs.String("file", "", "read the text from this file (- for stdin)")
 	return func(args []string) error {
-		k, err := parseEntryKind(*kind)
+		text, err := e.readRecordText(args, *file, "decision record")
 		if err != nil {
 			return err
-		}
-		if k == 0 {
-			return usagef("--kind is required")
-		}
-		text, err := e.readText(args, *file)
-		if err != nil {
-			return err
-		}
-		if strings.TrimSpace(text) == "" {
-			return usagef("usage: office journal append --kind K <text>")
 		}
 		c, err := e.client()
 		if err != nil {
 			return err
 		}
-		// Only an explicit --session links the entry to a session.
-		res, err := c.AppendJournal(e.ctx, k, text, e.session)
+		// Only an explicit --session links the decision to a session.
+		res, err := c.RecordDecision(e.ctx, text, e.session)
 		if err != nil {
 			return err
 		}
 		if e.json {
-			e.printJSON(map[string]any{"entry": entryJSON(res.GetEntry()), "duplicate": res.GetDuplicate()})
+			e.printJSON(map[string]any{"decision": recordJSON(res.GetDecision()), "duplicate": res.GetDuplicate()})
 		} else {
-			fmt.Fprintf(e.stdout, "entry %d\n", res.GetEntry().GetId())
+			fmt.Fprintf(e.stdout, "decision %d\n", res.GetDecision().GetId())
 		}
 		return nil
 	}
 }
 
-func cmdJournalList(e *env, fs *flag.FlagSet) func([]string) error {
-	kind := fs.String("kind", "", "only entries of this kind")
-	after := fs.Uint("after", 0, "only entries with an ID greater than this")
-	limit := fs.Uint("limit", 0, "at most this many entries (0: the server's default)")
+func cmdDecisionList(e *env, fs *flag.FlagSet) func([]string) error {
+	after, limit := listFlags(fs, "decisions")
 	return func(args []string) error {
 		if err := noArgs(args); err != nil {
 			return err
 		}
-		k, err := parseEntryKind(*kind)
+		c, err := e.client()
+		if err != nil {
+			return err
+		}
+		ds, err := c.ListDecisions(e.ctx, uint32(*after), e.session, uint32(*limit))
+		if err != nil {
+			return err
+		}
+		if e.json {
+			out := make([]any, len(ds))
+			for i, d := range ds {
+				out[i] = recordJSON(d)
+			}
+			e.printJSON(map[string]any{"decisions": out})
+			return nil
+		}
+		for _, d := range ds {
+			fmt.Fprintf(e.stdout, "#%d %s: %s\n", d.GetId(), d.GetAuthorParticipantId(), oneLine(d.GetText()))
+		}
+		return nil
+	}
+}
+
+func cmdNoteAdd(e *env, fs *flag.FlagSet) func([]string) error {
+	file := fs.String("file", "", "read the text from this file (- for stdin)")
+	return func(args []string) error {
+		text, err := e.readRecordText(args, *file, "note add")
 		if err != nil {
 			return err
 		}
@@ -313,22 +343,107 @@ func cmdJournalList(e *env, fs *flag.FlagSet) func([]string) error {
 		if err != nil {
 			return err
 		}
-		entries, err := c.ListJournal(e.ctx, &journalv1.ListEntriesRequest{AfterEntryId: uint32(*after), Kind: k,
-			SessionId: e.session, Limit: uint32(*limit)})
+		// Only an explicit --session links the note to a session.
+		res, err := c.AddNote(e.ctx, text, e.session)
 		if err != nil {
 			return err
 		}
 		if e.json {
-			out := make([]any, len(entries))
-			for i, en := range entries {
-				out[i] = entryJSON(en)
+			e.printJSON(map[string]any{"note": recordJSON(res.GetNote()), "duplicate": res.GetDuplicate()})
+		} else {
+			fmt.Fprintf(e.stdout, "note %d\n", res.GetNote().GetId())
+		}
+		return nil
+	}
+}
+
+func cmdNoteList(e *env, fs *flag.FlagSet) func([]string) error {
+	after, limit := listFlags(fs, "notes")
+	return func(args []string) error {
+		if err := noArgs(args); err != nil {
+			return err
+		}
+		c, err := e.client()
+		if err != nil {
+			return err
+		}
+		ns, err := c.ListNotes(e.ctx, uint32(*after), e.session, uint32(*limit))
+		if err != nil {
+			return err
+		}
+		if e.json {
+			out := make([]any, len(ns))
+			for i, n := range ns {
+				out[i] = recordJSON(n)
 			}
-			e.printJSON(map[string]any{"entries": out})
+			e.printJSON(map[string]any{"notes": out})
 			return nil
 		}
-		for _, en := range entries {
-			fmt.Fprintf(e.stdout, "#%d %s %s: %s\n", en.GetId(), kindName(en.GetKind()), en.GetAuthorParticipantId(),
-				strings.ReplaceAll(en.GetText(), "\n", " "))
+		for _, n := range ns {
+			fmt.Fprintf(e.stdout, "#%d %s: %s\n", n.GetId(), n.GetAuthorParticipantId(), oneLine(n.GetText()))
+		}
+		return nil
+	}
+}
+
+// cmdMinutesShow prints the stored minutes of an ended session: the session given as argument,
+// else --session, else the only session joined from this machine.
+func cmdMinutesShow(e *env, fs *flag.FlagSet) func([]string) error {
+	return func(args []string) error {
+		if len(args) > 1 {
+			return usagef("usage: office minutes show [<session>]")
+		}
+		c, err := e.client()
+		if err != nil {
+			return err
+		}
+		sid := ""
+		if len(args) == 1 {
+			sid = args[0]
+		} else if sid, err = e.sessionID(c); err != nil {
+			return err
+		}
+		m, err := c.GetMinutes(e.ctx, sid)
+		if err != nil {
+			return err
+		}
+		if e.json {
+			e.printJSON(map[string]any{"minutes": recordJSON(m)})
+			return nil
+		}
+		text := m.GetText()
+		if !strings.HasSuffix(text, "\n") {
+			text += "\n"
+		}
+		_, err = io.WriteString(e.stdout, text)
+		return err
+	}
+}
+
+func cmdMinutesList(e *env, fs *flag.FlagSet) func([]string) error {
+	after, limit := listFlags(fs, "minutes")
+	return func(args []string) error {
+		if err := noArgs(args); err != nil {
+			return err
+		}
+		c, err := e.client()
+		if err != nil {
+			return err
+		}
+		ms, err := c.ListMinutes(e.ctx, uint32(*after), e.session, uint32(*limit))
+		if err != nil {
+			return err
+		}
+		if e.json {
+			out := make([]any, len(ms))
+			for i, m := range ms {
+				out[i] = recordJSON(m)
+			}
+			e.printJSON(map[string]any{"minutes": out})
+			return nil
+		}
+		for _, m := range ms {
+			fmt.Fprintf(e.stdout, "#%d %s %s: %s\n", m.GetId(), m.GetSessionId(), m.GetAuthorParticipantId(), oneLine(m.GetText()))
 		}
 		return nil
 	}

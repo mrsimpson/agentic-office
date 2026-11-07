@@ -25,9 +25,10 @@
 //     PermissionDenied; no valid token is Unauthenticated.
 //   - Signals (turn.end, silence.long, addressed) come only from clients through SubmitSignal.
 //     The session checks them but does not create signals itself. See SubmitSignal and #14.
-//   - EndSession stores the confirmed minutes in the journal through the Journal interface
-//     (if-journal-api, rs-session-ends), then writes session.ended. For now the confirmed minutes
-//     are the text of the last minutes.updated event (#22). See EndSession.
+//   - EndSession stores the confirmed minutes through the Minutes interface (if-minutes-api,
+//     rs-session-ends), then writes session.ended. The minutes are in the archive when
+//     EndSession returns. For now the confirmed minutes are the text of the last
+//     minutes.updated event (#22). See EndSession.
 //   - The events are the leaves of a Merkle tree (dec-merkle-log, package merkle of the
 //     interface). The state keeps the leaf hash of every event. GetTreeHead, GetConsistencyProof
 //     and GetInclusionProof compute heads and proofs from them; the hub key passed to New signs

@@ -187,7 +187,7 @@ to mark their own sentence off the record. The CLI sends `utterance.mark_off_the
 hub checks that the caller is the speaker. The log gets a new event `utterance.off_the_record`
 that points to the original utterance. Existing lines are never rewritten. From then on, the
 interfaces deliver the utterance only as a placeholder without its text, the stage hides it, and
-it does not go into minutes or the journal. Agents that already read it must respect the
+it does not go into minutes, decisions or notes. Agents that already read it must respect the
 mark.
 
 ```arc42
@@ -199,18 +199,22 @@ involves: bb-cli, bb-session-service, bb-replicator, bb-stage, bb-participant-cl
 :::
 ```
 
-## Session ends, minutes go to the journal
+## Session ends, the minutes are stored
 
-The moderator ends the session. The agent that keeps the minutes writes the final version. The
-session stores the confirmed minutes in the journal and writes `session.ended` to the log. The
-replicators stop.
+The moderator ends the session. The agent that keeps the minutes writes the final version with
+`minutes.update`. The meeting session stores the confirmed minutes through the minutes interface.
+The records part writes them as one YAML file into the archive and commits it before it answers
+(`dec-yaml-git-storage`). Only then does the meeting session write `session.ended` to the log. If
+storing fails, the session does not end, and the moderator can repeat the command. The
+replicators stop. Afterwards every participant reads the stored minutes through the minutes
+interface.
 
 ```arc42
 :::runtime-scenario
 id: rs-session-ends
-title: Session ends, minutes go to the journal
+title: Session ends, the minutes are stored
 trigger: The moderator ends the session
-involves: bb-mcp, bb-cli, bb-session-service, bb-journal, bb-replicator, bb-participant-client, bb-office-hub
+involves: bb-mcp, bb-cli, bb-session-service, bb-records, bb-archive, bb-replicator, bb-participant-client, bb-office-hub
 :::
 ```
 

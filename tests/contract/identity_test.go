@@ -20,7 +20,7 @@ import (
 	"github.com/mrsimpson/agentic-office/client/core/ids"
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
-	journalv1 "github.com/mrsimpson/agentic-office/hub/journal/api"
+	decisionv1 "github.com/mrsimpson/agentic-office/hub/records/decision/api"
 	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
@@ -486,8 +486,8 @@ func TestStageLinkIsReadOnly(t *testing.T) {
 	_, err = stage.Identity.RegisterKey(ctx, &identityv1.RegisterKeyRequest{CommandId: cmd(), ParticipantId: "x",
 		DisplayName: "X", Kind: human, PublicKey: auth.PublicKey(newKey(t))})
 	wantCode(t, "register a key with a stage link", err, connect.CodePermissionDenied)
-	_, err = stage.Journal.ListEntries(ctx, &journalv1.ListEntriesRequest{})
-	wantCode(t, "journal with a stage link", err, connect.CodePermissionDenied)
+	_, err = stage.Decision.ListDecisions(ctx, &decisionv1.ListDecisionsRequest{})
+	wantCode(t, "decisions with a stage link", err, connect.CodePermissionDenied)
 
 	// Nothing was written.
 	if log := endAndRead(t, ada, sid); len(log) != 2 {

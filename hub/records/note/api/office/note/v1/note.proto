@@ -1,0 +1,71 @@
+// Notes (if-note-api): free notes of a participant, with or without a meeting session. One of the
+// record types of the hub (dec-records-per-type). The hub stores every note in the archive.
+//
+// Every call needs an access token of a participant (see identity.proto). A stage link cannot
+// read or write notes. A sentence that is off the record must not go into a note
+// (dec-off-the-record).
+syntax = "proto3";
+
+package office.note.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/mrsimpson/agentic-office/hub/records/note/api;notev1";
+
+service NoteService {
+  // AddNote adds a note. It is idempotent by command_id: a repeated request returns the stored
+  // note with duplicate set. The same command_id with another text, author or session fails
+  // with already_exists.
+  rpc AddNote(AddNoteRequest) returns (AddNoteResponse);
+  // ListNotes returns notes with an ID greater than after_id, oldest first.
+  rpc ListNotes(ListNotesRequest) returns (ListNotesResponse);
+}
+
+message Note {
+  // id grows by one with every note and starts at 1.
+  uint32 id = 1;
+  string text = 2;
+  // author_participant_id is the human or agent who wrote the note.
+  string author_participant_id = 3;
+  // author_kind tells whether the author is a human or an agent, at the time of writing.
+  AuthorKind author_kind = 4;
+  // session_id is set if the note belongs to a meeting session.
+  string session_id = 5;
+  google.protobuf.Timestamp time = 6;
+  string command_id = 7;
+}
+
+message AddNoteRequest {
+  // command_id is created by the client. A repeated request with the same command_id has no
+  // extra effect.
+  string command_id = 1;
+  string text = 2;
+  // author_participant_id must be the participant of the access token.
+  string author_participant_id = 3;
+  // session_id links the note to a meeting session. Optional; it is not checked.
+  string session_id = 4;
+}
+
+message AddNoteResponse {
+  Note note = 1;
+  bool duplicate = 2;
+}
+
+message ListNotesRequest {
+  uint32 after_id = 1;
+  // session_id filters by session. Empty returns the notes of all sessions and without one.
+  string session_id = 2;
+  // limit is the largest number of notes in the response. 0 means the server's default.
+  uint32 limit = 3;
+}
+
+message ListNotesResponse {
+  repeated Note notes = 1;
+}
+
+// AuthorKind tells whether the author of a note is a human or an agent.
+enum AuthorKind {
+  AUTHOR_KIND_UNSPECIFIED = 0;
+  AUTHOR_KIND_HUMAN = 1;
+  AUTHOR_KIND_AGENT = 2;
+}
