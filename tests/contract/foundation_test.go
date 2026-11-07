@@ -11,8 +11,11 @@ import (
 
 	"connectrpc.com/connect/v2"
 
-	officev1 "github.com/mrsimpson/agentic-office/core/api/office/v1"
-	"github.com/mrsimpson/agentic-office/core/contracttest"
+	artifactv1 "github.com/mrsimpson/agentic-office/server/artifacts/api"
+	identityv1 "github.com/mrsimpson/agentic-office/server/identity/api"
+	journalv1 "github.com/mrsimpson/agentic-office/server/journal/api"
+	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
+	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
 // The office server mounts every service of chapter 5 that crosses a process boundary. Each
@@ -23,17 +26,17 @@ func TestServerMountsEveryInterface(t *testing.T) {
 	c := srv.Admin(t)
 	ctx := context.Background()
 
-	if _, err := c.Session.Join(ctx, &officev1.JoinRequest{SessionId: "s", CommandId: "c"}); err != nil {
+	if _, err := c.Session.Join(ctx, &sessionv1.JoinRequest{SessionId: "s", CommandId: "c"}); err != nil {
 		t.Errorf("session commands: %v", err)
 	}
-	if _, err := c.Identity.CreateStageLink(ctx, &officev1.CreateStageLinkRequest{SessionId: "s", CommandId: "c"}); err != nil {
+	if _, err := c.Identity.CreateStageLink(ctx, &identityv1.CreateStageLinkRequest{SessionId: "s", CommandId: "c"}); err != nil {
 		t.Errorf("auth API: %v", err)
 	}
-	if _, err := c.Journal.ListEntries(ctx, &officev1.ListEntriesRequest{}); err != nil {
+	if _, err := c.Journal.ListEntries(ctx, &journalv1.ListEntriesRequest{}); err != nil {
 		t.Errorf("journal API: %v", err)
 	}
 	// The artifact service answers: the artifact does not exist yet.
-	if _, err := c.Artifact.GetArtifact(ctx, &officev1.GetArtifactRequest{Id: "slides/1"}); connect.CodeOf(err) != connect.CodeNotFound {
+	if _, err := c.Artifact.GetArtifact(ctx, &artifactv1.GetArtifactRequest{Id: "slides/1"}); connect.CodeOf(err) != connect.CodeNotFound {
 		t.Errorf("artifact API: want code not_found, got %v", err)
 	}
 }
@@ -63,7 +66,7 @@ func TestPlainHTTPWithJSON(t *testing.T) {
 	}
 	var e struct{ Code string }
 
-	status, body := post("/office.v1.SessionService/Join", "", `{"sessionId":"s","commandId":"c"}`)
+	status, body := post("/office.session.v1.SessionService/Join", "", `{"sessionId":"s","commandId":"c"}`)
 	if err := json.Unmarshal(body, &e); err != nil || status != http.StatusUnauthorized || e.Code != "unauthenticated" {
 		t.Fatalf("join without token: status %d, body %s", status, body)
 	}
@@ -72,7 +75,7 @@ func TestPlainHTTPWithJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	status, body = post("/office.v1.SessionService/Join", token, `{"sessionId":"s","commandId":"c"}`)
+	status, body = post("/office.session.v1.SessionService/Join", token, `{"sessionId":"s","commandId":"c"}`)
 	var join struct {
 		ParticipantID string `json:"participantId"`
 		Result        struct {
@@ -87,7 +90,7 @@ func TestPlainHTTPWithJSON(t *testing.T) {
 		t.Fatalf("join: status %d, body %s", status, body)
 	}
 
-	status, body = post("/office.v1.JournalService/AppendEntry", token,
+	status, body = post("/office.journal.v1.JournalService/AppendEntry", token,
 		`{"commandId":"c","kind":"ENTRY_KIND_DECISION","text":"We ship.","authorParticipantId":"admin"}`)
 	var entry struct {
 		Entry struct {
@@ -100,7 +103,7 @@ func TestPlainHTTPWithJSON(t *testing.T) {
 		t.Fatalf("journal append: status %d, body %s", status, body)
 	}
 
-	status, body = post("/office.v1.ArtifactService/RenderSlides", token,
+	status, body = post("/office.artifact.v1.ArtifactService/RenderSlides", token,
 		`{"commandId":"c","title":"Plan","slides":[{"title":"One","bullets":["a"]}],"authorParticipantId":"admin"}`)
 	var art struct {
 		Artifact struct {
@@ -113,7 +116,7 @@ func TestPlainHTTPWithJSON(t *testing.T) {
 		art.Artifact.MediaType != "text/html; charset=utf-8" || !strings.Contains(string(art.Artifact.Content), "<h2>One</h2>") {
 		t.Fatalf("render slides: status %d, body %s", status, body)
 	}
-	status, body = post("/office.v1.ArtifactService/GetArtifact", token, `{"id":"slides/2"}`)
+	status, body = post("/office.artifact.v1.ArtifactService/GetArtifact", token, `{"id":"slides/2"}`)
 	if err := json.Unmarshal(body, &e); err != nil || status != http.StatusNotFound || e.Code != "not_found" {
 		t.Fatalf("get an unknown artifact: status %d, body %s", status, body)
 	}

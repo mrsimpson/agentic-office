@@ -8,8 +8,9 @@ package e2e
 //
 //	QS qs-speech-to-log n=21 p50=1243ms p95=1301ms max=1352ms target=p95<=1500ms
 //
-// Two environment variables set how long the tests run. The defaults keep "make e2e" short;
-// "make quality" runs the lengths of the scenarios:
+// In "make e2e" these tests check behaviour only and print the numbers; they never fail on a
+// timing criterion. "make performance" (build tag performance) also checks the timing criteria and
+// runs the lengths of the scenarios. Two environment variables set how long the tests run:
 //
 //	QS_SPEECH_DURATION  how long Ada speaks (the test sentences in a loop); default 60s, scenario 30m
 //	QS_DROP_DURATION    how long the network of Ada is down; default 10s, scenario 60s
@@ -30,10 +31,10 @@ import (
 	"testing"
 	"time"
 
-	officev1 "github.com/mrsimpson/agentic-office/core/api/office/v1"
-	"github.com/mrsimpson/agentic-office/core/contracttest"
-	"github.com/mrsimpson/agentic-office/core/eventlog"
-	"github.com/mrsimpson/agentic-office/core/events"
+	"github.com/mrsimpson/agentic-office/client/replicator/locallog"
+	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
+	"github.com/mrsimpson/agentic-office/server/session/api/events"
+	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
 // Targets of the quality scenarios. Do not weaken them to make a test pass: open an issue.
@@ -110,7 +111,7 @@ func speechWAV(t *testing.T, d time.Duration) (string, []int, time.Duration) {
 // same command IDs in the same order, each once, as voice with transcribed_at. It returns how
 // many texts miss the key words of their test sentence (a recognition error, not a lost
 // utterance).
-func checkSent(t *testing.T, got []*officev1.Event, finals []earsReport, want []int) int {
+func checkSent(t *testing.T, got []*sessionv1.Event, finals []earsReport, want []int) int {
 	t.Helper()
 	if len(got) != len(want) || len(finals) != len(want) {
 		t.Fatalf("want %d utterances, got %d in the log and %d final in the ears", len(want), len(got), len(finals))
@@ -124,7 +125,7 @@ func checkSent(t *testing.T, got []*officev1.Event, finals []earsReport, want []
 			t.Fatalf("utterance %d: command ID %s twice", i, ev.GetCommandId())
 		case ev.GetCommandId() != finals[i].CommandID:
 			t.Fatalf("utterance %d: command ID %s, the ears made %s (order differs)", i, ev.GetCommandId(), finals[i].CommandID)
-		case u.GetModality() != officev1.Modality_MODALITY_VOICE || u.GetTranscribedAt() == nil:
+		case u.GetModality() != sessionv1.Modality_MODALITY_VOICE || u.GetTranscribedAt() == nil:
 			t.Fatalf("utterance %d: modality %v, transcribed_at %v", i, u.GetModality(), u.GetTranscribedAt())
 		}
 		if sentenceOf(u.GetText()) != want[i] {
@@ -369,7 +370,7 @@ func TestQualitySpeech(t *testing.T) {
 					unknownTotal += unknown
 					for _, f := range fields {
 						switch {
-						case f.Name == "office.v1.SubmitUtteranceRequest.text":
+						case f.Name == "office.session.v1.SubmitUtteranceRequest.text":
 							if !transcripts[f.Value] {
 								t.Errorf("submitted text %q is not a transcript of the ears", f.Value)
 							}
@@ -383,7 +384,7 @@ func TestQualitySpeech(t *testing.T) {
 		if unknownTotal > 0 {
 			t.Errorf("%d bytes of unknown fields in the requests", unknownTotal)
 		}
-		if n := calls["/office.v1.SessionService/SubmitUtterance"]; n != len(finals) {
+		if n := calls["/office.session.v1.SessionService/SubmitUtterance"]; n != len(finals) {
 			t.Errorf("want %d SubmitUtterance requests, got %v", len(finals), calls)
 		}
 		pcm16k := int64(audioLen.Seconds() * 16000 * 2)
@@ -395,7 +396,7 @@ func TestQualitySpeech(t *testing.T) {
 
 	t.Run("qs-transcript-to-log", func(t *testing.T) {
 		qs(t, "qs-transcript-to-log", "%s target=max<%s", toLog.summary(), ms(targetTranscriptToLog))
-		if toLog.max() >= targetTranscriptToLog {
+		if assertTiming && toLog.max() >= targetTranscriptToLog {
 			t.Errorf("end of transcription to the bot's log: max %v, want < %v", toLog.max(), targetTranscriptToLog)
 		}
 	})
@@ -407,7 +408,7 @@ func TestQualitySpeech(t *testing.T) {
 		}
 		t.Logf("whisper per sentence: %s; recognition: %d of %d sentences miss their key words", whisper.summary(), misses, len(finals))
 		qs(t, "qs-speech-to-log", "%s target=p95<=%s", speechToLog.summary(), ms(targetSpeechToLog))
-		if p := speechToLog.percentile(95); p > targetSpeechToLog {
+		if p := speechToLog.percentile(95); assertTiming && p > targetSpeechToLog {
 			t.Errorf("end of speech to the bot's log: p95 %v, want at most %v", p, targetSpeechToLog)
 		}
 	})
@@ -420,7 +421,7 @@ func TestQualitySpeech(t *testing.T) {
 		t.Logf("paused and resumed in the gateway view, from the key press: %s", pauseViewLat.summary())
 		for name, l := range map[string]latencies{"sent in the view": sentLat, "retracted in the view": retractLat,
 			"capture status on the stage": stageLatStart} {
-			if l.max() > targetStatusVisible {
+			if assertTiming && l.max() > targetStatusVisible {
 				t.Errorf("%s: max %v, want at most %v", name, l.max(), targetStatusVisible)
 			}
 		}
@@ -564,7 +565,7 @@ func TestQualityResumeAfterDrop(t *testing.T) {
 		if lost != 0 || dup != 0 {
 			t.Errorf("%d lost and %d duplicate events", lost, dup)
 		}
-		if catchUp > targetCatchUp {
+		if assertTiming && catchUp > targetCatchUp {
 			t.Errorf("Ada's local log was complete %v after the network came back, want at most %v", catchUp, targetCatchUp)
 		}
 	})
@@ -584,7 +585,7 @@ func compareLogs(t *testing.T, adaPath, botPath string, n int) (lost, dup int) {
 	a, b := lines(adaPath), lines(botPath)
 	ids := map[uint32]int{}
 	for _, l := range a {
-		ev, err := eventlog.UnmarshalLine([]byte(strings.TrimSuffix(l, "\n") + "\n"))
+		ev, err := locallog.UnmarshalLine([]byte(strings.TrimSuffix(l, "\n") + "\n"))
 		if err != nil {
 			t.Fatalf("Ada's log: %v", err)
 		}

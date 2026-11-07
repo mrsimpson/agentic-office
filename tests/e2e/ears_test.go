@@ -21,12 +21,12 @@ import (
 	"testing"
 	"time"
 
-	officev1 "github.com/mrsimpson/agentic-office/core/api/office/v1"
-	"github.com/mrsimpson/agentic-office/core/auth"
-	"github.com/mrsimpson/agentic-office/core/contracttest"
-	"github.com/mrsimpson/agentic-office/core/eventlog"
-	"github.com/mrsimpson/agentic-office/core/events"
-	"github.com/mrsimpson/agentic-office/core/ids"
+	"github.com/mrsimpson/agentic-office/client/core/ids"
+	"github.com/mrsimpson/agentic-office/client/replicator/locallog"
+	"github.com/mrsimpson/agentic-office/server/identity/api/auth"
+	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
+	"github.com/mrsimpson/agentic-office/server/session/api/events"
+	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
 const testWAV = "testdata/german-3-sentences.wav"
@@ -140,7 +140,7 @@ func (m *meeting) joinBot() *logWatch {
 type logWatch struct {
 	path string
 	mu   sync.Mutex
-	evs  []*officev1.Event
+	evs  []*sessionv1.Event
 	at   []time.Time
 }
 
@@ -173,7 +173,7 @@ func watchLog(t *testing.T, path string) *logWatch {
 					if i < 0 {
 						break
 					}
-					if ev, err := eventlog.UnmarshalLine(partial[:i+1]); err == nil {
+					if ev, err := locallog.UnmarshalLine(partial[:i+1]); err == nil {
 						w.mu.Lock()
 						w.evs, w.at = append(w.evs, ev), append(w.at, now)
 						w.mu.Unlock()
@@ -187,16 +187,16 @@ func watchLog(t *testing.T, path string) *logWatch {
 	return w
 }
 
-func (w *logWatch) events() ([]*officev1.Event, []time.Time) {
+func (w *logWatch) events() ([]*sessionv1.Event, []time.Time) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return slices.Clone(w.evs), slices.Clone(w.at)
 }
 
 // utterances returns the utterance.final events of participant and when they appeared.
-func (w *logWatch) utterances(participant string) ([]*officev1.Event, []time.Time) {
+func (w *logWatch) utterances(participant string) ([]*sessionv1.Event, []time.Time) {
 	evs, at := w.events()
-	var out []*officev1.Event
+	var out []*sessionv1.Event
 	var times []time.Time
 	for i, ev := range evs {
 		if ev.GetType() == events.UtteranceFinal && ev.GetUtteranceFinal().GetParticipantId() == participant {
@@ -206,7 +206,7 @@ func (w *logWatch) utterances(participant string) ([]*officev1.Event, []time.Tim
 	return out, times
 }
 
-func (w *logWatch) waitUtterances(t *testing.T, participant string, n int, timeout time.Duration) ([]*officev1.Event, []time.Time) {
+func (w *logWatch) waitUtterances(t *testing.T, participant string, n int, timeout time.Duration) ([]*sessionv1.Event, []time.Time) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for {
@@ -372,7 +372,7 @@ func (e *ears) quit() {
 // checkUtterances checks the utterances of ada in a log against the final reports of the ears:
 // the same command IDs in the same order, each once, with modality voice. want are the
 // expected test sentences in order.
-func checkUtterances(t *testing.T, got []*officev1.Event, finals []earsReport, want []int) {
+func checkUtterances(t *testing.T, got []*sessionv1.Event, finals []earsReport, want []int) {
 	t.Helper()
 	if len(got) != len(want) || len(finals) != len(want) {
 		t.Fatalf("want %d utterances, got %d in the log and %d final in the ears: %v", len(want), len(got), len(finals), texts(got))
@@ -385,7 +385,7 @@ func checkUtterances(t *testing.T, got []*officev1.Event, finals []earsReport, w
 			t.Fatalf("utterance %d: command ID %s twice", i, ev.GetCommandId())
 		case ev.GetCommandId() != finals[i].CommandID:
 			t.Fatalf("utterance %d: command ID %s, the ears made %s (order differs)", i, ev.GetCommandId(), finals[i].CommandID)
-		case u.GetModality() != officev1.Modality_MODALITY_VOICE:
+		case u.GetModality() != sessionv1.Modality_MODALITY_VOICE:
 			t.Fatalf("utterance %d: modality %v", i, u.GetModality())
 		case u.GetTranscribedAt() == nil:
 			t.Fatalf("utterance %d: no transcribed_at", i)
@@ -396,7 +396,7 @@ func checkUtterances(t *testing.T, got []*officev1.Event, finals []earsReport, w
 	}
 }
 
-func texts(evs []*officev1.Event) []string {
+func texts(evs []*sessionv1.Event) []string {
 	var out []string
 	for _, ev := range evs {
 		out = append(out, ev.GetUtteranceFinal().GetText())
@@ -407,7 +407,7 @@ func texts(evs []*officev1.Event) []string {
 // printLatency prints, per sentence, Whisper time, end of speech to submit, transcript to the
 // other participant's log and end of speech to that log. With bound, it fails if the pipeline is
 // far too slow (not for utterances that were queued during a network drop).
-func printLatency(t *testing.T, finals, sent []earsReport, got []*officev1.Event, at []time.Time, bound bool) {
+func printLatency(t *testing.T, finals, sent []earsReport, got []*sessionv1.Event, at []time.Time, bound bool) {
 	t.Helper()
 	byCmd := map[string]earsReport{}
 	for _, s := range sent {
@@ -488,7 +488,7 @@ func TestEarsGermanWAV(t *testing.T) {
 				}
 				for _, f := range fields {
 					switch {
-					case f.Name == "office.v1.SubmitUtteranceRequest.text":
+					case f.Name == "office.session.v1.SubmitUtteranceRequest.text":
 						if !transcripts[f.Value] {
 							t.Fatalf("submitted text %q is not a transcript of the ears", f.Value)
 						}
@@ -499,7 +499,7 @@ func TestEarsGermanWAV(t *testing.T) {
 			}
 		}
 	}
-	if calls["/office.v1.SessionService/SubmitUtterance"] != 3 {
+	if calls["/office.session.v1.SessionService/SubmitUtterance"] != 3 {
 		t.Fatalf("want 3 SubmitUtterance requests, got %v", calls)
 	}
 	t.Logf("no raw audio: %d connections; requests %v", len(proxy.Captured()), calls)

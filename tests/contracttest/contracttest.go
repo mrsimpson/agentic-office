@@ -1,0 +1,378 @@
+// Package contracttest is the harness for black-box contract tests (dec-contract-tests).
+//
+// A contract test starts a building block as a real process (or a fake that follows the same
+// contract) and talks to it only through its provided interfaces. It must not import the
+// packages that implement the block.
+//
+// StartServer starts a real office-server with TLS (a self-signed certificate in a temporary data
+// directory) and an admin key. Server.Participant registers a key for a test participant and
+// returns an Actor with authenticated clients; Server.Anonymous returns clients without a token.
+//
+// Binaries are taken from $OFFICE_BIN_DIR (set by the Makefile). If it is not set, the harness
+// builds them once per test binary with "go build".
+package contracttest
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"crypto/ed25519"
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"sync"
+	"syscall"
+	"testing"
+	"time"
+
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
+
+	"github.com/mrsimpson/agentic-office/client/core/ids"
+	artifactv1connect "github.com/mrsimpson/agentic-office/server/artifacts/api/artifactv1connect"
+	identityv1 "github.com/mrsimpson/agentic-office/server/identity/api"
+	"github.com/mrsimpson/agentic-office/server/identity/api/auth"
+	identityv1connect "github.com/mrsimpson/agentic-office/server/identity/api/identityv1connect"
+	journalv1connect "github.com/mrsimpson/agentic-office/server/journal/api/journalv1connect"
+	sessionv1connect "github.com/mrsimpson/agentic-office/server/session/api/sessionv1connect"
+)
+
+var (
+	buildMu  sync.Mutex
+	built    = map[string]string{}
+	buildDir string
+)
+
+// Binary returns the path of a command from cmd/, for example "office-server".
+func Binary(t testing.TB, name string) string {
+	t.Helper()
+	if dir := os.Getenv("OFFICE_BIN_DIR"); dir != "" {
+		p, err := filepath.Abs(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("binary %s not found in OFFICE_BIN_DIR: %v (run make build)", name, err)
+		}
+		return p
+	}
+	buildMu.Lock()
+	defer buildMu.Unlock()
+	if p, ok := built[name]; ok {
+		return p
+	}
+	if buildDir == "" {
+		d, err := os.MkdirTemp("", "office-contracttest-")
+		if err != nil {
+			t.Fatal(err)
+		}
+		buildDir = d
+	}
+	root := moduleRoot(t)
+	p := filepath.Join(buildDir, name)
+	cmd := exec.Command("go", "build", "-o", p, "./cmd/"+name)
+	cmd.Dir = root
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("go build %s: %v\n%s", name, err, out)
+	}
+	built[name] = p
+	return p
+}
+
+func moduleRoot(t testing.TB) string {
+	out, err := exec.Command("go", "env", "GOMOD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return filepath.Dir(strings.TrimSpace(string(out)))
+}
+
+// Process is a running building block.
+type Process struct {
+	Cmd    *exec.Cmd
+	Stdout *bufio.Reader
+	// Stdin is the standard input of the process, for example to send keys.
+	Stdin io.WriteCloser
+
+	mu     sync.Mutex
+	stderr bytes.Buffer
+	done   chan struct{}
+}
+
+// Start runs a binary from cmd/ with extra environment variables. The process is killed when
+// the test ends.
+func Start(t testing.TB, name string, env []string, args ...string) *Process {
+	t.Helper()
+	cmd := exec.Command(Binary(t, name), args...)
+	cmd.Env = append(os.Environ(), env...)
+	// An own pipe for stdout, not StdoutPipe: Wait closes the pipes it created, and output that
+	// the test has not read yet would be lost when the process exits.
+	stdout, stdoutW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd.Stdout = stdoutW
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = cmd.Start()
+	stdoutW.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { stdout.Close() })
+	p := &Process{Cmd: cmd, Stdout: bufio.NewReader(stdout), Stdin: stdin, done: make(chan struct{})}
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			n, err := stderr.Read(buf)
+			p.mu.Lock()
+			p.stderr.Write(buf[:n])
+			p.mu.Unlock()
+			if err != nil {
+				break
+			}
+		}
+		_ = cmd.Wait()
+		close(p.done)
+	}()
+	t.Cleanup(func() {
+		p.Kill()
+		if t.Failed() {
+			t.Logf("stderr of %s:\n%s", name, p.Stderr())
+		}
+	})
+	return p
+}
+
+// Stderr returns everything the process wrote to stderr so far.
+func (p *Process) Stderr() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.stderr.String()
+}
+
+// Done is closed when the process has exited.
+func (p *Process) Done() <-chan struct{} { return p.done }
+
+// Kill stops the process with SIGKILL and waits for it.
+func (p *Process) Kill() {
+	_ = p.Cmd.Process.Signal(syscall.SIGKILL)
+	<-p.done
+}
+
+// Stop sends SIGTERM and waits up to timeout. It returns the exit code, or an error on timeout.
+func (p *Process) Stop(timeout time.Duration) (int, error) {
+	_ = p.Cmd.Process.Signal(syscall.SIGTERM)
+	select {
+	case <-p.done:
+		return p.Cmd.ProcessState.ExitCode(), nil
+	case <-time.After(timeout):
+		return -1, errors.New("process did not stop in time")
+	}
+}
+
+// WaitStderr waits until stderr matches re and returns the first submatch (or the match).
+func (p *Process) WaitStderr(t testing.TB, re *regexp.Regexp, timeout time.Duration) string {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if m := re.FindStringSubmatch(p.Stderr()); m != nil {
+			return m[len(m)-1]
+		}
+		select {
+		case <-p.done:
+			t.Fatalf("process exited before %q appeared:\n%s", re, p.Stderr())
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	t.Fatalf("timeout waiting for %q:\n%s", re, p.Stderr())
+	return ""
+}
+
+var listening = regexp.MustCompile(`listening on (https://\S+)`)
+
+// AdminID is the participant ID of the admin that StartServer creates.
+const AdminID = "admin"
+
+// Server is a running office-server with TLS and an admin key.
+type Server struct {
+	*Process
+	URL string
+	// DataDir is the data directory of the server.
+	DataDir string
+	// CertFile is the self-signed TLS certificate of the server. Clients trust it.
+	CertFile string
+	// AdminKey is the private key of the admin (participant AdminID).
+	AdminKey ed25519.PrivateKey
+}
+
+// StartServer starts office-server on a free port and waits until it listens. It creates a data
+// directory with an admin key. args are extra flags, for example "-token-ttl", "2s".
+func StartServer(t testing.TB, env []string, args ...string) *Server {
+	t.Helper()
+	dir := t.TempDir()
+	key, err := auth.NewKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := AdminID + " " + auth.FormatPublicKey(auth.PublicKey(key)) + " Test Admin\n"
+	if err := os.WriteFile(filepath.Join(dir, "admins"), []byte(line), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return StartServerIn(t, dir, key, env, args...)
+}
+
+// StartServerIn starts office-server with an existing data directory, for example to restart a
+// server. adminKey is the key of AdminID in the admin file of dir.
+func StartServerIn(t testing.TB, dir string, adminKey ed25519.PrivateKey, env []string, args ...string) *Server {
+	t.Helper()
+	p := Start(t, "office-server", env, append([]string{"-addr", "127.0.0.1:0", "-data-dir", dir}, args...)...)
+	return &Server{Process: p, URL: p.WaitStderr(t, listening, 10*time.Second), DataDir: dir,
+		CertFile: filepath.Join(dir, "tls.crt"), AdminKey: adminKey}
+}
+
+// HTTPClient returns an HTTP client that trusts the certificate of the server.
+func (s *Server) HTTPClient(t testing.TB) *http.Client {
+	t.Helper()
+	hc, err := auth.HTTPClient(s.CertFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return hc
+}
+
+// Anonymous returns clients without a token.
+func (s *Server) Anonymous(t testing.TB) Clients {
+	return NewClients(s.URL, s.HTTPClient(t))
+}
+
+// WithToken returns clients that send a fixed token, for example the token of a stage link.
+func (s *Server) WithToken(t testing.TB, token string) Clients {
+	return NewClients(s.URL, s.HTTPClient(t), auth.StaticToken(token))
+}
+
+// Actor is a participant with its own key and authenticated clients.
+type Actor struct {
+	Clients
+	ParticipantID string
+	Key           ed25519.PrivateKey
+	KeyID         string
+	Tokens        *auth.TokenSource
+}
+
+// WithKey returns an actor that authenticates with key. The key must be registered.
+func (s *Server) WithKey(t testing.TB, key ed25519.PrivateKey) *Actor {
+	t.Helper()
+	hc := s.HTTPClient(t)
+	ts := auth.NewTokenSource(NewClients(s.URL, hc).Identity, key)
+	a := &Actor{Clients: NewClients(s.URL, hc, auth.Bearer(ts)), Key: key,
+		KeyID: auth.KeyID(auth.PublicKey(key)), Tokens: ts}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	pid, err := ts.ParticipantID(ctx)
+	if err != nil {
+		t.Fatalf("authenticate key %s: %v", a.KeyID, err)
+	}
+	a.ParticipantID = pid
+	return a
+}
+
+// Admin returns the admin actor.
+func (s *Server) Admin(t testing.TB) *Actor { return s.WithKey(t, s.AdminKey) }
+
+// RegisterKey registers key for a participant as the admin and returns the key ID.
+func (s *Server) RegisterKey(t testing.TB, participantID, displayName string, kind identityv1.ActorKind, key ed25519.PrivateKey) string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	res, err := s.Admin(t).Identity.RegisterKey(ctx, &identityv1.RegisterKeyRequest{CommandId: ids.NewCommandID(),
+		ParticipantId: participantID, DisplayName: displayName, Kind: kind, PublicKey: auth.PublicKey(key)})
+	if err != nil {
+		t.Fatalf("register key of %s: %v", participantID, err)
+	}
+	return res.GetKeyId()
+}
+
+// Participant registers a new key for a participant and returns the authenticated actor. The
+// participant is created if it is new; participantID can be called several times (several
+// keys of one participant).
+func (s *Server) Participant(t testing.TB, participantID, displayName string, kind identityv1.ActorKind) *Actor {
+	t.Helper()
+	key, err := auth.NewKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.RegisterKey(t, participantID, displayName, kind, key)
+	return s.WithKey(t, key)
+}
+
+// Clients holds a Connect client for every office interface.
+type Clients struct {
+	Session  sessionv1connect.SessionServiceClient
+	Identity identityv1connect.IdentityServiceClient
+	Journal  journalv1connect.JournalServiceClient
+	Artifact artifactv1connect.ArtifactServiceClient
+}
+
+// NewClients returns clients for baseURL that use hc (nil: a new default client) and the
+// interceptors, for example auth.Bearer. They use the Connect protocol.
+func NewClients(baseURL string, hc *http.Client, interceptors ...connect.ClientInterceptor) Clients {
+	if hc == nil {
+		hc = &http.Client{Transport: http.DefaultTransport.(*http.Transport).Clone()}
+	}
+	c := connect.NewClient(connecthttp.NewTransport(hc, baseURL), interceptors...)
+	return Clients{
+		Session:  sessionv1connect.NewSessionServiceClient(c),
+		Identity: identityv1connect.NewIdentityServiceClient(c),
+		Journal:  journalv1connect.NewJournalServiceClient(c),
+		Artifact: artifactv1connect.NewArtifactServiceClient(c),
+	}
+}
+
+// StartFake serves a fake in this process, for blocks whose test needs another block.
+// register adds the fake handlers, for example sessionv1connect.RegisterSessionServiceHandler.
+func StartFake(t testing.TB, register func(*connect.Server)) string {
+	t.Helper()
+	cs := connect.NewServer()
+	register(cs)
+	mux := http.NewServeMux()
+	connecthttp.Mount(mux, cs)
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv.URL
+}
+
+// Run runs a binary to completion and returns stdout, stderr and the exit code.
+func Run(t testing.TB, name string, env []string, args ...string) (string, string, int) {
+	t.Helper()
+	return RunStdin(t, name, env, nil, args...)
+}
+
+// RunStdin is Run with a standard input.
+func RunStdin(t testing.TB, name string, env []string, stdin io.Reader, args ...string) (string, string, int) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, Binary(t, name), args...)
+	cmd.Env = append(os.Environ(), env...)
+	var out, errb bytes.Buffer
+	cmd.Stdout, cmd.Stderr, cmd.Stdin = &out, &errb, stdin
+	err := cmd.Run()
+	var ee *exec.ExitError
+	if err != nil && !errors.As(err, &ee) {
+		t.Fatalf("run %s: %v", name, err)
+	}
+	return out.String(), errb.String(), cmd.ProcessState.ExitCode()
+}

@@ -13,33 +13,41 @@ export LIBRARY_PATH := $(WHISPER_BUILD)/src:$(WHISPER_BUILD)/ggml/src
 # Models of the ears: a multilingual Whisper model and the Silero VAD model.
 MODEL_DIR ?= $(or $(XDG_DATA_HOME),$(HOME)/.local/share)/agentic-office/models
 
-.PHONY: all build test e2e quality lint generate whisper models clean
+.PHONY: all build arch test e2e performance lint generate whisper models clean
 all: build
 
 build:
 	$(GO) build ./...
-	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/office-server ./cmd/office-server
-	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/office ./cmd/office
+	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/office-server ./server
+	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN)/office ./client
+
+# Architecture test: the code follows the building blocks and interfaces of docs/architecture/
+# (concept-module-boundaries). Needs Node.js for the arc42 CLI.
+arch:
+	npx -y @doctc/arc42@0.38.0 --dir docs/architecture validate
+	$(GO) test -count=1 ./tests/architecture/...
 
 # Contract tests: black-box tests per building block against real processes.
-test: build
+test: build arch
 	$(GO) vet ./...
 	OFFICE_BIN_DIR=$(BIN) $(GO) test -count=1 ./tests/contract/...
 
 # End-to-end tests: real processes across several building blocks.
 e2e: build
 	$(GO) vet -tags e2e ./tests/e2e/...
+	$(GO) vet -tags e2e,performance ./tests/e2e/...
 	OFFICE_BIN_DIR=$(BIN) $(GO) test -tags e2e -count=1 -v ./tests/e2e/...
 
-# Quality scenario tests (tests/e2e/quality_test.go) with the lengths of the scenarios: 30 minutes
-# of speech and a network drop of 60 s. make e2e runs the same tests shorter.
+# Performance tests: the quality scenarios with their timing criteria and their full lengths (30
+# minutes of speech, a network drop of 60 s). Build tags e2e and performance. Run them on the
+# reference host; the end-to-end tests never fail on timing.
 QS_SPEECH_DURATION ?= 30m
 QS_DROP_DURATION ?= 60s
-quality: build
+performance: build
 	{ OFFICE_BIN_DIR=$(BIN) QS_SPEECH_DURATION=$(QS_SPEECH_DURATION) QS_DROP_DURATION=$(QS_DROP_DURATION) \
-		$(GO) test -tags e2e -count=1 -v -timeout 90m -run '^TestQuality' ./tests/e2e/... 2>&1; \
-		echo $$? > $(BIN)/quality.exit; } | tee $(BIN)/quality.log
-	@echo "== quality scenarios (also in $(BIN)/quality.log)"; grep '^QS ' $(BIN)/quality.log; exit $$(cat $(BIN)/quality.exit)
+		$(GO) test -tags e2e,performance -count=1 -v -timeout 90m -run '^TestQuality' ./tests/e2e/... 2>&1; \
+		echo $$? > $(BIN)/performance.exit; } | tee $(BIN)/performance.log
+	@echo "== quality scenarios (also in $(BIN)/performance.log)"; grep '^QS ' $(BIN)/performance.log; exit $$(cat $(BIN)/performance.exit)
 
 lint:
 	buf lint

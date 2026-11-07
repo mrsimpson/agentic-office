@@ -14,7 +14,7 @@ import (
 	"connectrpc.com/connect/v2"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mrsimpson/agentic-office/client/participant"
+	"github.com/mrsimpson/agentic-office/client/core"
 	"github.com/mrsimpson/agentic-office/client/replicator"
 )
 
@@ -22,7 +22,7 @@ import (
 // connection and runs one replicator per joined session in its own process.
 type Server struct {
 	// Config tells where the server is, which key to use and where the local files live.
-	Config participant.Config
+	Config core.Config
 	// Session is the default session of the tools (--session, OFFICE_SESSION). Empty: the only
 	// session this participant joined from this machine.
 	Session string
@@ -34,7 +34,7 @@ type Server struct {
 	log *log.Logger
 
 	mu     sync.Mutex
-	client *participant.Client
+	client *core.Client
 	ctx    context.Context // lives as long as Run; the replicators run under it
 	reps   map[string]*rep // by local log path
 	wg     sync.WaitGroup
@@ -72,13 +72,13 @@ func (s *Server) Run(ctx context.Context, in io.ReadCloser, out io.WriteCloser) 
 }
 
 // dial returns the client of this actor. A successful client is kept, so its token is reused.
-func (s *Server) dial() (*participant.Client, error) {
+func (s *Server) dial() (*core.Client, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.client != nil {
 		return s.client, nil
 	}
-	c, err := participant.Dial(s.Config)
+	c, err := core.Dial(s.Config)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +87,7 @@ func (s *Server) dial() (*participant.Client, error) {
 }
 
 // sessionID returns the session argument, else the default session.
-func (s *Server) sessionID(ctx context.Context, c *participant.Client, arg string) (string, error) {
+func (s *Server) sessionID(ctx context.Context, c *core.Client, arg string) (string, error) {
 	if arg != "" {
 		return arg, nil
 	}
@@ -95,10 +95,10 @@ func (s *Server) sessionID(ctx context.Context, c *participant.Client, arg strin
 		return s.Session, nil
 	}
 	sid, err := c.DefaultSession(ctx)
-	if errors.Is(err, participant.ErrNoSession) {
+	if errors.Is(err, core.ErrNoSession) {
 		// The message of the core names the CLI flag; name the tool argument instead.
 		pid, _ := c.ParticipantID(ctx)
-		return "", fmt.Errorf("%w: %s has not joined exactly one session on this machine; pass \"session\"", participant.ErrNoSession, pid)
+		return "", fmt.Errorf("%w: %s has not joined exactly one session on this machine; pass \"session\"", core.ErrNoSession, pid)
 	}
 	return sid, err
 }
@@ -107,7 +107,7 @@ func (s *Server) sessionID(ctx context.Context, c *participant.Client, arg strin
 // the process that writes it: this process, or another one (for example a replicator that
 // "office meeting join" started). The replicator of this process stops when Run ends, after
 // session.ended, or after the participant's own participant.left.
-func (s *Server) startReplicator(c *participant.Client, j *participant.Joined) (int, error) {
+func (s *Server) startReplicator(c *core.Client, j *core.Joined) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p := j.Paths
@@ -190,11 +190,11 @@ func errorCode(err error) string {
 	var u errUsage
 	var ce *connect.Error
 	switch {
-	case errors.As(err, &u), errors.Is(err, participant.ErrBadInput):
+	case errors.As(err, &u), errors.Is(err, core.ErrBadInput):
 		return "usage"
-	case errors.Is(err, participant.ErrNoKey):
+	case errors.Is(err, core.ErrNoKey):
 		return "no_key"
-	case errors.Is(err, participant.ErrNoSession):
+	case errors.Is(err, core.ErrNoSession):
 		return "no_session"
 	case errors.As(err, &ce):
 		return ce.Code().String()

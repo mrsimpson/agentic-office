@@ -16,12 +16,12 @@ import (
 	"testing"
 	"time"
 
-	officev1 "github.com/mrsimpson/agentic-office/core/api/office/v1"
-	"github.com/mrsimpson/agentic-office/core/auth"
-	"github.com/mrsimpson/agentic-office/core/contracttest"
-	"github.com/mrsimpson/agentic-office/core/eventlog"
-	"github.com/mrsimpson/agentic-office/core/events"
-	"github.com/mrsimpson/agentic-office/core/ids"
+	"github.com/mrsimpson/agentic-office/client/core/ids"
+	"github.com/mrsimpson/agentic-office/client/replicator/locallog"
+	"github.com/mrsimpson/agentic-office/server/identity/api/auth"
+	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
+	"github.com/mrsimpson/agentic-office/server/session/api/events"
+	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
 // machine is one computer with a runtime directory, shared by several CLI users.
@@ -154,7 +154,7 @@ func waitUntil(t *testing.T, timeout time.Duration, what string, cond func() boo
 // logLine is one line of a local log.
 type logLine struct {
 	raw string
-	ev  *officev1.Event
+	ev  *sessionv1.Event
 }
 
 // readLog reads the complete lines of a local log. Every line must parse and carry the dotted
@@ -170,7 +170,7 @@ func readLog(t *testing.T, path string) []logLine {
 		if !strings.HasSuffix(l, "\n") {
 			break // incomplete last line
 		}
-		ev, err := eventlog.UnmarshalLine([]byte(l))
+		ev, err := locallog.UnmarshalLine([]byte(l))
 		if err != nil {
 			t.Fatalf("%s: bad line %q: %v", path, l, err)
 		}
@@ -194,17 +194,17 @@ func waitLog(t *testing.T, path string, id uint32) []logLine {
 }
 
 // eventOf returns the event of a --json command result.
-func eventOf(t *testing.T, v map[string]any) (string, *officev1.Event) {
+func eventOf(t *testing.T, v map[string]any) (string, *sessionv1.Event) {
 	t.Helper()
 	raw, err := json.Marshal(v["event"])
 	if err != nil {
 		t.Fatal(err)
 	}
-	ev, err := eventlog.UnmarshalLine(raw)
+	ev, err := locallog.UnmarshalLine(raw)
 	if err != nil {
 		t.Fatalf("event %s: %v", raw, err)
 	}
-	line, _ := eventlog.MarshalLine(ev)
+	line, _ := locallog.MarshalLine(ev)
 	return strings.TrimSuffix(string(line), "\n"), ev
 }
 
@@ -334,7 +334,7 @@ func TestCLICommandsAppearInLog(t *testing.T) {
 	ada.join(sid)
 
 	results := map[uint32]string{}
-	do := func(u *officeUser, wantType string, args ...string) *officev1.Event {
+	do := func(u *officeUser, wantType string, args ...string) *sessionv1.Event {
 		t.Helper()
 		line, ev := eventOf(t, u.ok(args...))
 		if ev.GetType() != wantType {
@@ -511,7 +511,7 @@ func TestCLIJournal(t *testing.T) {
 	v := bot.ok("journal", "append", "--kind", "decision", "We ship")
 	e, _ := v["entry"].(map[string]any)
 	if v["duplicate"] != false || e["id"] != float64(1) || e["kind"] != "ENTRY_KIND_DECISION" || e["text"] != "We ship" ||
-		e["authorParticipantId"] != "bot" || e["authorKind"] != "PARTICIPANT_KIND_AGENT" || e["sessionId"] != nil ||
+		e["authorParticipantId"] != "bot" || e["authorKind"] != "AUTHOR_KIND_AGENT" || e["sessionId"] != nil ||
 		e["commandId"] == nil || e["time"] == nil {
 		t.Fatalf("append: %v", v)
 	}
@@ -521,7 +521,7 @@ func TestCLIJournal(t *testing.T) {
 		t.Fatal(err)
 	}
 	if e := ada.ok("journal", "append", "--kind", "minutes", "--file", f)["entry"].(map[string]any); e["text"] != "Line one\nline two" ||
-		e["authorKind"] != "PARTICIPANT_KIND_HUMAN" {
+		e["authorKind"] != "AUTHOR_KIND_HUMAN" {
 		t.Fatalf("append from a file: %v", e)
 	}
 	if out, errOut, code := ada.run("journal", "append", "--kind", "task"); code != 2 || !strings.Contains(errOut, "usage") {
@@ -571,7 +571,7 @@ func TestCLIJournal(t *testing.T) {
 	ada.ok("meeting", "end", "--session", sid)
 	got := entriesOf(t, ada.ok("journal", "list", "--session", sid, "--kind", "minutes"))
 	if len(got) != 1 || got[0]["text"] != "Final: we ship" || got[0]["authorParticipantId"] != "bot" ||
-		got[0]["authorKind"] != "PARTICIPANT_KIND_AGENT" {
+		got[0]["authorKind"] != "AUTHOR_KIND_AGENT" {
 		t.Fatalf("minutes of the session: %v", got)
 	}
 }

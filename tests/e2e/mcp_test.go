@@ -16,10 +16,10 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mrsimpson/agentic-office/core/auth"
-	"github.com/mrsimpson/agentic-office/core/contracttest"
-	"github.com/mrsimpson/agentic-office/core/eventlog"
-	"github.com/mrsimpson/agentic-office/core/events"
+	"github.com/mrsimpson/agentic-office/client/replicator/locallog"
+	"github.com/mrsimpson/agentic-office/server/identity/api/auth"
+	"github.com/mrsimpson/agentic-office/server/session/api/events"
+	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
 // TestAgentThroughMCP: a human uses the CLI, an agent uses only the MCP server. The agent
@@ -108,7 +108,7 @@ func TestAgentThroughMCP(t *testing.T) {
 	office(ada, "signal", "turn-end")
 	select {
 	case line := <-wake:
-		ev, err := eventlog.UnmarshalLine([]byte(line))
+		ev, err := locallog.UnmarshalLine([]byte(line))
 		if err != nil || ev.GetType() != events.TurnEnd || ev.GetTurnEnd().GetParticipantId() != "ada" {
 			t.Fatalf("the filter woke the agent with %q (%v)", line, err)
 		}
@@ -132,7 +132,7 @@ func TestAgentThroughMCP(t *testing.T) {
 		found := false
 		ab, _ := os.ReadFile(adaLog)
 		for _, l := range strings.SplitAfter(string(ab), "\n") {
-			if ev, err := eventlog.UnmarshalLine([]byte(l)); strings.HasSuffix(l, "\n") && err == nil && ev.GetId() == wantID {
+			if ev, err := locallog.UnmarshalLine([]byte(l)); strings.HasSuffix(l, "\n") && err == nil && ev.GetId() == wantID {
 				if ev.GetUtteranceFinal().GetParticipantId() != "bot" {
 					t.Fatalf("answer: %s", l)
 				}

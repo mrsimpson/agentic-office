@@ -1,7 +1,7 @@
 // Package cli is the building block office CLI (bb-cli in docs/architecture/05-building-blocks.arc42.md).
 //
 // It is the shell interface for humans and agents and provides if-cli. It is a thin adapter over
-// the shared client core in client/participant (dec-cli-and-mcp): it parses commands, prints
+// the shared client core in client/core (dec-cli-and-mcp): it parses commands, prints
 // text or --json output and runs the log replicator (client/replicator) as its own process.
 //
 // Conventions:
@@ -15,7 +15,7 @@
 // "office meeting join" starts the replicator detached and returns the log path at once; with
 // --foreground the replicator is a child that stops when join ends (see replicator_proc.go).
 // "office meeting view" is the gateway view (dec-gateway-cli). The ears (client/ears) plug in
-// through CheckEars and StartEars, which cmd/office sets; "join --mic" or "--wav" runs them with
+// through CheckEars and StartEars, which the wiring in client/ sets; "join --mic" or "--wav" runs them with
 // the gateway view. Without them, --mic and --wav fail with the code unimplemented. "office mcp"
 // runs the MCP server (client/mcp) on stdin and stdout. README.md has the user documentation.
 package cli

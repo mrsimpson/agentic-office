@@ -15,9 +15,10 @@ import (
 
 	"connectrpc.com/connect/v2"
 
-	officev1 "github.com/mrsimpson/agentic-office/core/api/office/v1"
-	"github.com/mrsimpson/agentic-office/core/api/office/v1/officev1connect"
-	"github.com/mrsimpson/agentic-office/core/auth"
+	artifactv1 "github.com/mrsimpson/agentic-office/server/artifacts/api"
+	"github.com/mrsimpson/agentic-office/server/identity/api/auth"
+	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
+	sessionv1connect "github.com/mrsimpson/agentic-office/server/session/api/sessionv1connect"
 )
 
 // PathPrefix is where the stage is mounted. Identity creates links <public-url>/stage/<session>.
@@ -25,7 +26,7 @@ const PathPrefix = "/stage/"
 
 // Artifacts loads artifacts in-process (if-artifact-api). artifacts.Service implements it.
 type Artifacts interface {
-	Load(ctx context.Context, id string) (*officev1.Artifact, error)
+	Load(ctx context.Context, id string) (*artifactv1.Artifact, error)
 }
 
 // Options configure a Handler.
@@ -231,15 +232,15 @@ func (h *Handler) events(w http.ResponseWriter, r *http.Request, sid, token stri
 	}
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
-	client := officev1connect.NewSessionServiceClient(connect.NewClient(h.opts.Session, auth.StaticToken(token)))
-	st, err := client.Subscribe(ctx, &officev1.SubscribeRequest{SessionId: sid})
+	client := sessionv1connect.NewSessionServiceClient(connect.NewClient(h.opts.Session, auth.StaticToken(token)))
+	st, err := client.Subscribe(ctx, &sessionv1.SubscribeRequest{SessionId: sid})
 	if err != nil {
 		h.streamError(w, err)
 		return
 	}
 	defer st.Close()
 
-	evs := make(chan *officev1.Event)
+	evs := make(chan *sessionv1.Event)
 	errc := make(chan error, 1)
 	go func() {
 		for {
@@ -262,7 +263,7 @@ func (h *Handler) events(w http.ResponseWriter, r *http.Request, sid, token stri
 	fmt.Fprint(w, "retry: 2000\n\n")
 	flusher.Flush()
 
-	var load func(context.Context, string) (*officev1.Artifact, error)
+	var load func(context.Context, string) (*artifactv1.Artifact, error)
 	if h.opts.Artifacts != nil {
 		load = h.opts.Artifacts.Load
 	}

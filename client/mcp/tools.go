@@ -8,10 +8,12 @@ import (
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	officev1 "github.com/mrsimpson/agentic-office/core/api/office/v1"
-	"github.com/mrsimpson/agentic-office/core/auth"
+	artifactv1 "github.com/mrsimpson/agentic-office/server/artifacts/api"
+	"github.com/mrsimpson/agentic-office/server/identity/api/auth"
+	journalv1 "github.com/mrsimpson/agentic-office/server/journal/api"
+	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
 
-	"github.com/mrsimpson/agentic-office/client/participant"
+	"github.com/mrsimpson/agentic-office/client/core"
 	"github.com/mrsimpson/agentic-office/client/replicator"
 )
 
@@ -40,7 +42,7 @@ const logHelp = `How to read the log file:
 
 // tool adds a tool whose handler gets a client. The handler returns the output object, or an
 // error that becomes {"error":{"code","message"}} with IsError set.
-func tool[In any](srv *sdk.Server, s *Server, t *sdk.Tool, f func(ctx context.Context, c *participant.Client, in In) (any, error)) {
+func tool[In any](srv *sdk.Server, s *Server, t *sdk.Tool, f func(ctx context.Context, c *core.Client, in In) (any, error)) {
 	sdk.AddTool(srv, t, func(ctx context.Context, _ *sdk.CallToolRequest, in In) (*sdk.CallToolResult, any, error) {
 		c, err := s.dial()
 		if err == nil {
@@ -55,8 +57,8 @@ func tool[In any](srv *sdk.Server, s *Server, t *sdk.Tool, f func(ctx context.Co
 
 // sessionTool adds a session command: it resolves the session and returns {"event", "duplicate"}.
 func sessionTool[In any](srv *sdk.Server, s *Server, t *sdk.Tool, session func(In) string,
-	f func(ctx context.Context, c *participant.Client, sid string, in In) (*officev1.CommandResult, error)) {
-	tool(srv, s, t, func(ctx context.Context, c *participant.Client, in In) (any, error) {
+	f func(ctx context.Context, c *core.Client, sid string, in In) (*sessionv1.CommandResult, error)) {
+	tool(srv, s, t, func(ctx context.Context, c *core.Client, in In) (any, error) {
 		sid, err := s.sessionID(ctx, c, session(in))
 		if err != nil {
 			return nil, err
@@ -65,7 +67,7 @@ func sessionTool[In any](srv *sdk.Server, s *Server, t *sdk.Tool, session func(I
 		if err != nil {
 			return nil, err
 		}
-		return participant.ResultJSON(res), nil
+		return core.ResultJSON(res), nil
 	})
 }
 
@@ -169,11 +171,11 @@ func (s *Server) addTools(srv *sdk.Server) {
 		Description: `Join a meeting session and start copying its events into a local log file. Returns {"sessionId", "participantId", "logPath", "replicatorPid", "event", "duplicate"}. Joining again is safe: you stay the same participant and get the same file. The copy runs as long as this MCP server runs (replicatorPid is the process that writes the file), until you leave or the session ends; call meeting_join again to restart it.
 
 ` + logHelp},
-		func(ctx context.Context, c *participant.Client, in joinIn) (any, error) {
+		func(ctx context.Context, c *core.Client, in joinIn) (any, error) {
 			if blank(in.Session) {
 				return nil, usagef("session is required")
 			}
-			j, err := c.Join(ctx, in.Session, participant.JoinOptions{DisplayName: in.Name})
+			j, err := c.Join(ctx, in.Session, core.JoinOptions{DisplayName: in.Name})
 			if err != nil {
 				return nil, err
 			}
@@ -182,12 +184,12 @@ func (s *Server) addTools(srv *sdk.Server) {
 				return nil, err
 			}
 			return map[string]any{"sessionId": j.SessionID, "participantId": j.ParticipantID, "logPath": j.Paths.Log,
-				"replicatorPid": pid, "event": participant.EventJSON(j.Result.GetEvent()), "duplicate": j.Result.GetDuplicate()}, nil
+				"replicatorPid": pid, "event": core.EventJSON(j.Result.GetEvent()), "duplicate": j.Result.GetDuplicate()}, nil
 		})
 
 	tool(srv, s, &sdk.Tool{Name: "meeting_log", Title: "Path of the local log", Annotations: readOnly,
 		Description: `Return the local log file of a session you joined, and whether a replicator writes it now: {"sessionId", "participantId", "logPath", "replicatorRunning"}. If replicatorRunning is false and the session has not ended, call meeting_join again.`},
-		func(ctx context.Context, c *participant.Client, in sessionIn) (any, error) {
+		func(ctx context.Context, c *core.Client, in sessionIn) (any, error) {
 			sid, err := s.sessionID(ctx, c, in.Session)
 			if err != nil {
 				return nil, err
@@ -207,7 +209,7 @@ func (s *Server) addTools(srv *sdk.Server) {
 	sessionTool(srv, s, &sdk.Tool{Name: "meeting_leave", Title: "Leave the meeting", Annotations: additive,
 		Description: `Leave the session. The log file gets your participant.left line and then stops growing. Returns {"event", "duplicate"}.`},
 		func(in sessionIn) string { return in.Session },
-		func(ctx context.Context, c *participant.Client, sid string, _ sessionIn) (*officev1.CommandResult, error) {
+		func(ctx context.Context, c *core.Client, sid string, _ sessionIn) (*sessionv1.CommandResult, error) {
 			res, err := c.Leave(ctx, sid)
 			if err != nil {
 				return nil, err
@@ -225,24 +227,24 @@ func (s *Server) addTools(srv *sdk.Server) {
 			return res, nil
 		})
 
-	simple := func(name, title, desc string, f func(*participant.Client, context.Context, string) (*officev1.CommandResult, error)) {
+	simple := func(name, title, desc string, f func(*core.Client, context.Context, string) (*sessionv1.CommandResult, error)) {
 		sessionTool(srv, s, &sdk.Tool{Name: name, Title: title, Annotations: additive, Description: desc},
 			func(in sessionIn) string { return in.Session },
-			func(ctx context.Context, c *participant.Client, sid string, _ sessionIn) (*officev1.CommandResult, error) {
+			func(ctx context.Context, c *core.Client, sid string, _ sessionIn) (*sessionv1.CommandResult, error) {
 				return f(c, ctx, sid)
 			})
 	}
 	simple("meeting_pause", "Pause", `Pause your capture (participant.paused). For humans whose speech is transcribed; an agent rarely needs it. Returns {"event", "duplicate"}.`,
-		(*participant.Client).Pause)
-	simple("meeting_resume", "Resume", `End a pause (participant.resumed). Returns {"event", "duplicate"}.`, (*participant.Client).Resume)
+		(*core.Client).Pause)
+	simple("meeting_resume", "Resume", `End a pause (participant.resumed). Returns {"event", "duplicate"}.`, (*core.Client).Resume)
 	simple("meeting_end", "End the meeting for everyone",
 		`End the session for all participants. session.ended becomes the last line of every log. Only do this when asked to. Returns {"event", "duplicate"}.`,
-		(*participant.Client).EndSession)
+		(*core.Client).EndSession)
 
 	sessionTool(srv, s, &sdk.Tool{Name: "utterance_say", Title: "Say something", Annotations: additive,
 		Description: `Say something in the meeting (a typed utterance, utterance.final with modality text). The stage shows it, and every participant reads it in their log. Returns {"event", "duplicate"}; event.id is the ID to retract it.`},
 		func(in sayIn) string { return in.Session },
-		func(ctx context.Context, c *participant.Client, sid string, in sayIn) (*officev1.CommandResult, error) {
+		func(ctx context.Context, c *core.Client, sid string, in sayIn) (*sessionv1.CommandResult, error) {
 			if blank(in.Text) {
 				return nil, usagef("text is required")
 			}
@@ -252,7 +254,7 @@ func (s *Server) addTools(srv *sdk.Server) {
 	sessionTool(srv, s, &sdk.Tool{Name: "utterance_retract", Title: "Retract a sentence", Annotations: additive,
 		Description: `Retract one of your own sentences. This adds an utterance.retracted line that points to it; the original line stays. Give eventId, or last=true for your newest sentence. Returns {"event", "duplicate"}.`},
 		func(in retractIn) string { return in.Session },
-		func(ctx context.Context, c *participant.Client, sid string, in retractIn) (*officev1.CommandResult, error) {
+		func(ctx context.Context, c *core.Client, sid string, in retractIn) (*sessionv1.CommandResult, error) {
 			switch {
 			case in.Last && in.EventID != 0, !in.Last && in.EventID == 0:
 				return nil, usagef("give eventId or last=true, not both and not neither")
@@ -265,14 +267,14 @@ func (s *Server) addTools(srv *sdk.Server) {
 	sessionTool(srv, s, &sdk.Tool{Name: "signal_turn_end", Title: "Signal the end of a turn", Annotations: additive,
 		Description: `Signal that a turn ended (turn.end), by default your own. Returns {"event", "duplicate"}.`},
 		func(in turnEndIn) string { return in.Session },
-		func(ctx context.Context, c *participant.Client, sid string, in turnEndIn) (*officev1.CommandResult, error) {
+		func(ctx context.Context, c *core.Client, sid string, in turnEndIn) (*sessionv1.CommandResult, error) {
 			return c.TurnEnd(ctx, sid, in.Participant)
 		})
 
 	sessionTool(srv, s, &sdk.Tool{Name: "signal_silence_long", Title: "Signal a long silence", Annotations: additive,
 		Description: `Signal a long silence (silence.long) of the given duration. Returns {"event", "duplicate"}.`},
 		func(in silenceIn) string { return in.Session },
-		func(ctx context.Context, c *participant.Client, sid string, in silenceIn) (*officev1.CommandResult, error) {
+		func(ctx context.Context, c *core.Client, sid string, in silenceIn) (*sessionv1.CommandResult, error) {
 			d, err := time.ParseDuration(in.Duration)
 			if err != nil || d <= 0 {
 				return nil, usagef("duration must be a positive duration such as \"12s\", not %q", in.Duration)
@@ -283,7 +285,7 @@ func (s *Server) addTools(srv *sdk.Server) {
 	sessionTool(srv, s, &sdk.Tool{Name: "signal_addressed", Title: "Signal that someone was addressed", Annotations: additive,
 		Description: `Signal that an utterance mentioned a participant (addressed). Returns {"event", "duplicate"}.`},
 		func(in addressedIn) string { return in.Session },
-		func(ctx context.Context, c *participant.Client, sid string, in addressedIn) (*officev1.CommandResult, error) {
+		func(ctx context.Context, c *core.Client, sid string, in addressedIn) (*sessionv1.CommandResult, error) {
 			if blank(in.Participant) || in.UtteranceEventID == 0 {
 				return nil, usagef("participant and utteranceEventId are required")
 			}
@@ -293,14 +295,14 @@ func (s *Server) addTools(srv *sdk.Server) {
 	sessionTool(srv, s, &sdk.Tool{Name: "hand_raise", Title: "Raise your hand", Annotations: additive,
 		Description: `Raise your hand (hand.raised), optionally with a topic, to ask for the floor without interrupting. Returns {"event", "duplicate"}.`},
 		func(in handIn) string { return in.Session },
-		func(ctx context.Context, c *participant.Client, sid string, in handIn) (*officev1.CommandResult, error) {
+		func(ctx context.Context, c *core.Client, sid string, in handIn) (*sessionv1.CommandResult, error) {
 			return c.RaiseHand(ctx, sid, in.Topic)
 		})
 
 	sessionTool(srv, s, &sdk.Tool{Name: "minutes_update", Title: "Update the minutes", Annotations: additive,
 		Description: `Replace the running minutes of the meeting (minutes.updated). Send the full new text, not a diff. Give text, or file for a local file. Returns {"event", "duplicate"}.`},
 		func(in minutesIn) string { return in.Session },
-		func(ctx context.Context, c *participant.Client, sid string, in minutesIn) (*officev1.CommandResult, error) {
+		func(ctx context.Context, c *core.Client, sid string, in minutesIn) (*sessionv1.CommandResult, error) {
 			text := in.Text
 			switch {
 			case in.File != "" && in.Text != "":
@@ -321,7 +323,7 @@ func (s *Server) addTools(srv *sdk.Server) {
 	sessionTool(srv, s, &sdk.Tool{Name: "stage_show", Title: "Show an artifact on the stage", Annotations: additive,
 		Description: `Show an artifact on the stage for everyone (artifact.shown), for example the artifactId from slides_render. Returns {"event", "duplicate"}.`},
 		func(in stageShowIn) string { return in.Session },
-		func(ctx context.Context, c *participant.Client, sid string, in stageShowIn) (*officev1.CommandResult, error) {
+		func(ctx context.Context, c *core.Client, sid string, in stageShowIn) (*sessionv1.CommandResult, error) {
 			if blank(in.ArtifactID) {
 				return nil, usagef("artifactId is required")
 			}
@@ -330,7 +332,7 @@ func (s *Server) addTools(srv *sdk.Server) {
 
 	tool(srv, s, &sdk.Tool{Name: "stage_link", Title: "Create a stage link", Annotations: additive,
 		Description: `Create a read-only link to the stage of the session, for people without a client. Returns {"url", "expiresAt"}.`},
-		func(ctx context.Context, c *participant.Client, in sessionIn) (any, error) {
+		func(ctx context.Context, c *core.Client, in sessionIn) (any, error) {
 			sid, err := s.sessionID(ctx, c, in.Session)
 			if err != nil {
 				return nil, err
@@ -344,7 +346,7 @@ func (s *Server) addTools(srv *sdk.Server) {
 
 	tool(srv, s, &sdk.Tool{Name: "slides_render", Title: "Render slides", Annotations: additive,
 		Description: `Render a slide deck into an artifact. Give the deck as title and slides, as markdown, or as a local file. Returns {"artifactId", "mediaType", "duplicate"}; show it with stage_show.`},
-		func(ctx context.Context, c *participant.Client, in slidesIn) (any, error) {
+		func(ctx context.Context, c *core.Client, in slidesIn) (any, error) {
 			n := 0
 			for _, set := range []bool{len(in.Slides) > 0, in.Markdown != "", in.File != ""} {
 				if set {
@@ -354,7 +356,7 @@ func (s *Server) addTools(srv *sdk.Server) {
 			if n != 1 {
 				return nil, usagef("give exactly one of slides, markdown or file")
 			}
-			var req *officev1.RenderSlidesRequest
+			var req *artifactv1.RenderSlidesRequest
 			var err error
 			switch {
 			case in.File != "":
@@ -362,13 +364,13 @@ func (s *Server) addTools(srv *sdk.Server) {
 				if b, err = os.ReadFile(in.File); err != nil {
 					return nil, err
 				}
-				req, err = participant.ParseDeck(in.File, b)
+				req, err = core.ParseDeck(in.File, b)
 			case in.Markdown != "":
-				req, err = participant.ParseDeckMarkdown([]byte(in.Markdown))
+				req, err = core.ParseDeckMarkdown([]byte(in.Markdown))
 			default:
-				req = &officev1.RenderSlidesRequest{Title: in.Title}
+				req = &artifactv1.RenderSlidesRequest{Title: in.Title}
 				for _, sl := range in.Slides {
-					req.Slides = append(req.Slides, &officev1.Slide{Title: sl.Title, Bullets: sl.Bullets, Notes: sl.Notes})
+					req.Slides = append(req.Slides, &artifactv1.Slide{Title: sl.Title, Bullets: sl.Bullets, Notes: sl.Notes})
 				}
 			}
 			if err != nil {
@@ -387,7 +389,7 @@ func (s *Server) addTools(srv *sdk.Server) {
 
 	tool(srv, s, &sdk.Tool{Name: "artifact_get", Title: "Get an artifact", Annotations: readOnly,
 		Description: `Load an artifact by its ID. Returns {"artifact": {"id", "mediaType", "content" (base64), …}}, or with out {"artifactId", "mediaType", "file"}.`},
-		func(ctx context.Context, c *participant.Client, in artifactIn) (any, error) {
+		func(ctx context.Context, c *core.Client, in artifactIn) (any, error) {
 			if blank(in.ID) {
 				return nil, usagef("id is required")
 			}
@@ -401,13 +403,13 @@ func (s *Server) addTools(srv *sdk.Server) {
 				}
 				return map[string]any{"artifactId": a.GetId(), "mediaType": a.GetMediaType(), "file": in.Out}, nil
 			}
-			return map[string]any{"artifact": participant.MessageJSON(a)}, nil
+			return map[string]any{"artifact": core.MessageJSON(a)}, nil
 		})
 
 	tool(srv, s, &sdk.Tool{Name: "journal_append", Title: "Write a journal entry", Annotations: additive,
 		Description: `Write an entry into the shared journal: a decision, task, minutes or note. Returns {"entry", "duplicate"}.`},
-		func(ctx context.Context, c *participant.Client, in journalAppendIn) (any, error) {
-			k, err := participant.ParseEntryKind(in.Kind)
+		func(ctx context.Context, c *core.Client, in journalAppendIn) (any, error) {
+			k, err := core.ParseEntryKind(in.Kind)
 			if err != nil {
 				return nil, err
 			}
@@ -421,31 +423,31 @@ func (s *Server) addTools(srv *sdk.Server) {
 			if err != nil {
 				return nil, err
 			}
-			return map[string]any{"entry": participant.MessageJSON(res.GetEntry()), "duplicate": res.GetDuplicate()}, nil
+			return map[string]any{"entry": core.MessageJSON(res.GetEntry()), "duplicate": res.GetDuplicate()}, nil
 		})
 
 	tool(srv, s, &sdk.Tool{Name: "journal_list", Title: "List journal entries", Annotations: readOnly,
 		Description: `List journal entries. Page with afterEntryId (the last ID you have). Returns {"entries": […]}.`},
-		func(ctx context.Context, c *participant.Client, in journalListIn) (any, error) {
-			k, err := participant.ParseEntryKind(in.Kind)
+		func(ctx context.Context, c *core.Client, in journalListIn) (any, error) {
+			k, err := core.ParseEntryKind(in.Kind)
 			if err != nil {
 				return nil, err
 			}
-			entries, err := c.ListJournal(ctx, &officev1.ListEntriesRequest{AfterEntryId: in.AfterEntryID, Kind: k,
+			entries, err := c.ListJournal(ctx, &journalv1.ListEntriesRequest{AfterEntryId: in.AfterEntryID, Kind: k,
 				SessionId: in.Session, Limit: in.Limit})
 			if err != nil {
 				return nil, err
 			}
 			out := make([]any, len(entries))
 			for i, en := range entries {
-				out[i] = participant.MessageJSON(en)
+				out[i] = core.MessageJSON(en)
 			}
 			return map[string]any{"entries": out}, nil
 		})
 
 	tool(srv, s, &sdk.Tool{Name: "whoami", Title: "Who am I", Annotations: readOnly,
 		Description: `Authenticate and return your participant ID and key ID: {"participantId", "keyId"}. Use the participant ID to find your own lines in the log.`},
-		func(ctx context.Context, c *participant.Client, _ noIn) (any, error) {
+		func(ctx context.Context, c *core.Client, _ noIn) (any, error) {
 			pid, err := c.ParticipantID(ctx)
 			if err != nil {
 				return nil, err

@@ -14,10 +14,10 @@ import (
 
 	"connectrpc.com/connect/v2"
 
-	officev1 "github.com/mrsimpson/agentic-office/core/api/office/v1"
-	"github.com/mrsimpson/agentic-office/core/api/office/v1/officev1connect"
-	"github.com/mrsimpson/agentic-office/core/eventlog"
-	"github.com/mrsimpson/agentic-office/core/events"
+	"github.com/mrsimpson/agentic-office/client/replicator/locallog"
+	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
+	"github.com/mrsimpson/agentic-office/server/session/api/events"
+	sessionv1connect "github.com/mrsimpson/agentic-office/server/session/api/sessionv1connect"
 )
 
 // ErrRunning means that another replicator holds the lock of the file.
@@ -46,7 +46,7 @@ const (
 // Replicator copies the session stream of one session into one local file.
 type Replicator struct {
 	// Session is a session client with a valid token source (auth.Bearer).
-	Session officev1connect.SessionServiceClient
+	Session sessionv1connect.SessionServiceClient
 	// SessionID is the session to copy.
 	SessionID string
 	// ParticipantID is the participant the file belongs to. The replicator stops after it
@@ -57,7 +57,7 @@ type Replicator struct {
 	// Logf receives status messages. Nil means no messages.
 	Logf func(format string, args ...any)
 	// OnWrite is called after every written line. Optional.
-	OnWrite func(*officev1.Event)
+	OnWrite func(*sessionv1.Event)
 	// MaxBackoff overrides the package MaxBackoff when it is greater than zero.
 	MaxBackoff time.Duration
 
@@ -114,7 +114,7 @@ func (r *Replicator) load(f *os.File) error {
 	if len(data) > 0 {
 		body := data[:len(data)-1]
 		last := body[bytes.LastIndexByte(body, '\n')+1:]
-		ev, err := eventlog.UnmarshalLine(last)
+		ev, err := locallog.UnmarshalLine(last)
 		if err != nil {
 			return fmt.Errorf("%s: read cursor from last line: %w", r.Path, err)
 		}
@@ -192,7 +192,7 @@ func (r *Replicator) Run(ctx context.Context) (Reason, error) {
 }
 
 func (r *Replicator) follow(ctx context.Context) (got bool, reason Reason, err error) {
-	stream, err := r.Session.Subscribe(ctx, &officev1.SubscribeRequest{SessionId: r.SessionID, AfterEventId: r.cursor})
+	stream, err := r.Session.Subscribe(ctx, &sessionv1.SubscribeRequest{SessionId: r.SessionID, AfterEventId: r.cursor})
 	if err != nil {
 		return false, "", err
 	}
@@ -227,8 +227,8 @@ func (r *Replicator) follow(ctx context.Context) (got bool, reason Reason, err e
 }
 
 // write appends one line with a single write call, so a crash leaves at most one torn line.
-func (r *Replicator) write(ev *officev1.Event) error {
-	line, err := eventlog.MarshalLine(ev)
+func (r *Replicator) write(ev *sessionv1.Event) error {
+	line, err := locallog.MarshalLine(ev)
 	if err != nil {
 		return err
 	}

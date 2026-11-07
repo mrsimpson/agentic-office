@@ -11,7 +11,7 @@ the events that should wake it up, for example `turn.end` and `addressed`.
 id: rs-agent-joins
 title: Agent joins a meeting
 trigger: Agent calls meeting.join
-involves: bb-mcp, bb-session-service, bb-replicator
+involves: bb-mcp, bb-client-core, bb-session-service, bb-replicator
 :::
 ```
 
@@ -51,7 +51,7 @@ local file. The speaker's terminal shows the status "sent".
 id: rs-human-speaks
 title: Human speaks, agent receives the sentence
 trigger: End of sentence (VAD pause) in the headset signal
-involves: bb-ears, bb-session-service, bb-replicator, bb-cli
+involves: bb-ears, bb-client-core, bb-session-service, bb-replicator, bb-cli
 :::
 ```
 
@@ -133,7 +133,7 @@ expires, the client repeats the steps. This also happens after a network drop.
 id: rs-authenticate
 title: Participant authenticates with its key
 trigger: First call of a client, or the access token is about to expire
-involves: bb-cli, bb-mcp, bb-ears, bb-identity, bb-session-service
+involves: bb-cli, bb-mcp, bb-ears, bb-client-core, bb-identity, bb-session-service
 :::
 ```
 

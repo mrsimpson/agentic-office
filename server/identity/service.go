@@ -16,9 +16,10 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	officev1 "github.com/mrsimpson/agentic-office/core/api/office/v1"
-	"github.com/mrsimpson/agentic-office/core/api/office/v1/officev1connect"
-	"github.com/mrsimpson/agentic-office/core/auth"
+	identityv1 "github.com/mrsimpson/agentic-office/server/identity/api"
+	"github.com/mrsimpson/agentic-office/server/identity/api/auth"
+	identityv1connect "github.com/mrsimpson/agentic-office/server/identity/api/identityv1connect"
+	"github.com/mrsimpson/agentic-office/server/identity/tokencheck"
 )
 
 // Options configure a Service.
@@ -36,35 +37,20 @@ type Options struct {
 	StateFile string
 	// Admins are the admin keys, usually from LoadAdmins.
 	Admins []Admin
+	// StageProcedures are the procedures that a stage link token may call. The wiring of the
+	// server sets them, so that identity does not need to know the other interfaces.
+	StageProcedures []string
 }
 
-// Caller is who makes a call, as the token check learned it from the token.
-type Caller struct {
-	ParticipantID string
-	DisplayName   string
-	Kind          officev1.ParticipantKind
-	KeyID         string
-	Admin         bool
-	// StageSessionID is set for the token of a stage link. Such a token may only read the
-	// session stream of this session.
-	StageSessionID string
-	// Expires is when the token expires.
-	Expires time.Time
-	// Done is closed when the token expires or its key is revoked.
-	Done <-chan struct{}
-}
-
-type callerKey struct{}
+// Caller is who makes a call, as the token check learned it from the token (if-token-check).
+type Caller = tokencheck.Caller
 
 // CallerFrom returns the caller that the Interceptor found for this call.
-func CallerFrom(ctx context.Context) (Caller, bool) {
-	c, ok := ctx.Value(callerKey{}).(Caller)
-	return c, ok
-}
+func CallerFrom(ctx context.Context) (Caller, bool) { return tokencheck.CallerFrom(ctx) }
 
 type participant struct {
-	DisplayName string                   `json:"display_name"`
-	Kind        officev1.ParticipantKind `json:"kind"`
+	DisplayName string               `json:"display_name"`
+	Kind        identityv1.ActorKind `json:"kind"`
 }
 
 type key struct {
@@ -112,9 +98,11 @@ type Service struct {
 	challenges   map[string]challenge
 	tokens       map[[32]byte]*token // by SHA-256 of the token
 	commands     map[string]command
+
+	stageProcedures map[string]bool
 }
 
-var _ officev1connect.IdentityServiceHandler = (*Service)(nil)
+var _ identityv1connect.IdentityServiceHandler = (*Service)(nil)
 
 // New returns a Service. It reads the state file if there is one.
 func New(opts Options) (*Service, error) {
@@ -129,7 +117,11 @@ func New(opts Options) (*Service, error) {
 	}
 	opts.PublicURL = strings.TrimSuffix(opts.PublicURL, "/")
 	s := &Service{opts: opts, participants: map[string]*participant{}, keys: map[string]*key{},
-		challenges: map[string]challenge{}, tokens: map[[32]byte]*token{}, commands: map[string]command{}}
+		challenges: map[string]challenge{}, tokens: map[[32]byte]*token{}, commands: map[string]command{},
+		stageProcedures: map[string]bool{}}
+	for _, p := range opts.StageProcedures {
+		s.stageProcedures[p] = true
+	}
 	if err := s.load(); err != nil {
 		return nil, err
 	}
@@ -148,14 +140,14 @@ func precondition(msg string) error    { return connect.NewError(connect.CodeFai
 
 // publicProcedures need no token.
 var publicProcedures = map[string]bool{
-	officev1connect.IdentityServiceGetChallengeProcedure:      true,
-	officev1connect.IdentityServiceExchangeChallengeProcedure: true,
+	identityv1connect.IdentityServiceGetChallengeProcedure:      true,
+	identityv1connect.IdentityServiceExchangeChallengeProcedure: true,
 }
 
 // Interceptor is the token check for every call to the server. It reads the token from the
 // header "Authorization: Bearer <token>". Calls without a valid token fail with Unauthenticated,
-// except GetChallenge and ExchangeChallenge. A stage link token may only call
-// SessionService/Subscribe. The caller is available to the handlers through CallerFrom.
+// except GetChallenge and ExchangeChallenge. A stage link token may only call the procedures in
+// Options.StageProcedures. The caller is available to the handlers through CallerFrom.
 func (s *Service) Interceptor() connect.ServerInterceptor {
 	return func(next connect.ServerFunc) connect.ServerFunc {
 		return func(ctx context.Context, spec connect.Spec, stream connect.ServerStream) error {
@@ -173,10 +165,10 @@ func (s *Service) Interceptor() connect.ServerInterceptor {
 			if err != nil {
 				return err
 			}
-			if c.StageSessionID != "" && spec.Procedure != officev1connect.SessionServiceSubscribeProcedure {
+			if c.StageSessionID != "" && !s.stageProcedures[spec.Procedure] {
 				return denied("a stage link only allows reading the session stream")
 			}
-			return next(context.WithValue(ctx, callerKey{}, c), spec, stream)
+			return next(tokencheck.WithCaller(ctx, c), spec, stream)
 		}
 	}
 }
@@ -204,7 +196,7 @@ func (s *Service) CheckToken(tok string) (Caller, error) {
 		return Caller{}, unauthenticated("key revoked")
 	}
 	p := s.participants[k.ParticipantID]
-	return Caller{ParticipantID: k.ParticipantID, DisplayName: p.DisplayName, Kind: p.Kind, KeyID: t.keyID,
+	return Caller{ParticipantID: k.ParticipantID, DisplayName: p.DisplayName, Kind: callerKind(p.Kind), KeyID: t.keyID,
 		Admin: k.admin, Expires: t.expires, Done: t.done}, nil
 }
 
@@ -226,7 +218,7 @@ func (s *Service) newToken(prefix, keyID, stageSession string, ttl time.Duration
 	return tok, t.expires
 }
 
-func (s *Service) GetChallenge(_ context.Context, req *officev1.GetChallengeRequest) (*officev1.GetChallengeResponse, error) {
+func (s *Service) GetChallenge(_ context.Context, req *identityv1.GetChallengeRequest) (*identityv1.GetChallengeResponse, error) {
 	if len(req.GetPublicKey()) != ed25519.PublicKeySize {
 		return nil, invalid("public_key must be a raw Ed25519 public key of 32 bytes")
 	}
@@ -247,10 +239,10 @@ func (s *Service) GetChallenge(_ context.Context, req *officev1.GetChallengeRequ
 	c := append([]byte(auth.ChallengePrefix), b...)
 	exp := now.Add(s.opts.ChallengeTTL)
 	s.challenges[string(c)] = challenge{keyID: id, expires: exp}
-	return &officev1.GetChallengeResponse{Challenge: c, ExpiresAt: timestamppb.New(exp)}, nil
+	return &identityv1.GetChallengeResponse{Challenge: c, ExpiresAt: timestamppb.New(exp)}, nil
 }
 
-func (s *Service) ExchangeChallenge(_ context.Context, req *officev1.ExchangeChallengeRequest) (*officev1.ExchangeChallengeResponse, error) {
+func (s *Service) ExchangeChallenge(_ context.Context, req *identityv1.ExchangeChallengeRequest) (*identityv1.ExchangeChallengeResponse, error) {
 	if len(req.GetPublicKey()) != ed25519.PublicKeySize {
 		return nil, invalid("public_key must be a raw Ed25519 public key of 32 bytes")
 	}
@@ -276,7 +268,7 @@ func (s *Service) ExchangeChallenge(_ context.Context, req *officev1.ExchangeCha
 		return nil, unauthenticated("signature does not match the challenge and the public key")
 	}
 	tok, exp := s.newToken("oat_", id, "", s.opts.TokenTTL)
-	return &officev1.ExchangeChallengeResponse{AccessToken: tok, ExpiresAt: timestamppb.New(exp),
+	return &identityv1.ExchangeChallengeResponse{AccessToken: tok, ExpiresAt: timestamppb.New(exp),
 		ParticipantId: k.ParticipantID}, nil
 }
 
@@ -293,7 +285,7 @@ func (s *Service) repeat(commandID, caller string, req proto.Message) (proto.Mes
 	return c.res, nil
 }
 
-func (s *Service) CreateStageLink(ctx context.Context, req *officev1.CreateStageLinkRequest) (*officev1.CreateStageLinkResponse, error) {
+func (s *Service) CreateStageLink(ctx context.Context, req *identityv1.CreateStageLinkRequest) (*identityv1.CreateStageLinkResponse, error) {
 	c, _ := CallerFrom(ctx)
 	if c.ParticipantID == "" {
 		return nil, denied("only a participant can create a stage link")
@@ -306,10 +298,10 @@ func (s *Service) CreateStageLink(ctx context.Context, req *officev1.CreateStage
 	if prev, err := s.repeat(req.GetCommandId(), c.ParticipantID, req); err != nil {
 		return nil, err
 	} else if prev != nil {
-		return prev.(*officev1.CreateStageLinkResponse), nil
+		return prev.(*identityv1.CreateStageLinkResponse), nil
 	}
 	tok, exp := s.newToken("ost_", "", req.GetSessionId(), s.opts.StageLinkTTL)
-	res := &officev1.CreateStageLinkResponse{
+	res := &identityv1.CreateStageLinkResponse{
 		Url:       s.opts.PublicURL + "/stage/" + url.PathEscape(req.GetSessionId()) + "?token=" + tok,
 		ExpiresAt: timestamppb.New(exp)}
 	s.commands[req.GetCommandId()] = command{caller: c.ParticipantID, req: req, res: res}
@@ -326,7 +318,7 @@ func admin(ctx context.Context) (Caller, error) {
 	return c, nil
 }
 
-func (s *Service) RegisterKey(ctx context.Context, req *officev1.RegisterKeyRequest) (*officev1.RegisterKeyResponse, error) {
+func (s *Service) RegisterKey(ctx context.Context, req *identityv1.RegisterKeyRequest) (*identityv1.RegisterKeyResponse, error) {
 	c, err := admin(ctx)
 	if err != nil {
 		return nil, err
@@ -345,19 +337,19 @@ func (s *Service) RegisterKey(ctx context.Context, req *officev1.RegisterKeyRequ
 	if prev, err := s.repeat(req.GetCommandId(), c.ParticipantID, req); err != nil {
 		return nil, err
 	} else if prev != nil {
-		return prev.(*officev1.RegisterKeyResponse), nil
+		return prev.(*identityv1.RegisterKeyResponse), nil
 	}
 	id := auth.KeyID(req.GetPublicKey())
-	res := &officev1.RegisterKeyResponse{KeyId: id}
+	res := &identityv1.RegisterKeyResponse{KeyId: id}
 	p := s.participants[pid]
 	if p != nil {
-		if req.GetKind() != officev1.ParticipantKind_PARTICIPANT_KIND_UNSPECIFIED && req.GetKind() != p.Kind {
+		if req.GetKind() != identityv1.ActorKind_ACTOR_KIND_UNSPECIFIED && req.GetKind() != p.Kind {
 			return nil, precondition("participant " + pid + " is registered with another kind")
 		}
 		if req.GetDisplayName() != "" && req.GetDisplayName() != p.DisplayName {
 			return nil, precondition("participant " + pid + " is registered with another display name")
 		}
-	} else if req.GetDisplayName() == "" || req.GetKind() == officev1.ParticipantKind_PARTICIPANT_KIND_UNSPECIFIED {
+	} else if req.GetDisplayName() == "" || req.GetKind() == identityv1.ActorKind_ACTOR_KIND_UNSPECIFIED {
 		return nil, invalid("display_name and kind are required for a new participant")
 	}
 	if k := s.keys[id]; k != nil {
@@ -386,7 +378,7 @@ func (s *Service) RegisterKey(ctx context.Context, req *officev1.RegisterKeyRequ
 	return res, nil
 }
 
-func (s *Service) RevokeKey(ctx context.Context, req *officev1.RevokeKeyRequest) (*officev1.RevokeKeyResponse, error) {
+func (s *Service) RevokeKey(ctx context.Context, req *identityv1.RevokeKeyRequest) (*identityv1.RevokeKeyResponse, error) {
 	c, err := admin(ctx)
 	if err != nil {
 		return nil, err
@@ -399,7 +391,7 @@ func (s *Service) RevokeKey(ctx context.Context, req *officev1.RevokeKeyRequest)
 	if prev, err := s.repeat(req.GetCommandId(), c.ParticipantID, req); err != nil {
 		return nil, err
 	} else if prev != nil {
-		return prev.(*officev1.RevokeKeyResponse), nil
+		return prev.(*identityv1.RevokeKeyResponse), nil
 	}
 	k := s.keys[req.GetKeyId()]
 	switch {
@@ -427,7 +419,18 @@ func (s *Service) RevokeKey(ctx context.Context, req *officev1.RevokeKeyRequest)
 			delete(s.challenges, ch)
 		}
 	}
-	res := &officev1.RevokeKeyResponse{}
+	res := &identityv1.RevokeKeyResponse{}
 	s.commands[req.GetCommandId()] = command{caller: c.ParticipantID, req: req, res: res}
 	return res, nil
+}
+
+// callerKind maps the actor kind of the auth API to the kind of the token check.
+func callerKind(k identityv1.ActorKind) tokencheck.Kind {
+	switch k {
+	case identityv1.ActorKind_ACTOR_KIND_HUMAN:
+		return tokencheck.KindHuman
+	case identityv1.ActorKind_ACTOR_KIND_AGENT:
+		return tokencheck.KindAgent
+	}
+	return tokencheck.KindUnknown
 }

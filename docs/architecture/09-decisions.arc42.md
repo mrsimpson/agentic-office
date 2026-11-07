@@ -278,3 +278,45 @@ date: 2026-11-06
 addresses: con-no-unit-tests, con-contract-tests
 :::
 ```
+
+## Architecture test against the arc42 model
+
+**Context:** Rules about module boundaries erode when nothing checks them. **Decision:** A test
+checks the code against the building block view on every test run (`concept-module-boundaries`).
+It reads the model from the arc42 tooling itself, not with an own parser, and the dependencies of
+the code from the Go toolchain. It fails on code without a building block, on a dependency
+between building blocks that does not go through a required interface, on a test that reaches
+into a building block, and on a required interface that is never used. A small workspace with
+deliberate violations proves that each rule fails when it should. **Consequences:** Every change
+of a dependency needs a change of the model first. The tests need the arc42 tooling and fail
+without it; they do not skip. **Rejected:** an own parser of the chapter files (it would drift
+from the arc42 syntax); a shared package for common types (it becomes the place where boundaries
+erode).
+
+```arc42
+:::decision
+id: dec-architecture-test
+title: The code is tested against the building block view
+status: accepted
+date: 2026-11-07
+addresses: con-contract-tests
+:::
+```
+
+## Performance tests separate from end-to-end tests
+
+**Context:** A timing criterion made the end-to-end tests fail on a slower host, although every
+function worked. **Decision:** End-to-end tests check behaviour only and never fail on timing.
+The timing criteria of the quality scenarios run as separate performance tests on the reference
+host. **Consequences:** The end-to-end tests run on every host. Performance needs its own run and
+its own reference host.
+
+```arc42
+:::decision
+id: dec-performance-tests
+title: Performance tests separate from end-to-end tests
+status: accepted
+date: 2026-11-07
+addresses: qg-performance
+:::
+```

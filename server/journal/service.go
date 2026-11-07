@@ -8,8 +8,8 @@ import (
 	"connectrpc.com/connect/v2"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	officev1 "github.com/mrsimpson/agentic-office/core/api/office/v1"
-	"github.com/mrsimpson/agentic-office/core/api/office/v1/officev1connect"
+	journalv1 "github.com/mrsimpson/agentic-office/server/journal/api"
+	journalv1connect "github.com/mrsimpson/agentic-office/server/journal/api/journalv1connect"
 )
 
 const (
@@ -26,7 +26,7 @@ const (
 type Caller struct {
 	// ParticipantID is empty for the token of a stage link.
 	ParticipantID string
-	Kind          officev1.ParticipantKind
+	Kind          journalv1.AuthorKind
 }
 
 // Authorizer returns the caller of a call. It fails with Unauthenticated if the call carries no
@@ -48,7 +48,7 @@ type Service struct {
 	mu    sync.Mutex // serialises appends
 }
 
-var _ officev1connect.JournalServiceHandler = (*Service)(nil)
+var _ journalv1connect.JournalServiceHandler = (*Service)(nil)
 
 // New returns a Service that keeps its entries in store. If auth is nil, every call of a client
 // fails with Unauthenticated.
@@ -63,14 +63,14 @@ func New(store Store, auth Authorizer) *Service {
 
 func invalid(msg string) error { return connect.NewError(connect.CodeInvalidArgument, msg) }
 
-func knownKind(k officev1.EntryKind) bool {
-	_, ok := officev1.EntryKind_name[int32(k)]
+func knownKind(k journalv1.EntryKind) bool {
+	_, ok := journalv1.EntryKind_name[int32(k)]
 	return ok
 }
 
 // AppendEntry appends an entry for the participant of the access token. The server sets the
 // author kind, the time and the ID.
-func (s *Service) AppendEntry(ctx context.Context, req *officev1.AppendEntryRequest) (*officev1.AppendEntryResponse, error) {
+func (s *Service) AppendEntry(ctx context.Context, req *journalv1.AppendEntryRequest) (*journalv1.AppendEntryResponse, error) {
 	if req.GetAuthorParticipantId() == "" {
 		return nil, invalid("author_participant_id is required")
 	}
@@ -85,14 +85,14 @@ func (s *Service) AppendEntry(ctx context.Context, req *officev1.AppendEntryRequ
 		return nil, connect.NewError(connect.CodePermissionDenied,
 			"author_participant_id must be the participant of the access token")
 	}
-	e, dup, err := s.Record(ctx, &officev1.JournalEntry{
+	e, dup, err := s.Record(ctx, &journalv1.JournalEntry{
 		CommandId: req.GetCommandId(), Kind: req.GetKind(), Text: req.GetText(),
 		AuthorParticipantId: c.ParticipantID, AuthorKind: c.Kind, SessionId: req.GetSessionId(),
 	})
 	if err != nil {
 		return nil, err
 	}
-	return &officev1.AppendEntryResponse{Entry: e, Duplicate: dup}, nil
+	return &journalv1.AppendEntryResponse{Entry: e, Duplicate: dup}, nil
 }
 
 // Record appends an entry on behalf of another building block of the server, for example the
@@ -102,11 +102,11 @@ func (s *Service) AppendEntry(ctx context.Context, req *officev1.AppendEntryRequ
 // Record is idempotent by command_id, like AppendEntry: if an entry with the same command_id,
 // kind, text, author and session exists, it returns that entry and true. The same command_id
 // with other content fails with AlreadyExists.
-func (s *Service) Record(_ context.Context, e *officev1.JournalEntry) (*officev1.JournalEntry, bool, error) {
+func (s *Service) Record(_ context.Context, e *journalv1.JournalEntry) (*journalv1.JournalEntry, bool, error) {
 	switch {
 	case e.GetCommandId() == "":
 		return nil, false, invalid("command_id is required")
-	case e.GetKind() == officev1.EntryKind_ENTRY_KIND_UNSPECIFIED:
+	case e.GetKind() == journalv1.EntryKind_ENTRY_KIND_UNSPECIFIED:
 		return nil, false, invalid("kind is required")
 	case !knownKind(e.GetKind()):
 		return nil, false, invalid("kind is unknown")
@@ -129,7 +129,7 @@ func (s *Service) Record(_ context.Context, e *officev1.JournalEntry) (*officev1
 		}
 		return prev, true, nil
 	}
-	ne := &officev1.JournalEntry{
+	ne := &journalv1.JournalEntry{
 		CommandId: e.GetCommandId(), Kind: e.GetKind(), Text: e.GetText(),
 		AuthorParticipantId: e.GetAuthorParticipantId(), AuthorKind: e.GetAuthorKind(),
 		SessionId: e.GetSessionId(), Time: timestamppb.Now(),
@@ -142,7 +142,7 @@ func (s *Service) Record(_ context.Context, e *officev1.JournalEntry) (*officev1
 }
 
 // ListEntries returns the entries after the cursor that match the filter, oldest first.
-func (s *Service) ListEntries(ctx context.Context, req *officev1.ListEntriesRequest) (*officev1.ListEntriesResponse, error) {
+func (s *Service) ListEntries(ctx context.Context, req *journalv1.ListEntriesRequest) (*journalv1.ListEntriesResponse, error) {
 	if !knownKind(req.GetKind()) {
 		return nil, invalid("kind is unknown")
 	}
@@ -159,7 +159,7 @@ func (s *Service) ListEntries(ctx context.Context, req *officev1.ListEntriesRequ
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, "read journal: "+err.Error())
 	}
-	return &officev1.ListEntriesResponse{Entries: entries}, nil
+	return &journalv1.ListEntriesResponse{Entries: entries}, nil
 }
 
 // caller returns the participant of the access token. A stage link has no participant.

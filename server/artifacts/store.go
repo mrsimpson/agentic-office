@@ -15,7 +15,7 @@ import (
 
 	"google.golang.org/protobuf/encoding/protojson"
 
-	officev1 "github.com/mrsimpson/agentic-office/core/api/office/v1"
+	artifactv1 "github.com/mrsimpson/agentic-office/server/artifacts/api"
 )
 
 // Record is a stored artifact together with the command that created it. The service needs the
@@ -23,8 +23,8 @@ import (
 type Record struct {
 	CommandID string
 	// Input is the request without command_id.
-	Input    *officev1.RenderSlidesRequest
-	Artifact *officev1.Artifact
+	Input    *artifactv1.RenderSlidesRequest
+	Artifact *artifactv1.Artifact
 }
 
 // Store keeps the artifacts. Artifacts never change once stored.
@@ -138,7 +138,7 @@ func OpenFileStore(path string) (*FileStore, error) {
 			return fail(err)
 		}
 		var l line
-		rec := &Record{Input: &officev1.RenderSlidesRequest{}, Artifact: &officev1.Artifact{}}
+		rec := &Record{Input: &artifactv1.RenderSlidesRequest{}, Artifact: &artifactv1.Artifact{}}
 		if err := json.Unmarshal(b, &l); err != nil {
 			return fail(fmt.Errorf("%s line %d: %w", path, n, err))
 		}

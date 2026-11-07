@@ -4,8 +4,8 @@ import (
 	"flag"
 	"fmt"
 
-	officev1 "github.com/mrsimpson/agentic-office/core/api/office/v1"
-	"github.com/mrsimpson/agentic-office/core/auth"
+	identityv1 "github.com/mrsimpson/agentic-office/server/identity/api"
+	"github.com/mrsimpson/agentic-office/server/identity/api/auth"
 )
 
 func (e *env) printKey(path string, pub []byte, created bool) {
@@ -74,14 +74,14 @@ func cmdWhoami(e *env, fs *flag.FlagSet) func([]string) error {
 	}
 }
 
-func parseKind(s string) (officev1.ParticipantKind, error) {
+func parseKind(s string) (identityv1.ActorKind, error) {
 	switch s {
 	case "":
-		return officev1.ParticipantKind_PARTICIPANT_KIND_UNSPECIFIED, nil
+		return identityv1.ActorKind_ACTOR_KIND_UNSPECIFIED, nil
 	case "human":
-		return officev1.ParticipantKind_PARTICIPANT_KIND_HUMAN, nil
+		return identityv1.ActorKind_ACTOR_KIND_HUMAN, nil
 	case "agent":
-		return officev1.ParticipantKind_PARTICIPANT_KIND_AGENT, nil
+		return identityv1.ActorKind_ACTOR_KIND_AGENT, nil
 	}
 	return 0, usagef("--kind must be human or agent, not %q", s)
 }
@@ -105,7 +105,7 @@ func cmdAdminRegister(e *env, fs *flag.FlagSet) func([]string) error {
 		if err != nil {
 			return err
 		}
-		res, err := c.RegisterKey(e.ctx, &officev1.RegisterKeyRequest{ParticipantId: args[0], DisplayName: *name, Kind: k, PublicKey: pub})
+		res, err := c.RegisterKey(e.ctx, &identityv1.RegisterKeyRequest{ParticipantId: args[0], DisplayName: *name, Kind: k, PublicKey: pub})
 		if err != nil {
 			return err
 		}

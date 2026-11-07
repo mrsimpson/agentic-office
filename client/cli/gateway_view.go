@@ -13,9 +13,9 @@ import (
 
 	"golang.org/x/term"
 
-	officev1 "github.com/mrsimpson/agentic-office/core/api/office/v1"
+	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
 
-	"github.com/mrsimpson/agentic-office/client/participant"
+	"github.com/mrsimpson/agentic-office/client/core"
 )
 
 // The gateway view (dec-gateway-cli) is a filtered view of the local log: the participant's own
@@ -26,12 +26,12 @@ import (
 // localStatus is the status of an utterance that the ears have not sent yet.
 type localStatus struct {
 	cmdID, text string
-	status      participant.Status
+	status      core.Status
 }
 
 type gatewayView struct {
 	e             *env
-	c             *participant.Client
+	c             *core.Client
 	sid, pid, log string
 	// local carries the status from the ears (#8). Nil without ears.
 	local  <-chan localStatus
@@ -53,15 +53,15 @@ func (g *gatewayView) run(ctx context.Context) error {
 	}
 	fmt.Fprintf(g.e.stderr, "gateway: session %s as %s; keys: p pause/resume, r retract last sentence, q quit%s", g.sid, g.pid, g.nl)
 
-	evs := make(chan *officev1.Event, 64)
+	evs := make(chan *sessionv1.Event, 64)
 	logErr := make(chan error, 1)
 	go func() {
-		logErr <- participant.FollowLog(ctx, g.log, true, func(ev *officev1.Event) error {
+		logErr <- core.FollowLog(ctx, g.log, true, func(ev *sessionv1.Event) error {
 			select {
 			case evs <- ev:
 				return nil
 			case <-ctx.Done():
-				return participant.ErrStop
+				return core.ErrStop
 			}
 		})
 	}()
@@ -82,7 +82,7 @@ func (g *gatewayView) run(ctx context.Context) error {
 		}()
 	}
 
-	state := participant.NewGateway(g.pid)
+	state := core.NewGateway(g.pid)
 	for {
 		select {
 		case <-ctx.Done():
@@ -128,7 +128,7 @@ func (g *gatewayView) run(ctx context.Context) error {
 }
 
 // show prints one change: a JSON line with --json, else a short text line.
-func (g *gatewayView) show(ch participant.Change) {
+func (g *gatewayView) show(ch core.Change) {
 	if g.e.json {
 		g.e.printJSON(ch)
 		return

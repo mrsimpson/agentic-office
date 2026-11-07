@@ -44,3 +44,10 @@ proposed it and it still needs confirmation.
 | Maintainer, review 5 | Test strategy: WAV in automated tests, microphone tested manually with a headset, no virtual microphone | ch.8 concept-test-strategy, ch.10 qs-manual-headset | high | — |
 | Maintainer, review 5 | No implementation details in the architecture | AGENTS.md | high | — |
 | Maintainer, review 6 | No unit tests; black-box contract tests per building block | ch.2 con-no-unit-tests, con-contract-tests, ch.8 concept-test-strategy, ch.9 dec-contract-tests, AGENTS.md | high | — |
+| Maintainer, review 7 | Exactly one path per building block; a test allows dependencies only through the paths of required interfaces | ch.5 paths, ch.8 concept-module-boundaries, ch.9 dec-architecture-test | high | — |
+| Maintainer, review 7 | No common package; the types of an interface belong to its provider; a parent may wire its children; tests are actors; interfaces for actors only are marked by having only actors as consumers; unused requires fail | ch.8 concept-module-boundaries | high | — |
+| Maintainer, review 7 | The architecture test reads the model from the arc42 CLI as JSON | ch.9 dec-architecture-test | high | — |
+| Maintainer, review 7 | End-to-end tests never check performance; separate performance tag | ch.8 concept-test-strategy, ch.9 dec-performance-tests | high | — |
+| Code, architecture test (#26, #27) | The client core is its own building block; the replicator offers replication control; the token check is its own in-process interface with its own types | ch.5 bb-client-core, if-client-core, if-replication, if-token-check | high | — |
+| Code, architecture test (#26, #27) | CLI and MCP server use the server interfaces directly, not only through the client core | ch.5 requires of bb-cli and bb-mcp | high | OPEN: should the adapters use only the client core? |
+| ch.5 if-session-commands, if-session-stream | H020 ignored: commands and stream are two contracts of one Connect service and share its package | ch.5 | high | — |

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/mrsimpson/agentic-office/client/participant"
+	"github.com/mrsimpson/agentic-office/client/core"
 	"github.com/mrsimpson/agentic-office/client/replicator"
 )
 
@@ -44,8 +44,8 @@ var CheckEars func(opts *EarsOptions) error
 // It submits final utterances with c.SubmitUtterance under a command ID it creates, and reports
 // the local status of each utterance (partial, final) to status before it sends it. It must not
 // transcribe while paused() is true. Nil means the ears are not built in.
-var StartEars func(ctx context.Context, c *participant.Client, sessionID string, opts EarsOptions,
-	status func(cmdID, text string, s participant.Status), paused func() bool) error
+var StartEars func(ctx context.Context, c *core.Client, sessionID string, opts EarsOptions,
+	status func(cmdID, text string, s core.Status), paused func() bool) error
 
 func cmdJoin(e *env, fs *flag.FlagSet) func([]string) error {
 	name := fs.String("name", "", "display name in this session (default: the registered name)")
@@ -81,7 +81,7 @@ func cmdJoin(e *env, fs *flag.FlagSet) func([]string) error {
 		if err != nil {
 			return err
 		}
-		j, err := c.Join(e.ctx, sid, participant.JoinOptions{DisplayName: *name, Captured: ears})
+		j, err := c.Join(e.ctx, sid, core.JoinOptions{DisplayName: *name, Captured: ears})
 		if err != nil {
 			return err
 		}
@@ -108,7 +108,7 @@ func cmdJoin(e *env, fs *flag.FlagSet) func([]string) error {
 // runEarsGateway runs the ears and the gateway view in the foreground (join --mic or --wav).
 // The view stays when the audio of a WAV file is over; q or the end of the session stops it.
 // If the ears fail, join stops with their error.
-func runEarsGateway(e *env, c *participant.Client, j *participant.Joined, opts EarsOptions, rep *replicatorProc) error {
+func runEarsGateway(e *env, c *core.Client, j *core.Joined, opts EarsOptions, rep *replicatorProc) error {
 	ctx, cancel := context.WithCancel(e.ctx)
 	defer cancel()
 	local := make(chan localStatus, 64)
@@ -116,7 +116,7 @@ func runEarsGateway(e *env, c *participant.Client, j *participant.Joined, opts E
 	opts.Report = gw.earsReport
 	earsErr := make(chan error, 1)
 	go func() {
-		err := StartEars(ctx, c, j.SessionID, opts, func(cmdID, text string, s participant.Status) {
+		err := StartEars(ctx, c, j.SessionID, opts, func(cmdID, text string, s core.Status) {
 			select {
 			case local <- localStatus{cmdID, text, s}:
 			case <-ctx.Done():
@@ -162,7 +162,7 @@ func cmdLogPath(e *env, fs *flag.FlagSet) func([]string) error {
 }
 
 // joined returns a client, the session and the participant.
-func (e *env) joined() (*participant.Client, string, string, error) {
+func (e *env) joined() (*core.Client, string, string, error) {
 	c, err := e.client()
 	if err != nil {
 		return nil, "", "", err

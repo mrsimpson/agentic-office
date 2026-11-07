@@ -10,9 +10,11 @@ import (
 	"strings"
 	"time"
 
-	officev1 "github.com/mrsimpson/agentic-office/core/api/office/v1"
+	artifactv1 "github.com/mrsimpson/agentic-office/server/artifacts/api"
+	journalv1 "github.com/mrsimpson/agentic-office/server/journal/api"
+	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
 
-	"github.com/mrsimpson/agentic-office/client/participant"
+	"github.com/mrsimpson/agentic-office/client/core"
 )
 
 func cmdSay(e *env, fs *flag.FlagSet) func([]string) error {
@@ -21,7 +23,7 @@ func cmdSay(e *env, fs *flag.FlagSet) func([]string) error {
 		if strings.TrimSpace(text) == "" {
 			return usagef("usage: office say <text>")
 		}
-		return e.sessionCommand(func(c *participant.Client, sid string) (*officev1.CommandResult, error) {
+		return e.sessionCommand(func(c *core.Client, sid string) (*sessionv1.CommandResult, error) {
 			return c.Say(e.ctx, sid, text)
 		})
 	}
@@ -41,7 +43,7 @@ func cmdRetract(e *env, fs *flag.FlagSet) func([]string) error {
 		if *last == (len(args) == 1) || len(args) > 1 {
 			return usagef("usage: office utterance retract <event-id> | --last")
 		}
-		return e.sessionCommand(func(c *participant.Client, sid string) (*officev1.CommandResult, error) {
+		return e.sessionCommand(func(c *core.Client, sid string) (*sessionv1.CommandResult, error) {
 			if *last {
 				return c.RetractLast(e.ctx, sid)
 			}
@@ -60,7 +62,7 @@ func cmdTurnEnd(e *env, fs *flag.FlagSet) func([]string) error {
 		if err := noArgs(args); err != nil {
 			return err
 		}
-		return e.sessionCommand(func(c *participant.Client, sid string) (*officev1.CommandResult, error) {
+		return e.sessionCommand(func(c *core.Client, sid string) (*sessionv1.CommandResult, error) {
 			return c.TurnEnd(e.ctx, sid, *who)
 		})
 	}
@@ -75,7 +77,7 @@ func cmdSilenceLong(e *env, fs *flag.FlagSet) func([]string) error {
 		if *d <= 0 {
 			return usagef("--duration is required")
 		}
-		return e.sessionCommand(func(c *participant.Client, sid string) (*officev1.CommandResult, error) {
+		return e.sessionCommand(func(c *core.Client, sid string) (*sessionv1.CommandResult, error) {
 			return c.SilenceLong(e.ctx, sid, *d)
 		})
 	}
@@ -91,7 +93,7 @@ func cmdAddressed(e *env, fs *flag.FlagSet) func([]string) error {
 		if *who == "" || *utt == 0 {
 			return usagef("--participant and --utterance are required")
 		}
-		return e.sessionCommand(func(c *participant.Client, sid string) (*officev1.CommandResult, error) {
+		return e.sessionCommand(func(c *core.Client, sid string) (*sessionv1.CommandResult, error) {
 			return c.Addressed(e.ctx, sid, *who, uint32(*utt))
 		})
 	}
@@ -103,7 +105,7 @@ func cmdRaiseHand(e *env, fs *flag.FlagSet) func([]string) error {
 		if err := noArgs(args); err != nil {
 			return err
 		}
-		return e.sessionCommand(func(c *participant.Client, sid string) (*officev1.CommandResult, error) {
+		return e.sessionCommand(func(c *core.Client, sid string) (*sessionv1.CommandResult, error) {
 			return c.RaiseHand(e.ctx, sid, *topic)
 		})
 	}
@@ -134,7 +136,7 @@ func cmdMinutes(e *env, fs *flag.FlagSet) func([]string) error {
 		if strings.TrimSpace(text) == "" {
 			return usagef("usage: office minutes update <text> | --file F")
 		}
-		return e.sessionCommand(func(c *participant.Client, sid string) (*officev1.CommandResult, error) {
+		return e.sessionCommand(func(c *core.Client, sid string) (*sessionv1.CommandResult, error) {
 			return c.UpdateMinutes(e.ctx, sid, text)
 		})
 	}
@@ -145,7 +147,7 @@ func cmdStageShow(e *env, fs *flag.FlagSet) func([]string) error {
 		if len(args) != 1 {
 			return usagef("usage: office stage show <artifact-id>")
 		}
-		return e.sessionCommand(func(c *participant.Client, sid string) (*officev1.CommandResult, error) {
+		return e.sessionCommand(func(c *core.Client, sid string) (*sessionv1.CommandResult, error) {
 			return c.ShowArtifact(e.ctx, sid, args[0])
 		})
 	}
@@ -177,10 +179,10 @@ func cmdStageLink(e *env, fs *flag.FlagSet) func([]string) error {
 	}
 }
 
-// parseDeck reads a deck file (see participant.ParseDeck).
-func parseDeck(path string, b []byte) (*officev1.RenderSlidesRequest, error) {
-	req, err := participant.ParseDeck(path, b)
-	if errors.Is(err, participant.ErrBadInput) {
+// parseDeck reads a deck file (see core.ParseDeck).
+func parseDeck(path string, b []byte) (*artifactv1.RenderSlidesRequest, error) {
+	req, err := core.ParseDeck(path, b)
+	if errors.Is(err, core.ErrBadInput) {
 		return nil, usagef("%v", err)
 	}
 	return req, err
@@ -240,7 +242,7 @@ func cmdArtifactGet(e *env, fs *flag.FlagSet) func([]string) error {
 				e.printJSON(map[string]any{"artifactId": a.GetId(), "mediaType": a.GetMediaType(), "file": *out})
 			}
 		case e.json:
-			e.printJSON(map[string]any{"artifact": participant.MessageJSON(a)})
+			e.printJSON(map[string]any{"artifact": core.MessageJSON(a)})
 		default:
 			_, err = e.stdout.Write(a.GetContent())
 			return err
@@ -249,15 +251,15 @@ func cmdArtifactGet(e *env, fs *flag.FlagSet) func([]string) error {
 	}
 }
 
-func parseEntryKind(s string) (officev1.EntryKind, error) {
-	k, err := participant.ParseEntryKind(s)
+func parseEntryKind(s string) (journalv1.EntryKind, error) {
+	k, err := core.ParseEntryKind(s)
 	if err != nil {
 		return 0, usagef("--kind must be decision, task, minutes or note, not %q", s)
 	}
 	return k, nil
 }
 
-func kindName(k officev1.EntryKind) string { return participant.KindName(k) }
+func kindName(k journalv1.EntryKind) string { return core.KindName(k) }
 
 func cmdJournalAppend(e *env, fs *flag.FlagSet) func([]string) error {
 	kind := fs.String("kind", "", "decision, task, minutes or note")
@@ -311,7 +313,7 @@ func cmdJournalList(e *env, fs *flag.FlagSet) func([]string) error {
 		if err != nil {
 			return err
 		}
-		entries, err := c.ListJournal(e.ctx, &officev1.ListEntriesRequest{AfterEntryId: uint32(*after), Kind: k,
+		entries, err := c.ListJournal(e.ctx, &journalv1.ListEntriesRequest{AfterEntryId: uint32(*after), Kind: k,
 			SessionId: e.session, Limit: uint32(*limit)})
 		if err != nil {
 			return err

@@ -20,11 +20,18 @@ Guidance for agents working in this repository.
 - All components are written in **Go** and live in this monorepo with one toolchain
   (see `dec-languages` in `docs/architecture/09-decisions.arc42.md`). The only extra tool is the
   C/C++ compiler that whisper.cpp needs through cgo.
-- Shared types and the protocol (Protobuf, Connect RPC) belong in the shared core, not in a
-  single component.
+- The code follows the building blocks of chapter 5 (`concept-module-boundaries`). Every building
+  block and every interface has exactly one path. An interface lies inside the path of its
+  provider and owns its types, including its Protobuf contract. There is no shared or common
+  package.
+- A building block may only use interfaces it provides or lists in `requires`. To add a
+  dependency, change the model first. `make arch` checks this and fails on every violation.
 - **No unit tests.** Test each building block as a black box through its interfaces (contract
   tests). Use only the provided interfaces; do not reach into the inside of a block. End-to-end
   tests combine real blocks. See `dec-contract-tests`.
+- End-to-end tests (`make e2e`) check behaviour only and never fail on timing. Timing criteria
+  belong in the performance tests (build tag `performance`, `make performance`), which run on
+  the reference host. See `dec-performance-tests`.
 
 ## Workflow
 

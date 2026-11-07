@@ -9,8 +9,8 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	officev1 "github.com/mrsimpson/agentic-office/core/api/office/v1"
-	"github.com/mrsimpson/agentic-office/core/api/office/v1/officev1connect"
+	artifactv1 "github.com/mrsimpson/agentic-office/server/artifacts/api"
+	artifactv1connect "github.com/mrsimpson/agentic-office/server/artifacts/api/artifactv1connect"
 )
 
 const (
@@ -45,7 +45,7 @@ type Service struct {
 	mu    sync.Mutex // serialises writes
 }
 
-var _ officev1connect.ArtifactServiceHandler = (*Service)(nil)
+var _ artifactv1connect.ArtifactServiceHandler = (*Service)(nil)
 
 // New returns a Service that keeps its artifacts in store. If auth is nil, every call of a
 // client fails with Unauthenticated.
@@ -62,7 +62,7 @@ func invalid(msg string) error { return connect.NewError(connect.CodeInvalidArgu
 
 // RenderSlides renders a deck to HTML and stores it as a new artifact "slides/<n>". It is
 // idempotent by command_id.
-func (s *Service) RenderSlides(ctx context.Context, req *officev1.RenderSlidesRequest) (*officev1.RenderSlidesResponse, error) {
+func (s *Service) RenderSlides(ctx context.Context, req *artifactv1.RenderSlidesRequest) (*artifactv1.RenderSlidesResponse, error) {
 	switch {
 	case req.GetCommandId() == "":
 		return nil, invalid("command_id is required")
@@ -84,7 +84,7 @@ func (s *Service) RenderSlides(ctx context.Context, req *officev1.RenderSlidesRe
 		return nil, connect.NewError(connect.CodePermissionDenied,
 			"author_participant_id must be the participant of the access token")
 	}
-	input := proto.Clone(req).(*officev1.RenderSlidesRequest)
+	input := proto.Clone(req).(*artifactv1.RenderSlidesRequest)
 	input.CommandId = ""
 
 	s.mu.Lock()
@@ -97,7 +97,7 @@ func (s *Service) RenderSlides(ctx context.Context, req *officev1.RenderSlidesRe
 		if !proto.Equal(prev.Input, input) {
 			return nil, connect.NewError(connect.CodeAlreadyExists, "command_id was already used for another artifact")
 		}
-		return &officev1.RenderSlidesResponse{Artifact: prev.Artifact, Duplicate: true}, nil
+		return &artifactv1.RenderSlidesResponse{Artifact: prev.Artifact, Duplicate: true}, nil
 	}
 	content, err := RenderSlides(req.GetTitle(), req.GetSlides())
 	if err != nil {
@@ -106,17 +106,17 @@ func (s *Service) RenderSlides(ctx context.Context, req *officev1.RenderSlidesRe
 	if len(content) > MaxContentBytes {
 		return nil, invalid("the deck is too large")
 	}
-	rec, err := s.store.Add(KindSlides, &Record{CommandID: req.GetCommandId(), Input: input, Artifact: &officev1.Artifact{
+	rec, err := s.store.Add(KindSlides, &Record{CommandID: req.GetCommandId(), Input: input, Artifact: &artifactv1.Artifact{
 		MediaType: SlidesMediaType, Content: content, AuthorParticipantId: c.ParticipantID, CreatedAt: timestamppb.Now(),
 	}})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, "store artifact: "+err.Error())
 	}
-	return &officev1.RenderSlidesResponse{Artifact: rec.Artifact}, nil
+	return &artifactv1.RenderSlidesResponse{Artifact: rec.Artifact}, nil
 }
 
 // GetArtifact returns the artifact with the ID of the request.
-func (s *Service) GetArtifact(ctx context.Context, req *officev1.GetArtifactRequest) (*officev1.GetArtifactResponse, error) {
+func (s *Service) GetArtifact(ctx context.Context, req *artifactv1.GetArtifactRequest) (*artifactv1.GetArtifactResponse, error) {
 	if req.GetId() == "" {
 		return nil, invalid("id is required")
 	}
@@ -127,13 +127,13 @@ func (s *Service) GetArtifact(ctx context.Context, req *officev1.GetArtifactRequ
 	if err != nil {
 		return nil, err
 	}
-	return &officev1.GetArtifactResponse{Artifact: a}, nil
+	return &artifactv1.GetArtifactResponse{Artifact: a}, nil
 }
 
 // Load returns the artifact with this ID for another building block of the server, for example
 // the stage, which renders artifacts on the server. There is no token check: the caller checks
 // its own access. An unknown ID fails with NotFound.
-func (s *Service) Load(_ context.Context, id string) (*officev1.Artifact, error) {
+func (s *Service) Load(_ context.Context, id string) (*artifactv1.Artifact, error) {
 	rec, err := s.store.Get(id)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, "read artifacts: "+err.Error())

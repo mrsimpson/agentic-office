@@ -9,7 +9,8 @@ import (
 
 	"connectrpc.com/connect/v2"
 
-	officev1 "github.com/mrsimpson/agentic-office/core/api/office/v1"
+	artifactv1 "github.com/mrsimpson/agentic-office/server/artifacts/api"
+	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
 )
 
 // Regions of the page. Each region is an element with this ID. The event stream sends a region
@@ -98,53 +99,53 @@ func (v *view) lowerHand(id string) {
 }
 
 // apply updates the view with one event. load fetches a shown artifact.
-func (v *view) apply(ctx context.Context, ev *officev1.Event, load func(context.Context, string) (*officev1.Artifact, error)) {
+func (v *view) apply(ctx context.Context, ev *sessionv1.Event, load func(context.Context, string) (*artifactv1.Artifact, error)) {
 	switch p := ev.GetPayload().(type) {
-	case *officev1.Event_ParticipantJoined:
+	case *sessionv1.Event_ParticipantJoined:
 		j := p.ParticipantJoined
 		pt := v.participant(j.GetParticipantId())
 		if j.GetDisplayName() != "" {
 			pt.Name = j.GetDisplayName()
 		}
-		pt.Agent = j.GetKind() == officev1.ParticipantKind_PARTICIPANT_KIND_AGENT
+		pt.Agent = j.GetKind() == sessionv1.ParticipantKind_PARTICIPANT_KIND_AGENT
 		pt.captured, pt.paused, pt.left = j.GetCaptured(), false, false
-	case *officev1.Event_ParticipantLeft:
+	case *sessionv1.Event_ParticipantLeft:
 		v.participant(p.ParticipantLeft.GetParticipantId()).left = true
 		v.lowerHand(p.ParticipantLeft.GetParticipantId())
-	case *officev1.Event_ParticipantPaused:
+	case *sessionv1.Event_ParticipantPaused:
 		v.participant(p.ParticipantPaused.GetParticipantId()).paused = true
-	case *officev1.Event_ParticipantResumed:
+	case *sessionv1.Event_ParticipantResumed:
 		v.participant(p.ParticipantResumed.GetParticipantId()).paused = false
-	case *officev1.Event_UtteranceFinal:
+	case *sessionv1.Event_UtteranceFinal:
 		u := &utteranceView{EventID: ev.GetId(), Speaker: v.participant(p.UtteranceFinal.GetParticipantId()),
 			Text: p.UtteranceFinal.GetText()}
 		v.utterances = append(v.utterances, u)
 		v.byEvent[ev.GetId()] = u
 		// A raised hand is lowered when its participant speaks: they had the floor.
 		v.lowerHand(u.Speaker.ID)
-	case *officev1.Event_UtteranceRetracted:
+	case *sessionv1.Event_UtteranceRetracted:
 		if u := v.byEvent[p.UtteranceRetracted.GetUtteranceEventId()]; u != nil {
 			u.retracted = true
 		}
-	case *officev1.Event_UtteranceCorrected:
+	case *sessionv1.Event_UtteranceCorrected:
 		if u := v.byEvent[p.UtteranceCorrected.GetUtteranceEventId()]; u != nil {
 			u.Text, u.Corrected = p.UtteranceCorrected.GetText(), true
 		}
-	case *officev1.Event_HandRaised:
+	case *sessionv1.Event_HandRaised:
 		pt := v.participant(p.HandRaised.GetParticipantId())
 		v.lowerHand(pt.ID)
 		v.hands = append(v.hands, handView{Participant: pt, Topic: p.HandRaised.GetTopic()})
-	case *officev1.Event_MinutesUpdated:
+	case *sessionv1.Event_MinutesUpdated:
 		v.minutes = p.MinutesUpdated.GetText()
-	case *officev1.Event_ArtifactShown:
+	case *sessionv1.Event_ArtifactShown:
 		v.artifact = loadArtifact(ctx, p.ArtifactShown.GetArtifactId(), load)
-	case *officev1.Event_SessionEnded:
+	case *sessionv1.Event_SessionEnded:
 		v.ended = true
 		v.hands = nil
 	}
 }
 
-func loadArtifact(ctx context.Context, id string, load func(context.Context, string) (*officev1.Artifact, error)) artifactView {
+func loadArtifact(ctx context.Context, id string, load func(context.Context, string) (*artifactv1.Artifact, error)) artifactView {
 	av := artifactView{ID: id}
 	if load == nil {
 		av.Note = "The stage cannot load artifacts."

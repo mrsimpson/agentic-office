@@ -13,10 +13,10 @@ import (
 
 	"connectrpc.com/connect/v2"
 
-	officev1 "github.com/mrsimpson/agentic-office/core/api/office/v1"
-	"github.com/mrsimpson/agentic-office/core/ids"
+	"github.com/mrsimpson/agentic-office/client/core/ids"
+	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
 
-	"github.com/mrsimpson/agentic-office/client/participant"
+	"github.com/mrsimpson/agentic-office/client/core"
 )
 
 // Config says what the ears listen to and which models they use. Empty fields take their
@@ -146,11 +146,11 @@ func (c *Config) Prepare() error {
 // Ears connect one audio source to one participant in one session.
 type Ears struct {
 	Config
-	Client    *participant.Client
+	Client    *core.Client
 	SessionID string
 	// Status receives the local status of each utterance: final when Whisper has the text (the
 	// command ID is created then), before it is sent.
-	Status func(cmdID, text string, s participant.Status)
+	Status func(cmdID, text string, s core.Status)
 	// Paused reports whether the participant is paused. While it is true, the ears neither
 	// capture nor transcribe.
 	Paused func() bool
@@ -289,7 +289,7 @@ func (e *Ears) Run(ctx context.Context) error {
 				continue
 			}
 			u := utterance{cmdID: ids.NewCommandID(), text: text, speechEnd: s.speechEnd, transcribedAt: done}
-			e.Status(u.cmdID, u.text, participant.StatusFinal)
+			e.Status(u.cmdID, u.text, core.StatusFinal)
 			report(Report{Type: "final", CommandID: u.cmdID, Text: text, SpeechEnd: &u.speechEnd, TranscribedAt: &u.transcribedAt,
 				AudioMs: int64(len(s.samples)) * 1000 / SampleRate, WhisperMs: done.Sub(start).Milliseconds(),
 				SpeechEndToFinalMs: done.Sub(s.speechEnd).Milliseconds()})
@@ -358,7 +358,7 @@ func (e *Ears) send(ctx context.Context, q *queue, report func(Report)) error {
 		backoff := 100 * time.Millisecond
 		for attempt := 1; ; attempt++ {
 			actx, cancel := context.WithTimeout(ctx, 10*time.Second)
-			res, err := e.Client.SubmitUtterance(actx, e.SessionID, u.cmdID, u.text, officev1.Modality_MODALITY_VOICE, u.transcribedAt)
+			res, err := e.Client.SubmitUtterance(actx, e.SessionID, u.cmdID, u.text, sessionv1.Modality_MODALITY_VOICE, u.transcribedAt)
 			cancel()
 			if err == nil {
 				at := time.Now()

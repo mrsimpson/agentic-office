@@ -1,0 +1,137 @@
+// Events of the session log (concept-event-log).
+//
+// Every event has an ID that grows by one inside a session and starts at 1, and a type in dotted
+// form. The type is always set to the name of the payload, for example "utterance.final", so that
+// lines of the local log can be filtered with grep and jq. Existing events never change:
+// corrections and retractions are new events that point to the original.
+syntax = "proto3";
+
+package office.session.v1;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/mrsimpson/agentic-office/server/session/api;sessionv1";
+
+message Event {
+  // id is the position in the session log. It is 32 bits wide so that its canonical JSON form is
+  // a number, not a string.
+  uint32 id = 1;
+  string session_id = 2;
+  // type is the dotted event name, for example "utterance.final".
+  string type = 3;
+  // time is when the server appended the event.
+  google.protobuf.Timestamp time = 4;
+  // command_id is the client-generated ID of the command that created the event. Empty for
+  // events the server creates on its own.
+  string command_id = 5;
+  // actor_participant_id is the participant whose command created the event.
+  string actor_participant_id = 6;
+
+  oneof payload {
+    // Utterances
+    UtteranceFinal utterance_final = 10; // "utterance.final"
+    UtteranceRetracted utterance_retracted = 11; // "utterance.retracted"
+    UtteranceCorrected utterance_corrected = 12; // "utterance.corrected"
+    // Signals
+    TurnEnd turn_end = 20; // "turn.end"
+    SilenceLong silence_long = 21; // "silence.long"
+    Addressed addressed = 22; // "addressed"
+    // Actions
+    HandRaised hand_raised = 30; // "hand.raised"
+    MinutesUpdated minutes_updated = 31; // "minutes.updated"
+    ArtifactShown artifact_shown = 32; // "artifact.shown"
+    // Life cycle
+    ParticipantJoined participant_joined = 40; // "participant.joined"
+    ParticipantLeft participant_left = 41; // "participant.left"
+    ParticipantPaused participant_paused = 42; // "participant.paused"
+    ParticipantResumed participant_resumed = 43; // "participant.resumed"
+    SessionEnded session_ended = 44; // "session.ended"
+  }
+}
+
+message UtteranceFinal {
+  string participant_id = 1;
+  string text = 2;
+  Modality modality = 3;
+  // transcribed_at is when the speaker's ears had the final text. Empty for typed text.
+  google.protobuf.Timestamp transcribed_at = 4;
+}
+
+message UtteranceRetracted {
+  // utterance_event_id is the ID of the utterance.final event that is retracted.
+  uint32 utterance_event_id = 1;
+}
+
+message UtteranceCorrected {
+  uint32 utterance_event_id = 1;
+  string text = 2;
+}
+
+message TurnEnd {
+  // participant_id is the participant whose turn ended.
+  string participant_id = 1;
+}
+
+message SilenceLong {
+  google.protobuf.Duration duration = 1;
+}
+
+message Addressed {
+  // participant_id is the participant whose name was mentioned.
+  string participant_id = 1;
+  // utterance_event_id is the utterance that mentioned the name.
+  uint32 utterance_event_id = 2;
+}
+
+message HandRaised {
+  string participant_id = 1;
+  string topic = 2;
+}
+
+message MinutesUpdated {
+  // text is the full current version of the running minutes.
+  string text = 1;
+}
+
+message ArtifactShown {
+  // artifact_id is for example "slides/42".
+  string artifact_id = 1;
+}
+
+message ParticipantJoined {
+  string participant_id = 1;
+  string display_name = 2;
+  ParticipantKind kind = 3;
+  // captured is true if the participant's speech is transcribed (joined with a microphone).
+  bool captured = 4;
+}
+
+message ParticipantLeft {
+  string participant_id = 1;
+}
+
+message ParticipantPaused {
+  string participant_id = 1;
+}
+
+message ParticipantResumed {
+  string participant_id = 1;
+}
+
+message SessionEnded {}
+
+// ParticipantKind tells humans and agents apart (concept-participant-model).
+enum ParticipantKind {
+  PARTICIPANT_KIND_UNSPECIFIED = 0;
+  PARTICIPANT_KIND_HUMAN = 1;
+  PARTICIPANT_KIND_AGENT = 2;
+}
+
+// Modality is the channel of an utterance. Human speech is voice; typed remarks and agent
+// contributions are text.
+enum Modality {
+  MODALITY_UNSPECIFIED = 0;
+  MODALITY_VOICE = 1;
+  MODALITY_TEXT = 2;
+}

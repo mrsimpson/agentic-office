@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mrsimpson/agentic-office/core/contracttest"
+	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
 // stage is the raw event stream of a stage page, as a browser receives it.

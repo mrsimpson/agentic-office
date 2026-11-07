@@ -20,15 +20,16 @@ import (
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 
-	officev1 "github.com/mrsimpson/agentic-office/core/api/office/v1"
-	"github.com/mrsimpson/agentic-office/core/contracttest"
-	"github.com/mrsimpson/agentic-office/core/ids"
+	"github.com/mrsimpson/agentic-office/client/core/ids"
+	identityv1 "github.com/mrsimpson/agentic-office/server/identity/api"
+	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
+	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
 // stageLink creates a stage link for sid as a.
 func stageLink(t *testing.T, a *contracttest.Actor, sid string) string {
 	t.Helper()
-	res, err := a.Identity.CreateStageLink(ctx10(t), &officev1.CreateStageLinkRequest{SessionId: sid, CommandId: ids.NewCommandID()})
+	res, err := a.Identity.CreateStageLink(ctx10(t), &identityv1.CreateStageLinkRequest{SessionId: sid, CommandId: ids.NewCommandID()})
 	if err != nil {
 		t.Fatalf("create stage link: %v", err)
 	}
@@ -310,9 +311,9 @@ func newStageMeeting(t *testing.T, args ...string) *stageMeeting {
 	return &stageMeeting{meeting: m, link: stageLink(t, m.reader, m.sid)}
 }
 
-func (m *stageMeeting) joinAs(name string, kind officev1.ParticipantKind, captured bool) string {
+func (m *stageMeeting) joinAs(name string, kind sessionv1.ParticipantKind, captured bool) string {
 	m.t.Helper()
-	res, err := m.register(name, kind).Session.Join(m.ctx(), &officev1.JoinRequest{SessionId: m.sid,
+	res, err := m.register(name, kind).Session.Join(m.ctx(), &sessionv1.JoinRequest{SessionId: m.sid,
 		CommandId: ids.NewCommandID(), Kind: kind, Captured: captured})
 	if err != nil {
 		m.t.Fatalf("join %s: %v", name, err)
@@ -325,7 +326,7 @@ func (m *stageMeeting) joinAs(name string, kind officev1.ParticipantKind, captur
 // another session, they fail with 401 or 403 and show no session data.
 func TestStagePageNeedsStageLink(t *testing.T) {
 	m := newStageMeeting(t)
-	ada := m.joinAs("Ada", human, true)
+	ada := m.joinAs("Ada", sessionv1.ParticipantKind_PARTICIPANT_KIND_HUMAN, true)
 	m.say(ada, "the secret plan")
 
 	res, body := get(t, m.srv, m.link)
@@ -423,10 +424,10 @@ func TestStageShowsTheSession(t *testing.T) {
 	st.wait("artifact", "nothing shown", func(n *html.Node) bool { return len(findAll(n, byTag("iframe"))) == 0 })
 
 	// Participants: captured, not captured (an agent), paused.
-	ada := m.joinAs("Ada", human, true)
-	bot := m.joinAs("Minute Bot", agent, false)
-	carl := m.joinAs("Carl", human, true)
-	if _, err := m.s(carl).Pause(m.ctx(), &officev1.PauseRequest{SessionId: m.sid, CommandId: ids.NewCommandID(), ParticipantId: carl}); err != nil {
+	ada := m.joinAs("Ada", sessionv1.ParticipantKind_PARTICIPANT_KIND_HUMAN, true)
+	bot := m.joinAs("Minute Bot", sessionv1.ParticipantKind_PARTICIPANT_KIND_AGENT, false)
+	carl := m.joinAs("Carl", sessionv1.ParticipantKind_PARTICIPANT_KIND_HUMAN, true)
+	if _, err := m.s(carl).Pause(m.ctx(), &sessionv1.PauseRequest{SessionId: m.sid, CommandId: ids.NewCommandID(), ParticipantId: carl}); err != nil {
 		t.Fatal(err)
 	}
 	want := map[string][2]string{ada: {"human", "captured"}, bot: {"agent", "not-captured"}, carl: {"human", "paused"}}
@@ -455,7 +456,7 @@ func TestStageShowsTheSession(t *testing.T) {
 		t.Errorf("agent is not marked as agent: %q", text(participantEl(n, bot)))
 	}
 	// Resume makes Carl captured again.
-	if _, err := m.s(carl).Resume(m.ctx(), &officev1.ResumeRequest{SessionId: m.sid, CommandId: ids.NewCommandID(), ParticipantId: carl}); err != nil {
+	if _, err := m.s(carl).Resume(m.ctx(), &sessionv1.ResumeRequest{SessionId: m.sid, CommandId: ids.NewCommandID(), ParticipantId: carl}); err != nil {
 		t.Fatal(err)
 	}
 	st.wait("participants", "Carl captured again", func(n *html.Node) bool {
@@ -465,7 +466,7 @@ func TestStageShowsTheSession(t *testing.T) {
 	})
 
 	// A raised hand with its topic.
-	if _, err := m.s(bot).RaiseHand(m.ctx(), &officev1.RaiseHandRequest{SessionId: m.sid, CommandId: ids.NewCommandID(),
+	if _, err := m.s(bot).RaiseHand(m.ctx(), &sessionv1.RaiseHandRequest{SessionId: m.sid, CommandId: ids.NewCommandID(),
 		ParticipantId: bot, Topic: "budget <b>numbers</b>"}); err != nil {
 		t.Fatal(err)
 	}
@@ -479,7 +480,7 @@ func TestStageShowsTheSession(t *testing.T) {
 
 	// The shown artifact is embedded in a sandboxed iframe with the content of the artifact.
 	art := render(t, m.actors[bot], budgetDeck())
-	if _, err := m.s(bot).ShowArtifact(m.ctx(), &officev1.ShowArtifactRequest{SessionId: m.sid, CommandId: ids.NewCommandID(),
+	if _, err := m.s(bot).ShowArtifact(m.ctx(), &sessionv1.ShowArtifactRequest{SessionId: m.sid, CommandId: ids.NewCommandID(),
 		ParticipantId: bot, ArtifactId: art.GetId()}); err != nil {
 		t.Fatal(err)
 	}
@@ -496,7 +497,7 @@ func TestStageShowsTheSession(t *testing.T) {
 	artifactEvents := st.count("artifact")
 
 	// Minutes.
-	if _, err := m.s(bot).UpdateMinutes(m.ctx(), &officev1.UpdateMinutesRequest{SessionId: m.sid, CommandId: ids.NewCommandID(),
+	if _, err := m.s(bot).UpdateMinutes(m.ctx(), &sessionv1.UpdateMinutesRequest{SessionId: m.sid, CommandId: ids.NewCommandID(),
 		ParticipantId: bot, Text: "# Minutes\n- Ada opened the meeting"}); err != nil {
 		t.Fatal(err)
 	}
@@ -506,7 +507,7 @@ func TestStageShowsTheSession(t *testing.T) {
 	m.say(ada, "Welcome everyone")
 	secret := m.say(ada, "my password is hunter2")
 	st.wait("utterances", "the secret", func(n *html.Node) bool { return strings.Contains(text(n), "hunter2") })
-	if _, err := m.s(ada).RetractUtterance(m.ctx(), &officev1.RetractUtteranceRequest{SessionId: m.sid,
+	if _, err := m.s(ada).RetractUtterance(m.ctx(), &sessionv1.RetractUtteranceRequest{SessionId: m.sid,
 		CommandId: ids.NewCommandID(), ParticipantId: ada, UtteranceEventId: secret.GetId()}); err != nil {
 		t.Fatal(err)
 	}
@@ -526,7 +527,7 @@ func TestStageShowsTheSession(t *testing.T) {
 	}
 
 	// An unknown artifact gives a note.
-	if _, err := m.s(bot).ShowArtifact(m.ctx(), &officev1.ShowArtifactRequest{SessionId: m.sid, CommandId: ids.NewCommandID(),
+	if _, err := m.s(bot).ShowArtifact(m.ctx(), &sessionv1.ShowArtifactRequest{SessionId: m.sid, CommandId: ids.NewCommandID(),
 		ParticipantId: bot, ArtifactId: "slides/999"}); err != nil {
 		t.Fatal(err)
 	}
@@ -543,7 +544,7 @@ func TestStageShowsTheSession(t *testing.T) {
 	late.wait("participants", "the participants", func(n *html.Node) bool { return participantEl(n, carl) != nil })
 
 	// A participant who leaves is shown as left.
-	if _, err := m.s(carl).Leave(m.ctx(), &officev1.LeaveRequest{SessionId: m.sid, CommandId: ids.NewCommandID(), ParticipantId: carl}); err != nil {
+	if _, err := m.s(carl).Leave(m.ctx(), &sessionv1.LeaveRequest{SessionId: m.sid, CommandId: ids.NewCommandID(), ParticipantId: carl}); err != nil {
 		t.Fatal(err)
 	}
 	st.wait("participants", "Carl left", func(n *html.Node) bool {
@@ -571,7 +572,7 @@ func TestStageShowsTheSession(t *testing.T) {
 // has expired and stops.
 func TestStageLinkExpires(t *testing.T) {
 	m := newStageMeeting(t, "-stage-link-ttl", "3s")
-	m.joinAs("Ada", human, true)
+	m.joinAs("Ada", sessionv1.ParticipantKind_PARTICIPANT_KIND_HUMAN, true)
 	st := openStage(t, m.srv, m.link)
 	st.wait("participants", "Ada", func(n *html.Node) bool { return participantEl(n, "ada") != nil })
 	st.wait("status", "stopped", hasStatus("stopped"))

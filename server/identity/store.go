@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	officev1 "github.com/mrsimpson/agentic-office/core/api/office/v1"
-	"github.com/mrsimpson/agentic-office/core/auth"
+	identityv1 "github.com/mrsimpson/agentic-office/server/identity/api"
+	"github.com/mrsimpson/agentic-office/server/identity/api/auth"
 )
 
 // Admin is one key of the admin file.
@@ -24,7 +24,7 @@ type Admin struct {
 
 // LoadAdmins reads the admin file. A missing file means no admins.
 //
-// Each line has a participant ID, a public key in text form (see core/auth) and optionally a
+// Each line has a participant ID, a public key in text form (see server/identity/api/auth) and optionally a
 // display name, separated by spaces. Empty lines and lines that start with "#" are ignored.
 // Example:
 //
@@ -77,8 +77,8 @@ func (s *Service) addAdmin(a Admin) error {
 	p := s.participants[a.ParticipantID]
 	if p == nil {
 		s.participants[a.ParticipantID] = &participant{DisplayName: a.DisplayName,
-			Kind: officev1.ParticipantKind_PARTICIPANT_KIND_HUMAN}
-	} else if p.Kind != officev1.ParticipantKind_PARTICIPANT_KIND_HUMAN {
+			Kind: identityv1.ActorKind_ACTOR_KIND_HUMAN}
+	} else if p.Kind != identityv1.ActorKind_ACTOR_KIND_HUMAN {
 		return fmt.Errorf("admin %s is registered as an agent; admins are humans", a.ParticipantID)
 	}
 	s.keys[id] = &key{ParticipantID: a.ParticipantID, PublicKey: a.PublicKey, admin: true}

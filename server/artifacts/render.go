@@ -5,7 +5,7 @@ import (
 	"html/template"
 	"strings"
 
-	officev1 "github.com/mrsimpson/agentic-office/core/api/office/v1"
+	artifactv1 "github.com/mrsimpson/agentic-office/server/artifacts/api"
 )
 
 // SlidesMediaType is the media type of rendered slides.
@@ -77,7 +77,7 @@ type deckView struct {
 // RenderSlides renders a deck as one HTML document. It is deterministic: the same title and
 // slides always give the same bytes. The document has no time, no random value and nothing from
 // outside the deck.
-func RenderSlides(title string, slides []*officev1.Slide) ([]byte, error) {
+func RenderSlides(title string, slides []*artifactv1.Slide) ([]byte, error) {
 	v := deckView{Title: strings.TrimSpace(title), Count: len(slides)}
 	for i, s := range slides {
 		sv := slideView{N: i + 1, Title: strings.TrimSpace(s.GetTitle()), Notes: strings.TrimSpace(s.GetNotes())}

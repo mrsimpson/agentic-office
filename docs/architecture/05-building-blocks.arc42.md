@@ -1,5 +1,10 @@
 # Building Block View
 
+The diagram shows every dependency between building blocks: an arrow is an interface that a
+block lists in `requires`, pointing to the provider. The architecture test enforces exactly these
+dependencies in the code (`concept-module-boundaries`). Interfaces that only external actors use
+(CLI, MCP, stage view, audio input) are in chapter 3.
+
 At the top level the system has two parts. The **office server** manages sessions, the journal,
 artifacts and the stage. The **participant client** runs on the computer of every participant,
 human or agent.
@@ -11,41 +16,53 @@ human or agent.
 id: bb-overview
 view: building-block
 notation: mermaid
-aliases: bb_identity=bb-identity, bb_server=bb-office-server, bb_session=bb-session-service, bb_journal=bb-journal, bb_artifacts=bb-artifact-service, bb_stage=bb-stage, bb_client=bb-participant-client, bb_cli=bb-cli, bb_mcp=bb-mcp, bb_replicator=bb-replicator, bb_ears=bb-ears
+aliases: bb_artifact_service=bb-artifact-service, bb_cli=bb-cli, bb_client_core=bb-client-core, bb_ears=bb-ears, bb_identity=bb-identity, bb_journal=bb-journal, bb_mcp=bb-mcp, bb_office_server=bb-office-server, bb_participant_client=bb-participant-client, bb_replicator=bb-replicator, bb_session_service=bb-session-service, bb_stage=bb-stage
 :::
 ```
 
 ```mermaid
 flowchart LR
-    subgraph bb_client [Participant client]
+    subgraph bb_participant_client [Participant client]
         bb_cli[office CLI]
+        bb_client_core[Client core]
+        bb_ears[Ears]
         bb_mcp[MCP server]
         bb_replicator[Log replicator]
-        bb_ears[Ears]
     end
-    subgraph bb_server [Office server]
-        bb_session[Meeting session]
-        bb_journal[Journal]
-        bb_artifacts[Artifact tools]
-        bb_stage[Stage]
+    subgraph bb_office_server [Office server]
+        bb_artifact_service[Artifact tools]
         bb_identity[Identity]
+        bb_journal[Journal]
+        bb_session_service[Meeting session]
+        bb_stage[Stage]
     end
-    bb_cli -->|if-session-commands| bb_session
-    bb_mcp -->|if-session-commands| bb_session
-    bb_ears -->|if-session-commands| bb_session
-    bb_replicator -->|if-session-stream| bb_session
-    bb_stage -->|if-session-stream| bb_session
-    bb_cli -->|if-artifact-api| bb_artifacts
-    bb_mcp -->|if-artifact-api| bb_artifacts
-    bb_stage -->|if-artifact-api| bb_artifacts
+    bb_artifact_service -->|if-token-check| bb_identity
+    bb_cli -->|if-client-core| bb_client_core
+    bb_cli -->|if-replication| bb_replicator
+    bb_cli -->|if-session-commands| bb_session_service
+    bb_cli -->|if-artifact-api| bb_artifact_service
     bb_cli -->|if-journal-api| bb_journal
-    bb_mcp -->|if-journal-api| bb_journal
-    bb_session -->|if-journal-api| bb_journal
-    bb_cli -->|if-local-log| bb_replicator
     bb_cli -->|if-auth-api| bb_identity
+    bb_client_core -->|if-session-commands| bb_session_service
+    bb_client_core -->|if-auth-api| bb_identity
+    bb_client_core -->|if-journal-api| bb_journal
+    bb_client_core -->|if-artifact-api| bb_artifact_service
+    bb_client_core -->|if-local-log| bb_replicator
+    bb_ears -->|if-client-core| bb_client_core
+    bb_ears -->|if-session-commands| bb_session_service
+    bb_journal -->|if-token-check| bb_identity
+    bb_mcp -->|if-client-core| bb_client_core
+    bb_mcp -->|if-replication| bb_replicator
+    bb_mcp -->|if-session-commands| bb_session_service
+    bb_mcp -->|if-artifact-api| bb_artifact_service
+    bb_mcp -->|if-journal-api| bb_journal
     bb_mcp -->|if-auth-api| bb_identity
-    bb_ears -->|if-auth-api| bb_identity
-    bb_session -->|if-token-check| bb_identity
+    bb_replicator -->|if-session-stream| bb_session_service
+    bb_session_service -->|if-journal-api| bb_journal
+    bb_session_service -->|if-token-check| bb_identity
+    bb_stage -->|if-session-stream| bb_session_service
+    bb_stage -->|if-artifact-api| bb_artifact_service
+    bb_stage -->|if-auth-api| bb_identity
 ```
 
 ## Office server
@@ -58,7 +75,8 @@ deterministic tools and renders the stage. It contains no LLM.
 id: bb-office-server
 title: Office server
 technology: Go (monorepo)
-implements: concept-event-log, concept-participant-model
+implements: concept-event-log, concept-participant-model, concept-module-boundaries
+path: server
 :::
 ```
 
@@ -77,6 +95,7 @@ technology: Go / connect-go
 parent: bb-office-server
 implements: concept-event-log, concept-participant-model, concept-identity
 requires: if-journal-api, if-token-check
+path: server/session
 :::
 ```
 
@@ -87,11 +106,13 @@ Synchronous calls that answer at once: `join`, `leave`, `utterance.submit`, `utt
 log. Each call carries an ID created by the client, so a repeated call has no extra effect.
 
 ```arc42
+:::ignore H020 Commands and stream are two contracts of one Connect service; they share its package :::
 :::interface
 id: if-session-commands
 title: Session commands
 provider: bb-session-service
 protocol: Connect RPC, unary (dec-connect-rpc)
+path: server/session/api
 :::
 ```
 
@@ -106,6 +127,7 @@ id: if-session-stream
 title: Session stream (replication from a cursor)
 provider: bb-session-service
 protocol: Connect RPC, server streaming (dec-connect-rpc)
+path: server/session/api
 :::
 ```
 
@@ -121,6 +143,8 @@ title: Journal (system of record)
 technology: Go (OPEN: persistence)
 parent: bb-office-server
 implements: concept-event-log
+path: server/journal
+requires: if-token-check
 :::
 ```
 
@@ -134,7 +158,8 @@ session log (`journal.listen`)?
 id: if-journal-api
 title: Journal API
 provider: bb-journal
-protocol: HTTPS/JSON
+protocol: Connect RPC, unary (dec-connect-rpc)
+path: server/journal/api
 :::
 ```
 
@@ -150,6 +175,8 @@ id: bb-artifact-service
 title: Artifact tools
 technology: Go
 parent: bb-office-server
+path: server/artifacts
+requires: if-token-check
 :::
 ```
 
@@ -162,7 +189,8 @@ Create, render, check and fetch artifacts.
 id: if-artifact-api
 title: Artifact API
 provider: bb-artifact-service
-protocol: HTTPS/JSON
+protocol: Connect RPC, unary (dec-connect-rpc)
+path: server/artifacts/api
 :::
 ```
 
@@ -178,8 +206,9 @@ id: bb-stage
 title: Stage
 technology: Go, rendered on the server / server-sent events
 parent: bb-office-server
-requires: if-session-stream, if-artifact-api
+requires: if-session-stream, if-artifact-api, if-auth-api
 implements: concept-transparency
+path: server/stage
 :::
 ```
 
@@ -193,6 +222,7 @@ id: if-stage-web
 title: Stage view
 provider: bb-stage
 protocol: HTTPS (browser)
+path: server/stage
 :::
 ```
 
@@ -211,6 +241,7 @@ title: Identity
 technology: Go
 parent: bb-office-server
 implements: concept-identity
+path: server/identity
 :::
 ```
 
@@ -225,6 +256,7 @@ id: if-auth-api
 title: Auth API
 provider: bb-identity
 protocol: Connect RPC, unary (dec-connect-rpc)
+path: server/identity/api
 :::
 ```
 
@@ -238,6 +270,7 @@ id: if-token-check
 title: Token check
 provider: bb-identity
 protocol: In-process Go call
+path: server/identity/tokencheck
 :::
 ```
 
@@ -251,7 +284,41 @@ the CLI, the MCP server, the log replicator and, optionally, the ears.
 id: bb-participant-client
 title: Participant client
 technology: Go (one binary)
-implements: concept-participant-model, concept-read-file-write-tools
+implements: concept-participant-model, concept-read-file-write-tools, concept-module-boundaries
+path: client
+:::
+```
+
+### Client core
+
+The shared core of the CLI, the MCP server and the ears ("one core, two adapters",
+`dec-cli-and-mcp`). It holds the configuration of a participant, authenticates with Identity,
+creates the command IDs and calls the interfaces of the office server. The adapters add only their
+own way of talking to a human or an agent.
+
+```arc42
+:::building-block
+id: bb-client-core
+title: Client core
+technology: Go
+parent: bb-participant-client
+path: client/core
+requires: if-session-commands, if-auth-api, if-journal-api, if-artifact-api, if-local-log
+:::
+```
+
+#### Client core API
+
+The in-process interface of the client core for the adapters: configuration, authenticated
+clients of the office server, command IDs and the commands of a participant.
+
+```arc42
+:::interface
+id: if-client-core
+title: Client core API
+provider: bb-client-core
+protocol: In-process Go call
+path: client/core
 :::
 ```
 
@@ -268,8 +335,9 @@ id: bb-cli
 title: office CLI
 technology: Go, single binary
 parent: bb-participant-client
-requires: if-session-commands, if-artifact-api, if-journal-api, if-local-log, if-auth-api
+requires: if-client-core, if-replication, if-session-commands, if-artifact-api, if-journal-api, if-auth-api
 implements: concept-read-file-write-tools
+path: client/cli
 :::
 ```
 
@@ -283,6 +351,7 @@ id: if-cli
 title: office CLI
 provider: bb-cli
 protocol: Shell / stdout
+path: client/cli
 :::
 ```
 
@@ -298,8 +367,9 @@ id: bb-mcp
 title: MCP server
 technology: Go / official MCP Go SDK
 parent: bb-participant-client
-requires: if-session-commands, if-artifact-api, if-journal-api, if-auth-api
+requires: if-client-core, if-replication, if-session-commands, if-artifact-api, if-journal-api, if-auth-api
 implements: concept-read-file-write-tools
+path: client/mcp
 :::
 ```
 
@@ -314,6 +384,7 @@ id: if-mcp
 title: MCP tools
 provider: bb-mcp
 protocol: MCP (stdio)
+path: client/mcp
 :::
 ```
 
@@ -334,6 +405,23 @@ technology: Go / connect-go
 parent: bb-participant-client
 requires: if-session-stream
 implements: concept-event-log, concept-read-file-write-tools, concept-test-strategy
+path: client/replicator
+:::
+```
+
+#### Replication control
+
+The in-process interface to start the replication of a session for a participant, to find a
+running replicator and to stop it. The CLI runs the replicator as its own process; the MCP server
+runs it inside its own process.
+
+```arc42
+:::interface
+id: if-replication
+title: Replication control
+provider: bb-replicator
+protocol: In-process Go call
+path: client/replicator
 :::
 ```
 
@@ -349,6 +437,7 @@ id: if-local-log
 title: Local session log
 provider: bb-replicator
 protocol: JSONL file (append-only)
+path: client/replicator/locallog
 :::
 ```
 
@@ -365,8 +454,9 @@ id: bb-ears
 title: Ears
 parent: bb-participant-client
 technology: Go / whisper.cpp, including its voice activity detection
-requires: if-session-commands, if-auth-api
+requires: if-client-core, if-session-commands
 implements: concept-edge-transcription, concept-test-strategy
+path: client/ears
 :::
 ```
 
@@ -380,5 +470,6 @@ id: if-audio-in
 title: Audio input
 provider: bb-ears
 protocol: Local audio device
+path: client/ears
 :::
 ```

@@ -14,9 +14,10 @@ import (
 
 	"connectrpc.com/connect/v2"
 
-	officev1 "github.com/mrsimpson/agentic-office/core/api/office/v1"
+	journalv1 "github.com/mrsimpson/agentic-office/server/journal/api"
+	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
 
-	"github.com/mrsimpson/agentic-office/client/participant"
+	"github.com/mrsimpson/agentic-office/client/core"
 )
 
 // Version is set at build time with -ldflags "-X .../client/cli.Version=...".
@@ -78,7 +79,7 @@ type env struct {
 	stdin          io.Reader
 	json           bool
 	session        string
-	cfg            participant.Config
+	cfg            core.Config
 }
 
 // commands maps a command path (one, two or three words) to its implementation. The function
@@ -97,9 +98,9 @@ func init() {
 		"meeting log":         cmdLogPath,
 		"meeting view":        cmdView,
 		"meeting leave":       cmdLeave,
-		"meeting pause":       cmdSimple("pause", (*participant.Client).Pause),
-		"meeting resume":      cmdSimple("resume", (*participant.Client).Resume),
-		"meeting end":         cmdSimple("end", (*participant.Client).EndSession),
+		"meeting pause":       cmdSimple("pause", (*core.Client).Pause),
+		"meeting resume":      cmdSimple("resume", (*core.Client).Resume),
+		"meeting end":         cmdSimple("end", (*core.Client).EndSession),
 		"say":                 cmdSay,
 		"utterance retract":   cmdRetract,
 		"signal turn-end":     cmdTurnEnd,
@@ -157,7 +158,7 @@ func RunContext(ctx context.Context, args []string, stdin io.Reader, stdout, std
 			}
 		}
 	}
-	e := &env{ctx: ctx, stdout: stdout, stderr: stderr, stdin: stdin, cfg: participant.ConfigFromEnv(),
+	e := &env{ctx: ctx, stdout: stdout, stderr: stderr, stdin: stdin, cfg: core.ConfigFromEnv(),
 		session: os.Getenv("OFFICE_SESSION"), json: os.Getenv("OFFICE_JSON") == "1"}
 	if name == "" {
 		for _, a := range args {
@@ -243,9 +244,9 @@ func errorCode(err error) string {
 	switch {
 	case errors.As(err, &u):
 		return "usage"
-	case errors.Is(err, participant.ErrNoKey):
+	case errors.Is(err, core.ErrNoKey):
 		return "no_key"
-	case errors.Is(err, participant.ErrNoSession):
+	case errors.Is(err, core.ErrNoSession):
 		return "no_session"
 	case errors.Is(err, errEarsNotImplemented):
 		return "unimplemented"
@@ -265,12 +266,12 @@ func (e *env) printJSON(v any) {
 }
 
 // eventJSON returns the event as in the local log.
-func eventJSON(ev *officev1.Event) json.RawMessage { return participant.EventJSON(ev) }
+func eventJSON(ev *sessionv1.Event) json.RawMessage { return core.EventJSON(ev) }
 
 // printResult prints the result of a session command.
-func (e *env) printResult(res *officev1.CommandResult) error {
+func (e *env) printResult(res *sessionv1.CommandResult) error {
 	if e.json {
-		e.printJSON(participant.ResultJSON(res))
+		e.printJSON(core.ResultJSON(res))
 		return nil
 	}
 	dup := ""
@@ -282,10 +283,10 @@ func (e *env) printResult(res *officev1.CommandResult) error {
 }
 
 // client dials the server with the configuration of e.
-func (e *env) client() (*participant.Client, error) { return participant.Dial(e.cfg) }
+func (e *env) client() (*core.Client, error) { return core.Dial(e.cfg) }
 
 // sessionID returns --session or the only session this participant joined on this machine.
-func (e *env) sessionID(c *participant.Client) (string, error) {
+func (e *env) sessionID(c *core.Client) (string, error) {
 	if e.session != "" {
 		return e.session, nil
 	}
@@ -293,7 +294,7 @@ func (e *env) sessionID(c *participant.Client) (string, error) {
 }
 
 // sessionCommand dials, finds the session and runs f.
-func (e *env) sessionCommand(f func(c *participant.Client, sid string) (*officev1.CommandResult, error)) error {
+func (e *env) sessionCommand(f func(c *core.Client, sid string) (*sessionv1.CommandResult, error)) error {
 	c, err := e.client()
 	if err != nil {
 		return err
@@ -317,17 +318,17 @@ func noArgs(args []string) error {
 }
 
 // cmdSimple is a session command without arguments.
-func cmdSimple(_ string, f func(*participant.Client, context.Context, string) (*officev1.CommandResult, error)) func(e *env, fs *flag.FlagSet) func([]string) error {
+func cmdSimple(_ string, f func(*core.Client, context.Context, string) (*sessionv1.CommandResult, error)) func(e *env, fs *flag.FlagSet) func([]string) error {
 	return func(e *env, fs *flag.FlagSet) func([]string) error {
 		return func(args []string) error {
 			if err := noArgs(args); err != nil {
 				return err
 			}
-			return e.sessionCommand(func(c *participant.Client, sid string) (*officev1.CommandResult, error) {
+			return e.sessionCommand(func(c *core.Client, sid string) (*sessionv1.CommandResult, error) {
 				return f(c, e.ctx, sid)
 			})
 		}
 	}
 }
 
-func entryJSON(en *officev1.JournalEntry) json.RawMessage { return participant.MessageJSON(en) }
+func entryJSON(en *journalv1.JournalEntry) json.RawMessage { return core.MessageJSON(en) }

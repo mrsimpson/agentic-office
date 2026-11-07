@@ -15,15 +15,16 @@ import (
 	"golang.org/x/net/html"
 	"google.golang.org/protobuf/proto"
 
-	officev1 "github.com/mrsimpson/agentic-office/core/api/office/v1"
-	"github.com/mrsimpson/agentic-office/core/contracttest"
-	"github.com/mrsimpson/agentic-office/core/ids"
+	"github.com/mrsimpson/agentic-office/client/core/ids"
+	artifactv1 "github.com/mrsimpson/agentic-office/server/artifacts/api"
+	identityv1 "github.com/mrsimpson/agentic-office/server/identity/api"
+	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
 const htmlType = "text/html; charset=utf-8"
 
-func budgetDeck() *officev1.RenderSlidesRequest {
-	return &officev1.RenderSlidesRequest{Title: "Budget 2027", Slides: []*officev1.Slide{
+func budgetDeck() *artifactv1.RenderSlidesRequest {
+	return &artifactv1.RenderSlidesRequest{Title: "Budget 2027", Slides: []*artifactv1.Slide{
 		{Title: "Plan", Bullets: []string{"Hire two people", "Open an office in Lyon"}, Notes: "Say the numbers slowly."},
 		{Title: "Costs", Bullets: []string{"Rent: 4,000 EUR a month"}},
 		{Title: "Questions"},
@@ -31,9 +32,9 @@ func budgetDeck() *officev1.RenderSlidesRequest {
 }
 
 // render renders deck as a with a new command ID and fails the test on an error.
-func render(t *testing.T, a *contracttest.Actor, deck *officev1.RenderSlidesRequest) *officev1.Artifact {
+func render(t *testing.T, a *contracttest.Actor, deck *artifactv1.RenderSlidesRequest) *artifactv1.Artifact {
 	t.Helper()
-	req := proto.Clone(deck).(*officev1.RenderSlidesRequest)
+	req := proto.Clone(deck).(*artifactv1.RenderSlidesRequest)
 	req.CommandId, req.AuthorParticipantId = ids.NewCommandID(), a.ParticipantID
 	res, err := a.Artifact.RenderSlides(ctx10(t), req)
 	if err != nil {
@@ -45,9 +46,9 @@ func render(t *testing.T, a *contracttest.Actor, deck *officev1.RenderSlidesRequ
 	return res.GetArtifact()
 }
 
-func getArtifact(t *testing.T, a *contracttest.Actor, id string) *officev1.Artifact {
+func getArtifact(t *testing.T, a *contracttest.Actor, id string) *artifactv1.Artifact {
 	t.Helper()
-	res, err := a.Artifact.GetArtifact(ctx10(t), &officev1.GetArtifactRequest{Id: id})
+	res, err := a.Artifact.GetArtifact(ctx10(t), &artifactv1.GetArtifactRequest{Id: id})
 	if err != nil {
 		t.Fatalf("get %s: %v", id, err)
 	}
@@ -144,7 +145,7 @@ func TestArtifactsRenderAndGet(t *testing.T) {
 	}
 
 	// A deck without a title has no title slide; the document title is the first slide.
-	b := render(t, ada, &officev1.RenderSlidesRequest{Slides: []*officev1.Slide{{Title: "Only", Bullets: []string{"x"}}}})
+	b := render(t, ada, &artifactv1.RenderSlidesRequest{Slides: []*artifactv1.Slide{{Title: "Only", Bullets: []string{"x"}}}})
 	if b.GetId() != "slides/2" || b.GetAuthorParticipantId() != "ada" {
 		t.Fatalf("second artifact: %q by %q", b.GetId(), b.GetAuthorParticipantId())
 	}
@@ -178,13 +179,13 @@ func TestArtifactsDeterministic(t *testing.T) {
 		t.Fatal("same deck on another server: other content")
 	}
 
-	changes := map[string]func(d *officev1.RenderSlidesRequest){
-		"title":          func(d *officev1.RenderSlidesRequest) { d.Title = "Budget 2028" },
-		"slide title":    func(d *officev1.RenderSlidesRequest) { d.Slides[1].Title = "Cost" },
-		"bullet":         func(d *officev1.RenderSlidesRequest) { d.Slides[0].Bullets[1] = "Open an office in Lille" },
-		"bullet order":   func(d *officev1.RenderSlidesRequest) { b := d.Slides[0].Bullets; b[0], b[1] = b[1], b[0] },
-		"notes":          func(d *officev1.RenderSlidesRequest) { d.Slides[0].Notes = "Say it fast." },
-		"one slide less": func(d *officev1.RenderSlidesRequest) { d.Slides = d.Slides[:2] },
+	changes := map[string]func(d *artifactv1.RenderSlidesRequest){
+		"title":          func(d *artifactv1.RenderSlidesRequest) { d.Title = "Budget 2028" },
+		"slide title":    func(d *artifactv1.RenderSlidesRequest) { d.Slides[1].Title = "Cost" },
+		"bullet":         func(d *artifactv1.RenderSlidesRequest) { d.Slides[0].Bullets[1] = "Open an office in Lille" },
+		"bullet order":   func(d *artifactv1.RenderSlidesRequest) { b := d.Slides[0].Bullets; b[0], b[1] = b[1], b[0] },
+		"notes":          func(d *artifactv1.RenderSlidesRequest) { d.Slides[0].Notes = "Say it fast." },
+		"one slide less": func(d *artifactv1.RenderSlidesRequest) { d.Slides = d.Slides[:2] },
 	}
 	seen := map[string]string{string(a1.GetContent()): "original"}
 	for name, change := range changes {
@@ -224,11 +225,11 @@ func TestArtifactsIdempotent(t *testing.T) {
 			t.Fatalf("repeat: %v, %v; want %v with duplicate", again, err, first.GetArtifact())
 		}
 	}
-	other := proto.Clone(req).(*officev1.RenderSlidesRequest)
+	other := proto.Clone(req).(*artifactv1.RenderSlidesRequest)
 	other.Slides[2].Bullets = []string{"new"}
 	_, err = bot.Artifact.RenderSlides(ctx10(t), other)
 	wantCode(t, "same command ID, other deck", err, connect.CodeAlreadyExists)
-	byAda := proto.Clone(req).(*officev1.RenderSlidesRequest)
+	byAda := proto.Clone(req).(*artifactv1.RenderSlidesRequest)
 	byAda.AuthorParticipantId = "ada"
 	_, err = ada.Artifact.RenderSlides(ctx10(t), byAda)
 	wantCode(t, "same command ID, other author", err, connect.CodeAlreadyExists)
@@ -242,7 +243,7 @@ func TestArtifactsIdempotent(t *testing.T) {
 func TestArtifactsErrors(t *testing.T) {
 	srv := contracttest.StartServer(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
-	ok := func() *officev1.RenderSlidesRequest {
+	ok := func() *artifactv1.RenderSlidesRequest {
 		r := budgetDeck()
 		r.CommandId, r.AuthorParticipantId = ids.NewCommandID(), "ada"
 		return r
@@ -251,13 +252,13 @@ func TestArtifactsErrors(t *testing.T) {
 	for i := range huge {
 		huge[i] = strings.Repeat("x", 60)
 	}
-	bad := map[string]func(r *officev1.RenderSlidesRequest){
-		"no command_id":     func(r *officev1.RenderSlidesRequest) { r.CommandId = "" },
-		"no author":         func(r *officev1.RenderSlidesRequest) { r.AuthorParticipantId = "" },
-		"no slides":         func(r *officev1.RenderSlidesRequest) { r.Slides = nil },
-		"slide no title":    func(r *officev1.RenderSlidesRequest) { r.Slides[1].Title = "" },
-		"slide blank title": func(r *officev1.RenderSlidesRequest) { r.Slides[1].Title = " \t\n" },
-		"too large":         func(r *officev1.RenderSlidesRequest) { r.Slides[0].Bullets = huge },
+	bad := map[string]func(r *artifactv1.RenderSlidesRequest){
+		"no command_id":     func(r *artifactv1.RenderSlidesRequest) { r.CommandId = "" },
+		"no author":         func(r *artifactv1.RenderSlidesRequest) { r.AuthorParticipantId = "" },
+		"no slides":         func(r *artifactv1.RenderSlidesRequest) { r.Slides = nil },
+		"slide no title":    func(r *artifactv1.RenderSlidesRequest) { r.Slides[1].Title = "" },
+		"slide blank title": func(r *artifactv1.RenderSlidesRequest) { r.Slides[1].Title = " \t\n" },
+		"too large":         func(r *artifactv1.RenderSlidesRequest) { r.Slides[0].Bullets = huge },
 	}
 	for name, change := range bad {
 		r := ok()
@@ -270,38 +271,38 @@ func TestArtifactsErrors(t *testing.T) {
 	_, err := ada.Artifact.RenderSlides(ctx10(t), r)
 	wantCode(t, "author is not the caller", err, connect.CodePermissionDenied)
 
-	_, err = ada.Artifact.GetArtifact(ctx10(t), &officev1.GetArtifactRequest{Id: "slides/1"})
+	_, err = ada.Artifact.GetArtifact(ctx10(t), &artifactv1.GetArtifactRequest{Id: "slides/1"})
 	wantCode(t, "unknown ID", err, connect.CodeNotFound)
-	_, err = ada.Artifact.GetArtifact(ctx10(t), &officev1.GetArtifactRequest{Id: "nonsense"})
+	_, err = ada.Artifact.GetArtifact(ctx10(t), &artifactv1.GetArtifactRequest{Id: "nonsense"})
 	wantCode(t, "ID of no known form", err, connect.CodeNotFound)
-	_, err = ada.Artifact.GetArtifact(ctx10(t), &officev1.GetArtifactRequest{})
+	_, err = ada.Artifact.GetArtifact(ctx10(t), &artifactv1.GetArtifactRequest{})
 	wantCode(t, "no ID", err, connect.CodeInvalidArgument)
 
 	a := render(t, ada, budgetDeck())
 	anon := srv.Anonymous(t)
 	_, err = anon.Artifact.RenderSlides(ctx10(t), ok())
 	wantCode(t, "render without token", err, connect.CodeUnauthenticated)
-	_, err = anon.Artifact.GetArtifact(ctx10(t), &officev1.GetArtifactRequest{Id: a.GetId()})
+	_, err = anon.Artifact.GetArtifact(ctx10(t), &artifactv1.GetArtifactRequest{Id: a.GetId()})
 	wantCode(t, "get without token", err, connect.CodeUnauthenticated)
-	_, err = srv.WithToken(t, "not-a-token").Artifact.GetArtifact(ctx10(t), &officev1.GetArtifactRequest{Id: a.GetId()})
+	_, err = srv.WithToken(t, "not-a-token").Artifact.GetArtifact(ctx10(t), &artifactv1.GetArtifactRequest{Id: a.GetId()})
 	wantCode(t, "get with a bad token", err, connect.CodeUnauthenticated)
 
 	// The stage renders on the server; a stage link cannot use the artifact API.
-	link, err := ada.Identity.CreateStageLink(ctx10(t), &officev1.CreateStageLinkRequest{SessionId: "s1", CommandId: ids.NewCommandID()})
+	link, err := ada.Identity.CreateStageLink(ctx10(t), &identityv1.CreateStageLinkRequest{SessionId: "s1", CommandId: ids.NewCommandID()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	stage := srv.WithToken(t, stageToken(t, link.GetUrl()))
 	_, err = stage.Artifact.RenderSlides(ctx10(t), ok())
 	wantCode(t, "render with a stage link", err, connect.CodePermissionDenied)
-	_, err = stage.Artifact.GetArtifact(ctx10(t), &officev1.GetArtifactRequest{Id: a.GetId()})
+	_, err = stage.Artifact.GetArtifact(ctx10(t), &artifactv1.GetArtifactRequest{Id: a.GetId()})
 	wantCode(t, "get with a stage link", err, connect.CodePermissionDenied)
 
 	// Failed calls stored nothing: the one good render is slides/1, the next is slides/2.
 	if a.GetId() != "slides/1" {
 		t.Fatalf("first good render: %s, want slides/1", a.GetId())
 	}
-	_, err = ada.Artifact.GetArtifact(ctx10(t), &officev1.GetArtifactRequest{Id: "slides/2"})
+	_, err = ada.Artifact.GetArtifact(ctx10(t), &artifactv1.GetArtifactRequest{Id: "slides/2"})
 	wantCode(t, "slides/2 after failed calls", err, connect.CodeNotFound)
 }
 
@@ -317,9 +318,9 @@ func TestArtifactsEscapeText(t *testing.T) {
 		`Tom & Jerry &amp; 'quotes' <b>bold</b> <!-- comment -->`,
 		`<a href="javascript:alert(3)">link</a>`,
 	}
-	deck := &officev1.RenderSlidesRequest{Title: hostile[3]}
+	deck := &artifactv1.RenderSlidesRequest{Title: hostile[3]}
 	for i, h := range hostile {
-		deck.Slides = append(deck.Slides, &officev1.Slide{Title: h, Bullets: []string{h, "plain " + h}, Notes: hostile[(i+1)%len(hostile)]})
+		deck.Slides = append(deck.Slides, &artifactv1.Slide{Title: h, Bullets: []string{h, "plain " + h}, Notes: hostile[(i+1)%len(hostile)]})
 	}
 	a := render(t, bot, deck)
 	p := parsePage(t, a.GetContent())

@@ -58,7 +58,7 @@ id: dn-participant-laptop
 title: Participant computer
 type: device
 parent: env-mvp
-hosts: bb-cli, bb-replicator, bb-ears
+hosts: bb-cli, bb-client-core, bb-replicator, bb-ears
 :::
 ```
 
@@ -74,7 +74,7 @@ id: dn-agent-runtime
 title: Agent runtime
 type: container
 parent: env-mvp
-hosts: bb-mcp, bb-cli, bb-replicator
+hosts: bb-mcp, bb-cli, bb-client-core, bb-replicator
 :::
 ```
 

@@ -144,7 +144,15 @@ category: security
 **Automated end-to-end tests** run on a server host without a microphone. They feed a recorded
 WAV file through the ears in real time. This covers the whole pipeline after audio capture: voice
 activity detection, Whisper, submitting the utterance, the session log and the local copy. The
-tests also cover resume after the replicator is killed, and the latency into the local log.
+tests also cover resume after the replicator is killed.
+
+**End-to-end tests never check performance.** They check behaviour only: no audio leaves the
+device, no event is lost or duplicated, the status of a sentence becomes visible. They pass on any
+host that runs the system. **Performance tests** are separate. They check the timing criteria of
+the quality scenarios (chapter 10) with their full lengths and run on the reference host.
+
+**Architecture test.** A test checks the code against this model on every run of the tests (see
+`concept-module-boundaries`).
 
 **Manual tests** cover what a WAV file cannot: real audio capture from a device and Whisper
 accuracy on real speech. A person joins with a headset on a participant laptop and speaks a few
@@ -159,5 +167,36 @@ little.
 id: concept-test-strategy
 title: Test strategy for the audio pipeline
 category: testing
+:::
+```
+
+## Module boundaries
+
+The building block view (chapter 5) is the map of the code, and a test enforces it.
+
+- **One path per building block.** A building block is a black box with one responsibility. Its
+  path is where its code lives. A child lies under the path of its parent.
+- **An interface belongs to its provider.** Its path lies inside the path of the provider. The
+  types of an interface are part of the interface: every provider defines its own types, even if
+  another interface has a similar one (for example the kind of a participant, of an actor and of a
+  journal author). Consumers map between them.
+- **No shared package.** There is no common or core package that everyone may use. Code that
+  several building blocks need is either an interface of one of them, or a missing building block,
+  or acceptable duplication. Cross-cutting concepts (this chapter) are rules, not places.
+- **`requires` is the permission.** A building block may only use the interfaces it provides or
+  lists in `requires`. Every listed interface must be used. So a new dependency shows up in the
+  model before it can exist in the code.
+- **The white box knows its parts.** A parent building block may wire its direct children. A
+  child never uses its parent, and siblings know each other only through interfaces.
+- **Tests are external actors.** They may use interfaces only and never reach into a building
+  block.
+- **Interfaces for actors only** (CLI, MCP, stage view, audio input) also have a path: the place
+  where their contract is defined. Building blocks do not use them.
+
+```arc42
+:::concept
+id: concept-module-boundaries
+title: Module boundaries follow the building blocks
+category: structure
 :::
 ```

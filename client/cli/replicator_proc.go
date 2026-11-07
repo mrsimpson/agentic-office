@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mrsimpson/agentic-office/client/participant"
+	"github.com/mrsimpson/agentic-office/client/core"
 	"github.com/mrsimpson/agentic-office/client/replicator"
 )
 
@@ -68,7 +68,7 @@ func (r *replicatorProc) stop() {
 
 // startReplicator makes sure a replicator runs for j. With foreground it is a child that stops
 // when this process ends.
-func startReplicator(e *env, j *participant.Joined, foreground bool) (*replicatorProc, error) {
+func startReplicator(e *env, j *core.Joined, foreground bool) (*replicatorProc, error) {
 	p := j.Paths
 	if replicator.Running(p.Log) {
 		return &replicatorProc{pid: readPID(p.PID), log: p.Log}, nil

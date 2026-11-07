@@ -9,9 +9,10 @@ import (
 	"connectrpc.com/connect/v2"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	officev1 "github.com/mrsimpson/agentic-office/core/api/office/v1"
-	"github.com/mrsimpson/agentic-office/core/api/office/v1/officev1connect"
-	"github.com/mrsimpson/agentic-office/core/events"
+	journalv1 "github.com/mrsimpson/agentic-office/server/journal/api"
+	sessionv1 "github.com/mrsimpson/agentic-office/server/session/api"
+	"github.com/mrsimpson/agentic-office/server/session/api/events"
+	sessionv1connect "github.com/mrsimpson/agentic-office/server/session/api/sessionv1connect"
 )
 
 // Caller is who makes a call, as the token check (if-token-check) learned it from the token.
@@ -19,7 +20,7 @@ type Caller struct {
 	// ParticipantID is the identity of the caller. It is also the participant ID in the session.
 	ParticipantID string
 	DisplayName   string
-	Kind          officev1.ParticipantKind
+	Kind          sessionv1.ParticipantKind
 	// StageSessionID is set for the read-only token of a stage link. Such a caller may only
 	// subscribe to this session.
 	StageSessionID string
@@ -50,7 +51,7 @@ func (denyAll) Caller(context.Context) (Caller, error) {
 type Journal interface {
 	// Record appends an entry. It is idempotent by the command ID of the entry: a repeated call
 	// returns the stored entry and true.
-	Record(ctx context.Context, e *officev1.JournalEntry) (*officev1.JournalEntry, bool, error)
+	Record(ctx context.Context, e *journalv1.JournalEntry) (*journalv1.JournalEntry, bool, error)
 }
 
 // MinutesCommandPrefix starts the command ID of the minutes entry that the session writes into
@@ -67,7 +68,7 @@ type Service struct {
 	sessions map[string]*state
 }
 
-var _ officev1connect.SessionServiceHandler = (*Service)(nil)
+var _ sessionv1connect.SessionServiceHandler = (*Service)(nil)
 
 // New returns a Service that keeps its logs in store and stores the minutes of ended sessions in
 // journal. If auth is nil, every call fails with Unauthenticated. If journal is nil, the minutes
@@ -88,11 +89,11 @@ type state struct {
 	ended        bool
 	participants map[string]*participant
 	utterances   map[uint32]*utterance // utterance.final event ID -> utterance
-	minutes      *officev1.Event       // the last minutes.updated event
+	minutes      *sessionv1.Event      // the last minutes.updated event
 }
 
 type participant struct {
-	joined *officev1.Event // the participant.joined event of the current membership
+	joined *sessionv1.Event // the participant.joined event of the current membership
 	left   bool
 	paused bool
 }
@@ -103,32 +104,32 @@ type utterance struct {
 }
 
 // apply updates the state with one event of the log.
-func (st *state) apply(ev *officev1.Event) {
+func (st *state) apply(ev *sessionv1.Event) {
 	st.lastID = ev.GetId()
 	switch p := ev.GetPayload().(type) {
-	case *officev1.Event_ParticipantJoined:
+	case *sessionv1.Event_ParticipantJoined:
 		st.participants[p.ParticipantJoined.GetParticipantId()] = &participant{joined: ev}
-	case *officev1.Event_ParticipantLeft:
+	case *sessionv1.Event_ParticipantLeft:
 		if pt := st.participants[p.ParticipantLeft.GetParticipantId()]; pt != nil {
 			pt.left = true
 		}
-	case *officev1.Event_ParticipantPaused:
+	case *sessionv1.Event_ParticipantPaused:
 		if pt := st.participants[p.ParticipantPaused.GetParticipantId()]; pt != nil {
 			pt.paused = true
 		}
-	case *officev1.Event_ParticipantResumed:
+	case *sessionv1.Event_ParticipantResumed:
 		if pt := st.participants[p.ParticipantResumed.GetParticipantId()]; pt != nil {
 			pt.paused = false
 		}
-	case *officev1.Event_UtteranceFinal:
+	case *sessionv1.Event_UtteranceFinal:
 		st.utterances[ev.GetId()] = &utterance{speaker: p.UtteranceFinal.GetParticipantId()}
-	case *officev1.Event_UtteranceRetracted:
+	case *sessionv1.Event_UtteranceRetracted:
 		if u := st.utterances[p.UtteranceRetracted.GetUtteranceEventId()]; u != nil {
 			u.retracted = true
 		}
-	case *officev1.Event_MinutesUpdated:
+	case *sessionv1.Event_MinutesUpdated:
 		st.minutes = ev
-	case *officev1.Event_SessionEnded:
+	case *sessionv1.Event_SessionEnded:
 		st.ended = true
 	}
 }
@@ -174,14 +175,14 @@ type command struct {
 	types []string
 	// check, if set, checks the command against the caller before anything else.
 	check func(Caller) error
-	build func(st *state, c Caller) (*officev1.Event, error)
+	build func(st *state, c Caller) (*sessionv1.Event, error)
 }
 
 // run carries out a command once (dec-idempotent-commands).
 //
 // Order of checks: required fields, caller (token, participant_id), repeated command_id, end of
 // session, participant, then the checks of the command itself.
-func (s *Service) run(ctx context.Context, c command, isJoin bool) (*officev1.CommandResult, error) {
+func (s *Service) run(ctx context.Context, c command, isJoin bool) (*sessionv1.CommandResult, error) {
 	if c.sessionID == "" {
 		return nil, invalid("session_id is required")
 	}
@@ -224,7 +225,7 @@ func (s *Service) run(ctx context.Context, c command, isJoin bool) (*officev1.Co
 			return nil, connect.NewError(connect.CodeAlreadyExists,
 				"command_id was already used for another command")
 		}
-		return &officev1.CommandResult{Event: prev, Duplicate: true}, nil
+		return &sessionv1.CommandResult{Event: prev, Duplicate: true}, nil
 	}
 	if st.ended {
 		return nil, precondition("the session has ended")
@@ -234,7 +235,7 @@ func (s *Service) run(ctx context.Context, c command, isJoin bool) (*officev1.Co
 		// A participant joins once. Another join while it is in the session (for example from a
 		// second client of the same participant) returns the first join.
 		if pt != nil && !pt.left {
-			return &officev1.CommandResult{Event: pt.joined, Duplicate: true}, nil
+			return &sessionv1.CommandResult{Event: pt.joined, Duplicate: true}, nil
 		}
 	} else {
 		if pt == nil {
@@ -258,7 +259,7 @@ func (s *Service) run(ctx context.Context, c command, isJoin bool) (*officev1.Co
 		return nil, connect.NewError(connect.CodeInternal, "append to session log: "+err.Error())
 	}
 	st.apply(ev)
-	return &officev1.CommandResult{Event: ev}, nil
+	return &sessionv1.CommandResult{Event: ev}, nil
 }
 
 // knownParticipant checks a participant ID that a command names in its payload.
@@ -286,23 +287,23 @@ func knownUtterance(st *state, id uint32) (*utterance, error) {
 
 // Join adds the participant of the access token to the session. display_name defaults to the
 // registered name. kind is optional; if set, it must be the registered kind.
-func (s *Service) Join(ctx context.Context, req *officev1.JoinRequest) (*officev1.JoinResponse, error) {
+func (s *Service) Join(ctx context.Context, req *sessionv1.JoinRequest) (*sessionv1.JoinResponse, error) {
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(),
 		types: []string{events.ParticipantJoined},
 		check: func(c Caller) error {
-			if k := req.GetKind(); k != officev1.ParticipantKind_PARTICIPANT_KIND_UNSPECIFIED && k != c.Kind {
+			if k := req.GetKind(); k != sessionv1.ParticipantKind_PARTICIPANT_KIND_UNSPECIFIED && k != c.Kind {
 				return connect.NewError(connect.CodePermissionDenied, "kind is not the registered kind of the participant")
 			}
 			return nil
 		},
-		build: func(_ *state, c Caller) (*officev1.Event, error) {
+		build: func(_ *state, c Caller) (*sessionv1.Event, error) {
 			name := req.GetDisplayName()
 			if name == "" {
 				name = c.DisplayName
 			}
-			return &officev1.Event{
-				Payload: &officev1.Event_ParticipantJoined{ParticipantJoined: &officev1.ParticipantJoined{
+			return &sessionv1.Event{
+				Payload: &sessionv1.Event_ParticipantJoined{ParticipantJoined: &sessionv1.ParticipantJoined{
 					ParticipantId: c.ParticipantID, DisplayName: name, Kind: c.Kind,
 					Captured: req.GetCaptured(),
 				}},
@@ -312,38 +313,38 @@ func (s *Service) Join(ctx context.Context, req *officev1.JoinRequest) (*officev
 	if err != nil {
 		return nil, err
 	}
-	return &officev1.JoinResponse{
+	return &sessionv1.JoinResponse{
 		ParticipantId: res.GetEvent().GetParticipantJoined().GetParticipantId(), Result: res,
 	}, nil
 }
 
-func (s *Service) Leave(ctx context.Context, req *officev1.LeaveRequest) (*officev1.LeaveResponse, error) {
+func (s *Service) Leave(ctx context.Context, req *sessionv1.LeaveRequest) (*sessionv1.LeaveResponse, error) {
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.ParticipantLeft},
-		build: func(*state, Caller) (*officev1.Event, error) {
-			return &officev1.Event{Payload: &officev1.Event_ParticipantLeft{
-				ParticipantLeft: &officev1.ParticipantLeft{ParticipantId: req.GetParticipantId()}}}, nil
+		build: func(*state, Caller) (*sessionv1.Event, error) {
+			return &sessionv1.Event{Payload: &sessionv1.Event_ParticipantLeft{
+				ParticipantLeft: &sessionv1.ParticipantLeft{ParticipantId: req.GetParticipantId()}}}, nil
 		},
 	}, false)
 	if err != nil {
 		return nil, err
 	}
-	return &officev1.LeaveResponse{Result: res}, nil
+	return &sessionv1.LeaveResponse{Result: res}, nil
 }
 
-func (s *Service) SubmitUtterance(ctx context.Context, req *officev1.SubmitUtteranceRequest) (*officev1.SubmitUtteranceResponse, error) {
+func (s *Service) SubmitUtterance(ctx context.Context, req *sessionv1.SubmitUtteranceRequest) (*sessionv1.SubmitUtteranceResponse, error) {
 	if req.GetText() == "" {
 		return nil, invalid("text is required")
 	}
-	if req.GetModality() == officev1.Modality_MODALITY_UNSPECIFIED {
+	if req.GetModality() == sessionv1.Modality_MODALITY_UNSPECIFIED {
 		return nil, invalid("modality is required")
 	}
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.UtteranceFinal},
-		build: func(*state, Caller) (*officev1.Event, error) {
-			return &officev1.Event{Payload: &officev1.Event_UtteranceFinal{UtteranceFinal: &officev1.UtteranceFinal{
+		build: func(*state, Caller) (*sessionv1.Event, error) {
+			return &sessionv1.Event{Payload: &sessionv1.Event_UtteranceFinal{UtteranceFinal: &sessionv1.UtteranceFinal{
 				ParticipantId: req.GetParticipantId(), Text: req.GetText(), Modality: req.GetModality(),
 				TranscribedAt: req.GetTranscribedAt(),
 			}}}, nil
@@ -352,17 +353,17 @@ func (s *Service) SubmitUtterance(ctx context.Context, req *officev1.SubmitUtter
 	if err != nil {
 		return nil, err
 	}
-	return &officev1.SubmitUtteranceResponse{Result: res}, nil
+	return &sessionv1.SubmitUtteranceResponse{Result: res}, nil
 }
 
 // RetractUtterance appends utterance.retracted. A participant can retract only their own
 // utterances, and each one only once. OPEN: may a moderator retract the utterances of others?
 // Roles are not part of the contract yet (#14).
-func (s *Service) RetractUtterance(ctx context.Context, req *officev1.RetractUtteranceRequest) (*officev1.RetractUtteranceResponse, error) {
+func (s *Service) RetractUtterance(ctx context.Context, req *sessionv1.RetractUtteranceRequest) (*sessionv1.RetractUtteranceResponse, error) {
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.UtteranceRetracted},
-		build: func(st *state, _ Caller) (*officev1.Event, error) {
+		build: func(st *state, _ Caller) (*sessionv1.Event, error) {
 			u, err := knownUtterance(st, req.GetUtteranceEventId())
 			if err != nil {
 				return nil, err
@@ -373,7 +374,7 @@ func (s *Service) RetractUtterance(ctx context.Context, req *officev1.RetractUtt
 			if u.retracted {
 				return nil, precondition("the utterance is already retracted")
 			}
-			return &officev1.Event{Payload: &officev1.Event_UtteranceRetracted{UtteranceRetracted: &officev1.UtteranceRetracted{
+			return &sessionv1.Event{Payload: &sessionv1.Event_UtteranceRetracted{UtteranceRetracted: &sessionv1.UtteranceRetracted{
 				UtteranceEventId: req.GetUtteranceEventId(),
 			}}}, nil
 		},
@@ -381,7 +382,7 @@ func (s *Service) RetractUtterance(ctx context.Context, req *officev1.RetractUtt
 	if err != nil {
 		return nil, err
 	}
-	return &officev1.RetractUtteranceResponse{Result: res}, nil
+	return &sessionv1.RetractUtteranceResponse{Result: res}, nil
 }
 
 // SubmitSignal appends turn.end, silence.long or addressed.
@@ -391,7 +392,7 @@ func (s *Service) RetractUtterance(ctx context.Context, req *officev1.RetractUtt
 // We chose this because it is the easiest to change: if the session should later detect
 // addressed itself (#14), that adds events with an empty command_id and keeps this command
 // valid. The reverse change would remove events that clients already rely on.
-func (s *Service) SubmitSignal(ctx context.Context, req *officev1.SubmitSignalRequest) (*officev1.SubmitSignalResponse, error) {
+func (s *Service) SubmitSignal(ctx context.Context, req *sessionv1.SubmitSignalRequest) (*sessionv1.SubmitSignalResponse, error) {
 	if req.GetSignal() == nil {
 		return nil, invalid("one of turn_end, silence_long or addressed is required")
 	}
@@ -401,23 +402,23 @@ func (s *Service) SubmitSignal(ctx context.Context, req *officev1.SubmitSignalRe
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.TurnEnd, events.SilenceLong, events.Addressed},
-		build: func(st *state, _ Caller) (*officev1.Event, error) {
+		build: func(st *state, _ Caller) (*sessionv1.Event, error) {
 			switch sig := req.GetSignal().(type) {
-			case *officev1.SubmitSignalRequest_TurnEnd:
+			case *sessionv1.SubmitSignalRequest_TurnEnd:
 				if err := knownParticipant(st, sig.TurnEnd.GetParticipantId(), "turn_end.participant_id"); err != nil {
 					return nil, err
 				}
-				return &officev1.Event{Payload: &officev1.Event_TurnEnd{TurnEnd: sig.TurnEnd}}, nil
-			case *officev1.SubmitSignalRequest_SilenceLong:
-				return &officev1.Event{Payload: &officev1.Event_SilenceLong{SilenceLong: sig.SilenceLong}}, nil
-			case *officev1.SubmitSignalRequest_Addressed:
+				return &sessionv1.Event{Payload: &sessionv1.Event_TurnEnd{TurnEnd: sig.TurnEnd}}, nil
+			case *sessionv1.SubmitSignalRequest_SilenceLong:
+				return &sessionv1.Event{Payload: &sessionv1.Event_SilenceLong{SilenceLong: sig.SilenceLong}}, nil
+			case *sessionv1.SubmitSignalRequest_Addressed:
 				if err := knownParticipant(st, sig.Addressed.GetParticipantId(), "addressed.participant_id"); err != nil {
 					return nil, err
 				}
 				if _, err := knownUtterance(st, sig.Addressed.GetUtteranceEventId()); err != nil {
 					return nil, err
 				}
-				return &officev1.Event{Payload: &officev1.Event_Addressed{Addressed: sig.Addressed}}, nil
+				return &sessionv1.Event{Payload: &sessionv1.Event_Addressed{Addressed: sig.Addressed}}, nil
 			}
 			return nil, invalid("unknown signal")
 		},
@@ -425,93 +426,93 @@ func (s *Service) SubmitSignal(ctx context.Context, req *officev1.SubmitSignalRe
 	if err != nil {
 		return nil, err
 	}
-	return &officev1.SubmitSignalResponse{Result: res}, nil
+	return &sessionv1.SubmitSignalResponse{Result: res}, nil
 }
 
-func (s *Service) Pause(ctx context.Context, req *officev1.PauseRequest) (*officev1.PauseResponse, error) {
+func (s *Service) Pause(ctx context.Context, req *sessionv1.PauseRequest) (*sessionv1.PauseResponse, error) {
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.ParticipantPaused},
-		build: func(st *state, _ Caller) (*officev1.Event, error) {
+		build: func(st *state, _ Caller) (*sessionv1.Event, error) {
 			if st.participants[req.GetParticipantId()].paused {
 				return nil, precondition("the participant is already paused")
 			}
-			return &officev1.Event{Payload: &officev1.Event_ParticipantPaused{
-				ParticipantPaused: &officev1.ParticipantPaused{ParticipantId: req.GetParticipantId()}}}, nil
+			return &sessionv1.Event{Payload: &sessionv1.Event_ParticipantPaused{
+				ParticipantPaused: &sessionv1.ParticipantPaused{ParticipantId: req.GetParticipantId()}}}, nil
 		},
 	}, false)
 	if err != nil {
 		return nil, err
 	}
-	return &officev1.PauseResponse{Result: res}, nil
+	return &sessionv1.PauseResponse{Result: res}, nil
 }
 
-func (s *Service) Resume(ctx context.Context, req *officev1.ResumeRequest) (*officev1.ResumeResponse, error) {
+func (s *Service) Resume(ctx context.Context, req *sessionv1.ResumeRequest) (*sessionv1.ResumeResponse, error) {
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.ParticipantResumed},
-		build: func(st *state, _ Caller) (*officev1.Event, error) {
+		build: func(st *state, _ Caller) (*sessionv1.Event, error) {
 			if !st.participants[req.GetParticipantId()].paused {
 				return nil, precondition("the participant is not paused")
 			}
-			return &officev1.Event{Payload: &officev1.Event_ParticipantResumed{
-				ParticipantResumed: &officev1.ParticipantResumed{ParticipantId: req.GetParticipantId()}}}, nil
+			return &sessionv1.Event{Payload: &sessionv1.Event_ParticipantResumed{
+				ParticipantResumed: &sessionv1.ParticipantResumed{ParticipantId: req.GetParticipantId()}}}, nil
 		},
 	}, false)
 	if err != nil {
 		return nil, err
 	}
-	return &officev1.ResumeResponse{Result: res}, nil
+	return &sessionv1.ResumeResponse{Result: res}, nil
 }
 
-func (s *Service) RaiseHand(ctx context.Context, req *officev1.RaiseHandRequest) (*officev1.RaiseHandResponse, error) {
+func (s *Service) RaiseHand(ctx context.Context, req *sessionv1.RaiseHandRequest) (*sessionv1.RaiseHandResponse, error) {
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.HandRaised},
-		build: func(*state, Caller) (*officev1.Event, error) {
-			return &officev1.Event{Payload: &officev1.Event_HandRaised{HandRaised: &officev1.HandRaised{
+		build: func(*state, Caller) (*sessionv1.Event, error) {
+			return &sessionv1.Event{Payload: &sessionv1.Event_HandRaised{HandRaised: &sessionv1.HandRaised{
 				ParticipantId: req.GetParticipantId(), Topic: req.GetTopic()}}}, nil
 		},
 	}, false)
 	if err != nil {
 		return nil, err
 	}
-	return &officev1.RaiseHandResponse{Result: res}, nil
+	return &sessionv1.RaiseHandResponse{Result: res}, nil
 }
 
-func (s *Service) UpdateMinutes(ctx context.Context, req *officev1.UpdateMinutesRequest) (*officev1.UpdateMinutesResponse, error) {
+func (s *Service) UpdateMinutes(ctx context.Context, req *sessionv1.UpdateMinutesRequest) (*sessionv1.UpdateMinutesResponse, error) {
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.MinutesUpdated},
-		build: func(*state, Caller) (*officev1.Event, error) {
-			return &officev1.Event{Payload: &officev1.Event_MinutesUpdated{
-				MinutesUpdated: &officev1.MinutesUpdated{Text: req.GetText()}}}, nil
+		build: func(*state, Caller) (*sessionv1.Event, error) {
+			return &sessionv1.Event{Payload: &sessionv1.Event_MinutesUpdated{
+				MinutesUpdated: &sessionv1.MinutesUpdated{Text: req.GetText()}}}, nil
 		},
 	}, false)
 	if err != nil {
 		return nil, err
 	}
-	return &officev1.UpdateMinutesResponse{Result: res}, nil
+	return &sessionv1.UpdateMinutesResponse{Result: res}, nil
 }
 
 // ShowArtifact appends artifact.shown. It does not check that the artifact exists: the session is
 // only the log of what participants did, and the stage handles an unknown ID.
-func (s *Service) ShowArtifact(ctx context.Context, req *officev1.ShowArtifactRequest) (*officev1.ShowArtifactResponse, error) {
+func (s *Service) ShowArtifact(ctx context.Context, req *sessionv1.ShowArtifactRequest) (*sessionv1.ShowArtifactResponse, error) {
 	if req.GetArtifactId() == "" {
 		return nil, invalid("artifact_id is required")
 	}
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.ArtifactShown},
-		build: func(*state, Caller) (*officev1.Event, error) {
-			return &officev1.Event{Payload: &officev1.Event_ArtifactShown{
-				ArtifactShown: &officev1.ArtifactShown{ArtifactId: req.GetArtifactId()}}}, nil
+		build: func(*state, Caller) (*sessionv1.Event, error) {
+			return &sessionv1.Event{Payload: &sessionv1.Event_ArtifactShown{
+				ArtifactShown: &sessionv1.ArtifactShown{ArtifactId: req.GetArtifactId()}}}, nil
 		},
 	}, false)
 	if err != nil {
 		return nil, err
 	}
-	return &officev1.ShowArtifactResponse{Result: res}, nil
+	return &sessionv1.ShowArtifactResponse{Result: res}, nil
 }
 
 // EndSession stores the confirmed minutes in the journal and then appends session.ended
@@ -526,25 +527,25 @@ func (s *Service) ShowArtifact(ctx context.Context, req *officev1.ShowArtifactRe
 // stored. The command ID of the entry is MinutesCommandPrefix plus the command ID of EndSession,
 // so a repeated EndSession does not store the minutes twice. If the journal fails, the session
 // does not end and EndSession fails with Internal; the client can repeat it.
-func (s *Service) EndSession(ctx context.Context, req *officev1.EndSessionRequest) (*officev1.EndSessionResponse, error) {
+func (s *Service) EndSession(ctx context.Context, req *sessionv1.EndSessionRequest) (*sessionv1.EndSessionResponse, error) {
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.SessionEnded},
-		build: func(st *state, _ Caller) (*officev1.Event, error) {
+		build: func(st *state, _ Caller) (*sessionv1.Event, error) {
 			if err := s.storeMinutes(ctx, st, req); err != nil {
 				return nil, err
 			}
-			return &officev1.Event{Payload: &officev1.Event_SessionEnded{SessionEnded: &officev1.SessionEnded{}}}, nil
+			return &sessionv1.Event{Payload: &sessionv1.Event_SessionEnded{SessionEnded: &sessionv1.SessionEnded{}}}, nil
 		},
 	}, false)
 	if err != nil {
 		return nil, err
 	}
-	return &officev1.EndSessionResponse{Result: res}, nil
+	return &sessionv1.EndSessionResponse{Result: res}, nil
 }
 
 // storeMinutes writes the last minutes of the session into the journal. The caller holds st.mu.
-func (s *Service) storeMinutes(ctx context.Context, st *state, req *officev1.EndSessionRequest) error {
+func (s *Service) storeMinutes(ctx context.Context, st *state, req *sessionv1.EndSessionRequest) error {
 	if s.journal == nil || st.minutes == nil {
 		return nil
 	}
@@ -553,13 +554,13 @@ func (s *Service) storeMinutes(ctx context.Context, st *state, req *officev1.End
 		return nil
 	}
 	author := st.minutes.GetActorParticipantId()
-	var kind officev1.ParticipantKind
+	var kind sessionv1.ParticipantKind
 	if pt := st.participants[author]; pt != nil {
 		kind = pt.joined.GetParticipantJoined().GetKind()
 	}
-	_, _, err := s.journal.Record(ctx, &officev1.JournalEntry{
-		CommandId: MinutesCommandPrefix + req.GetCommandId(), Kind: officev1.EntryKind_ENTRY_KIND_MINUTES,
-		Text: text, AuthorParticipantId: author, AuthorKind: kind, SessionId: req.GetSessionId(),
+	_, _, err := s.journal.Record(ctx, &journalv1.JournalEntry{
+		CommandId: MinutesCommandPrefix + req.GetCommandId(), Kind: journalv1.EntryKind_ENTRY_KIND_MINUTES,
+		Text: text, AuthorParticipantId: author, AuthorKind: authorKind(kind), SessionId: req.GetSessionId(),
 	})
 	if err != nil {
 		return connect.NewError(connect.CodeInternal, "store the minutes in the journal: "+err.Error())
@@ -570,7 +571,7 @@ func (s *Service) storeMinutes(ctx context.Context, st *state, req *officev1.End
 // Subscribe sends every event after the cursor, then live events. It returns after it has sent
 // session.ended. A cursor beyond the last event fails with OutOfRange: the client has events the
 // server does not know, for example after the server lost its memory store in a restart.
-func (s *Service) Subscribe(ctx context.Context, req *officev1.SubscribeRequest, stream officev1connect.SessionServiceSubscribeServerStream) error {
+func (s *Service) Subscribe(ctx context.Context, req *sessionv1.SubscribeRequest, stream sessionv1connect.SessionServiceSubscribeServerStream) error {
 	sid := req.GetSessionId()
 	if sid == "" {
 		return invalid("session_id is required")
@@ -609,7 +610,7 @@ func (s *Service) Subscribe(ctx context.Context, req *officev1.SubscribeRequest,
 			return connect.NewError(connect.CodeInternal, "read session log: "+err.Error())
 		}
 		for _, ev := range evs {
-			if err := stream.Send(&officev1.SubscribeResponse{Event: ev}); err != nil {
+			if err := stream.Send(&sessionv1.SubscribeResponse{Event: ev}); err != nil {
 				return err
 			}
 			cursor = ev.GetId()
@@ -630,4 +631,16 @@ func (s *Service) Subscribe(ctx context.Context, req *officev1.SubscribeRequest,
 		case <-wait:
 		}
 	}
+}
+
+// authorKind maps the kind of a participant to the kind of a journal author. The journal owns its
+// own type (if-journal-api), so the session maps it here.
+func authorKind(k sessionv1.ParticipantKind) journalv1.AuthorKind {
+	switch k {
+	case sessionv1.ParticipantKind_PARTICIPANT_KIND_HUMAN:
+		return journalv1.AuthorKind_AUTHOR_KIND_HUMAN
+	case sessionv1.ParticipantKind_PARTICIPANT_KIND_AGENT:
+		return journalv1.AuthorKind_AUTHOR_KIND_AGENT
+	}
+	return journalv1.AuthorKind_AUTHOR_KIND_UNSPECIFIED
 }

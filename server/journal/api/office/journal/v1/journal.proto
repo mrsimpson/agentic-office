@@ -1,0 +1,80 @@
+// Journal: the memory of the team (if-journal-api). Each entry records who wrote it.
+//
+// The architecture names HTTPS/JSON for this interface. Connect serves the same contract as plain
+// HTTP with JSON, so other clients need no special library.
+syntax = "proto3";
+
+package office.journal.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/mrsimpson/agentic-office/server/journal/api;journalv1";
+
+service JournalService {
+  // AppendEntry adds an entry. It is idempotent by command_id: a repeated request returns the
+  // stored entry with duplicate set.
+  rpc AppendEntry(AppendEntryRequest) returns (AppendEntryResponse);
+  // ListEntries returns entries with an ID greater than after_entry_id, oldest first.
+  rpc ListEntries(ListEntriesRequest) returns (ListEntriesResponse);
+}
+
+enum EntryKind {
+  ENTRY_KIND_UNSPECIFIED = 0;
+  ENTRY_KIND_DECISION = 1;
+  ENTRY_KIND_TASK = 2;
+  ENTRY_KIND_MINUTES = 3;
+  ENTRY_KIND_NOTE = 4;
+}
+
+message JournalEntry {
+  // id grows by one with every entry and starts at 1.
+  uint32 id = 1;
+  EntryKind kind = 2;
+  string text = 3;
+  // author_participant_id is the human or agent who wrote the entry.
+  string author_participant_id = 4;
+  // session_id is set if the entry comes from a meeting session.
+  string session_id = 5;
+  google.protobuf.Timestamp time = 6;
+  string command_id = 7;
+  // author_kind tells whether the author is a human or an agent, at the time of writing.
+  AuthorKind author_kind = 8;
+}
+
+message AppendEntryRequest {
+  // command_id is created by the client. A repeated request with the same command_id has no
+  // extra effect.
+  string command_id = 1;
+  EntryKind kind = 2;
+  string text = 3;
+  // author_participant_id must be the participant of the access token.
+  string author_participant_id = 4;
+  // session_id links the entry to a meeting session. Optional.
+  string session_id = 5;
+}
+
+message AppendEntryResponse {
+  JournalEntry entry = 1;
+  bool duplicate = 2;
+}
+
+message ListEntriesRequest {
+  uint32 after_entry_id = 1;
+  // kind filters by kind. Unspecified returns all kinds.
+  EntryKind kind = 2;
+  // session_id filters by session. Empty returns entries of all sessions and without a session.
+  string session_id = 3;
+  // limit is the largest number of entries in the response. 0 means the server's default.
+  uint32 limit = 4;
+}
+
+message ListEntriesResponse {
+  repeated JournalEntry entries = 1;
+}
+
+// AuthorKind tells whether the author of an entry is a human or an agent.
+enum AuthorKind {
+  AUTHOR_KIND_UNSPECIFIED = 0;
+  AUTHOR_KIND_HUMAN = 1;
+  AUTHOR_KIND_AGENT = 2;
+}

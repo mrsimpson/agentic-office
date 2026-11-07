@@ -12,20 +12,20 @@ import (
 
 	"google.golang.org/protobuf/encoding/protojson"
 
-	officev1 "github.com/mrsimpson/agentic-office/core/api/office/v1"
+	journalv1 "github.com/mrsimpson/agentic-office/server/journal/api"
 )
 
 // Filter selects entries for Store.List. Zero values select everything.
 type Filter struct {
-	After     uint32             // only entries with an ID greater than this
-	Kind      officev1.EntryKind // only this kind; unspecified: all kinds
-	SessionID string             // only entries of this session; empty: all
-	Limit     int                // at most this many entries; 0: no limit
+	After     uint32              // only entries with an ID greater than this
+	Kind      journalv1.EntryKind // only this kind; unspecified: all kinds
+	SessionID string              // only entries of this session; empty: all
+	Limit     int                 // at most this many entries; 0: no limit
 }
 
-func (f Filter) match(e *officev1.JournalEntry) bool {
+func (f Filter) match(e *journalv1.JournalEntry) bool {
 	return e.GetId() > f.After &&
-		(f.Kind == officev1.EntryKind_ENTRY_KIND_UNSPECIFIED || e.GetKind() == f.Kind) &&
+		(f.Kind == journalv1.EntryKind_ENTRY_KIND_UNSPECIFIED || e.GetKind() == f.Kind) &&
 		(f.SessionID == "" || e.GetSessionId() == f.SessionID)
 }
 
@@ -37,26 +37,26 @@ func (f Filter) match(e *officev1.JournalEntry) bool {
 type Store interface {
 	// Append stores e as the next entry. It sets e.Id to the last ID plus one (the first entry
 	// gets 1) and returns e.
-	Append(e *officev1.JournalEntry) (*officev1.JournalEntry, error)
+	Append(e *journalv1.JournalEntry) (*journalv1.JournalEntry, error)
 	// List returns the entries that match f, oldest first.
-	List(f Filter) ([]*officev1.JournalEntry, error)
+	List(f Filter) ([]*journalv1.JournalEntry, error)
 	// ByCommand returns the entry that the command with this ID created, or nil.
-	ByCommand(commandID string) (*officev1.JournalEntry, error)
+	ByCommand(commandID string) (*journalv1.JournalEntry, error)
 }
 
 // MemoryStore is a Store in memory. All data is lost when the process stops.
 type MemoryStore struct {
 	mu      sync.Mutex
-	entries []*officev1.JournalEntry // entries[i].Id == i+1
-	byCmd   map[string]*officev1.JournalEntry
+	entries []*journalv1.JournalEntry // entries[i].Id == i+1
+	byCmd   map[string]*journalv1.JournalEntry
 }
 
 // NewMemoryStore returns an empty MemoryStore.
 func NewMemoryStore() *MemoryStore {
-	return &MemoryStore{byCmd: map[string]*officev1.JournalEntry{}}
+	return &MemoryStore{byCmd: map[string]*journalv1.JournalEntry{}}
 }
 
-func (m *MemoryStore) Append(e *officev1.JournalEntry) (*officev1.JournalEntry, error) {
+func (m *MemoryStore) Append(e *journalv1.JournalEntry) (*journalv1.JournalEntry, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	e.Id = uint32(len(m.entries) + 1)
@@ -65,17 +65,17 @@ func (m *MemoryStore) Append(e *officev1.JournalEntry) (*officev1.JournalEntry, 
 }
 
 // add stores an entry that already has its ID. The caller holds m.mu.
-func (m *MemoryStore) add(e *officev1.JournalEntry) {
+func (m *MemoryStore) add(e *journalv1.JournalEntry) {
 	m.entries = append(m.entries, e)
 	if e.GetCommandId() != "" {
 		m.byCmd[e.GetCommandId()] = e
 	}
 }
 
-func (m *MemoryStore) List(f Filter) ([]*officev1.JournalEntry, error) {
+func (m *MemoryStore) List(f Filter) ([]*journalv1.JournalEntry, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	var out []*officev1.JournalEntry
+	var out []*journalv1.JournalEntry
 	start := min(int(f.After), len(m.entries))
 	for _, e := range m.entries[start:] {
 		if f.Limit > 0 && len(out) >= f.Limit {
@@ -88,7 +88,7 @@ func (m *MemoryStore) List(f Filter) ([]*officev1.JournalEntry, error) {
 	return out, nil
 }
 
-func (m *MemoryStore) ByCommand(commandID string) (*officev1.JournalEntry, error) {
+func (m *MemoryStore) ByCommand(commandID string) (*journalv1.JournalEntry, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.byCmd[commandID], nil
@@ -133,7 +133,7 @@ func OpenFileStore(path string) (*FileStore, error) {
 			f.Close()
 			return nil, err
 		}
-		e := &officev1.JournalEntry{}
+		e := &journalv1.JournalEntry{}
 		if err := protojson.Unmarshal(line, e); err != nil {
 			f.Close()
 			return nil, fmt.Errorf("%s line %d: %w", path, n, err)
@@ -152,7 +152,7 @@ func OpenFileStore(path string) (*FileStore, error) {
 	return &FileStore{mem: mem, file: f, size: good}, nil
 }
 
-func (s *FileStore) Append(e *officev1.JournalEntry) (*officev1.JournalEntry, error) {
+func (s *FileStore) Append(e *journalv1.JournalEntry) (*journalv1.JournalEntry, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.mem.mu.Lock()
@@ -179,9 +179,9 @@ func (s *FileStore) Append(e *officev1.JournalEntry) (*officev1.JournalEntry, er
 	return e, nil
 }
 
-func (s *FileStore) List(f Filter) ([]*officev1.JournalEntry, error) { return s.mem.List(f) }
+func (s *FileStore) List(f Filter) ([]*journalv1.JournalEntry, error) { return s.mem.List(f) }
 
-func (s *FileStore) ByCommand(commandID string) (*officev1.JournalEntry, error) {
+func (s *FileStore) ByCommand(commandID string) (*journalv1.JournalEntry, error) {
 	return s.mem.ByCommand(commandID)
 }
 

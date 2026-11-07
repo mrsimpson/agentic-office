@@ -1,0 +1,13 @@
+# Not part of the modeled architecture: repository files, documentation and tests (tests are
+# external actors, see concept-module-boundaries).
+.gitignore
+.arc42ignore
+AGENTS.md
+README.md
+Makefile
+buf.yaml
+buf.gen.yaml
+go.mod
+go.sum
+docs
+tests

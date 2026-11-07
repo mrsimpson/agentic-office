@@ -53,11 +53,12 @@ without make, export them as in the Makefile.
 | Command | What it does |
 |---|---|
 | `make build` | Builds all packages and the binaries `bin/office-server` and `bin/office` (needs whisper.cpp) |
-| `make test` | Runs `go vet` and the contract tests (`tests/contract/`) |
-| `make e2e` | Runs the end-to-end tests with real processes (`tests/e2e/`, build tag `e2e`); the ears tests need the models and are skipped without them |
-| `make quality` | Runs only the quality scenario tests with the lengths of the scenarios (30 minutes of speech, a 60 s network drop; about 35 minutes) and lists their numbers |
+| `make arch` | Validates the architecture with the arc42 CLI and runs the architecture test (`tests/architecture/`); needs Node.js |
+| `make test` | Runs `make arch`, `go vet` and the contract tests (`tests/contract/`) |
+| `make e2e` | Runs the end-to-end tests with real processes (`tests/e2e/`, build tag `e2e`). They check behaviour only and never fail on timing. The ears tests need the models and are skipped without them |
+| `make performance` | Runs the quality scenarios with their timing criteria and their full lengths (build tags `e2e,performance`; 30 minutes of speech, a 60 s network drop; about 35 minutes) and lists their numbers. Meant for the reference host |
 | `make lint` | Checks the Protobuf contracts with `buf lint` |
-| `make generate` | Regenerates `core/api/` from `proto/` |
+| `make generate` | Regenerates the Go code of the contracts next to their `.proto` files |
 
 Run the server by hand:
 
@@ -70,32 +71,37 @@ The server speaks only TLS and needs an access token for every call. See
 
 ## Layout
 
+The layout follows the building blocks of chapter 5 of the architecture. Every building block and
+every interface has exactly one path. An interface lies inside the path of its provider and owns
+its types. There is no shared package. `make arch` checks that every import between building
+blocks goes through an interface that the importing block requires (concept-module-boundaries).
+
 ```
-proto/office/v1/      Protobuf contracts of all interfaces that cross a process boundary
-core/                 Shared core
-  api/                Generated Go code for the contracts (Connect RPC)
-  events/             Event types in dotted form, for example "utterance.final"
-  eventlog/           Line format of the local session log (one compact JSON line per event)
-  ids/                Client-generated command IDs (UUIDv7)
-  auth/               Client side of identity: key files, challenge signing, tokens, TLS trust
-  contracttest/       Harness for black-box contract tests
-server/               Building blocks of the office server
-  session/            Meeting session: session commands and session stream
-  identity/           Identity: auth API and token check
-  journal/            Journal: the memory of the team
-  artifacts/          Artifact tools: slides
-  stage/              Stage: web view of a session
-client/               Building blocks of the participant client
-  participant/        Shared client core of the CLI and the MCP server
-  cli/                office CLI
-  mcp/                MCP server
-  replicator/         Log replicator: local copy of the session log
-  ears/               Ears: local speech to text
-cmd/office-server/    Binary of the office server
-cmd/office/           Binary of the participant client (CLI, replicator, ears and MCP server)
-tests/contract/       Contract tests, one file per building block
-tests/e2e/            End-to-end tests, also of the quality scenarios
-docs/testing/         Manual tests (the headset test)
+server/                   bb-office-server: wiring of the server (binary office-server)
+  session/                bb-session-service
+    api/                  if-session-commands, if-session-stream: contract, generated code,
+                          event types in dotted form (api/events)
+  identity/               bb-identity
+    api/                  if-auth-api: contract, generated code, client side (api/auth: key files,
+                          challenge signing, tokens, TLS trust)
+    tokencheck/           if-token-check: who makes a call (in-process)
+  journal/  journal/api/  bb-journal, if-journal-api
+  artifacts/ artifacts/api/  bb-artifact-service, if-artifact-api
+  stage/                  bb-stage, if-stage-web
+client/                   bb-participant-client: wiring of the client (binary office)
+  core/                   bb-client-core, if-client-core: shared core of CLI, MCP server and ears;
+                          command IDs (core/ids)
+  cli/                    bb-cli, if-cli
+  mcp/                    bb-mcp, if-mcp
+  replicator/             bb-replicator, if-replication (start, find and stop a replicator)
+    locallog/             if-local-log: line format of the local session log
+  ears/                   bb-ears, if-audio-in
+tests/                    external actors: may use interfaces only
+  architecture/           architecture test
+  contracttest/           harness for black-box contract tests
+  contract/               contract tests, one file per building block
+  e2e/                    end-to-end tests, also of the quality scenarios
+docs/testing/             manual tests (the headset test)
 ```
 
 ## Contracts
@@ -104,11 +110,11 @@ All interfaces are defined in Protobuf and served with Connect RPC (`dec-connect
 
 | Interface | Service | Kind |
 |---|---|---|
-| Session commands | `office.v1.SessionService` | unary |
-| Session stream | `office.v1.SessionService/Subscribe` | server stream from a cursor |
-| Auth API | `office.v1.IdentityService` | unary |
-| Journal API | `office.v1.JournalService` | unary |
-| Artifact API | `office.v1.ArtifactService` | unary |
+| Session commands | `office.session.v1.SessionService` | unary |
+| Session stream | `office.session.v1.SessionService/Subscribe` | server stream from a cursor |
+| Auth API | `office.identity.v1.IdentityService` | unary |
+| Journal API | `office.journal.v1.JournalService` | unary |
+| Artifact API | `office.artifact.v1.ArtifactService` | unary |
 
 Rules that hold for all of them:
 
@@ -125,7 +131,7 @@ Rules that hold for all of them:
   curl --cacert ~/.config/agentic-office/server/tls.crt \
     -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN" \
     -d '{"sessionId":"demo","commandId":"…"}' \
-    https://127.0.0.1:8740/office.v1.SessionService/Join
+    https://127.0.0.1:8740/office.session.v1.SessionService/Join
   ```
 
 ### Meeting session
@@ -156,7 +162,7 @@ Identity (`server/identity`) is implemented. The package comment in `server/iden
 the details. In short:
 
 - Every actor (each human device, each agent) has its own Ed25519 key pair, created locally with
-  `core/auth`. Only the public key goes to the server.
+  `server/identity/api/auth`. Only the public key goes to the server.
 - An admin registers a public key for a participant with `RegisterKey`. The admin chooses the
   participant ID, for example `ada`. A participant can have several keys. `RevokeKey` removes a
   key; its tokens stop working at once.
@@ -242,7 +248,7 @@ All files of the server are in its data directory, by default `~/.config/agentic
 ### First admin
 
 An admin is a key in the `admins` file. Only admin keys may call `RegisterKey` and `RevokeKey`.
-Each line has a participant ID, the public key (base64 of the 32 raw bytes, see `core/auth`) and
+Each line has a participant ID, the public key (base64 of the 32 raw bytes, see `server/identity/api/auth`) and
 an optional display name:
 
 ```
@@ -284,7 +290,7 @@ bin/office-server -tls-cert /etc/office/fullchain.pem -tls-key /etc/office/privk
 
 `bin/office` is the participant client for humans and agents (`bb-cli`, `bb-replicator`). The
 MCP server (`office mcp`, see [MCP server](#mcp-server)) offers the same features; both build on
-the shared core in `client/participant` (`dec-cli-and-mcp`). Run `office help` for all commands.
+the shared core in `client/core` (`dec-cli-and-mcp`). Run `office help` for all commands.
 
 ### First start
 
@@ -354,7 +360,7 @@ text becomes the notes of the slide. A file that does not end with `.md` is JSON
 `RenderSlidesRequest`: `{"title": …, "slides": [{"title": …, "bullets": […], "notes": …}]}`.
 
 **The local log** is `<runtime dir>/<session>/<participant>.jsonl` (directories 0700, file 0600):
-one compact JSON line per event (`core/eventlog`), with the dotted type and the event ID as a
+one compact JSON line per event (`client/replicator/locallog`), with the dotted type and the event ID as a
 number. It is append-only: a retraction is a new `utterance.retracted` line. The runtime
 directory also holds the join state (`<participant>.join`, the stored join command ID, so a
 restarted client is the same participant), the PID of the replicator (`<participant>.pid`) and
@@ -544,7 +550,7 @@ to the agent.
 We write no unit tests (`dec-contract-tests`). Every building block is tested as a black box
 through its interfaces:
 
-- A contract test starts the block with `core/contracttest` (as a real process, or as a fake that
+- A contract test starts the block with `tests/contracttest` (as a real process, or as a fake that
   follows the same contract) and uses only its interfaces. `contracttest.StartServer` starts
   `office-server` with TLS and an admin key; `Server.Participant` registers a key for a test
   participant and returns authenticated clients. It never imports the package that
@@ -574,9 +580,14 @@ through its interfaces:
   capture status on the stage, each ≤ 1 s). `TestQualityResumeAfterDrop/qs-resume-after-drop`
   cuts Ada's network while she speaks and the bot writes: 0 lost and 0 duplicate events, and
   Ada's local log is complete ≤ 2 s after the network is back. Each scenario prints a line that
-  starts with `QS <scenario>` (`grep '^QS '`). Two variables set the lengths:
-  `QS_SPEECH_DURATION` (default `60s`) and `QS_DROP_DURATION` (default `10s`). `make quality` sets
-  them to `30m` and `60s`, for example `make quality QS_SPEECH_DURATION=5m`.
+  starts with `QS <scenario>` (`grep '^QS '`). In `make e2e` these tests check behaviour only
+  and never fail on a timing criterion. `make performance` (build tag `performance`) also checks
+  the timing criteria. Two variables set the lengths: `QS_SPEECH_DURATION` (default `60s`) and
+  `QS_DROP_DURATION` (default `10s`). `make performance` sets them to `30m` and `60s`, for example
+  `make performance QS_SPEECH_DURATION=5m`.
+- `tests/architecture/` checks the code against the arc42 model (`make arch`). It reads the model
+  with `arc42 get --format json` and the imports with `go list`. A fixture workspace with
+  deliberate violations proves that each rule fails when it should.
 - The manual headset test (`qs-manual-headset`) is a checklist:
   [`docs/testing/manual-headset-test.md`](docs/testing/manual-headset-test.md).
 - The harness uses the binaries in `$OFFICE_BIN_DIR` (the Makefile sets it). Without it, the

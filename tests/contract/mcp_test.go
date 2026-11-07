@@ -21,8 +21,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/mrsimpson/agentic-office/core/contracttest"
-	"github.com/mrsimpson/agentic-office/core/events"
+	"github.com/mrsimpson/agentic-office/server/session/api/events"
+	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
 // mcpServer is a running "office mcp" with a connected MCP client.
@@ -511,7 +511,7 @@ func TestMCPJournal(t *testing.T) {
 	v := s.ok("journal_append", map[string]any{"kind": "decision", "text": "We ship."})
 	e, _ := v["entry"].(map[string]any)
 	if v["duplicate"] != false || e["id"] != float64(1) || e["kind"] != "ENTRY_KIND_DECISION" ||
-		e["authorParticipantId"] != "bot" || e["authorKind"] != "PARTICIPANT_KIND_AGENT" || e["sessionId"] != nil {
+		e["authorParticipantId"] != "bot" || e["authorKind"] != "AUTHOR_KIND_AGENT" || e["sessionId"] != nil {
 		t.Fatalf("journal_append: %v", v)
 	}
 	ada.ok("journal", "append", "--kind", "task", "--session", "s1", "Ada writes the plan.")
