@@ -167,3 +167,27 @@ title: Off the record
 definition: A mark that the speaker puts on their own utterance after it was said; the interfaces then deliver it only as a placeholder without its text
 :::
 ```
+
+## Peer
+
+A participant as a keeper of the session.
+
+```arc42
+:::glossary-term
+id: term-peer
+title: Peer
+definition: A participant client that keeps a full copy of the session log and may publish it
+:::
+```
+
+## Tree head
+
+The fingerprint of a session log.
+
+```arc42
+:::glossary-term
+id: term-tree-head
+title: Tree head
+definition: The root hash and size of the Merkle tree over the events of a session, signed by the server
+:::
+```

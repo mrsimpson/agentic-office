@@ -81,7 +81,9 @@ hosts: bb-mcp, bb-cli, bb-client-core, bb-replicator
 ## Office server
 
 One server or container with the meeting session, the journal, the artifact tools and the stage.
-OPEN: persistence (database, Git-based storage or both).
+It keeps session logs only while a session runs; the peers store them and publish them to a Git
+repository at the end (`dec-peer-storage`, `dec-publish-session`). OPEN: where the journal and the
+artifacts are stored.
 
 ```arc42
 :::deployment-node

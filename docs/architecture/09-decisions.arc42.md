@@ -331,10 +331,8 @@ events after cursor N". The server is the only writer of a session log and gives
 ID that grows by one, so the order is free of conflicts and a gap is visible from the IDs alone.
 A participant polls this request when it finds a gap, or instead of a local file. No event needs
 the ID of its predecessor. **Consequences:** Agents without a file system can take part by
-polling. A suppressed utterance must keep its ID (`dec-off-the-record`). **Proposed, not yet
-accepted:** the log carries an epoch that changes when the server loses a log (for example after a
-restart without persistence), so that a participant knows its cursor is no longer valid.
-**Rejected:** a long-poll tool only for MCP; a predecessor ID in every event (not needed with a
+polling. A suppressed utterance must keep its ID (`dec-off-the-record`). If the server loses a
+log, a peer restores it, so cursors stay valid (`dec-restore-from-peers`). **Rejected:** a long-poll tool only for MCP; a predecessor ID in every event (not needed with a
 single writer).
 
 ```arc42
@@ -358,7 +356,9 @@ same ID, the stage hides it, and it does not go into minutes or the journal. Age
 read it must respect the mark. The raw log keeps the original. Marking the sentences of others
 (moderation) is out of scope for the first stage (issue #31). **Consequences:** The log stays
 complete and honest. Suppression works for every reader that uses the interfaces, but not for
-what an agent already holds in its context. **Rejected:** retraction; a hold period before
+what an agent already holds in its context. The published session keeps the original and the
+mark; reading it from the archive also gives the placeholder (`dec-publish-session`).
+**Rejected:** retraction; a hold period before
 publishing (it adds seconds of latency); a general classification command (not needed yet).
 
 ```arc42
@@ -375,7 +375,9 @@ addresses: risk-retraction-leak, qg-confidentiality
 
 **Context:** Capture and storage of speech need consent (GDPR, § 201 German Criminal Code).
 **Decision:** Joining with `--mic` is the consent to capture and to storage, also of the raw
-transcript. Only participants who join with the microphone are transcribed. The stage shows the
+transcript. Only participants who join with the microphone are transcribed. Joining a session at
+all is the consent that every other participant keeps a copy of the session and may publish it
+(`dec-peer-storage`, `dec-publish-session`). The stage shows the
 capture status to everyone. Censorship is possible only by marking a sentence off the record later
 (`dec-off-the-record`). **Consequences:** No extra step in the meeting. Raw audio still never
 leaves the device. OPEN: a data protection review before the first real use, and how long raw
@@ -388,5 +390,89 @@ title: Joining with the microphone is the consent to storage
 status: accepted
 date: 2026-11-07
 addresses: risk-consent, con-privacy-law, qg-confidentiality
+:::
+```
+
+## The session log is stored by the peers
+
+**Context:** The server keeps session logs only in memory, and every participant already holds a
+complete copy. Speech is personal data. **Decision:** The participants (peers) store the session
+log, each one a full copy. The server stays the only writer that orders the events and gives
+them their IDs (`dec-events-from-cursor`); it keeps a log only while the session runs. Storing
+is distributed, ordering is not. **Consequences:** No database for sessions on the server. The
+data stays with the people who took part. A session survives only through its peers and its
+publication. **Rejected:** fully peer-to-peer ordering without a server (it needs conflict-free
+data types or logical clocks and breaks gap-free cursors).
+
+```arc42
+:::decision
+id: dec-peer-storage
+title: Peers store the session log; the server only orders it
+status: accepted
+date: 2026-11-07
+addresses: qg-confidentiality, qg-resumability
+:::
+```
+
+## The session log is a Merkle tree signed by the server
+
+**Context:** Peers publish their copies and restore the server. A peer could change its copy.
+**Decision:** The events of a session are the leaves of a Merkle tree, as in Certificate
+Transparency. The server signs the tree head (root hash and size), at least in `session.ended`.
+Anyone can check a copy against a signed tree head, and a consistency proof shows that a longer
+log extends a shorter one and is not a fork. The leaf of an utterance that is off the record keeps
+its hash, so a copy with a placeholder still verifies. **Consequences:** Copies and publications
+cannot be forged without the server key. The server key needs protection. **Rejected:** a plain
+hash chain (it cannot prove that one log extends another without the whole log).
+
+```arc42
+:::decision
+id: dec-merkle-log
+title: Merkle tree with tree heads signed by the server
+status: accepted
+date: 2026-11-07
+addresses: risk-forged-copy, qg-confidentiality
+:::
+```
+
+## Every peer publishes the session to a Git repository
+
+**Context:** A session must outlive the meeting. Choosing one publisher is fragile: it may have
+left or be offline. **Decision:** At the end of a session, every peer with a copy publishes it.
+The target is addressed by the session ID, so all peers publish to the same place. A publication
+with a lower cursor than the stored one is rejected; an equal or longer one that is consistent
+with the stored one is accepted. The storage behind it is a Git repository. **Proposed, not yet
+accepted:** an archive building block on the server side receives the publications, checks the
+signed tree head and the consistency, and writes to Git. Only the archive holds the Git
+credentials, so peers and agents need no write access to the repository. OPEN: which repository,
+and whether the journal and the artifacts move to Git as well. **Consequences:** No election of a
+publisher. A late or repeated publication is harmless.
+
+```arc42
+:::decision
+id: dec-publish-session
+title: Every peer publishes the session; the longest consistent copy wins
+status: accepted
+date: 2026-11-07
+addresses: risk-publication-race, qg-resumability
+:::
+```
+
+## Peers restore a lost session log
+
+**Context:** The server keeps a session log only in memory. After a restart during a session, it
+has lost it. **Decision:** The next peer in the order of joining (the first `participant.joined`
+in its copy, then the next) restores the log to the server. The server accepts it only with a
+valid signed tree head and continues the IDs after it. **Consequences:** Cursors stay valid, so
+no epoch is needed. The server needs a restore command. **Rejected:** an epoch that only tells
+peers that the log is lost.
+
+```arc42
+:::decision
+id: dec-restore-from-peers
+title: The next peer in joining order restores a lost log
+status: accepted
+date: 2026-11-07
+addresses: qg-resumability
 :::
 ```

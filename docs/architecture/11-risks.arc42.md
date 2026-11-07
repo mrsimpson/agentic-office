@@ -85,3 +85,29 @@ severity: medium
 mitigation: Use Go with the stable connect-go for all parts (dec-languages); keep the protocol code in one module of the shared core; the protocol is plain HTTP with JSON, so we could replace the library if needed
 :::
 ```
+
+## A peer publishes a changed copy
+
+A peer could change its copy of a session before it publishes it or restores the server with it.
+
+```arc42
+:::risk
+id: risk-forged-copy
+title: Forged session copies
+severity: high
+mitigation: Merkle tree with tree heads signed by the server; the archive checks every publication (dec-merkle-log)
+:::
+```
+
+## Several peers publish at once
+
+All peers publish at the end of a session, with different cursors and at the same time.
+
+```arc42
+:::risk
+id: risk-publication-race
+title: Concurrent publications of one session
+severity: medium
+mitigation: The target is addressed by session ID; a lower cursor is rejected; a consistency proof decides (dec-publish-session)
+:::
+```

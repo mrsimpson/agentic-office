@@ -54,7 +54,14 @@ proposed it and it still needs confirmation.
 | Maintainer, review 8 | Interfaces across a boundary belong to the parent building block (black box) and are realized by a named child (resolves arc42 hint H004) | ch.3, ch.5, ch.8 concept-module-boundaries | high | — |
 | Maintainer, review 9 | Headset decision mitigates risk-speaker-mode; dec-text-first serves usability | ch.9 | high | — |
 | Maintainer, review 9 | An agent polls the events after a cursor when something is missing; the order must be conflict-free | ch.9 dec-events-from-cursor | high | — |
-| agent inference | One writer per session log gives gap-free IDs; no predecessor ID needed; epoch for lost logs | ch.8, ch.9 dec-events-from-cursor | medium | OPEN: confirm the epoch |
+| agent inference | One writer per session log gives gap-free IDs; no predecessor ID needed | ch.8, ch.9 dec-events-from-cursor | medium | — (epoch replaced by dec-restore-from-peers) |
 | Maintainer, review 9 | No retraction: what is said stays said; later marking as off the record | ch.6, ch.8, ch.9 dec-off-the-record | high | — |
 | Maintainer, review 9 | Joining with --mic is consent to storage, also of the raw form; censorship only by later classification that suppresses the message in the interfaces | ch.8, ch.9 dec-consent-by-mic | high | OPEN: retention period, data protection review |
 | Maintainer, review 10 | Everyone may mark only their own sentences off the record; own command, owner checked by the server; moderation out of scope (#31) | ch.6, ch.9 dec-off-the-record | high | — |
+| Maintainer, review 11 | Session log stored at every peer; the server stays the only orderer | ch.7, ch.8, ch.9 dec-peer-storage | high | — |
+| Maintainer, review 11 | Every peer publishes; target addressed by session ID; a lower cursor is rejected; storage is a Git repository | ch.9 dec-publish-session | high | OPEN: which repository; journal and artifacts too? |
+| agent inference | An archive building block on the server checks publications and holds the Git credentials | ch.9 dec-publish-session | medium | OPEN: confirm |
+| Maintainer, review 11 | Merkle tree; tree heads signed by the server | ch.9 dec-merkle-log | high | — |
+| Maintainer, review 11 | Publication keeps the original and the off-the-record mark; reading gives placeholders | ch.9 dec-off-the-record | high | — |
+| Maintainer, review 11 | Joining accepts that others keep and publish a copy | ch.9 dec-consent-by-mic | high | — |
+| Maintainer, review 11 | The next peer in joining order restores a lost log; no epoch | ch.9 dec-restore-from-peers | high | — |
