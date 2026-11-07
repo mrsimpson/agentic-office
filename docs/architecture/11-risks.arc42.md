@@ -1,16 +1,16 @@
 # Risks and Technical Debt
 
-## Retracted sentences stay with the agent
+## Classified sentences stay with the agent
 
-A retracted sentence is already in the local files and in the context of the agents. It cannot be
-removed from an agent's context.
+A sentence that is marked off the record afterwards is already in the local files and in the
+context of the agents that read it. It cannot be removed from an agent's context.
 
 ```arc42
 :::risk
 id: risk-retraction-leak
-title: Retracted sentences stay in files and in agent context
+title: Sentences marked off the record stay in agent context
 severity: high
-mitigation: Optional hold period before publishing; clean up local files when the session ends; agent contract to respect retracted events
+mitigation: The interfaces suppress classified text for every later reader (dec-off-the-record); the agent contract requires respecting the classification
 :::
 ```
 
@@ -23,7 +23,7 @@ Consent, retention and how to handle people without a client are not settled yet
 id: risk-consent
 title: Consent and retention not settled
 severity: high
-mitigation: Capture only participants with a client; show capture status on the stage; data protection review before first use
+mitigation: Joining with the microphone is the consent (dec-consent-by-mic); capture status on the stage; data protection review before first use
 :::
 ```
 
@@ -52,7 +52,7 @@ Agents that only use an API cannot follow a local file.
 id: risk-no-filesystem
 title: Agents without a shared file system
 severity: medium
-mitigation: Long-poll tool meeting.wait as a fallback
+mitigation: Events after a cursor, polled by the agent (dec-events-from-cursor)
 :::
 ```
 

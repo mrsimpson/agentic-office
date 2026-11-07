@@ -21,10 +21,14 @@ category: domain
 
 ## Event log with cursor
 
-Each session has an append-only log. Every event has an ID that only grows. The cursor is the last
-event ID a client has read, which is also the last line of the local file. Corrections and
-retractions are new events that point to the original (`utterance.retracted`,
-`utterance.corrected`). Existing entries never change.
+Each session has an append-only log with exactly one writer, the server. It gives every event an
+ID that grows by one inside the session. So the order is free of conflicts, and the IDs have no
+gaps: a participant that sees event 43 after 41 knows that 42 is missing and fetches the events
+after its cursor (`dec-events-from-cursor`). The cursor is the last event ID a client has read,
+which is also the last line of the local file. Utterances never change and are never removed.
+Corrections and classifications are new events that point to the original (`utterance.corrected`,
+`utterance.classified`). An utterance classified as off the record keeps its ID; the interfaces
+deliver a placeholder without its text, so no false gap appears (`dec-off-the-record`).
 
 **Resuming after a network drop:**
 
@@ -65,8 +69,8 @@ tools (CLI or MCP) that answer at once and check their input. Every action then 
 So agents can confirm their own actions, and several agents can coordinate without a protocol of
 their own.
 
-As a fallback for agents without a file system, there is a long-poll tool (`meeting.wait`)
-(OPEN: is it needed in the first stage?).
+An agent can also fetch the events after a cursor itself: when it finds a gap in its copy, or
+when it has no file system and polls instead of following a file (`dec-events-from-cursor`).
 
 ```arc42
 :::concept
@@ -94,9 +98,10 @@ category: privacy
 ## Transparency and consent
 
 People who are captured see every sentence with its status in their terminal. They can pause and
-retract. The stage shows everyone who is captured, paused or not captured. People without a client
-are not transcribed. Only the user who runs the client can read local log files. They are cleaned up after the session
-according to a retention rule (OPEN: define the rule, also for retracted sentences).
+mark a sentence off the record afterwards. The stage shows everyone who is captured, paused or not
+captured. People without a client are not transcribed. Joining with the microphone is the consent
+to capture and to storage, also of the raw transcript (`dec-consent-by-mic`). Only the user who
+runs the client can read local log files.
 
 ```arc42
 :::concept

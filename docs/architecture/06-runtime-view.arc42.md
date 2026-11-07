@@ -180,17 +180,20 @@ sequenceDiagram
     bb_stage->>bb_artifacts: load artifact
 ```
 
-## Human retracts a sentence
+## Human marks a sentence off the record
 
-The human presses `r` in the gateway terminal. The CLI sends `utterance.retract`. The log gets a
-new event `utterance.retracted` that points to the original utterance. Existing lines are never
-rewritten. Agents and the stage must respect the event.
+What is said stays said (`dec-off-the-record`). The human presses a key in the gateway terminal
+to mark a sentence off the record. The CLI sends `utterance.classify`. The log gets a new event
+that classifies the original utterance. Existing lines are never rewritten. From then on, the
+interfaces deliver the utterance only as a placeholder without its text, the stage hides it, and
+it does not go into minutes or the journal. Agents that already read it must respect the
+classification.
 
 ```arc42
 :::runtime-scenario
-id: rs-retract
-title: Human retracts a sentence
-trigger: Key r in the gateway terminal
+id: rs-off-the-record
+title: Human marks a sentence off the record
+trigger: A key in the gateway terminal
 involves: bb-cli, bb-session-service, bb-replicator, bb-stage, bb-participant-client, bb-office-server
 :::
 ```

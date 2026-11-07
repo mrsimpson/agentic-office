@@ -18,7 +18,7 @@ one difference: humans can also switch on a microphone. Their speech is then tra
 | Take minutes and raise a hand | An agent keeps the minutes, raises its hand on the stage and shows artifacts |
 | Show the stage | A web view of the server is shared by screen share in any meeting tool |
 | Create artifacts | Slides, plan checks and journal entries through CLI or MCP, without streaming |
-| Transparency | Every participant sees what was recorded and sent from them, and can pause or retract |
+| Transparency | Every participant sees what was recorded and sent from them, and can pause or mark it off the record |
 
 Explicitly **not** in the first stage: speech output (TTS), video, use with loudspeakers, meeting
 rooms with several speakers at one microphone, and integration into meeting tools.

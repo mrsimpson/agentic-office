@@ -155,3 +155,15 @@ title: Actor
 definition: A participant with its own key pair; every human device and every agent is one actor
 :::
 ```
+
+## Off the record
+
+A later classification of a sentence.
+
+```arc42
+:::glossary-term
+id: term-off-the-record
+title: Off the record
+definition: A classification of an utterance after it was said; the interfaces then deliver it only as a placeholder without its text
+:::
+```

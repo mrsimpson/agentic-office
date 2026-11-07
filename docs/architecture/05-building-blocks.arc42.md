@@ -80,7 +80,7 @@ flowchart LR
 
 ### Session commands
 
-Synchronous calls that answer at once: `join`, `leave`, `utterance.submit`, `utterance.retract`,
+Synchronous calls that answer at once: `join`, `leave`, `utterance.submit`, `utterance.classify`,
 `pause`, `hand.raise`, `minutes.update`, `stage.show`. Each successful call creates one event in the
 log. Each call carries an ID created by the client, so a repeated call has no extra effect.
 
@@ -100,6 +100,8 @@ path: server/session/api
 
 Delivers the event log of a session from a cursor onwards, then live. This is the basis for local
 replication and for the stage. After a drop, the subscriber reconnects with its last event ID.
+It also answers a one-time request for the events after a cursor. A participant uses it when it
+finds a gap in its copy, or to follow the session without a file system (`dec-events-from-cursor`).
 
 ```arc42
 :::interface
@@ -423,8 +425,8 @@ path: client/core
 
 The main access for humans and for agents with a shell. `office meeting join <session> [--mic]`
 starts the replication and prints the log path. With `--mic`, the terminal shows the user's own
-utterances with their status (partial → final → sent / retracted). Keys let the user pause and
-retract. Other commands cover artifacts, the stage and the journal.
+utterances with their status (partial → final → sent / off the record). Keys let the user pause and
+mark a sentence off the record. Other commands cover artifacts, the stage and the journal.
 
 ```arc42
 :::building-block

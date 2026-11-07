@@ -52,3 +52,8 @@ proposed it and it still needs confirmation.
 | Code, architecture test (#26, #27) | CLI and MCP server use the server interfaces directly, not only through the client core | ch.5 requires of bb-cli and bb-mcp | high | OPEN: should the adapters use only the client core? |
 | ch.5 if-session-commands, if-session-stream | H020 ignored: commands and stream are two contracts of one Connect service and share its package | ch.5 | high | — |
 | Maintainer, review 8 | Interfaces across a boundary belong to the parent building block (black box) and are realized by a named child (resolves arc42 hint H004) | ch.3, ch.5, ch.8 concept-module-boundaries | high | — |
+| Maintainer, review 9 | Headset decision mitigates risk-speaker-mode; dec-text-first serves usability | ch.9 | high | — |
+| Maintainer, review 9 | An agent polls the events after a cursor when something is missing; the order must be conflict-free | ch.9 dec-events-from-cursor | high | — |
+| agent inference | One writer per session log gives gap-free IDs; no predecessor ID needed; epoch for lost logs | ch.8, ch.9 dec-events-from-cursor | medium | OPEN: confirm the epoch |
+| Maintainer, review 9 | No retraction: what is said stays said; later marking as off the record | ch.6, ch.8, ch.9 dec-off-the-record | high | OPEN: who may classify |
+| Maintainer, review 9 | Joining with --mic is consent to storage, also of the raw form; censorship only by later classification that suppresses the message in the interfaces | ch.8, ch.9 dec-consent-by-mic | high | OPEN: retention period, data protection review |

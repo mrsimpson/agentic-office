@@ -51,7 +51,7 @@ id: dec-local-single-ear
 title: Local transcription per participant (single ear, headset)
 status: accepted
 date: 2026-11-06
-addresses: con-privacy-law, con-headset-only, qg-confidentiality
+addresses: con-privacy-law, con-headset-only, qg-confidentiality, risk-speaker-mode
 :::
 ```
 
@@ -74,7 +74,8 @@ addresses: con-any-meeting-tool, qg-usability
 ## Text first, speech output later
 
 **Decision:** At first, agents contribute only as text on the stage. **Consequences:** The humans
-keep control of the conversation. Speech output can be added later through the audio of the
+keep control of the conversation: an agent raises its hand visibly, and the moderator gives the
+floor. Speech output can be added later through the audio of the
 screen share, without changing the architecture. The person who shares will then need echo
 cancellation.
 
@@ -84,13 +85,14 @@ id: dec-text-first
 title: Text first, speech output later
 status: accepted
 date: 2026-11-06
+addresses: qg-usability
 :::
 ```
 
 ## Gateway as a CLI
 
 **Decision:** At first, the gateway is a CLI. It shows what was recorded and sent, and it lets the
-user pause and retract. **Consequences:** There is no separate user interface. The display is a
+user pause and mark a sentence off the record. **Consequences:** There is no separate user interface. The display is a
 filtered view of the local log.
 
 ```arc42
@@ -318,5 +320,72 @@ title: Performance tests separate from end-to-end tests
 status: accepted
 date: 2026-11-07
 addresses: qg-performance
+:::
+```
+
+## Events after a cursor
+
+**Context:** A participant may miss events (a gap in its copy), and some agents have no file
+system to follow. **Decision:** The session stream also answers a one-time request: "give me the
+events after cursor N". The server is the only writer of a session log and gives every event an
+ID that grows by one, so the order is free of conflicts and a gap is visible from the IDs alone.
+A participant polls this request when it finds a gap, or instead of a local file. No event needs
+the ID of its predecessor. **Consequences:** Agents without a file system can take part by
+polling. A suppressed utterance must keep its ID (`dec-off-the-record`). **Proposed, not yet
+accepted:** the log carries an epoch that changes when the server loses a log (for example after a
+restart without persistence), so that a participant knows its cursor is no longer valid.
+**Rejected:** a long-poll tool only for MCP; a predecessor ID in every event (not needed with a
+single writer).
+
+```arc42
+:::decision
+id: dec-events-from-cursor
+title: Events after a cursor, with gap-free IDs from one writer
+status: accepted
+date: 2026-11-07
+addresses: risk-no-filesystem, qg-resumability
+:::
+```
+
+## Off the record instead of retraction
+
+**Context:** A spoken sentence has been heard by everyone in the meeting, and agents have already
+read it. A retraction pretends that it was never said. **Decision:** What is said stays said.
+Utterances are never retracted or removed. A sentence can be classified afterwards, for example
+as off the record. The classification is a new event. The interfaces then suppress the text: they
+deliver a placeholder with the same ID, the stage hides it, and it does not go into minutes or the
+journal. Agents that already read it must respect the classification. The raw log keeps the
+original. OPEN: who may classify (the speaker only, or also the moderator), and which other
+classes exist. **Consequences:** The log stays complete and honest. Suppression works for every
+reader that uses the interfaces, but not for what an agent already holds in its context.
+**Rejected:** retraction; a hold period before publishing (it adds seconds of latency).
+
+```arc42
+:::decision
+id: dec-off-the-record
+title: Off the record by classification, no retraction
+status: accepted
+date: 2026-11-07
+addresses: risk-retraction-leak, qg-confidentiality
+:::
+```
+
+## Consent by joining with the microphone
+
+**Context:** Capture and storage of speech need consent (GDPR, § 201 German Criminal Code).
+**Decision:** Joining with `--mic` is the consent to capture and to storage, also of the raw
+transcript. Only participants who join with the microphone are transcribed. The stage shows the
+capture status to everyone. Censorship is possible only as a later classification
+(`dec-off-the-record`). **Consequences:** No extra step in the meeting. Raw audio still never
+leaves the device. OPEN: a data protection review before the first real use, and how long raw
+transcripts are kept.
+
+```arc42
+:::decision
+id: dec-consent-by-mic
+title: Joining with the microphone is the consent to storage
+status: accepted
+date: 2026-11-07
+addresses: risk-consent, con-privacy-law, qg-confidentiality
 :::
 ```

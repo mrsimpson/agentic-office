@@ -54,8 +54,8 @@ Guidance for agents working in this repository.
 - The architecture lives in `docs/architecture/` as arc42 chapters (`*.arc42.md`).
 - Use the arc42 CLI (`npx @doctc/arc42`). Before you write or change a chapter, run
   `arc42 guide chapter <n>` and `arc42 explain <type>`. Do not rely on remembered syntax.
-- Run `npx @doctc/arc42 --dir docs/architecture validate` before you commit. Fix all errors and
-  warnings. Explain any remaining hints.
+- Run `make arch` before you commit. It validates with `--strict`: fix all errors, warnings and
+  hints, or suppress a hint with an ignore directive and a reason that you record in the evidence.
 - Keep implementation details out of the architecture: no file paths, field types, library calls
   or lint rules. Describe responsibilities, contracts and qualities. Implementation details
   belong in the code and its README files.

@@ -24,7 +24,7 @@ build:
 # Architecture test: the code follows the building blocks and interfaces of docs/architecture/
 # (concept-module-boundaries). Needs Node.js for the arc42 CLI.
 arch:
-	npx -y @doctc/arc42@0.38.0 --dir docs/architecture validate
+	npx -y @doctc/arc42@0.38.0 --dir docs/architecture validate --strict
 	$(GO) test -count=1 ./tests/architecture/...
 
 # Contract tests: black-box tests per building block against real processes.
