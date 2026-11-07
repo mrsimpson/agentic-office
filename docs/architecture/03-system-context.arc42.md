@@ -1,7 +1,8 @@
 # System Scope and Context
 
 The system has two parts: the **office server** and the **participant client** (CLI, MCP server,
-log replicator and, optionally, the ears). Outside the system are the participants themselves
+log replicator and, optionally, the ears). The actors see both only as black boxes with their
+interfaces. Outside the system are the participants themselves
 (humans and agents) and the meeting tool. The meeting tool only carries the shared stage.
 
 ## Context diagram
@@ -11,30 +12,27 @@ log replicator and, optionally, the ears). Outside the system are the participan
 id: context-overview
 view: context
 notation: mermaid
-aliases: actor_human=actor-human, actor_agent=actor-agent, actor_meeting=actor-meeting-tool, bb_cli=bb-cli, bb_mcp=bb-mcp, bb_replicator=bb-replicator, bb_ears=bb-ears, bb_stage=bb-stage
+aliases: actor_agent=actor-agent, actor_human=actor-human, actor_meeting_tool=actor-meeting-tool, bb_office_server=bb-office-server, bb_participant_client=bb-participant-client
 :::
 ```
 
 ```mermaid
 flowchart LR
-    actor_human([Human])
     actor_agent([Agent])
-    actor_meeting([Meeting tool])
+    actor_human([Human participant])
+    actor_meeting_tool([Meeting tool])
     subgraph office [Agentic Office]
-        bb_cli[office CLI]
-        bb_mcp[MCP server]
-        bb_replicator[Log replicator]
-        bb_ears[Ears]
-        bb_stage[Stage]
+        bb_office_server[Office server]
+        bb_participant_client[Participant client]
     end
-    actor_human -->|if-cli| bb_cli
-    actor_human -->|if-audio-in| bb_ears
-    actor_human -->|if-local-log| bb_replicator
-    actor_human -->|if-stage-web| bb_stage
-    actor_agent -->|if-mcp| bb_mcp
-    actor_agent -->|if-cli| bb_cli
-    actor_agent -->|if-local-log| bb_replicator
-    actor_meeting -->|if-stage-web| bb_stage
+    actor_agent -->|if-mcp| bb_participant_client
+    actor_agent -->|if-cli| bb_participant_client
+    actor_agent -->|if-local-log| bb_participant_client
+    actor_human -->|if-cli| bb_participant_client
+    actor_human -->|if-audio-in| bb_participant_client
+    actor_human -->|if-local-log| bb_participant_client
+    actor_human -->|if-stage-web| bb_office_server
+    actor_meeting_tool -->|if-stage-web| bb_office_server
 ```
 
 ## Human participant

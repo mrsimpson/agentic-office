@@ -16,53 +16,20 @@ human or agent.
 id: bb-overview
 view: building-block
 notation: mermaid
-aliases: bb_artifact_service=bb-artifact-service, bb_cli=bb-cli, bb_client_core=bb-client-core, bb_ears=bb-ears, bb_identity=bb-identity, bb_journal=bb-journal, bb_mcp=bb-mcp, bb_office_server=bb-office-server, bb_participant_client=bb-participant-client, bb_replicator=bb-replicator, bb_session_service=bb-session-service, bb_stage=bb-stage
+roots: bb-office-server, bb-participant-client
+aliases: bb_office_server=bb-office-server, bb_participant_client=bb-participant-client
 :::
 ```
 
 ```mermaid
 flowchart LR
-    subgraph bb_participant_client [Participant client]
-        bb_cli[office CLI]
-        bb_client_core[Client core]
-        bb_ears[Ears]
-        bb_mcp[MCP server]
-        bb_replicator[Log replicator]
-    end
-    subgraph bb_office_server [Office server]
-        bb_artifact_service[Artifact tools]
-        bb_identity[Identity]
-        bb_journal[Journal]
-        bb_session_service[Meeting session]
-        bb_stage[Stage]
-    end
-    bb_artifact_service -->|if-token-check| bb_identity
-    bb_cli -->|if-client-core| bb_client_core
-    bb_cli -->|if-replication| bb_replicator
-    bb_cli -->|if-session-commands| bb_session_service
-    bb_cli -->|if-artifact-api| bb_artifact_service
-    bb_cli -->|if-journal-api| bb_journal
-    bb_cli -->|if-auth-api| bb_identity
-    bb_client_core -->|if-session-commands| bb_session_service
-    bb_client_core -->|if-auth-api| bb_identity
-    bb_client_core -->|if-journal-api| bb_journal
-    bb_client_core -->|if-artifact-api| bb_artifact_service
-    bb_client_core -->|if-local-log| bb_replicator
-    bb_ears -->|if-client-core| bb_client_core
-    bb_ears -->|if-session-commands| bb_session_service
-    bb_journal -->|if-token-check| bb_identity
-    bb_mcp -->|if-client-core| bb_client_core
-    bb_mcp -->|if-replication| bb_replicator
-    bb_mcp -->|if-session-commands| bb_session_service
-    bb_mcp -->|if-artifact-api| bb_artifact_service
-    bb_mcp -->|if-journal-api| bb_journal
-    bb_mcp -->|if-auth-api| bb_identity
-    bb_replicator -->|if-session-stream| bb_session_service
-    bb_session_service -->|if-journal-api| bb_journal
-    bb_session_service -->|if-token-check| bb_identity
-    bb_stage -->|if-session-stream| bb_session_service
-    bb_stage -->|if-artifact-api| bb_artifact_service
-    bb_stage -->|if-auth-api| bb_identity
+    bb_office_server[Office server]
+    bb_participant_client[Participant client]
+    bb_participant_client -->|if-session-commands| bb_office_server
+    bb_participant_client -->|if-artifact-api| bb_office_server
+    bb_participant_client -->|if-journal-api| bb_office_server
+    bb_participant_client -->|if-auth-api| bb_office_server
+    bb_participant_client -->|if-session-stream| bb_office_server
 ```
 
 ## Office server
@@ -77,6 +44,133 @@ title: Office server
 technology: Go (monorepo)
 implements: concept-event-log, concept-participant-model, concept-module-boundaries
 path: server
+:::
+```
+
+White box: the parts of the office server and how they use each other. An arrow to a part that
+realizes an interface of the office server points to that part.
+
+```arc42
+:::diagram
+id: bb-office-server-whitebox
+view: building-block
+notation: mermaid
+roots: bb-office-server
+aliases: bb_office_server=bb-office-server, bb_artifact_service=bb-artifact-service, bb_identity=bb-identity, bb_journal=bb-journal, bb_session_service=bb-session-service, bb_stage=bb-stage
+:::
+```
+
+```mermaid
+flowchart LR
+    subgraph bb_office_server [Office server]
+        bb_artifact_service[Artifact tools]
+        bb_identity[Identity]
+        bb_journal[Journal]
+        bb_session_service[Meeting session]
+        bb_stage[Stage]
+    end
+    bb_artifact_service -->|if-token-check| bb_identity
+    bb_journal -->|if-token-check| bb_identity
+    bb_session_service -->|if-journal-api| bb_journal
+    bb_session_service -->|if-token-check| bb_identity
+    bb_stage -->|if-session-stream| bb_session_service
+    bb_stage -->|if-artifact-api| bb_artifact_service
+    bb_stage -->|if-auth-api| bb_identity
+```
+
+### Session commands
+
+Synchronous calls that answer at once: `join`, `leave`, `utterance.submit`, `utterance.retract`,
+`pause`, `hand.raise`, `minutes.update`, `stage.show`. Each successful call creates one event in the
+log. Each call carries an ID created by the client, so a repeated call has no extra effect.
+
+```arc42
+:::ignore H020 Commands and stream are two contracts of one Connect service; they share its package :::
+:::interface
+id: if-session-commands
+title: Session commands
+provider: bb-office-server
+x-realized-by: bb-session-service
+protocol: Connect RPC, unary (dec-connect-rpc)
+path: server/session/api
+:::
+```
+
+### Session stream
+
+Delivers the event log of a session from a cursor onwards, then live. This is the basis for local
+replication and for the stage. After a drop, the subscriber reconnects with its last event ID.
+
+```arc42
+:::interface
+id: if-session-stream
+title: Session stream (replication from a cursor)
+provider: bb-office-server
+x-realized-by: bb-session-service
+protocol: Connect RPC, server streaming (dec-connect-rpc)
+path: server/session/api
+:::
+```
+
+### Auth API
+
+Challenge and response: the client asks for a challenge, signs it with its private key and gets a
+short-lived access token that is bound to its key. Also: create a read-only stage link.
+
+```arc42
+:::interface
+id: if-auth-api
+title: Auth API
+provider: bb-office-server
+x-realized-by: bb-identity
+protocol: Connect RPC, unary (dec-connect-rpc)
+path: server/identity/api
+:::
+```
+
+### Journal API
+
+Read journal entries and append new ones. OPEN: subscribe to the journal as a file, like the
+session log (`journal.listen`)?
+
+```arc42
+:::interface
+id: if-journal-api
+title: Journal API
+provider: bb-office-server
+x-realized-by: bb-journal
+protocol: Connect RPC, unary (dec-connect-rpc)
+path: server/journal/api
+:::
+```
+
+### Artifact API
+
+Create, render, check and fetch artifacts.
+
+```arc42
+:::interface
+id: if-artifact-api
+title: Artifact API
+provider: bb-office-server
+x-realized-by: bb-artifact-service
+protocol: Connect RPC, unary (dec-connect-rpc)
+path: server/artifacts/api
+:::
+```
+
+### Stage view
+
+A browser view of one session, opened by a link.
+
+```arc42
+:::interface
+id: if-stage-web
+title: Stage view
+provider: bb-office-server
+x-realized-by: bb-stage
+protocol: HTTPS (browser)
+path: server/stage
 :::
 ```
 
@@ -99,38 +193,6 @@ path: server/session
 :::
 ```
 
-#### Session commands
-
-Synchronous calls that answer at once: `join`, `leave`, `utterance.submit`, `utterance.retract`,
-`pause`, `hand.raise`, `minutes.update`, `stage.show`. Each successful call creates one event in the
-log. Each call carries an ID created by the client, so a repeated call has no extra effect.
-
-```arc42
-:::ignore H020 Commands and stream are two contracts of one Connect service; they share its package :::
-:::interface
-id: if-session-commands
-title: Session commands
-provider: bb-session-service
-protocol: Connect RPC, unary (dec-connect-rpc)
-path: server/session/api
-:::
-```
-
-#### Session stream
-
-Delivers the event log of a session from a cursor onwards, then live. This is the basis for local
-replication and for the stage. After a drop, the subscriber reconnects with its last event ID.
-
-```arc42
-:::interface
-id: if-session-stream
-title: Session stream (replication from a cursor)
-provider: bb-session-service
-protocol: Connect RPC, server streaming (dec-connect-rpc)
-path: server/session/api
-:::
-```
-
 ### Journal
 
 The memory of the team: decisions, tasks, minutes and notes. Each entry records its origin: who,
@@ -148,21 +210,6 @@ requires: if-token-check
 :::
 ```
 
-#### Journal API
-
-Read journal entries and append new ones. OPEN: subscribe to the journal as a file, like the
-session log (`journal.listen`)?
-
-```arc42
-:::interface
-id: if-journal-api
-title: Journal API
-provider: bb-journal
-protocol: Connect RPC, unary (dec-connect-rpc)
-path: server/journal/api
-:::
-```
-
 ### Artifact tools
 
 Stateless, deterministic tools without streaming. They render slides from a structured description
@@ -177,20 +224,6 @@ technology: Go
 parent: bb-office-server
 path: server/artifacts
 requires: if-token-check
-:::
-```
-
-#### Artifact API
-
-Create, render, check and fetch artifacts.
-
-```arc42
-:::interface
-id: if-artifact-api
-title: Artifact API
-provider: bb-artifact-service
-protocol: Connect RPC, unary (dec-connect-rpc)
-path: server/artifacts/api
 :::
 ```
 
@@ -212,20 +245,6 @@ path: server/stage
 :::
 ```
 
-#### Stage view
-
-A browser view of one session, opened by a link.
-
-```arc42
-:::interface
-id: if-stage-web
-title: Stage view
-provider: bb-stage
-protocol: HTTPS (browser)
-path: server/stage
-:::
-```
-
 ### Identity
 
 Knows all participants and their public keys. Each participant, human or agent, is its own actor
@@ -242,21 +261,6 @@ technology: Go
 parent: bb-office-server
 implements: concept-identity
 path: server/identity
-:::
-```
-
-#### Auth API
-
-Challenge and response: the client asks for a challenge, signs it with its private key and gets a
-short-lived access token that is bound to its key. Also: create a read-only stage link.
-
-```arc42
-:::interface
-id: if-auth-api
-title: Auth API
-provider: bb-identity
-protocol: Connect RPC, unary (dec-connect-rpc)
-path: server/identity/api
 :::
 ```
 
@@ -286,6 +290,99 @@ title: Participant client
 technology: Go (one binary)
 implements: concept-participant-model, concept-read-file-write-tools, concept-module-boundaries
 path: client
+:::
+```
+
+White box: the parts of the participant client and how they use each other. An arrow to a part that
+realizes an interface of the participant client points to that part.
+
+```arc42
+:::diagram
+id: bb-participant-client-whitebox
+view: building-block
+notation: mermaid
+roots: bb-participant-client
+aliases: bb_participant_client=bb-participant-client, bb_cli=bb-cli, bb_client_core=bb-client-core, bb_ears=bb-ears, bb_mcp=bb-mcp, bb_replicator=bb-replicator
+:::
+```
+
+```mermaid
+flowchart LR
+    subgraph bb_participant_client [Participant client]
+        bb_cli[office CLI]
+        bb_client_core[Client core]
+        bb_ears[Ears]
+        bb_mcp[MCP server]
+        bb_replicator[Log replicator]
+    end
+    bb_cli -->|if-client-core| bb_client_core
+    bb_cli -->|if-replication| bb_replicator
+    bb_client_core -->|if-local-log| bb_replicator
+    bb_ears -->|if-client-core| bb_client_core
+    bb_mcp -->|if-client-core| bb_client_core
+    bb_mcp -->|if-replication| bb_replicator
+```
+
+### CLI
+
+Shell commands with machine-readable output (OPEN: `--json` convention).
+
+```arc42
+:::interface
+id: if-cli
+title: office CLI
+provider: bb-participant-client
+x-realized-by: bb-cli
+protocol: Shell / stdout
+path: client/cli
+:::
+```
+
+### MCP tools
+
+Tools such as `meeting.join`, `meeting.leave`, `hand.raise`, `minutes.update`, `stage.show`,
+`slides.render`, `plan.validate`, `journal.append`.
+
+```arc42
+:::interface
+id: if-mcp
+title: MCP tools
+provider: bb-participant-client
+x-realized-by: bb-mcp
+protocol: MCP (stdio)
+path: client/mcp
+:::
+```
+
+### Local session log
+
+An append-only JSONL file with one compact line per event. Every line carries the event type in
+dotted form (for example `"type":"utterance.final"`) and the event ID as a JSON number, so that
+`tail -f`, `grep` and `jq` work without conversion.
+
+```arc42
+:::interface
+id: if-local-log
+title: Local session log
+provider: bb-participant-client
+x-realized-by: bb-replicator
+protocol: JSONL file (append-only)
+path: client/replicator/locallog
+:::
+```
+
+### Audio input
+
+The participant's local audio device (headset).
+
+```arc42
+:::interface
+id: if-audio-in
+title: Audio input
+provider: bb-participant-client
+x-realized-by: bb-ears
+protocol: Local audio device
+path: client/ears
 :::
 ```
 
@@ -341,20 +438,6 @@ path: client/cli
 :::
 ```
 
-#### CLI
-
-Shell commands with machine-readable output (OPEN: `--json` convention).
-
-```arc42
-:::interface
-id: if-cli
-title: office CLI
-provider: bb-cli
-protocol: Shell / stdout
-path: client/cli
-:::
-```
-
 ### MCP server
 
 A local MCP server (stdio) with the same features as the CLI. `meeting.join` starts the
@@ -369,21 +452,6 @@ technology: Go / official MCP Go SDK
 parent: bb-participant-client
 requires: if-client-core, if-replication, if-session-commands, if-artifact-api, if-journal-api, if-auth-api
 implements: concept-read-file-write-tools
-path: client/mcp
-:::
-```
-
-#### MCP tools
-
-Tools such as `meeting.join`, `meeting.leave`, `hand.raise`, `minutes.update`, `stage.show`,
-`slides.render`, `plan.validate`, `journal.append`.
-
-```arc42
-:::interface
-id: if-mcp
-title: MCP tools
-provider: bb-mcp
-protocol: MCP (stdio)
 path: client/mcp
 :::
 ```
@@ -425,22 +493,6 @@ path: client/replicator
 :::
 ```
 
-#### Local session log
-
-An append-only JSONL file with one compact line per event. Every line carries the event type in
-dotted form (for example `"type":"utterance.final"`) and the event ID as a JSON number, so that
-`tail -f`, `grep` and `jq` work without conversion.
-
-```arc42
-:::interface
-id: if-local-log
-title: Local session log
-provider: bb-replicator
-protocol: JSONL file (append-only)
-path: client/replicator/locallog
-:::
-```
-
 ### Ears
 
 Only for humans with `--mic`. Pipeline: microphone → VAD → Whisper (local) → utterances to the
@@ -460,16 +512,3 @@ path: client/ears
 :::
 ```
 
-#### Audio input
-
-The participant's local audio device (headset).
-
-```arc42
-:::interface
-id: if-audio-in
-title: Audio input
-provider: bb-ears
-protocol: Local audio device
-path: client/ears
-:::
-```

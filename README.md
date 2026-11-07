@@ -73,7 +73,9 @@ The server speaks only TLS and needs an access token for every call. See
 
 The layout follows the building blocks of chapter 5 of the architecture. Every building block and
 every interface has exactly one path. An interface lies inside the path of its provider and owns
-its types. There is no shared package. `make arch` checks that every import between building
+its types. An interface that crosses the boundary of the server or the client belongs to that
+black box and is realized by one part (for example the meeting session realizes the session
+commands of the office server). There is no shared package. `make arch` checks that every import between building
 blocks goes through an interface that the importing block requires (concept-module-boundaries).
 
 ```
@@ -87,7 +89,7 @@ server/                   bb-office-server: wiring of the server (binary office-
     tokencheck/           if-token-check: who makes a call (in-process)
   journal/  journal/api/  bb-journal, if-journal-api
   artifacts/ artifacts/api/  bb-artifact-service, if-artifact-api
-  stage/                  bb-stage, if-stage-web
+  stage/                  bb-stage, realizes if-stage-web
 client/                   bb-participant-client: wiring of the client (binary office)
   core/                   bb-client-core, if-client-core: shared core of CLI, MCP server and ears;
                           command IDs (core/ids)

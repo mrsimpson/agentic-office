@@ -76,6 +76,10 @@ func TestRulesCatchViolations(t *testing.T) {
 		"model: building block bb-delta has no path",
 		// code without a building block
 		"owner: package stray belongs to no building block",
+		// a sibling uses the interface of its parent that another child realizes
+		"import: omega/two imports omega/one/api: bb-two uses if-omega without requiring it",
+		// x-realized-by names a block that is not a direct child of the provider
+		"model: interface if-bad: x-realized-by bb-alpha is not a direct child of the provider bb-omega",
 		// a required interface that is never imported
 		"requires: building block bb-beta requires if-alpha but does not import its path alpha/api",
 	}

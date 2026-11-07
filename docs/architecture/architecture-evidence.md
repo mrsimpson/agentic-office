@@ -51,3 +51,4 @@ proposed it and it still needs confirmation.
 | Code, architecture test (#26, #27) | The client core is its own building block; the replicator offers replication control; the token check is its own in-process interface with its own types | ch.5 bb-client-core, if-client-core, if-replication, if-token-check | high | — |
 | Code, architecture test (#26, #27) | CLI and MCP server use the server interfaces directly, not only through the client core | ch.5 requires of bb-cli and bb-mcp | high | OPEN: should the adapters use only the client core? |
 | ch.5 if-session-commands, if-session-stream | H020 ignored: commands and stream are two contracts of one Connect service and share its package | ch.5 | high | — |
+| Maintainer, review 8 | Interfaces across a boundary belong to the parent building block (black box) and are realized by a named child (resolves arc42 hint H004) | ch.3, ch.5, ch.8 concept-module-boundaries | high | — |

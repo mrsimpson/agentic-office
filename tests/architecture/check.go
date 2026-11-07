@@ -6,13 +6,17 @@
 //
 //   - Every building block has exactly one path. The path of a child lies under the path of its
 //     parent. Every interface has a path inside the path of its provider.
+//   - An interface that crosses the boundary of a parent building block belongs to that parent (its
+//     black box). The attribute x-realized-by names the direct child that realizes it. The path of
+//     the interface then lies inside the path of that child, and only that child may use the
+//     interface without requiring it.
 //   - Every Go package belongs to the deepest matching path. A package in the path of an interface
 //     belongs to that interface. Packages under tests/ are external actors. Any other package
 //     without an owner is an error.
 //   - An import P -> Q inside the module is allowed only if Q belongs to the same building block as
 //     P, or Q lies in the path of an interface that the building block of P provides or lists in
-//     requires, or the building block of P is the direct parent of the building block that owns Q
-//     (wiring of a white box), or P is an actor and Q an interface.
+//     requires or realizes, or the building block of P is the direct parent of the building block
+//     that owns Q (wiring of a white box), or P is an actor and Q an interface.
 //   - Interfaces that only external actors consume are not used for import checks.
 //   - Every interface a building block lists in requires must be imported by that building block.
 package architecture
@@ -42,6 +46,11 @@ type Element struct {
 	Parent   string   `json:"parent"`
 	Provider string   `json:"provider"`
 	Requires []string `json:"requires"`
+	// Extensions are the x-* attributes. x-realized-by names the child that realizes an
+	// interface of a parent building block.
+	Extensions map[string]any `json:"extensions"`
+	// RealizedBy is x-realized-by.
+	RealizedBy string `json:"-"`
 }
 
 // Model is the part of the arc42 model that the check needs.
@@ -71,6 +80,9 @@ func LoadModel(dir string) (*Model, error) {
 	m := &Model{Blocks: map[string]*Element{}, Interfaces: map[string]*Element{}, RequiredBy: map[string][]string{}}
 	for _, e := range doc.Elements {
 		e.Path = strings.Trim(filepath.ToSlash(e.Path), "/")
+		if v, ok := e.Extensions["realized-by"].(string); ok {
+			e.RealizedBy = strings.TrimSpace(v)
+		}
 		switch e.Kind {
 		case "building-block":
 			m.Blocks[e.ID] = e
@@ -160,7 +172,7 @@ func (v Violation) String() string { return v.Rule + ": " + v.Msg }
 // owner is who a package belongs to.
 type owner struct {
 	actor  bool
-	block  string   // the building block, also for a package of an interface (its provider)
+	block  string   // the building block; for a package of an interface its realizer or provider
 	ifaces []string // set if the package lies in the path of interfaces; several may share a path
 }
 
@@ -202,6 +214,20 @@ func Check(root string, m *Model, pkgs []Package) []Violation {
 			add("model", "interface %s: path %s is not inside the path %s of its provider %s",
 				i.ID, i.Path, prov.Path, prov.ID)
 		}
+		if i.RealizedBy == "" {
+			continue
+		}
+		real := m.Blocks[i.RealizedBy]
+		switch {
+		case real == nil:
+			add("model", "interface %s: x-realized-by %s is not a building block", i.ID, i.RealizedBy)
+		case real.Parent != i.Provider:
+			add("model", "interface %s: x-realized-by %s is not a direct child of the provider %s",
+				i.ID, i.RealizedBy, i.Provider)
+		case real.Path != "" && i.Path != "" && !under(i.Path, real.Path):
+			add("model", "interface %s: path %s is not inside the path %s of %s, which realizes it",
+				i.ID, i.Path, real.Path, real.ID)
+		}
 	}
 
 	// Ownership: the deepest matching path wins; an interface wins over a building block with the
@@ -231,7 +257,14 @@ func Check(root string, m *Model, pkgs []Package) []Violation {
 		}
 		switch {
 		case ifaceLen >= 0 && ifaceLen >= blockLen:
-			return owner{block: m.Interfaces[ifaces[0]].Provider, ifaces: ifaces}, true
+			// The code of an interface belongs to the child that realizes it, if there is one:
+			// that child answers for its dependencies.
+			i := m.Interfaces[ifaces[0]]
+			b := i.Provider
+			if i.RealizedBy != "" && m.Blocks[i.RealizedBy] != nil {
+				b = i.RealizedBy
+			}
+			return owner{block: b, ifaces: ifaces}, true
 		case blockLen >= 0:
 			return owner{block: block}, true
 		default:
@@ -303,7 +336,17 @@ func checkImport(m *Model, op, oq owner) string {
 	}
 	if len(oq.ifaces) > 0 {
 		if oq.block == op.block {
-			return "" // the provider uses its own interface
+			return "" // the provider or realizer uses its own interface
+		}
+		for _, i := range oq.ifaces {
+			if m.Interfaces[i].Provider == op.block {
+				return "" // the parent uses the interface of its black box (wiring)
+			}
+		}
+		for _, i := range oq.ifaces {
+			if m.Interfaces[i].RealizedBy == op.block {
+				return "" // the child that realizes an interface of its parent
+			}
 		}
 		for _, r := range m.Blocks[op.block].Requires {
 			for _, i := range oq.ifaces {

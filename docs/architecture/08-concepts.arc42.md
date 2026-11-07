@@ -186,8 +186,15 @@ The building block view (chapter 5) is the map of the code, and a test enforces 
 - **`requires` is the permission.** A building block may only use the interfaces it provides or
   lists in `requires`. Every listed interface must be used. So a new dependency shows up in the
   model before it can exist in the code.
+- **Black box and white box.** An interface that crosses the boundary of a parent building block
+  belongs to that parent: it is part of its black box. One direct child realizes it, and the
+  model names that child. Only the realizing child may use such an interface without requiring
+  it. Interfaces that stay inside a parent belong to the child that provides them. So level 1 of
+  the building block view shows the contracts across the boundary, and level 2 shows how the
+  parts work together.
 - **The white box knows its parts.** A parent building block may wire its direct children. A
-  child never uses its parent, and siblings know each other only through interfaces.
+  child never uses the inside of its parent, and siblings know each other only through
+  interfaces.
 - **Tests are external actors.** They may use interfaces only and never reach into a building
   block.
 - **Interfaces for actors only** (CLI, MCP, stage view, audio input) also have a path: the place
