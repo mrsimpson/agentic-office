@@ -46,6 +46,9 @@ Guidance for agents working in this repository.
   have, do not wait: mock the external API or service, open an issue with the label `mocked`
   that says what is mocked and what the real thing needs, and continue.
 - Install tools only in user space, never with root.
+- We are before go-live: no backward compatibility. Do not keep old names, files, flags, formats,
+  forwarding packages or migration notes. When you change something, change every user of it and
+  remove the old form.
 - Do not change accepted architecture decisions on your own. If the code shows that the
   architecture is wrong or incomplete, open an issue with the label `architecture`.
 
