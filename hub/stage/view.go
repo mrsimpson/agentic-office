@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"slices"
 	"strings"
+	"time"
 
 	"connectrpc.com/connect/v2"
 
@@ -14,7 +15,7 @@ import (
 
 // Regions of the page. Each region is an element with this ID. The event stream sends a region
 // again only when its HTML changed.
-var regions = []string{"status", "participants", "hands", "artifact", "minutes", "utterances"}
+var regions = []string{"status", "origin", "participants", "hands", "artifact", "minutes", "utterances"}
 
 // recentUtterances is how many utterances the stage shows.
 const recentUtterances = 8
@@ -29,21 +30,32 @@ type view struct {
 	utterances   []*utteranceView // in log order
 	byEvent      map[uint32]*utteranceView
 	ended        bool
-	live         bool   // the stream delivered its first events or is caught up
-	stopped      string // why the live view stopped, if it did
+	imported     *importView // set when the log starts with session.imported
+	live         bool        // the stream delivered its first events or is caught up
+	stopped      string      // why the live view stopped, if it did
+}
+
+// importView says where an imported session comes from (dec-session-import).
+type importView struct {
+	Source, Title string
+	By            string // the participant who imported the conversation
+	Complete      bool
 }
 
 type participantView struct {
 	ID, Name string
 	Agent    bool
+	imported bool
 	captured bool
 	paused   bool
 	left     bool
 }
 
-// Status is one of "captured", "paused", "not-captured" and "left".
+// Status is one of "imported", "captured", "paused", "not-captured" and "left".
 func (p *participantView) Status() string {
 	switch {
+	case p.imported:
+		return "imported"
 	case p.left:
 		return "left"
 	case p.paused:
@@ -73,6 +85,7 @@ type utteranceView struct {
 	EventID      uint32
 	Speaker      *participantView
 	Text         string
+	OriginalTime time.Time // when an imported utterance was said; zero for live ones
 	Corrected    bool
 	offTheRecord bool
 }
@@ -107,6 +120,7 @@ func (v *view) apply(ctx context.Context, ev *sessionv1.Event, decks Slides) {
 			pt.Name = j.GetDisplayName()
 		}
 		pt.Agent = j.GetKind() == sessionv1.ParticipantKind_PARTICIPANT_KIND_AGENT
+		pt.imported = j.GetImported()
 		pt.captured, pt.paused, pt.left = j.GetCaptured(), false, false
 	case *sessionv1.Event_ParticipantLeft:
 		v.participant(p.ParticipantLeft.GetParticipantId()).left = true
@@ -118,6 +132,9 @@ func (v *view) apply(ctx context.Context, ev *sessionv1.Event, decks Slides) {
 	case *sessionv1.Event_UtteranceFinal:
 		u := &utteranceView{EventID: ev.GetId(), Speaker: v.participant(p.UtteranceFinal.GetParticipantId()),
 			Text: p.UtteranceFinal.GetText(), offTheRecord: p.UtteranceFinal.GetOffTheRecord()}
+		if t := p.UtteranceFinal.GetOriginalTime(); t != nil {
+			u.OriginalTime = t.AsTime().UTC()
+		}
 		v.utterances = append(v.utterances, u)
 		v.byEvent[ev.GetId()] = u
 		// A raised hand is lowered when its participant speaks: they had the floor.
@@ -138,6 +155,13 @@ func (v *view) apply(ctx context.Context, ev *sessionv1.Event, decks Slides) {
 		v.minutes = p.MinutesUpdated.GetText()
 	case *sessionv1.Event_ArtifactShown:
 		v.artifact = loadArtifact(ctx, p.ArtifactShown.GetArtifactId(), decks)
+	case *sessionv1.Event_SessionImported:
+		v.imported = &importView{Source: p.SessionImported.GetSource(), Title: p.SessionImported.GetTitle(),
+			By: ev.GetActorParticipantId()}
+	case *sessionv1.Event_ImportCompleted:
+		if v.imported != nil {
+			v.imported.Complete = true
+		}
 	case *sessionv1.Event_SessionEnded:
 		v.ended = true
 		v.hands = nil
@@ -175,13 +199,16 @@ func loadArtifact(ctx context.Context, id string, decks Slides) artifactView {
 	return av
 }
 
-// Status is the state of the session: "connecting", "live", "ended" or "stopped".
+// Status is the state of the session: "connecting", "live", "imported", "ended" or "stopped". An
+// imported session is never shown as live: the hub did not see its conversation happen.
 func (v *view) Status() string {
 	switch {
 	case v.ended:
 		return "ended"
 	case v.stopped != "":
 		return "stopped"
+	case v.live && v.imported != nil:
+		return "imported"
 	case v.live:
 		return "live"
 	}
@@ -196,10 +223,13 @@ func (v *view) StatusText() string {
 		return v.stopped
 	case "live":
 		return "Live"
+	case "imported":
+		return "Imported"
 	}
 	return "Connecting …"
 }
 
+func (v *view) Imported() *importView            { return v.imported }
 func (v *view) Participants() []*participantView { return v.participants }
 func (v *view) Hands() []handView                { return v.hands }
 func (v *view) Artifact() artifactView           { return v.artifact }
@@ -240,6 +270,9 @@ func (v *view) renderAll() map[string]template.HTML {
 var templates = template.Must(template.New("stage").Parse(`
 {{define "status"}}<span data-status="{{.Status}}">{{.StatusText}}</span>{{end}}
 
+{{define "origin"}}{{with .Imported}}<p class="imported" data-imported="{{if .Complete}}complete{{else}}importing{{end}}">Imported from <span class="source">{{.Source}}</span>{{if .Title}}: <span class="title">{{.Title}}</span>{{end}}, by {{.By}}.{{if not .Complete}} The import is not complete yet.{{end}}
+The office did not see this conversation happen. The hub's signature proves who imported it, not who said what.</p>{{end}}{{end}}
+
 {{define "name"}}<span class="name">{{.Name}}</span>{{if .Agent}} <span class="badge agent" data-kind="agent">agent</span>{{end}}{{end}}
 
 {{define "participants"}}<h2>Participants</h2>
@@ -261,6 +294,6 @@ var templates = template.Must(template.New("stage").Parse(`
 
 {{define "utterances"}}<h2>Recent contributions</h2>
 {{if .Utterances}}<ol class="utterances">
-{{range .Utterances}}<li data-utterance="{{.EventID}}" data-participant="{{.Speaker.ID}}">{{template "name" .Speaker}}: <span class="text">{{.Text}}</span>{{if .Corrected}} <span class="corrected">(corrected)</span>{{end}}</li>
+{{range .Utterances}}<li data-utterance="{{.EventID}}" data-participant="{{.Speaker.ID}}">{{template "name" .Speaker}}: {{if not .OriginalTime.IsZero}}<time datetime="{{.OriginalTime.Format "2006-01-02T15:04:05Z07:00"}}">{{.OriginalTime.Format "2006-01-02 15:04"}} UTC</time> {{end}}<span class="text">{{.Text}}</span>{{if .Corrected}} <span class="corrected">(corrected)</span>{{end}}</li>
 {{end}}</ol>{{else}}<p class="empty">Nothing said yet.</p>{{end}}{{end}}
 `))

@@ -19,12 +19,18 @@
 //     logic of its own.
 //   - The page is rendered on the server with an empty view. A small inline script opens the
 //     event stream. Every event of the stream is named after a region of the page (status,
-//     participants, hands, artifact, minutes, utterances) and carries the inner HTML of that
+//     origin, participants, hands, artifact, minutes, utterances) and carries the inner HTML of that
 //     region, rendered on the server. The script only replaces the region. The first message
 //     sends every region; later messages send only regions that changed, so a shown artifact is
 //     not reloaded when someone speaks. A reconnect starts from the beginning of the log.
+//   - Imported sessions (dec-session-import, risk-imported-conversation): when the log starts with
+//     session.imported, the origin region names the source, the title and the participant who
+//     imported it, says that the office did not see the conversation happen, and says while the
+//     import is not complete. The status says "Imported" instead of "Live". A live session has an
+//     empty origin region.
 //   - Participants: every participant with its name, "agent" for agents, and a capture status:
-//     captured (joined with transcription), paused, not captured, or left.
+//     imported (a speaker of an imported conversation), captured (joined with transcription),
+//     paused, not captured, or left.
 //   - Raised hands: a hand stays raised until its participant speaks (the next utterance.final
 //     of that participant), raises it again (the new topic replaces the old one), or leaves. All
 //     hands go down when the session ends. There is no hand.lowered event; the rule is open in
@@ -34,7 +40,8 @@
 //     and embeds the HTML document in a sandboxed iframe (srcdoc, no scripts). An unknown deck, an
 //     ID of another type or another media type gives a note instead.
 //   - Minutes: the text of the last minutes.updated. Utterances: the last eight that are not
-//     off the record, with corrections applied. A off the record utterance disappears.
+//     off the record, with corrections applied. An imported utterance shows its original time
+//     (UTC). A off the record utterance disappears.
 //   - After session.ended the status shows that the session has ended, and the stream sends "end"
 //     and closes. When the link expires, an open stream shows that and also sends "end".
 //   - No external assets, no frontend build. A Content-Security-Policy allows only the inline

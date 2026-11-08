@@ -503,6 +503,10 @@ comment in `hub/stage/doc.go` has the details. In short:
 - The page shows the shown artifact, the recent contributions, all participants with their
   capture status (captured, paused, not captured, left; agents are marked "agent"), the raised
   hands and the running minutes. Off the record contributions disappear. Large text, white on black.
+- An [imported session](#import-a-conversation) is marked: a line under the header names the
+  source, the title and who imported it, and says that the office did not see the conversation
+  happen. The status says "Imported" instead of "Live". Imported speakers are marked "imported",
+  and imported contributions show their original time in UTC.
 - It is rendered on the hub and updated live through server-sent events
   (`/stage/<session>/events?token=…`). There is no frontend build and nothing is loaded from
   outside. A shown artifact is embedded in a sandboxed iframe.

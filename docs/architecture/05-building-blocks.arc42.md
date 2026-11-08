@@ -460,8 +460,9 @@ path: hub/archive/storage
 ### Stage
 
 One web page per session, shown in the meeting by screen share. It shows the running minutes,
-raised hands, the shown artifact (a slide deck), and who is captured or paused. It is only a view of the session log and
-has no logic of its own.
+raised hands, the shown artifact (a slide deck), and who is captured or paused. It marks an
+imported session with its source and the participant who imported it, and never shows it as
+live. It is only a view of the session log and has no logic of its own.
 
 ```arc42
 :::building-block

@@ -5,10 +5,12 @@ package contract
 // session import, the session commands and stream, the records and the archive on disk.
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	"connectrpc.com/connect/v2"
+	"golang.org/x/net/html"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/mrsimpson/agentic-office/client/core/ids"
@@ -356,4 +358,65 @@ func TestImportSurvivesRestart(t *testing.T) {
 	if evs[0].GetType() != events.SessionImported || evs[5].GetImportCompleted().GetUtterances() != 2 {
 		t.Fatalf("restored import: %v", evs)
 	}
+}
+
+// TestStageShowsImportedSession (risk-imported-conversation, #52): the stage of an imported session
+// says where the conversation comes from and who imported it, and never calls it live. Imported
+// speakers are marked "imported", and imported contributions show their original time. Before the
+// import is complete, the stage says so.
+func TestStageShowsImportedSession(t *testing.T) {
+	srv := contracttest.StartHub(t, nil)
+	im := newImporter(t, srv, "ada")
+	said := time.Date(2026, 11, 2, 9, 30, 0, 0, time.UTC)
+	im.ok(&sessionimportv1.ImportConversationRequest{
+		Conversation: &sessionimportv1.Conversation{Source: "Chat export, #planning", Title: "Release planning"},
+		Participants: []*sessionimportv1.ImportedParticipant{{Key: "kim", DisplayName: "Kim", Kind: pHuman}},
+		Utterances:   []*sessionimportv1.ImportedUtterance{{Speaker: "kim", Text: "We release on Monday.", Modality: mText, Time: timestamppb.New(said)}},
+	})
+	st := openStage(t, srv, stageLink(t, im.a, im.sid))
+
+	importing := func(n *html.Node) bool { return len(findAll(n, withAttr("data-imported", "importing"))) == 1 }
+	o := st.wait("origin", "an import that is not complete", importing)
+	for _, want := range []string{"Chat export, #planning", "Release planning", "ada", "not complete", "not who said what"} {
+		if !strings.Contains(text(o), want) {
+			t.Errorf("origin %q does not contain %q", text(o), want)
+		}
+	}
+	st.wait("status", "imported status", hasStatus("imported"))
+	p := st.wait("participants", "Kim", func(n *html.Node) bool { return participantEl(n, "imported:kim") != nil })
+	if el := participantEl(p, "imported:kim"); attrOf(el, "data-capture") != "imported" || !strings.Contains(text(el), "imported") {
+		t.Errorf("imported participant: %s", text(el))
+	}
+	u := st.wait("utterances", "the imported contribution", func(n *html.Node) bool { return len(findAll(n, byTag("time"))) == 1 })
+	if tm := findAll(u, byTag("time"))[0]; attrOf(tm, "datetime") != "2026-11-02T09:30:00Z" || text(tm) != "2026-11-02 09:30 UTC" {
+		t.Errorf("original time: %q %q", attrOf(tm, "datetime"), text(tm))
+	}
+
+	im.ok(&sessionimportv1.ImportConversationRequest{Complete: true})
+	o = st.wait("origin", "a complete import", func(n *html.Node) bool { return len(findAll(n, withAttr("data-imported", "complete"))) == 1 })
+	if strings.Contains(text(o), "not complete") {
+		t.Errorf("origin of a complete import: %q", text(o))
+	}
+	// A participant who joins live is not marked imported; their contributions have no original time.
+	if _, err := im.a.Session.Join(ctx10(t), &sessionv1.JoinRequest{SessionId: im.sid, CommandId: ids.NewCommandID(), Kind: pAgent}); err != nil {
+		t.Fatal(err)
+	}
+	p = st.wait("participants", "ada joined", func(n *html.Node) bool { return participantEl(n, "ada") != nil })
+	if attrOf(participantEl(p, "ada"), "data-capture") != "not-captured" {
+		t.Errorf("live participant: %s", text(participantEl(p, "ada")))
+	}
+	st.wait("status", "imported status after the import", hasStatus("imported"))
+
+	// A live session has no origin line.
+	m := newStageMeetingOn(t, srv)
+	live := openStage(t, srv, m.link)
+	live.wait("status", "live status", hasStatus("live"))
+	if o := live.wait("origin", "the origin region", func(*html.Node) bool { return true }); text(o) != "" {
+		t.Errorf("origin of a live session: %q", text(o))
+	}
+}
+
+func attrOf(n *html.Node, key string) string {
+	v, _ := attr(n, key)
+	return v
 }

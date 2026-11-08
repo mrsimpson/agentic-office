@@ -355,7 +355,7 @@ func TestStagePageNeedsStageLink(t *testing.T) {
 		u.EscapedPath() != "/stage/"+url.PathEscape(m.sid)+"/events" {
 		t.Errorf("data-events %q does not point to the event stream of the session", events)
 	}
-	for _, id := range []string{"status", "participants", "hands", "artifact", "minutes", "utterances"} {
+	for _, id := range []string{"status", "origin", "participants", "hands", "artifact", "minutes", "utterances"} {
 		if len(findAll(doc, withAttr("id", id))) != 1 {
 			t.Errorf("page has no region #%s", id)
 		}

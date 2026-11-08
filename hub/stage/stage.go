@@ -137,7 +137,7 @@ const script = `(function () {
   var main = document.getElementById("stage");
   var status = document.getElementById("status");
   var es = new EventSource(main.getAttribute("data-events"));
-  ["status", "participants", "hands", "artifact", "minutes", "utterances"].forEach(function (name) {
+  ["status", "origin", "participants", "hands", "artifact", "minutes", "utterances"].forEach(function (name) {
     es.addEventListener(name, function (e) { document.getElementById(name).innerHTML = e.data; });
   });
   es.addEventListener("end", function () { es.close(); });
@@ -160,6 +160,7 @@ header { display: flex; justify-content: space-between; align-items: baseline; g
 header h1 { margin: 0; font-size: 1.4rem; }
 #status span { font-weight: 700; }
 #status [data-status="live"] { color: #6f6; }
+#status [data-status="imported"] { color: #6cf; }
 #status [data-status="ended"], #status [data-status="stopped"] { color: #ffd400; }
 main.stage { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 1rem; padding: 1rem; }
 section { margin-bottom: 1rem; }
@@ -173,6 +174,7 @@ li { padding: 0.25rem 0; border-bottom: 1px solid #444; }
 .capture.captured { background: #d40000; color: #fff; }
 .capture.paused { background: #ffd400; color: #000; }
 .capture.not-captured { border: 2px solid #fff; color: #fff; }
+.capture.imported { border: 2px solid #6cf; color: #6cf; }
 .capture.left { border: 2px dashed #999; color: #ccc; }
 .name { font-weight: 700; }
 .hands li { font-size: 1.15rem; color: #ffd400; }
@@ -180,6 +182,9 @@ li { padding: 0.25rem 0; border-bottom: 1px solid #444; }
 #artifact { margin-bottom: 1rem; }
 .minutes-text { white-space: pre-wrap; max-height: 40vh; overflow: auto; }
 .utterances li { font-size: 1.05rem; }
+#origin .imported { margin: 0; padding: 0.5rem 1rem; border-bottom: 3px solid #6cf; color: #6cf; white-space: pre-line; }
+.source, .title { font-weight: 700; }
+.utterances time { color: #ccc; font-size: 0.8rem; }
 .corrected { color: #ccc; font-size: 0.8rem; }
 body.error main { padding: 2rem; }
 body.error h1 { color: #ffd400; }
@@ -192,6 +197,7 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!DOCTYPE html>
 <title>{{.Session}} · Agentic office stage</title><style>` + css + `</style></head>
 <body>
 <header><h1>Session <span id="session">{{.Session}}</span></h1><div id="status">{{.Regions.status}}</div></header>
+<div id="origin">{{.Regions.origin}}</div>
 <noscript><p class="note">This page needs JavaScript for live updates.</p></noscript>
 <main id="stage" class="stage" data-events="{{.Events}}">
 <div class="left">

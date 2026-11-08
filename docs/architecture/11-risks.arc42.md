@@ -125,6 +125,6 @@ trusts it more than it deserves.
 id: risk-imported-conversation
 title: An imported conversation is taken for a live session
 severity: medium
-mitigation: An imported session is marked by its first event, with its source and the participant who imported it; imported speakers have marked IDs; the signature over an imported log only proves who imported it and that it has not changed (dec-session-import)
+mitigation: An imported session is marked by its first event, with its source and the participant who imported it; imported speakers have marked IDs; the signature over an imported log only proves who imported it and that it has not changed (dec-session-import); the stage names the source of an imported session and never shows it as live
 :::
 ```
