@@ -15,3 +15,6 @@ tests
 .github
 Dockerfile
 .dockerignore
+# User documentation and scripts for trying the office locally.
+USER_GUIDE.md
+scripts
