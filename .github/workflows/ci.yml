@@ -1,5 +1,8 @@
-# Build and tests on every push and pull request. The performance tests do not run here: they
-# need the reference host (see README.md and dec-performance-tests).
+# Build and tests on every push to main and every pull request. A job runs only when files that
+# matter to it changed; the job "changes" decides this. Skipped jobs count as passed for required
+# checks, so the checks stay the same on every pull request. A manual run (workflow_dispatch) runs
+# every job. The performance tests do not run here: they need the reference host (see README.md
+# and dec-performance-tests).
 name: CI
 
 on:
@@ -16,10 +19,48 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: Architecture, contracts and contract tests
+  changes:
+    name: Changed areas
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      images: ${{ steps.filter.outputs.images }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            # Everything the Go build, the contracts and the tests read.
+            code:
+              - '**/*.go'
+              - '**/*.proto'
+              - 'go.mod'
+              - 'go.sum'
+              - 'buf.yaml'
+              - 'buf.gen.yaml'
+              - 'Makefile'
+              - 'tests/**'
+              - '.github/workflows/ci.yml'
+            # Everything that goes into the container images.
+            images:
+              - 'Dockerfile'
+              - '.dockerignore'
+              - 'hub/**'
+              - 'client/**'
+              - 'go.mod'
+              - 'go.sum'
+              - 'Makefile'
+              - '.github/workflows/ci.yml'
+
+  # Always runs: any new file can be outside the architecture model, and the check is quick.
+  arch:
+    name: Architecture
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -28,12 +69,31 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+      - name: whisper.cpp sources (go.mod points to its Go bindings)
+        run: make third_party/whisper.cpp
+      - name: Architecture model and architecture test
+        run: make arch
+
+  test:
+    name: Contracts and contract tests
+    needs: changes
+    if: needs.changes.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: whisper.cpp version
+        id: ref
+        run: echo "whisper=$(sed -n 's/^WHISPER_REF ?= //p' Makefile)" >> "$GITHUB_OUTPUT"
       - name: whisper.cpp from cache
         id: whisper
         uses: actions/cache@v6
         with:
           path: third_party/whisper.cpp
-          key: whisper-${{ runner.os }}-${{ hashFiles('Makefile') }}
+          key: whisper-${{ runner.os }}-${{ steps.ref.outputs.whisper }}
       - name: Build whisper.cpp
         if: steps.whisper.outputs.cache-hit != 'true'
         run: make whisper
@@ -45,11 +105,13 @@ jobs:
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Generated code matches the contracts
         run: make check-generated
-      - name: Architecture, vet and contract tests
-        run: make test
+      - name: Vet and contract tests
+        run: make contract
 
   e2e:
     name: End-to-end tests
+    needs: changes
+    if: needs.changes.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -57,12 +119,15 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      - name: whisper.cpp version
+        id: ref
+        run: echo "whisper=$(sed -n 's/^WHISPER_REF ?= //p' Makefile)" >> "$GITHUB_OUTPUT"
       - name: whisper.cpp from cache
         id: whisper
         uses: actions/cache@v6
         with:
           path: third_party/whisper.cpp
-          key: whisper-${{ runner.os }}-${{ hashFiles('Makefile') }}
+          key: whisper-${{ runner.os }}-${{ steps.ref.outputs.whisper }}
       - name: Build whisper.cpp
         if: steps.whisper.outputs.cache-hit != 'true'
         run: make whisper
@@ -80,6 +145,8 @@ jobs:
 
   images:
     name: Container images build
+    needs: changes
+    if: needs.changes.outputs.images == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
