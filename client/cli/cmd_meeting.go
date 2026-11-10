@@ -37,8 +37,14 @@ type EarsOptions struct {
 
 // CheckEars is called before join --mic or --wav. It checks the options (models, WAV file,
 // recorder), so that a join does not mark the participant as captured when the ears cannot
-// start. Nil means no check.
-var CheckEars func(opts *EarsOptions) error
+// start. It downloads a missing default model and reports each step to progress. Nil means no
+// check.
+var CheckEars func(ctx context.Context, opts *EarsOptions, progress func(string)) error
+
+// DownloadModels is the hook for "office models download": it downloads the default models of
+// the ears that are missing and reports each step to progress. Nil means the ears are not built
+// in.
+var DownloadModels func(ctx context.Context, progress func(string)) error
 
 // StartEars is the hook for the ears (client/ears). It runs until ctx ends or the audio is over.
 // It submits final utterances with c.SubmitUtterance under a command ID it creates, and reports
@@ -73,7 +79,7 @@ func cmdJoin(e *env, fs *flag.FlagSet) func([]string) error {
 		}
 		eo.Mic, eo.WAV = *mic, *wav
 		if ears && CheckEars != nil {
-			if err := CheckEars(&eo); err != nil {
+			if err := CheckEars(e.ctx, &eo, e.progress); err != nil {
 				return err
 			}
 		}
@@ -218,5 +224,19 @@ func cmdView(e *env, fs *flag.FlagSet) func([]string) error {
 		}
 		gw := &gatewayView{e: e, c: c, sid: sid, pid: pid, log: p.Log}
 		return gw.run(e.ctx)
+	}
+}
+
+// cmdModelsDownload downloads the models of the ears ahead of time, for example before the first
+// meeting or while building an image. join --mic and --wav also do it when a model is missing.
+func cmdModelsDownload(e *env, fs *flag.FlagSet) func([]string) error {
+	return func(args []string) error {
+		if len(args) != 0 {
+			return usagef("usage: office models download")
+		}
+		if DownloadModels == nil {
+			return errEarsNotImplemented
+		}
+		return DownloadModels(e.ctx, e.progress)
 	}
 }

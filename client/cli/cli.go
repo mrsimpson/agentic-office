@@ -33,7 +33,9 @@ Keys and identity:
 
 Meeting:
   meeting join <session> [--name N] [--foreground] [--mic | --wav FILE]
-                                     join, start the log replicator, print the log path
+                                     join, start the log replicator, print the log path; with
+                                     --mic or --wav, missing default models are downloaded once
+  models download                    download the Whisper and VAD models ahead of time (about 490 MB)
   meeting log                        print the path of the local log
   meeting view                       gateway view: own utterances; keys p pause, o off the record, q quit
   meeting events [--after N] [--limit N]  events after a cursor, read from the server (for gaps or without a file system)
@@ -115,6 +117,7 @@ func init() {
 		"admin key register":       cmdAdminRegister,
 		"admin key revoke":         cmdAdminRevoke,
 		"meeting join":             cmdJoin,
+		"models download":          cmdModelsDownload,
 		"meeting log":              cmdLogPath,
 		"meeting events":           cmdEvents,
 		"meeting view":             cmdView,
@@ -314,6 +317,16 @@ func (e *env) printResult(res *sessionv1.CommandResult) error {
 
 // client dials the server with the configuration of e.
 func (e *env) client() (*core.Client, error) { return core.Dial(e.cfg) }
+
+// progress prints a line of progress to stderr; with --json, as {"progress": text}.
+func (e *env) progress(text string) {
+	if e.json {
+		b, _ := json.Marshal(map[string]string{"progress": text})
+		fmt.Fprintln(e.stderr, string(b))
+		return
+	}
+	fmt.Fprintln(e.stderr, text)
+}
 
 // sessionID returns --session or the only session this participant joined on this machine.
 func (e *env) sessionID(c *core.Client) (string, error) {

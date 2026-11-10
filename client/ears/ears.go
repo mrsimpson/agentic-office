@@ -70,18 +70,22 @@ func ModelDir() string {
 }
 
 // Prepare fills empty fields and checks that the models, the WAV file or a recorder are there.
-// It reads the WAV file.
-func (c *Config) Prepare() error {
-	str := func(v *string, env, def string) {
+// It reads the WAV file. A default model that is missing is downloaded once (see
+// DownloadModels); progress receives a line per step and may be nil. A model that the user chose
+// with a flag or a variable is never downloaded.
+func (c *Config) Prepare(ctx context.Context, progress func(string)) error {
+	str := func(v *string, env, def string) bool {
 		if *v == "" {
 			*v = os.Getenv(env)
 		}
 		if *v == "" {
 			*v = def
+			return true
 		}
+		return false
 	}
-	str(&c.Model, "OFFICE_WHISPER_MODEL", filepath.Join(ModelDir(), defaultModelFile))
-	str(&c.VADModel, "OFFICE_VAD_MODEL", filepath.Join(ModelDir(), defaultVADFile))
+	defModel := str(&c.Model, "OFFICE_WHISPER_MODEL", filepath.Join(ModelDir(), defaultModelFile))
+	defVAD := str(&c.VADModel, "OFFICE_VAD_MODEL", filepath.Join(ModelDir(), defaultVADFile))
 	str(&c.Language, "OFFICE_WHISPER_LANGUAGE", DefaultLanguage)
 	if c.Threads <= 0 {
 		if v := os.Getenv("OFFICE_WHISPER_THREADS"); v != "" {
@@ -116,12 +120,22 @@ func (c *Config) Prepare() error {
 			c.VADThreshold = DefaultVADThreshold
 		}
 	}
-	for _, m := range []struct{ what, path, env string }{
-		{"Whisper model", c.Model, "OFFICE_WHISPER_MODEL or --model"},
-		{"VAD model", c.VADModel, "OFFICE_VAD_MODEL or --vad-model"},
+	for _, m := range []struct {
+		what, path, env string
+		def             bool
+		model           model
+	}{
+		{"Whisper model", c.Model, "OFFICE_WHISPER_MODEL or --model", defModel, models[0]},
+		{"VAD model", c.VADModel, "OFFICE_VAD_MODEL or --vad-model", defVAD, models[1]},
 	} {
-		if _, err := os.Stat(m.path); err != nil {
-			return fmt.Errorf("%s %s not found; download it (see README.md) or set %s", m.what, m.path, m.env)
+		if _, err := os.Stat(m.path); err == nil {
+			continue
+		}
+		if !m.def {
+			return fmt.Errorf("%s %s not found; set %s to an existing file, or unset it to use the default model", m.what, m.path, m.env)
+		}
+		if err := ensureModel(ctx, m.model, m.path, progress); err != nil {
+			return err
 		}
 	}
 	switch {
@@ -224,7 +238,7 @@ type utterance struct {
 // file it waits until every utterance is sent. Call Prepare first.
 func (e *Ears) Run(ctx context.Context) error {
 	if e.samples == nil && e.recorder == nil {
-		if err := e.Prepare(); err != nil {
+		if err := e.Prepare(ctx, nil); err != nil {
 			return err
 		}
 	}
