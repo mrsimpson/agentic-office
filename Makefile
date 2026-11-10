@@ -13,7 +13,7 @@ export LIBRARY_PATH := $(WHISPER_BUILD)/src:$(WHISPER_BUILD)/ggml/src
 # Models of the ears: a multilingual Whisper model and the Silero VAD model.
 MODEL_DIR ?= $(or $(XDG_DATA_HOME),$(HOME)/.local/share)/agentic-office/models
 
-.PHONY: all build arch test e2e performance lint generate whisper models clean
+.PHONY: all build arch test e2e performance lint generate check-generated whisper models clean
 all: build
 
 build:
@@ -57,8 +57,18 @@ generate:
 	buf lint
 	buf generate
 
+# Fails when the committed generated code differs from what the contracts produce.
+check-generated: generate
+	git diff --exit-code -- '*.pb.go' '*.connect.go'
+	test -z "$$(git status --porcelain -- '*.pb.go' '*.connect.go')"
+
+# The whisper.cpp commit we build and test with. Change it on purpose, never by a fresh clone.
+WHISPER_REF ?= 727d3e7666485e12450746b523bfb4e7f057cc5e
+
 third_party/whisper.cpp:
-	git clone --depth 1 https://github.com/ggml-org/whisper.cpp.git $@
+	git init -q $@
+	git -C $@ fetch -q --depth 1 https://github.com/ggml-org/whisper.cpp.git $(WHISPER_REF)
+	git -C $@ checkout -q FETCH_HEAD
 
 whisper: third_party/whisper.cpp
 	cmake -S $(WHISPER_DIR) -B $(WHISPER_BUILD) -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF

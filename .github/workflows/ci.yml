@@ -1,0 +1,79 @@
+# Build and tests on every push and pull request. The performance tests do not run here: they
+# need the reference host (see README.md and dec-performance-tests).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Architecture, contracts and contract tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: whisper.cpp from cache
+        id: whisper
+        uses: actions/cache@v4
+        with:
+          path: third_party/whisper.cpp
+          key: whisper-${{ runner.os }}-${{ hashFiles('Makefile') }}
+      - name: Build whisper.cpp
+        if: steps.whisper.outputs.cache-hit != 'true'
+        run: make whisper
+      - name: Install the Protobuf tools
+        run: |
+          go install github.com/bufbuild/buf/cmd/buf@v1.57.0
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12
+          go install connectrpc.com/connect/v2/cmd/protoc-gen-connect-go@v2.0.2
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Generated code matches the contracts
+        run: make check-generated
+      - name: Architecture, vet and contract tests
+        run: make test
+
+  e2e:
+    name: End-to-end tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: whisper.cpp from cache
+        id: whisper
+        uses: actions/cache@v4
+        with:
+          path: third_party/whisper.cpp
+          key: whisper-${{ runner.os }}-${{ hashFiles('Makefile') }}
+      - name: Build whisper.cpp
+        if: steps.whisper.outputs.cache-hit != 'true'
+        run: make whisper
+      - name: Models from cache
+        id: models
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/agentic-office/models
+          key: models-ggml-small-silero-v6.2.0
+      - name: Download the models
+        if: steps.models.outputs.cache-hit != 'true'
+        run: make models
+      - name: End-to-end tests
+        run: make e2e

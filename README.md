@@ -59,6 +59,11 @@ without make, export them as in the Makefile.
 | `make performance` | Runs the quality scenarios with their timing criteria and their full lengths (build tags `e2e,performance`; 30 minutes of speech, a 60 s network drop; about 35 minutes) and lists their numbers. Meant for the reference host |
 | `make lint` | Checks the Protobuf contracts with `buf lint` |
 | `make generate` | Regenerates the Go code of the contracts next to their `.proto` files |
+| `make check-generated` | Fails when the committed generated code differs from what the contracts produce |
+
+The CI (`.github/workflows/ci.yml`) runs `make check-generated`, `make test` and `make e2e` on every
+push to `main` and on every pull request. It builds the pinned whisper.cpp commit (`WHISPER_REF` in
+the Makefile) and caches it and the models. The performance tests do not run in the CI.
 
 Run the hub by hand:
 
