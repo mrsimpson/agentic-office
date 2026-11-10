@@ -45,7 +45,7 @@ default. To use other files, set `OFFICE_WHISPER_MODEL` and `OFFICE_VAD_MODEL`. 
 multilingual model, not a `.en` model: those only know English. On the reference host (CPU only),
 `small` needs about 0.7 s per sentence with 16 threads; larger models are too slow for live use.
 
-The Makefile sets `C_INCLUDE_PATH` and `LIBRARY_PATH` for cgo. To run `go build` or `go test`
+The Makefile sets `CGO_CFLAGS` and `CGO_LDFLAGS` for cgo. To run `go build` or `go test`
 without make, export them as in the Makefile.
 
 ## Build and test

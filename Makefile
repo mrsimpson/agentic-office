@@ -7,10 +7,12 @@ LDFLAGS := -X github.com/mrsimpson/agentic-office/client/cli.Version=$(VERSION)
 # whisper.cpp for the ears (cgo). The office binary links it statically.
 WHISPER_DIR := $(abspath third_party/whisper.cpp)
 WHISPER_BUILD := $(WHISPER_DIR)/build_go
-export C_INCLUDE_PATH := $(WHISPER_DIR)/include:$(WHISPER_DIR)/ggml/include
+# The paths go to cgo only. As C_INCLUDE_PATH, CMake would take ggml/include for a built-in path of
+# the compiler and drop it from the Objective-C files of the Metal backend on macOS.
 # On macOS, the Go bindings also link the Metal and BLAS backends, which CMake builds in their own
 # directories. On Linux these directories do not exist; that does no harm.
-export LIBRARY_PATH := $(WHISPER_BUILD)/src:$(WHISPER_BUILD)/ggml/src:$(WHISPER_BUILD)/ggml/src/ggml-metal:$(WHISPER_BUILD)/ggml/src/ggml-blas
+export CGO_CFLAGS := -O2 -g -I$(WHISPER_DIR)/include -I$(WHISPER_DIR)/ggml/include
+export CGO_LDFLAGS := -O2 -g -L$(WHISPER_BUILD)/src -L$(WHISPER_BUILD)/ggml/src -L$(WHISPER_BUILD)/ggml/src/ggml-metal -L$(WHISPER_BUILD)/ggml/src/ggml-blas
 
 # Models of the ears: a multilingual Whisper model and the Silero VAD model.
 MODEL_DIR ?= $(or $(XDG_DATA_HOME),$(HOME)/.local/share)/agentic-office/models
