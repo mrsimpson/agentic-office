@@ -8,7 +8,9 @@ LDFLAGS := -X github.com/mrsimpson/agentic-office/client/cli.Version=$(VERSION)
 WHISPER_DIR := $(abspath third_party/whisper.cpp)
 WHISPER_BUILD := $(WHISPER_DIR)/build_go
 export C_INCLUDE_PATH := $(WHISPER_DIR)/include:$(WHISPER_DIR)/ggml/include
-export LIBRARY_PATH := $(WHISPER_BUILD)/src:$(WHISPER_BUILD)/ggml/src
+# On macOS, the Go bindings also link the Metal and BLAS backends, which CMake builds in their own
+# directories. On Linux these directories do not exist; that does no harm.
+export LIBRARY_PATH := $(WHISPER_BUILD)/src:$(WHISPER_BUILD)/ggml/src:$(WHISPER_BUILD)/ggml/src/ggml-metal:$(WHISPER_BUILD)/ggml/src/ggml-blas
 
 # Models of the ears: a multilingual Whisper model and the Silero VAD model.
 MODEL_DIR ?= $(or $(XDG_DATA_HOME),$(HOME)/.local/share)/agentic-office/models
@@ -73,7 +75,21 @@ third_party/whisper.cpp:
 	git -C $@ fetch -q --depth 1 https://github.com/ggml-org/whisper.cpp.git $(WHISPER_REF)
 	git -C $@ checkout -q FETCH_HEAD
 
+# Builds the static libraries. A checkout at another commit than WHISPER_REF (for example from an
+# older clone) is moved to WHISPER_REF and built from scratch. A symbolic link to your own clone
+# is left as it is, with a warning.
 whisper: third_party/whisper.cpp
+	@head=$$(git -C $(WHISPER_DIR) rev-parse HEAD 2>/dev/null); \
+	if [ "$$head" != "$(WHISPER_REF)" ]; then \
+	  if [ -L third_party/whisper.cpp ]; then \
+	    echo "warning: third_party/whisper.cpp is a link to a clone at $$head, not at $(WHISPER_REF)"; \
+	  else \
+	    echo "whisper.cpp is at $$head; moving it to $(WHISPER_REF) and building from scratch"; \
+	    git -C $(WHISPER_DIR) fetch -q --depth 1 https://github.com/ggml-org/whisper.cpp.git $(WHISPER_REF) && \
+	    git -C $(WHISPER_DIR) checkout -q --force FETCH_HEAD && \
+	    rm -rf $(WHISPER_BUILD); \
+	  fi; \
+	fi
 	cmake -S $(WHISPER_DIR) -B $(WHISPER_BUILD) -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF
 	cmake --build $(WHISPER_BUILD) -j --target whisper
 
