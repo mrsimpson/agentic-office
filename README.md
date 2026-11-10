@@ -56,7 +56,8 @@ without make, export them as in the Makefile.
 | `make arch` | Validates the architecture with the arc42 CLI and runs the architecture test (`tests/architecture/`); needs Node.js |
 | `make test` | Runs `make arch` and `make contract` |
 | `make contract` | Runs `go vet` and the contract tests (`tests/contract/`) |
-| `make e2e` | Runs the end-to-end tests with real processes (`tests/e2e/`, build tag `e2e`). They check behaviour only and never fail on timing. The ears tests need the models and are skipped without them |
+| `make e2e` | Quick run of the end-to-end tests with real processes (`tests/e2e/`, build tag `e2e`). It skips the tests that wait in real time on purpose (`go test -short`) and takes less than a minute. `make e2e RUN=TestEarsPause` runs the named tests, slow ones included |
+| `make e2e-all` | Runs every end-to-end test (about 4 minutes); the CI uses it. End-to-end tests check behaviour only and never fail on timing. The ears tests need the models and are skipped without them |
 | `make performance` | Runs the quality scenarios with their timing criteria and their full lengths (build tags `e2e,performance`; 30 minutes of speech, a 60 s network drop; about 35 minutes) and lists their numbers. Meant for the reference host |
 | `make lint` | Checks the Protobuf contracts with `buf lint` |
 | `make generate` | Regenerates the Go code of the contracts next to their `.proto` files |
@@ -69,7 +70,7 @@ runs only when files that matter to it changed:
 |---|---|
 | Architecture (`make arch`) | always |
 | Contracts and contract tests (`make check-generated`, `make contract`) | Go code, Protobuf contracts, `go.mod`, `buf*.yaml`, `Makefile`, `tests/`, the CI workflow |
-| End-to-end tests (`make e2e`) | the same as the contract tests |
+| End-to-end tests (`make e2e-all`) | the same as the contract tests |
 | Container images build | `Dockerfile`, `.dockerignore`, `hub/`, `client/`, `go.mod`, `go.sum`, `Makefile`, the CI workflow |
 
 A skipped job counts as passed. A manual run of the workflow runs every job. The CI builds the
@@ -1060,8 +1061,8 @@ through its interfaces:
   capture status on the stage, each ≤ 1 s). `TestQualityResumeAfterDrop/qs-resume-after-drop`
   cuts Ada's network while she speaks and the bot writes: 0 lost and 0 duplicate events, and
   Ada's local log is complete ≤ 2 s after the network is back. Each scenario prints a line that
-  starts with `QS <scenario>` (`grep '^QS '`). In `make e2e` these tests check behaviour only
-  and never fail on a timing criterion. `make performance` (build tag `performance`) also checks
+  starts with `QS <scenario>` (`grep '^QS '`). In `make e2e-all` these tests check behaviour only
+  and never fail on a timing criterion; `make e2e` skips them. `make performance` (build tag `performance`) also checks
   the timing criteria. Two variables set the lengths: `QS_SPEECH_DURATION` (default `60s`) and
   `QS_DROP_DURATION` (default `10s`). `make performance` sets them to `30m` and `60s`, for example
   `make performance QS_SPEECH_DURATION=5m`.

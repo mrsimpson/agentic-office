@@ -29,7 +29,9 @@ Guidance for agents working in this repository.
 - **No unit tests.** Test each building block as a black box through its interfaces (contract
   tests). Use only the provided interfaces; do not reach into the inside of a block. End-to-end
   tests combine real blocks. See `dec-contract-tests`.
-- End-to-end tests (`make e2e`) check behaviour only and never fail on timing. Timing criteria
+- End-to-end tests check behaviour only and never fail on timing. `make e2e` is the quick run;
+  it skips tests that wait in real time on purpose. Mark such a test with `slow(t)`.
+  `make e2e-all` runs every end-to-end test; the CI uses it. Timing criteria
   belong in the performance tests (build tag `performance`, `make performance`), which run on
   the reference host. See `dec-performance-tests`.
 
@@ -38,8 +40,9 @@ Guidance for agents working in this repository.
 - All work is tracked in GitHub issues in `mrsimpson/agentic-office`. One issue per work package.
   The first stage is tracked in one epic issue with sub-issues.
 - Work on one issue at a time, in the order of the epic. Work on a branch (`issue-<n>-<topic>`)
-  and open a pull request with `Closes #<n>` in its description. Run the build and all tests
-  before you push. Enable auto-merge on the pull request: it merges when the required CI checks
+  and open a pull request with `Closes #<n>` in its description. Run `make test` and `make e2e`
+  before you push, and `make e2e-all` when you change the ears, the session log, the archive or
+  the restore. Enable auto-merge on the pull request: it merges when the required CI checks
   (`.github/workflows/ci.yml`) pass. Never push to `main` directly.
 - Only the maintainer creates release tags (`v<major>.<minor>.<patch>` on `main`). A tag publishes
   the container images (`.github/workflows/release.yml`).

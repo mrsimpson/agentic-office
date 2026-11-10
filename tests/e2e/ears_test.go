@@ -516,6 +516,7 @@ func TestEarsGermanWAV(t *testing.T) {
 // send them in order with the same command IDs: no lost and no duplicate utterances. Ada's own
 // local log has them within 2 s after the network is back.
 func TestEarsNetworkDrop(t *testing.T) {
+	slow(t)
 	models := earsModels(t)
 	m := newMeeting(t)
 	proxy := contracttest.StartProxy(t, m.srv.URL)
@@ -602,6 +603,7 @@ func TestEarsNetworkDrop(t *testing.T) {
 // resumes before the third. The second sentence is never transcribed; the log has
 // participant.paused and participant.resumed, and no utterance of Ada between them.
 func TestEarsPause(t *testing.T) {
+	slow(t)
 	models := earsModels(t)
 	m := newMeeting(t)
 	ada := append(m.user("ada", "human", m.srv.URL), models...)

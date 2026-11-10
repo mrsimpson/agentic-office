@@ -1,7 +1,7 @@
 //go:build e2e
 
 // Package e2e holds end-to-end tests with real processes across several building blocks.
-// Run them with "make e2e".
+// Run the quick ones with "make e2e" and all of them with "make e2e-all".
 package e2e
 
 import (
