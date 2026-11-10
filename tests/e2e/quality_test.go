@@ -263,6 +263,7 @@ func (s *stageEvents) waitCapture(t *testing.T, participant, status string, from
 // its local log, and the stage of the session is open. The subtests evaluate the run:
 // qs-no-raw-audio, qs-transcript-to-log, qs-speech-to-log and qs-sender-sees-status.
 func TestQualitySpeech(t *testing.T) {
+	slow(t)
 	models := earsModels(t)
 	speech := qsDuration(t, "QS_SPEECH_DURATION", 60*time.Second)
 	m := newMeeting(t)
@@ -438,6 +439,7 @@ func (e *ears) viewSnapshot() []map[string]any {
 // QS_DROP_DURATION while she keeps speaking and the bot keeps writing. After the network is back,
 // Ada's local log is complete again and her queued utterances are in the session log in order.
 func TestQualityResumeAfterDrop(t *testing.T) {
+	slow(t)
 	models := earsModels(t)
 	drop := qsDuration(t, "QS_DROP_DURATION", 10*time.Second)
 	m := newMeeting(t)

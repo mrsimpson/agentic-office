@@ -13,7 +13,7 @@ export LIBRARY_PATH := $(WHISPER_BUILD)/src:$(WHISPER_BUILD)/ggml/src
 # Models of the ears: a multilingual Whisper model and the Silero VAD model.
 MODEL_DIR ?= $(or $(XDG_DATA_HOME),$(HOME)/.local/share)/agentic-office/models
 
-.PHONY: all build arch test contract e2e performance lint generate check-generated whisper models clean
+.PHONY: all build arch test contract e2e e2e-all e2e-vet performance lint generate check-generated whisper models clean
 all: build
 
 build:
@@ -35,11 +35,20 @@ contract: build
 	$(GO) vet ./...
 	OFFICE_BIN_DIR=$(BIN) $(GO) test -count=1 ./tests/contract/...
 
-# End-to-end tests: real processes across several building blocks.
-e2e: build
+# End-to-end tests: real processes across several building blocks. make e2e is the quick run for
+# local work: it skips the tests that wait in real time on purpose (go test -short). make e2e-all
+# runs every end-to-end test; the CI uses it. RUN selects tests by name, slow ones included, for
+# example make e2e RUN=TestEarsPause.
+E2E_FLAGS = -tags e2e -count=1 -v
+e2e: build e2e-vet
+	OFFICE_BIN_DIR=$(BIN) $(GO) test $(E2E_FLAGS) $(if $(RUN),-run '$(RUN)',-short) ./tests/e2e/...
+
+e2e-all: build e2e-vet
+	OFFICE_BIN_DIR=$(BIN) $(GO) test $(E2E_FLAGS) $(if $(RUN),-run '$(RUN)') ./tests/e2e/...
+
+e2e-vet:
 	$(GO) vet -tags e2e ./tests/e2e/...
 	$(GO) vet -tags e2e,performance ./tests/e2e/...
-	OFFICE_BIN_DIR=$(BIN) $(GO) test -tags e2e -count=1 -v ./tests/e2e/...
 
 # Performance tests: the quality scenarios with their timing criteria and their full lengths (30
 # minutes of speech, a network drop of 60 s). Build tags e2e and performance. Run them on the

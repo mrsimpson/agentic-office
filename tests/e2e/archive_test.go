@@ -101,6 +101,7 @@ func commitSpans(t *testing.T, logFile string) []commitSpan {
 // write has the whole session with a tree head that verifies. The latency target is asserted
 // only with the build tag performance.
 func TestQualityArchiveNoBackpressure(t *testing.T) {
+	slow(t)
 	gitDir, commitLog := slowGit(t, slowCommit)
 	duration := qsDuration(t, "QS_ARCHIVE_DURATION", 12*time.Second)
 	srv := contracttest.StartHub(t, []string{"PATH=" + gitDir + string(os.PathListSeparator) + os.Getenv("PATH")},
@@ -245,6 +246,7 @@ func waitCommitRunning(t *testing.T, logFile string, session bool) commitSpan {
 // still happen between the rounds, and the last write has the whole session. The latency is
 // asserted only with the build tag performance.
 func TestArchiveRecordsBeforeSessionWrites(t *testing.T) {
+	slow(t)
 	gitDir, commitLog := slowGit(t, recordCommit)
 	srv := contracttest.StartHub(t, []string{"PATH=" + gitDir + string(os.PathListSeparator) + os.Getenv("PATH")},
 		"-archive-interval", "100ms")
