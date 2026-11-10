@@ -13,7 +13,7 @@ export LIBRARY_PATH := $(WHISPER_BUILD)/src:$(WHISPER_BUILD)/ggml/src
 # Models of the ears: a multilingual Whisper model and the Silero VAD model.
 MODEL_DIR ?= $(or $(XDG_DATA_HOME),$(HOME)/.local/share)/agentic-office/models
 
-.PHONY: all build arch test e2e performance lint generate check-generated whisper models clean
+.PHONY: all build arch test contract e2e performance lint generate check-generated whisper models clean
 all: build
 
 build:
@@ -27,8 +27,11 @@ arch:
 	npx -y @doctc/arc42@0.38.0 --dir docs/architecture validate --strict
 	$(GO) test -count=1 ./tests/architecture/...
 
-# Contract tests: black-box tests per building block against real processes.
-test: build arch
+# Contract tests: black-box tests per building block against real processes. make test runs
+# them together with the architecture test.
+test: arch contract
+
+contract: build
 	$(GO) vet ./...
 	OFFICE_BIN_DIR=$(BIN) $(GO) test -count=1 ./tests/contract/...
 

@@ -54,15 +54,25 @@ without make, export them as in the Makefile.
 |---|---|
 | `make build` | Builds all packages and the binaries `bin/office-hub` and `bin/office` (needs whisper.cpp) |
 | `make arch` | Validates the architecture with the arc42 CLI and runs the architecture test (`tests/architecture/`); needs Node.js |
-| `make test` | Runs `make arch`, `go vet` and the contract tests (`tests/contract/`) |
+| `make test` | Runs `make arch` and `make contract` |
+| `make contract` | Runs `go vet` and the contract tests (`tests/contract/`) |
 | `make e2e` | Runs the end-to-end tests with real processes (`tests/e2e/`, build tag `e2e`). They check behaviour only and never fail on timing. The ears tests need the models and are skipped without them |
 | `make performance` | Runs the quality scenarios with their timing criteria and their full lengths (build tags `e2e,performance`; 30 minutes of speech, a 60 s network drop; about 35 minutes) and lists their numbers. Meant for the reference host |
 | `make lint` | Checks the Protobuf contracts with `buf lint` |
 | `make generate` | Regenerates the Go code of the contracts next to their `.proto` files |
 | `make check-generated` | Fails when the committed generated code differs from what the contracts produce |
 
-The CI (`.github/workflows/ci.yml`) runs `make check-generated`, `make test` and `make e2e` and
-builds both container images on every push to `main` and on every pull request. It builds the
+The CI (`.github/workflows/ci.yml`) runs on every push to `main` and on every pull request. A job
+runs only when files that matter to it changed:
+
+| Job | Runs when these change |
+|---|---|
+| Architecture (`make arch`) | always |
+| Contracts and contract tests (`make check-generated`, `make contract`) | Go code, Protobuf contracts, `go.mod`, `buf*.yaml`, `Makefile`, `tests/`, the CI workflow |
+| End-to-end tests (`make e2e`) | the same as the contract tests |
+| Container images build | `Dockerfile`, `.dockerignore`, `hub/`, `client/`, `go.mod`, `go.sum`, `Makefile`, the CI workflow |
+
+A skipped job counts as passed. A manual run of the workflow runs every job. The CI builds the
 pinned whisper.cpp commit (`WHISPER_REF` in the Makefile) and caches it and the models. The
 performance tests do not run in the CI.
 
