@@ -11,3 +11,7 @@ go.mod
 go.sum
 docs
 tests
+# Build and delivery: the CI workflows and the container build.
+.github
+Dockerfile
+.dockerignore

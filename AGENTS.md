@@ -37,8 +37,12 @@ Guidance for agents working in this repository.
 
 - All work is tracked in GitHub issues in `mrsimpson/agentic-office`. One issue per work package.
   The first stage is tracked in one epic issue with sub-issues.
-- Work on one issue at a time, in the order of the epic. Commit with `Closes #<n>` and push to
-  `main` only when the build and all tests pass.
+- Work on one issue at a time, in the order of the epic. Work on a branch (`issue-<n>-<topic>`)
+  and open a pull request with `Closes #<n>` in its description. Run the build and all tests
+  before you push. Enable auto-merge on the pull request: it merges when the required CI checks
+  (`.github/workflows/ci.yml`) pass. Never push to `main` directly.
+- Only the maintainer creates release tags (`v<major>.<minor>.<patch>` on `main`). A tag publishes
+  the container images (`.github/workflows/release.yml`).
 - When you hit a problem during implementation (a bug, a gap in the architecture, a blocked
   dependency), open a new issue yourself: describe the problem, what you tried, and what you need.
   Link it to the issue you were working on. Then continue with other work if you can.

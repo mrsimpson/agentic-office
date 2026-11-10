@@ -1,0 +1,6 @@
+.git
+bin
+third_party
+docs
+**/*.md
+!README.md
