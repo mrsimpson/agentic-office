@@ -62,23 +62,28 @@ jobs:
           touch "$RUNNER_TEMP/digests/${digest#sha256:}"
       - uses: actions/upload-artifact@v7
         with:
-          name: digests-${{ matrix.image.name }}-${{ matrix.platform.arch }}
+          name: digests-${{ matrix.image.target }}-${{ matrix.platform.arch }}
           path: ${{ runner.temp }}/digests/*
           if-no-files-found: error
           retention-days: 1
 
   publish:
-    name: ${{ matrix.image }} (multi-arch)
+    name: ${{ matrix.image.name }} (multi-arch)
     needs: build
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        image: [office-hub, office]
+        # The artifact names use the target (hub, office), because the image name office is a
+        # prefix of office-hub and a pattern would pick up the digests of both images.
+        image:
+          - { name: office-hub, target: hub }
+          - { name: office, target: office }
     steps:
       - uses: actions/download-artifact@v8
         with:
           path: ${{ runner.temp }}/digests
-          pattern: digests-${{ matrix.image }}-*
+          pattern: digests-${{ matrix.image.target }}-*
           merge-multiple: true
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
@@ -90,7 +95,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}
+          images: ${{ env.IMAGE_PREFIX }}/${{ matrix.image.name }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -100,6 +105,6 @@ jobs:
         run: |
           docker buildx imagetools create \
             $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf '${{ env.IMAGE_PREFIX }}/${{ matrix.image }}@sha256:%s ' *)
+            $(printf '${{ env.IMAGE_PREFIX }}/${{ matrix.image.name }}@sha256:%s ' *)
       - name: Show the image
-        run: docker buildx imagetools inspect '${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:${{ steps.meta.outputs.version }}'
+        run: docker buildx imagetools inspect '${{ env.IMAGE_PREFIX }}/${{ matrix.image.name }}:${{ steps.meta.outputs.version }}'
