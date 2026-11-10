@@ -5,7 +5,7 @@ participants of the same kind. Humans with a headset are transcribed locally. Ev
 gets a local copy of the session log. Agents act through a CLI and MCP. A stage shows the meeting
 by screen share.
 
-The architecture is in [`docs/architecture/`](docs/architecture/) (arc42). Rules for contributors
+To try it on your computer, see the [user guide](USER_GUIDE.md). The architecture is in [`docs/architecture/`](docs/architecture/) (arc42). Rules for contributors
 and agents are in [`AGENTS.md`](AGENTS.md).
 
 ## Setup
