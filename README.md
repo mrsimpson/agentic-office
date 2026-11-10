@@ -61,9 +61,10 @@ without make, export them as in the Makefile.
 | `make generate` | Regenerates the Go code of the contracts next to their `.proto` files |
 | `make check-generated` | Fails when the committed generated code differs from what the contracts produce |
 
-The CI (`.github/workflows/ci.yml`) runs `make check-generated`, `make test` and `make e2e` on every
-push to `main` and on every pull request. It builds the pinned whisper.cpp commit (`WHISPER_REF` in
-the Makefile) and caches it and the models. The performance tests do not run in the CI.
+The CI (`.github/workflows/ci.yml`) runs `make check-generated`, `make test` and `make e2e` and
+builds both container images on every push to `main` and on every pull request. It builds the
+pinned whisper.cpp commit (`WHISPER_REF` in the Makefile) and caches it and the models. The
+performance tests do not run in the CI.
 
 Run the hub by hand:
 
@@ -606,6 +607,50 @@ bin/office-hub -tls-cert /etc/office/fullchain.pem -tls-key /etc/office/privkey.
 - Clients then trust the system roots: pass an empty certificate file to `auth.TLSConfig`.
 - `-public-url` is the address in stage links. It defaults to `https://<listen address>`.
 - The hub reads the certificate at start. Restart it after you renew the certificate.
+
+## Container images
+
+Every release tag (`v1.2.3`) publishes two images for `linux/amd64` and `linux/arm64`:
+
+| Image | Content |
+|---|---|
+| `ghcr.io/mrsimpson/agentic-office/office-hub` | The hub. Data, keys and the archive live in the volume `/data` |
+| `ghcr.io/mrsimpson/agentic-office/office` | The client CLI and MCP server, for agents that run in containers |
+
+Tags: the version (`1.2.3`), the minor version (`1.2`), `latest` and `sha-<commit>`. Build them
+yourself with `docker build --target hub .` or `docker build --target office .`.
+
+Run the hub:
+
+```sh
+docker volume create office-hub
+docker run --rm -v office-hub:/data ghcr.io/mrsimpson/agentic-office/office-hub keygen /data/signing.key
+docker run --rm -v office-hub:/data --entrypoint sh ghcr.io/mrsimpson/agentic-office/office-hub \
+  -c 'echo "ada <public key of Ada> Ada" > /data/admins'
+docker run -d --name office-hub -p 8740:8740 -v office-hub:/data \
+  ghcr.io/mrsimpson/agentic-office/office-hub \
+  -data-dir /data -addr 0.0.0.0:8740 -signing-key /data/signing.key -tls-hosts hub.example.org
+```
+
+The default command is `-data-dir /data -addr 0.0.0.0:8740 -signing-key /data/signing.key`.
+When you pass flags, pass all of them, as in the example. See [Hub setup](#hub-setup) for the
+flags.
+
+Run an agent with the client: keep the container running, because `meeting join` starts a
+replicator in the background that writes the local log.
+
+```sh
+docker run -d --name bot -v bot-home:/home/office \
+  -e OFFICE_HUB=https://hub.example.org:8740 -e OFFICE_CA_CERT=/home/office/hub.crt \
+  --entrypoint sleep ghcr.io/mrsimpson/agentic-office/office infinity
+docker cp hub.crt bot:/home/office/hub.crt # the hub's TLS certificate (<data-dir>/tls.crt)
+docker exec bot office key create          # register the printed public key on the hub
+docker exec bot office meeting join weekly # prints the path of the local log
+docker exec bot office say "Hello"
+```
+
+The client image has no microphone recorder and no Whisper models. To transcribe, mount the
+models and set `OFFICE_WHISPER_MODEL` and `OFFICE_VAD_MODEL`, or use `--wav`.
 
 ## Participant client (office CLI)
 
