@@ -246,36 +246,135 @@ office meeting end
 
 ## 4. Bring in an agent
 
-An agent is a participant like you, with its own key. It follows the meeting and acts through
-tools: it can keep the minutes, raise its hand, show slides and record decisions.
+An agent is a participant like you. It follows the meeting and acts through tools: it can keep
+the minutes, record decisions, raise its hand, show slides and speak. Several agents can take
+part in the same meeting, for example Claude Code, opencode and Kiro next to each other. Each
+agent needs:
 
-1. Create a key for the agent, on the computer where the agent runs, and have it registered as
-   an agent (see [Register a participant](#register-a-participant)):
+- its **own participant ID and key**, so that everyone sees who said or recorded what;
+- its **own folder**, where its tool keeps the connection to the office;
+- the **hub and its certificate**, as for a human (see [Set up once](#set-up-once)). On the
+  computer of a human participant, the agent uses the same `OFFICE_HUB` and the same certificate.
 
-   ```sh
-   office key create --key ~/.config/agentic-office/agent/key.pem
-   ```
+### Create and register the keys
 
-2. Connect the agent. **With MCP**, for example Claude Code:
+On the computer where the agents run, create one key per agent. The example creates keys for
+three agents:
 
-   ```sh
-   claude mcp add office -e OFFICE_KEY=$HOME/.config/agentic-office/agent/key.pem \
-     -e OFFICE_HUB=https://hub.example.org:8740 -- $(command -v office) mcp --session weekly
-   ```
+```sh
+CFG="$([ "$(uname)" = Darwin ] && echo "$HOME/Library/Application Support" || echo "${XDG_CONFIG_HOME:-$HOME/.config}")/agentic-office"
+for a in claude opencode kiro; do
+  office key create --key "$CFG/agents/$a/key.pem"
+done
+```
 
-   Then ask your agent, for example: "Join the meeting weekly, follow it and keep the minutes."
-   The agent joins with `meeting_join`, reads new events with `meeting_events` and acts with
-   tools such as `utterance_say`, `hand_raise` and `minutes_update`.
+Each `key create` prints a public key. Send them to your admin, who registers each one as an
+agent (see [Register a participant](#register-a-participant)):
 
-3. **Or with the CLI and the log file**, for agents that work in a shell:
+```sh
+office admin key register claude-bot <public key> --name "Claude" --kind agent
+office admin key register opencode-bot <public key> --name "opencode" --kind agent
+office admin key register kiro-bot <public key> --name "Kiro" --kind agent
+```
 
-   ```sh
-   export OFFICE_KEY=$HOME/.config/agentic-office/agent/key.pem
-   LOG=$(office meeting join weekly)       # prints the path of the local log
-   tail -f "$LOG" | grep '"utterance.final"\|"turn.end"'
-   ```
+If you are the admin yourself, on the same computer, this does both steps at once:
 
-   Each line of the log is one event as JSON. The agent acts with the same commands as a human.
+```sh
+for a in claude opencode kiro; do
+  PUB=$(office key create --key "$CFG/agents/$a/key.pem" | awk '/^public key:/{print $3}')
+  office admin key register "$a-bot" "$PUB" --name "$a" --kind agent
+done
+```
+
+Check a key: `OFFICE_KEY="$CFG/agents/kiro/key.pem" office whoami` prints `kiro-bot`.
+
+### Connect the agent
+
+Each tool starts `office mcp` as its MCP server. The examples use the meeting `weekly`; the
+agent can still join another one. In a configuration file, write absolute paths: no `~` and no
+`$HOME`. The `cat <<EOF` in the Kiro example fills them in for you.
+
+**Claude Code**
+
+```sh
+mkdir -p ~/office-agent-claude && cd ~/office-agent-claude
+claude mcp add office -e OFFICE_KEY="$CFG/agents/claude/key.pem" -e OFFICE_HUB="$OFFICE_HUB" \
+  -- "$(command -v office)" mcp --session weekly
+claude
+```
+
+**opencode**
+
+```sh
+mkdir -p ~/office-agent-opencode && cd ~/office-agent-opencode
+opencode mcp add office --env OFFICE_KEY="$CFG/agents/opencode/key.pem" --env OFFICE_HUB="$OFFICE_HUB" \
+  -- "$(command -v office)" mcp --session weekly
+opencode mcp list
+opencode
+```
+
+`opencode mcp add` writes the server into `opencode.json` in the folder. Inside opencode,
+`/mcps` shows whether it is connected.
+
+**Kiro**
+
+```sh
+mkdir -p ~/office-agent-kiro/.kiro/settings && cd ~/office-agent-kiro
+cat > .kiro/settings/mcp.json <<EOF
+{
+  "mcpServers": {
+    "office": {
+      "command": "$(command -v office)",
+      "args": ["mcp", "--session", "weekly"],
+      "env": {
+        "OFFICE_KEY": "$CFG/agents/kiro/key.pem",
+        "OFFICE_HUB": "$OFFICE_HUB"
+      },
+      "autoApprove": ["meeting_events", "meeting_log", "whoami"]
+    }
+  }
+}
+EOF
+kiro-cli mcp list workspace
+kiro-cli chat
+```
+
+In the Kiro IDE, open the folder `~/office-agent-kiro` instead. `autoApprove` lets the tools that
+only read run without a question each time. Tools that write, such as `utterance_say`, still ask;
+add them to the list, or use `"*"`, to let the agent act alone.
+
+### Tell the agent what to do
+
+Give each agent its own task, so that they do not talk over each other. For example:
+
+- **Claude Code**, the minute taker:
+  > Join the meeting "weekly" (meeting_join). Keep reading new events with meeting_events, from
+  > the last one you read. Keep the minutes with minutes_update. Speak (utterance_say) only when
+  > someone addresses you as "Claude". Stop when the session ends.
+- **opencode**, the task keeper:
+  > Join the meeting "weekly". Keep reading new events with meeting_events. When someone takes
+  > on a piece of work, create a task with task_create. Speak only when someone addresses you as
+  > "opencode". Stop when the session ends.
+- **Kiro**, the decision keeper:
+  > Join the meeting "weekly". Keep reading new events with meeting_events. Record each decision
+  > with decision_record. Speak only when someone addresses you as "Kiro". Stop when the session
+  > ends.
+
+The tools do not wait for new events by themselves: the agent calls `meeting_events` again and
+again. If it stops in between, tell it to keep listening.
+
+### Or use the CLI and the log file
+
+An agent that works in a shell can read the local copy of the meeting log instead of MCP:
+
+```sh
+export OFFICE_KEY="$CFG/agents/claude/key.pem"
+LOG=$(office meeting join weekly)
+tail -f "$LOG" | grep '"utterance.final"\|"turn.end"'
+```
+
+`meeting join` prints the path of the log. Each line is one event as JSON. The agent acts with
+the same commands as a human.
 
 An agent that runs in a container uses the image `ghcr.io/mrsimpson/agentic-office/office`.
 See "Container images" in [`README.md`](README.md).
