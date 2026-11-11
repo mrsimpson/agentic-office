@@ -53,10 +53,12 @@ func writeSelfSigned(certFile, keyFile string, hosts []string) error {
 	}
 	now := time.Now()
 	tmpl := &x509.Certificate{
-		SerialNumber:          serial,
-		Subject:               pkix.Name{CommonName: "agentic office hub (self-signed)"},
-		NotBefore:             now.Add(-time.Hour),
-		NotAfter:              now.AddDate(5, 0, 0),
+		SerialNumber: serial,
+		Subject:      pkix.Name{CommonName: "agentic office hub (self-signed)"},
+		NotBefore:    now.Add(-time.Hour),
+		// At most 825 days: macOS and browsers on it reject TLS server certificates that are
+		// valid for longer, also a self-signed one (for example when they open the stage).
+		NotAfter:              now.AddDate(0, 0, 820),
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
@@ -98,4 +100,19 @@ func fingerprint(cert tls.Certificate) string {
 	}
 	h := sha256.Sum256(cert.Certificate[0])
 	return hex.EncodeToString(h[:])
+}
+
+// validityWarning tells when macOS and the browsers on it reject the certificate: a TLS server
+// certificate that is valid for more than 825 days. "" means no problem.
+func validityWarning(cert tls.Certificate) string {
+	if len(cert.Certificate) == 0 {
+		return ""
+	}
+	c, err := x509.ParseCertificate(cert.Certificate[0])
+	if err != nil || c.NotAfter.Sub(c.NotBefore) <= 825*24*time.Hour {
+		return ""
+	}
+	return fmt.Sprintf("valid for %d days, more than the 825 days that macOS and its browsers accept; "+
+		"to create a new self-signed one, delete tls.crt and tls.key and restart",
+		int(c.NotAfter.Sub(c.NotBefore).Hours()/24))
 }

@@ -144,18 +144,17 @@ func (s *invalidating) Receive(msg any) error {
 	return err
 }
 
-// TLSConfig returns a TLS client configuration. If certFile is set, the certificates in it are
-// trusted in addition to the system roots; use it for the self-signed certificate of the server.
-// With an empty certFile, only the system roots are trusted.
+// TLSConfig returns a TLS client configuration. If certFile is set, only the certificates in it
+// are trusted; use it for the self-signed certificate of the server. Go checks them itself on
+// every system: with the system roots in the pool, macOS would check them by its own rules for
+// public server certificates and reject a self-signed certificate. With an empty certFile, only
+// the system roots are trusted.
 func TLSConfig(certFile string) (*tls.Config, error) {
 	cfg := &tls.Config{MinVersion: tls.VersionTLS12}
 	if certFile == "" {
 		return cfg, nil
 	}
-	pool, err := x509.SystemCertPool()
-	if err != nil {
-		pool = x509.NewCertPool()
-	}
+	pool := x509.NewCertPool()
 	b, err := os.ReadFile(certFile)
 	if err != nil {
 		return nil, err

@@ -167,7 +167,7 @@ Rules that hold for all of them:
   (`--cacert` trusts the self-signed certificate of the hub):
 
   ```sh
-  curl --cacert ~/.config/agentic-office/hub/tls.crt \
+  curl --cacert <data-dir>/tls.crt \
     -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN" \
     -d '{"sessionId":"demo","commandId":"…"}' \
     https://127.0.0.1:8740/office.session.v1.SessionService/Join
@@ -539,8 +539,9 @@ comment in `hub/stage/doc.go` has the details. In short:
 
 ## Hub setup
 
-All files of the hub are in its data directory, by default `~/.config/agentic-office/hub`
-(`-data-dir`):
+All files of the hub are in its data directory (`-data-dir`), by default
+`<config>/agentic-office/hub`. `<config>` is `~/.config` on Linux (or `$XDG_CONFIG_HOME`) and
+`~/Library/Application Support` on macOS:
 
 | File | What it is |
 |---|---|
@@ -554,7 +555,7 @@ Flags of the hub (`bin/office-hub -h` lists them all):
 | Flag | Default | What it sets |
 |---|---|---|
 | `-addr` | `127.0.0.1:8740` | Listen address |
-| `-data-dir` | `~/.config/agentic-office/hub` | Data directory |
+| `-data-dir` | `<config>/agentic-office/hub` | Data directory |
 | `-archive-dir` | `<data-dir>/archive` | Git repository of the archive |
 | `-archive-interval` | `30s` | Time between two writes of changed sessions. Keep it above the usual commit time. |
 | `-restore-wait` | `10s` | After a restart, how long a restored session that has not ended waits for a peer to fill in (see [Restore](#restore-after-a-restart)) |
@@ -606,9 +607,15 @@ To remove an admin, delete the line and restart. Admin keys cannot be revoked th
 ### TLS and your own certificate
 
 On the first start, the hub creates a self-signed certificate for `localhost`, `127.0.0.1`,
-`::1` and the host name (`-tls-hosts` changes the list) and logs its SHA-256 fingerprint.
-Clients trust it by its file: copy `tls.crt` to the client and pass it to `auth.TLSConfig` or
-`auth.HTTPClient` (or to `curl --cacert`).
+`::1` and the host name (`-tls-hosts` changes the list) and logs its SHA-256 fingerprint. It is
+valid for 820 days, because macOS and the browsers on it reject TLS server certificates that are
+valid for more than 825 days. The hub warns at start when its certificate is valid for longer;
+delete `tls.crt` and `tls.key` and restart to get a new one.
+
+Clients trust it by its file: copy `tls.crt` to the client (`<config>/agentic-office/client/hub.crt`
+or `OFFICE_CA_CERT`). With a certificate file, the client trusts only the certificates in it, not
+the system roots, and checks them itself on every system (`auth.TLSConfig`, `auth.HTTPClient`;
+or `curl --cacert`).
 
 To use your own certificate, for example from your CA or Let's Encrypt:
 
@@ -621,7 +628,7 @@ bin/office-hub -tls-cert /etc/office/fullchain.pem -tls-key /etc/office/privkey.
   or SEC 1).
 - Or put both into the data directory as `tls.crt` and `tls.key`. The hub never overwrites
   existing files.
-- Clients then trust the system roots: pass an empty certificate file to `auth.TLSConfig`.
+- Clients then trust the system roots: give them no certificate file.
 - `-public-url` is the address in stage links. It defaults to `https://<listen address>`.
 - The hub reads the certificate at start. Restart it after you renew the certificate.
 
@@ -704,7 +711,7 @@ the shared core in `client/core` (`dec-cli-and-mcp`). Run `office help` for all 
 ### First start
 
 ```sh
-office key create                  # creates ~/.config/agentic-office/client/key.pem, prints the public key
+office key create                  # creates <config>/agentic-office/client/key.pem, prints the public key
 # an admin registers it:
 office admin key register ada <public-key> --name "Ada Lovelace" --kind human
 office whoami                      # authenticates and prints "ada"
@@ -715,18 +722,19 @@ removes a key. Only admin keys may register and revoke (see [First admin](#first
 
 ### Configuration
 
-Every command takes these flags. The environment variables set the defaults.
+Every command takes these flags. The environment variables set the defaults. `<config>` is
+`~/.config` on Linux (or `$XDG_CONFIG_HOME`) and `~/Library/Application Support` on macOS.
 
 | Flag | Variable | Default |
 |---|---|---|
 | `--hub` | `OFFICE_HUB` | `https://127.0.0.1:8740` |
-| `--ca-cert` | `OFFICE_CA_CERT` | `~/.config/agentic-office/client/hub.crt` if it exists, else the system roots |
-| `--key` | `OFFICE_KEY` | `~/.config/agentic-office/client/key.pem` |
+| `--ca-cert` | `OFFICE_CA_CERT` | `<config>/agentic-office/client/hub.crt` if it exists (then only it is trusted), else the system roots |
+| `--key` | `OFFICE_KEY` | `<config>/agentic-office/client/key.pem` |
 | `--runtime-dir` | `OFFICE_RUNTIME_DIR` | `$XDG_RUNTIME_DIR/agentic-office`, else `/tmp/agentic-office-<uid>` |
 | `--session` | `OFFICE_SESSION` | the only session this participant joined on this machine |
 | `--json` | `OFFICE_JSON=1` | off |
 
-For a self-signed hub, copy its `tls.crt` to `~/.config/agentic-office/client/hub.crt`.
+For a self-signed hub, copy its `tls.crt` to `<config>/agentic-office/client/hub.crt`.
 Several participants on one machine (for example a human and an agent) use one key file each.
 
 ### Join a meeting and read the log
