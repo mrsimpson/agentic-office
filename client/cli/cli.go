@@ -82,7 +82,7 @@ MCP:
 Agent runner (keeps an agent in the meeting over the Agent Client Protocol; see README.md):
   agent run --session S [--role T | --role-file F] [--allow PATTERN]... [--cwd DIR] -- <harness command>
                                      join S with this key, start the harness (for example
-                                     "opencode acp") and wake it at each change of speaker
+                                     "opencode acp") and wake it when the meeting may concern it
 
 Other:
   version                            print the version

@@ -18,8 +18,8 @@ func (r *runner) firstPrompt() string {
 	}
 	b.WriteString("\n\nHow this works:\n")
 	b.WriteString("- You have joined the session already. The tools of the MCP server \"office\" act as you in this session; you do not need to call meeting_join.\n")
-	b.WriteString("- I am the agent runner. At each change of speaker, I send you what the others said since my last message: who spoke, whether that participant is a human or an agent, and what they said.\n")
-	b.WriteString("- Decide yourself whether someone addressed you or whether your role asks you to contribute now. If not, do nothing and end your turn.\n")
+	b.WriteString("- I am the agent runner. When something in the meeting may concern you, I send you what the others said since my last message: who spoke, whether that participant is a human or an agent, and what they said.\n")
+	b.WriteString("- Decide yourself whether someone addressed you or whether your role asks you to contribute now. Do not interrupt a speaker: raise your hand or write instead. If nothing is for you, do nothing and end your turn.\n")
 	b.WriteString("- To speak in the meeting, call the tool utterance_say. Your reply in this chat reaches nobody.\n")
 	b.WriteString("- Never use or repeat a sentence that is off the record.\n")
 	fmt.Fprintf(&b, "- The local log of the session is the file %s (one JSON line per event). Read it if you need earlier events.\n",
