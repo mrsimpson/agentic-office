@@ -1,16 +1,9 @@
 // Package cli is the building block office CLI (bb-cli in docs/architecture/05-building-blocks.arc42.md).
 //
-// It is the shell interface for humans and agents and provides if-cli. It is a thin adapter over
-// the shared client core in client/core (dec-cli-and-mcp): it parses commands, prints
-// text or --json output and runs the log replicator (client/replicator) as its own process.
-//
-// Conventions:
-//
-//   - Flags may come before or after the positional arguments. Every command takes the common
-//     flags --json, --session, --hub, --ca-cert, --key and --runtime-dir.
-//   - With --json, stdout carries exactly one JSON object, also on failure
-//     ({"error":{"code":…,"message":…}}). Events have the form of their line in the local log.
-//   - Exit codes: 0 success, 1 error, 2 usage error.
+// It is the shell interface for humans and agents. It realizes if-cli, whose contract is package
+// commands: the commands, the exit codes and the form of the --json output. It is a thin adapter
+// over the client core (if-client-core, dec-cli-and-mcp): it parses commands, prints text or
+// --json output and runs the log replicator (if-replication) as its own process.
 //
 // "office meeting join" starts the replicator detached and returns the log path at once; with
 // --foreground the replicator is a child that stops when join ends (see replicator_proc.go).

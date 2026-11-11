@@ -2,8 +2,9 @@
 
 The diagram shows every dependency between building blocks: an arrow is an interface that a
 block lists in `requires`, pointing to the provider. The architecture test enforces exactly these
-dependencies in the code (`concept-module-boundaries`). Interfaces that only external actors use
-(CLI, MCP, stage view, audio input) are in chapter 3.
+dependencies in the code (`concept-module-boundaries`). Every building block and every interface
+has its own path; no two share one. Interfaces that only external actors use (CLI, MCP, stage
+view, audio input) are in chapter 3.
 
 At the top level the system has two parts. The **office hub** manages sessions, the records of
 the team (decisions, minutes and notes), the tasks, the slide decks and the stage. The **participant client** runs on the computer of every participant,
@@ -98,8 +99,8 @@ log. Each call carries an ID created by the client, so a repeated call has no ex
 The session commands also let anyone with a token check a session log (`dec-merkle-log`): they
 return the signed tree head of a log (for the current log or for its first events), a
 consistency proof between two sizes, an inclusion proof for one event, and the public key of the
-hub that signs the tree heads. The verification code for clients belongs to this interface,
-because the interface owns the event types.
+hub that signs the tree heads. The tree heads, the events in a result and the code that verifies
+them are those of the session stream, which owns the event log.
 
 After a restart, a peer offers its copy of a session log with one more command
 (`dec-restore-from-peers`): the events the hub misses and a tree head signed by the hub over the
@@ -107,14 +108,13 @@ copy. The hub accepts the copy only if it verifies and extends its own log. A co
 longer has no effect, and a copy that does not verify or forks fails.
 
 ```arc42
-:::ignore H020 Commands and stream are two contracts of one Connect service; they share its package :::
 :::interface
 id: if-session-commands
 title: Session commands
 provider: bb-office-hub
 x-realized-by: bb-session-service
 protocol: Connect RPC, unary (dec-connect-rpc)
-path: hub/session/api
+path: hub/session/commandsapi
 :::
 ```
 
@@ -129,8 +129,10 @@ it, so a subscriber always holds a signed head over its whole copy (`dec-signed-
 A cursor beyond the end of the log means that the hub lost events: the subscriber then offers its
 copy.
 
-The interface also defines the stored form of a session log: one line per event and the signed
-tree head next to it. The local log of a participant and the session log in the archive use the
+The interface owns the event log: the event types, the signed tree head and the code that builds
+and verifies the Merkle tree over a log (`dec-merkle-log`). The session commands and the session
+import return events and tree heads of these types. The interface also defines the stored form of
+a session log: one line per event and the signed tree head next to it. The local log of a participant and the session log in the archive use the
 same lines (`dec-yaml-git-storage`), so every reader can rebuild the events and check them
 against the tree head with the event types of this interface alone.
 
@@ -141,7 +143,7 @@ title: Session stream (replication from a cursor)
 provider: bb-office-hub
 x-realized-by: bb-session-service
 protocol: Connect RPC, server streaming (dec-connect-rpc)
-path: hub/session/api
+path: hub/session/streamapi
 :::
 ```
 
@@ -309,7 +311,7 @@ title: Stage view
 provider: bb-office-hub
 x-realized-by: bb-stage
 protocol: HTTPS (browser)
-path: hub/stage
+path: hub/stage/web
 :::
 ```
 
@@ -551,8 +553,11 @@ flowchart LR
     end
     bb_agent_runner -->|if-client-core| bb_client_core
     bb_agent_runner -->|if-replication| bb_replicator
+    bb_agent_runner -->|if-local-log| bb_replicator
     bb_cli -->|if-client-core| bb_client_core
     bb_cli -->|if-replication| bb_replicator
+    bb_cli -->|if-local-log| bb_replicator
+    bb_client_core -->|if-local-log| bb_replicator
     bb_ears -->|if-client-core| bb_client_core
     bb_mcp -->|if-client-core| bb_client_core
     bb_mcp -->|if-replication| bb_replicator
@@ -569,7 +574,7 @@ title: office CLI
 provider: bb-participant-client
 x-realized-by: bb-cli
 protocol: Shell / stdout
-path: client/cli
+path: client/cli/commands
 :::
 ```
 
@@ -586,7 +591,7 @@ title: MCP tools
 provider: bb-participant-client
 x-realized-by: bb-mcp
 protocol: MCP (stdio)
-path: client/mcp
+path: client/mcp/tools
 :::
 ```
 
@@ -596,7 +601,9 @@ An append-only JSONL file with one compact line per event. Every line carries th
 dotted form (for example `"type":"utterance.final"`) and the event ID as a JSON number, so that
 `tail -f`, `grep` and `jq` work without conversion. The line form belongs to the session stream,
 so the session log in the archive has the same lines. Next to the log, the replicator keeps the
-latest tree head that the hub signed over it (`dec-signed-head-in-stream`).
+latest tree head that the hub signed over it (`dec-signed-head-in-stream`). The parts of the
+client that follow the log (the CLI, the client core and the agent runner) read it through this
+interface, as an agent does with `tail -f`.
 
 ```arc42
 :::interface
@@ -605,7 +612,7 @@ title: Local session log
 provider: bb-participant-client
 x-realized-by: bb-replicator
 protocol: JSONL file (append-only)
-path: client/replicator
+path: client/replicator/locallog
 :::
 ```
 
@@ -620,7 +627,7 @@ title: Audio input
 provider: bb-participant-client
 x-realized-by: bb-ears
 protocol: Local audio device
-path: client/ears
+path: client/ears/audio
 :::
 ```
 
@@ -646,7 +653,7 @@ title: Agent Client Protocol (client side)
 provider: bb-participant-client
 x-realized-by: bb-agent-runner
 protocol: ACP, JSON-RPC over stdio (agentclientprotocol.com)
-path: client/agentrunner
+path: client/agentrunner/acpclient
 :::
 ```
 
@@ -694,7 +701,7 @@ title: Client core
 technology: Go
 parent: bb-participant-client
 path: client/core
-requires: if-session-commands, if-session-import, if-auth-api, if-decision-api, if-minutes-api, if-note-api, if-task-api, if-slides-api
+requires: if-session-commands, if-session-stream, if-session-import, if-auth-api, if-decision-api, if-minutes-api, if-note-api, if-task-api, if-slides-api, if-local-log
 :::
 ```
 
@@ -709,7 +716,7 @@ id: if-client-core
 title: Client core API
 provider: bb-client-core
 protocol: In-process Go call
-path: client/core
+path: client/core/api
 :::
 ```
 
@@ -729,7 +736,7 @@ id: bb-cli
 title: office CLI
 technology: Go, single binary
 parent: bb-participant-client
-requires: if-client-core, if-replication, if-session-commands, if-slides-api, if-auth-api
+requires: if-client-core, if-replication, if-local-log, if-session-commands, if-session-stream, if-slides-api, if-auth-api
 implements: concept-read-file-write-tools
 path: client/cli
 :::
@@ -747,7 +754,7 @@ id: bb-mcp
 title: MCP server
 technology: Go / official MCP Go SDK
 parent: bb-participant-client
-requires: if-client-core, if-replication, if-session-commands, if-slides-api, if-auth-api
+requires: if-client-core, if-replication, if-session-commands, if-slides-api
 implements: concept-read-file-write-tools
 path: client/mcp
 :::
@@ -784,7 +791,7 @@ id: bb-agent-runner
 title: Agent runner
 technology: Go / Agent Client Protocol
 parent: bb-participant-client
-requires: if-client-core, if-replication, if-session-commands
+requires: if-client-core, if-replication, if-local-log, if-session-stream
 implements: concept-read-file-write-tools, concept-participant-model
 path: client/agentrunner
 :::
@@ -824,13 +831,12 @@ running replicator and to stop it. The CLI runs the replicator as its own proces
 runs it inside its own process.
 
 ```arc42
-:::ignore H020 The local log is a file for actors, replication control is an in-process call; both are realized by the replicator :::
 :::interface
 id: if-replication
 title: Replication control
 provider: bb-replicator
 protocol: In-process Go call
-path: client/replicator
+path: client/replicator/control
 :::
 ```
 
@@ -853,7 +859,7 @@ id: bb-ears
 title: Ears
 parent: bb-participant-client
 technology: Go / whisper.cpp, including its voice activity detection
-requires: if-client-core, if-session-commands
+requires: if-client-core, if-session-stream
 implements: concept-edge-transcription, concept-test-strategy
 path: client/ears
 :::

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mrsimpson/agentic-office/client/mcp/tools"
+
 	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
 	"github.com/mrsimpson/agentic-office/client/replicator/control"
 
@@ -17,27 +19,6 @@ import (
 
 // Tool names use "_" where the architecture writes "." (meeting.join is meeting_join): many MCP
 // clients and model APIs accept only letters, digits, "_" and "-" in tool names.
-
-// instructions are sent to the MCP client when it connects. Many clients show them to the model.
-const instructions = `You take part in a meeting of the agentic office as a participant. You read what happens from a local file and act through these tools.
-
-1. Call meeting_join with the session ID. It returns "logPath", the local session log. While this MCP server runs, it copies every event of the session into that file. The copy stops when this server stops, when you leave, or when the session ends.
-2. Follow the file in the background with a filter, and react only to what matters to you. Do not wait for the tools to tell you about new events; they do not.
-3. Act with the tools. Each tool answers at once. A session command returns {"event": …, "duplicate": …}: the event it created, in the same form as its line in the log. So you can find your own actions in the log.
-
-` + logHelp
-
-// logHelp explains the local log. It is part of the instructions and of the description of
-// meeting_join, because not every client shows the instructions to the model.
-const logHelp = `How to read the log file:
-- One JSON object per line, append-only. "id" is a number that grows by 1 per event; "type" is the dotted event type; "actorParticipantId" is who caused it; the payload is in a field named after the type in camelCase, for example {"id":7,"type":"utterance.final","actorParticipantId":"ada","utteranceFinal":{"participantId":"ada","text":"…"}}.
-- Follow it in the background, for example:
-  tail -n +1 -f "$LOG" | grep --line-buffered '"type":"turn.end"\|"type":"addressed"'
-  or read it again from time to time and keep the last id you handled:
-  jq -c 'select(.id > 41 and (.type == "utterance.final" or .type == "addressed"))' "$LOG"
-- Event types: utterance.final (someone said or typed a sentence), utterance.off_the_record (the speaker marked a sentence off the record: never use or repeat that sentence, not in minutes, decisions or notes; the original line stays in your file), turn.end (a speaker finished; a good moment to answer), addressed (someone named a participant; check addressed.participantId), silence.long, hand.raised, minutes.updated, artifact.shown, participant.joined, participant.left, participant.paused, participant.resumed, session.ended (the last line; the file is complete), session.imported and import.completed (the session was imported from another tool, see session_import; its speakers are not registered participants and the hub cannot check what they said).
-- Usually filter for turn.end and addressed, and read the utterance.final lines before them for the context.
-- IDs have no gaps. If you see a gap (43 after 41), read the missing events with meeting_events (after 41). meeting_events also works without the file, if you poll it with your last id.`
 
 // tool adds a tool whose handler gets a client. The handler returns the output object, or an
 // error that becomes {"error":{"code","message"}} with IsError set.
@@ -72,148 +53,9 @@ func sessionTool[In any](srv *sdk.Server, s *Server, t *sdk.Tool, session func(I
 
 func blank(s string) bool { return strings.TrimSpace(s) == "" }
 
-func ptr[T any](v T) *T { return &v }
-
-// Annotations: hints for clients. Session commands change the meeting; reads do not.
-var (
-	readOnly = &sdk.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: ptr(false)}
-	additive = &sdk.ToolAnnotations{DestructiveHint: ptr(false), OpenWorldHint: ptr(false)}
-)
-
-type joinIn struct {
-	Session string `json:"session" jsonschema:"Session ID to join, for example \"weekly\"."`
-	Name    string `json:"name,omitempty" jsonschema:"Display name in this session. Default: the registered name."`
-}
-
-type sessionIn struct {
-	Session string `json:"session,omitempty" jsonschema:"Session ID. Default: the session given when the server was started, else the only session you joined from this machine."`
-}
-
-type sayIn struct {
-	Text    string `json:"text" jsonschema:"What you say: one or a few sentences."`
-	Session string `json:"session,omitempty" jsonschema:"Session ID. Default: the session given when the server was started, else the only session you joined from this machine."`
-}
-
-type offTheRecordIn struct {
-	EventID uint32 `json:"eventId,omitempty" jsonschema:"Event ID (the id of its utterance.final line) of your own sentence to mark off the record."`
-	Last    bool   `json:"last,omitempty" jsonschema:"Mark off the record your newest sentence that is not off the record yet, read from the local log. Use either eventId or last."`
-	Session string `json:"session,omitempty" jsonschema:"Session ID. Default: the session given when the server was started, else the only session you joined from this machine."`
-}
-
-type turnEndIn struct {
-	Participant string `json:"participant,omitempty" jsonschema:"Participant whose turn ended. Default: you."`
-	Session     string `json:"session,omitempty" jsonschema:"Session ID. Default: the session given when the server was started, else the only session you joined from this machine."`
-}
-
-type silenceIn struct {
-	Duration string `json:"duration" jsonschema:"Length of the silence, for example \"12s\" or \"1m30s\"."`
-	Session  string `json:"session,omitempty" jsonschema:"Session ID. Default: the session given when the server was started, else the only session you joined from this machine."`
-}
-
-type addressedIn struct {
-	Participant      string `json:"participant" jsonschema:"Participant whose name was mentioned."`
-	UtteranceEventID uint32 `json:"utteranceEventId" jsonschema:"Event ID of the utterance.final that mentioned the name."`
-	Session          string `json:"session,omitempty" jsonschema:"Session ID. Default: the session given when the server was started, else the only session you joined from this machine."`
-}
-
-type handIn struct {
-	Topic   string `json:"topic,omitempty" jsonschema:"What you want to say, in a few words."`
-	Session string `json:"session,omitempty" jsonschema:"Session ID. Default: the session given when the server was started, else the only session you joined from this machine."`
-}
-
-type minutesIn struct {
-	Text    string `json:"text,omitempty" jsonschema:"The full new minutes (Markdown). They replace the old minutes. Use text or file."`
-	File    string `json:"file,omitempty" jsonschema:"Read the minutes from this local file instead."`
-	Session string `json:"session,omitempty" jsonschema:"Session ID. Default: the session given when the server was started, else the only session you joined from this machine."`
-}
-
-type importIn struct {
-	File         string                `json:"file,omitempty" jsonschema:"A local file with the conversation in the import format. Use file or conversation."`
-	Conversation *coreapi.Conversation `json:"conversation,omitempty" jsonschema:"The conversation itself, in the import format."`
-	Session      string                `json:"session,omitempty" jsonschema:"ID of the new session. Default: a new ID. The session must not exist yet."`
-}
-
-type stageShowIn struct {
-	ArtifactID string `json:"artifactId" jsonschema:"Artifact to show, for example the deck ID \"slides/42\" from slides_render."`
-	Session    string `json:"session,omitempty" jsonschema:"Session ID. Default: the session given when the server was started, else the only session you joined from this machine."`
-}
-
-type slideIn struct {
-	Title   string   `json:"title" jsonschema:"Title of the slide."`
-	Bullets []string `json:"bullets,omitempty" jsonschema:"Bullet points."`
-	Notes   string   `json:"notes,omitempty" jsonschema:"Speaker notes."`
-}
-
-type slidesIn struct {
-	Title    string    `json:"title,omitempty" jsonschema:"Title of the deck (with slides)."`
-	Slides   []slideIn `json:"slides,omitempty" jsonschema:"The slides. Use slides, markdown or file."`
-	Markdown string    `json:"markdown,omitempty" jsonschema:"The deck in Markdown: \"# \" deck title, \"## \" starts a slide, \"- \" bullet, other text is the notes."`
-	File     string    `json:"file,omitempty" jsonschema:"A local deck file: .md (Markdown as above) or .json ({\"title\", \"slides\"})."`
-}
-
-type deckIn struct {
-	ID  string `json:"id" jsonschema:"Deck ID, for example \"slides/42\"."`
-	Out string `json:"out,omitempty" jsonschema:"Write the rendered deck to this local file instead of returning it (base64) in the result."`
-}
-
-type recordIn struct {
-	Text    string `json:"text" jsonschema:"The text. Never include a sentence that is off the record."`
-	Session string `json:"session,omitempty" jsonschema:"Link the record to this session. Default: no session (unlike the session commands)."`
-}
-
-type listIn struct {
-	AfterID uint32 `json:"afterId,omitempty" jsonschema:"Only records with an ID greater than this (the last ID you have)."`
-	Limit   uint32 `json:"limit,omitempty" jsonschema:"At most this many records. 0: the hub's default (100); at most 1000."`
-	Session string `json:"session,omitempty" jsonschema:"Only records of this session. Default: all."`
-}
-
-type minutesGetIn struct {
-	Session string `json:"session,omitempty" jsonschema:"The ended session. Default: the session given when the server was started, else the only session you joined from this machine."`
-}
-
-type eventsIn struct {
-	Session string `json:"session,omitempty" jsonschema:"The session. Default: the only session you joined from this machine."`
-	After   uint32 `json:"after,omitempty" jsonschema:"The cursor: only events with an ID greater than this. 0 reads from the start."`
-	Limit   uint32 `json:"limit,omitempty" jsonschema:"At most this many events. 0: the server's default (100); at most 1000."`
-}
-
-type taskCreateIn struct {
-	Title       string `json:"title" jsonschema:"Short title of the task."`
-	Description string `json:"description,omitempty" jsonschema:"What to do, as free text (Markdown). Never include a sentence that is off the record."`
-	Assignee    string `json:"assignee,omitempty" jsonschema:"Participant ID of who does the task. Default: nobody yet."`
-	Status      string `json:"status,omitempty" jsonschema:"open, in_progress, done or cancelled. Default: open."`
-	Session     string `json:"session,omitempty" jsonschema:"Link the task to this session. Default: no session (unlike the session commands)."`
-}
-
-type taskRefIn struct {
-	Ref string `json:"ref" jsonschema:"The ref of the task as the hub returned it, for example \"local:42\". Treat it as opaque."`
-}
-
-type taskListIn struct {
-	Statuses  []string `json:"statuses,omitempty" jsonschema:"Only tasks with one of these statuses: open, in_progress, done, cancelled. Default: all."`
-	Assignee  string   `json:"assignee,omitempty" jsonschema:"Only tasks of this participant. Default: all."`
-	Session   string   `json:"session,omitempty" jsonschema:"Only tasks linked to this session. Default: all."`
-	PageToken string   `json:"pageToken,omitempty" jsonschema:"The nextPageToken of the previous result, to read the next page."`
-	Limit     uint32   `json:"limit,omitempty" jsonschema:"At most this many tasks. 0: the hub's default (100); at most 1000."`
-}
-
-type taskUpdateIn struct {
-	Ref         string  `json:"ref" jsonschema:"The ref of the task, for example \"local:42\"."`
-	Title       *string `json:"title,omitempty" jsonschema:"New title."`
-	Description *string `json:"description,omitempty" jsonschema:"New description. Never include a sentence that is off the record."`
-	Assignee    *string `json:"assignee,omitempty" jsonschema:"New assignee (participant ID); an empty string removes the assignee."`
-	Status      *string `json:"status,omitempty" jsonschema:"New status: open, in_progress, done or cancelled."`
-	Session     *string `json:"session,omitempty" jsonschema:"Link the task to this session; an empty string removes the link."`
-}
-
-type noIn struct{}
-
 func (s *Server) addTools(srv *sdk.Server) {
-	tool(srv, s, &sdk.Tool{Name: "meeting_join", Title: "Join a meeting", Annotations: additive,
-		Description: `Join a meeting session and start copying its events into a local log file. Returns {"sessionId", "participantId", "logPath", "replicatorPid", "event", "duplicate"}. Joining again is safe: you stay the same participant and get the same file. The copy runs as long as this MCP server runs (replicatorPid is the process that writes the file), until you leave or the session ends; call meeting_join again to restart it.
-
-` + logHelp},
-		func(ctx context.Context, c coreapi.Client, in joinIn) (any, error) {
+	tool(srv, s, tools.MeetingJoin,
+		func(ctx context.Context, c coreapi.Client, in tools.JoinIn) (any, error) {
 			if blank(in.Session) {
 				return nil, usagef("session is required")
 			}
@@ -229,9 +71,8 @@ func (s *Server) addTools(srv *sdk.Server) {
 				"replicatorPid": pid, "event": coreapi.EventJSON(j.Result.GetEvent()), "duplicate": j.Result.GetDuplicate()}, nil
 		})
 
-	tool(srv, s, &sdk.Tool{Name: "meeting_log", Title: "Path of the local log", Annotations: readOnly,
-		Description: `Return the local log file of a session you joined, and whether a replicator writes it now: {"sessionId", "participantId", "logPath", "replicatorRunning"}. If replicatorRunning is false and the session has not ended, call meeting_join again.`},
-		func(ctx context.Context, c coreapi.Client, in sessionIn) (any, error) {
+	tool(srv, s, tools.MeetingLog,
+		func(ctx context.Context, c coreapi.Client, in tools.SessionIn) (any, error) {
 			sid, err := s.sessionID(ctx, c, in.Session)
 			if err != nil {
 				return nil, err
@@ -248,10 +89,9 @@ func (s *Server) addTools(srv *sdk.Server) {
 				"replicatorRunning": control.Running(p.Log)}, nil
 		})
 
-	sessionTool(srv, s, &sdk.Tool{Name: "meeting_leave", Title: "Leave the meeting", Annotations: additive,
-		Description: `Leave the session. The log file gets your participant.left line and then stops growing. Returns {"event", "duplicate"}.`},
-		func(in sessionIn) string { return in.Session },
-		func(ctx context.Context, c coreapi.Client, sid string, _ sessionIn) (*sessioncommandsv1.CommandResult, error) {
+	sessionTool(srv, s, tools.MeetingLeave,
+		func(in tools.SessionIn) string { return in.Session },
+		func(ctx context.Context, c coreapi.Client, sid string, _ tools.SessionIn) (*sessioncommandsv1.CommandResult, error) {
 			res, err := c.Leave(ctx, sid)
 			if err != nil {
 				return nil, err
@@ -269,34 +109,29 @@ func (s *Server) addTools(srv *sdk.Server) {
 			return res, nil
 		})
 
-	simple := func(name, title, desc string, f func(coreapi.Client, context.Context, string) (*sessioncommandsv1.CommandResult, error)) {
-		sessionTool(srv, s, &sdk.Tool{Name: name, Title: title, Annotations: additive, Description: desc},
-			func(in sessionIn) string { return in.Session },
-			func(ctx context.Context, c coreapi.Client, sid string, _ sessionIn) (*sessioncommandsv1.CommandResult, error) {
+	simple := func(t *sdk.Tool, f func(coreapi.Client, context.Context, string) (*sessioncommandsv1.CommandResult, error)) {
+		sessionTool(srv, s, t,
+			func(in tools.SessionIn) string { return in.Session },
+			func(ctx context.Context, c coreapi.Client, sid string, _ tools.SessionIn) (*sessioncommandsv1.CommandResult, error) {
 				return f(c, ctx, sid)
 			})
 	}
-	simple("meeting_pause", "Pause", `Pause your capture (participant.paused). For humans whose speech is transcribed; an agent rarely needs it. Returns {"event", "duplicate"}.`,
-		coreapi.Client.Pause)
-	simple("meeting_resume", "Resume", `End a pause (participant.resumed). Returns {"event", "duplicate"}.`, coreapi.Client.Resume)
-	simple("meeting_end", "End the meeting for everyone",
-		`End the session for all participants. session.ended becomes the last line of every log. Only do this when asked to. Returns {"event", "duplicate"}.`,
-		coreapi.Client.EndSession)
+	simple(tools.MeetingPause, coreapi.Client.Pause)
+	simple(tools.MeetingResume, coreapi.Client.Resume)
+	simple(tools.MeetingEnd, coreapi.Client.EndSession)
 
-	sessionTool(srv, s, &sdk.Tool{Name: "utterance_say", Title: "Say something", Annotations: additive,
-		Description: `Say something in the meeting (a typed utterance, utterance.final with modality text). The stage shows it, and every participant reads it in their log. Returns {"event", "duplicate"}; event.id is the ID if you want to mark it off the record later.`},
-		func(in sayIn) string { return in.Session },
-		func(ctx context.Context, c coreapi.Client, sid string, in sayIn) (*sessioncommandsv1.CommandResult, error) {
+	sessionTool(srv, s, tools.UtteranceSay,
+		func(in tools.SayIn) string { return in.Session },
+		func(ctx context.Context, c coreapi.Client, sid string, in tools.SayIn) (*sessioncommandsv1.CommandResult, error) {
 			if blank(in.Text) {
 				return nil, usagef("text is required")
 			}
 			return c.Say(ctx, sid, in.Text)
 		})
 
-	sessionTool(srv, s, &sdk.Tool{Name: "utterance_off_the_record", Title: "Mark a sentence off the record", Annotations: additive,
-		Description: `Mark one of your own sentences off the record. What is said stays said: this adds an utterance.off_the_record line that points to the sentence. Readers who read the session later get only a placeholder without its text, and nobody may use the sentence in minutes, decisions or notes. You cannot undo it. Give eventId, or last=true for your newest sentence. Returns {"event", "duplicate"}.`},
-		func(in offTheRecordIn) string { return in.Session },
-		func(ctx context.Context, c coreapi.Client, sid string, in offTheRecordIn) (*sessioncommandsv1.CommandResult, error) {
+	sessionTool(srv, s, tools.UtteranceOffTheRecord,
+		func(in tools.OffTheRecordIn) string { return in.Session },
+		func(ctx context.Context, c coreapi.Client, sid string, in tools.OffTheRecordIn) (*sessioncommandsv1.CommandResult, error) {
 			switch {
 			case in.Last && in.EventID != 0, !in.Last && in.EventID == 0:
 				return nil, usagef("give eventId or last=true, not both and not neither")
@@ -306,17 +141,15 @@ func (s *Server) addTools(srv *sdk.Server) {
 			return c.MarkOffTheRecord(ctx, sid, in.EventID)
 		})
 
-	sessionTool(srv, s, &sdk.Tool{Name: "signal_turn_end", Title: "Signal the end of a turn", Annotations: additive,
-		Description: `Signal that a turn ended (turn.end), by default your own. Returns {"event", "duplicate"}.`},
-		func(in turnEndIn) string { return in.Session },
-		func(ctx context.Context, c coreapi.Client, sid string, in turnEndIn) (*sessioncommandsv1.CommandResult, error) {
+	sessionTool(srv, s, tools.SignalTurnEnd,
+		func(in tools.TurnEndIn) string { return in.Session },
+		func(ctx context.Context, c coreapi.Client, sid string, in tools.TurnEndIn) (*sessioncommandsv1.CommandResult, error) {
 			return c.TurnEnd(ctx, sid, in.Participant)
 		})
 
-	sessionTool(srv, s, &sdk.Tool{Name: "signal_silence_long", Title: "Signal a long silence", Annotations: additive,
-		Description: `Signal a long silence (silence.long) of the given duration. Returns {"event", "duplicate"}.`},
-		func(in silenceIn) string { return in.Session },
-		func(ctx context.Context, c coreapi.Client, sid string, in silenceIn) (*sessioncommandsv1.CommandResult, error) {
+	sessionTool(srv, s, tools.SignalSilenceLong,
+		func(in tools.SilenceIn) string { return in.Session },
+		func(ctx context.Context, c coreapi.Client, sid string, in tools.SilenceIn) (*sessioncommandsv1.CommandResult, error) {
 			d, err := time.ParseDuration(in.Duration)
 			if err != nil || d <= 0 {
 				return nil, usagef("duration must be a positive duration such as \"12s\", not %q", in.Duration)
@@ -324,27 +157,24 @@ func (s *Server) addTools(srv *sdk.Server) {
 			return c.SilenceLong(ctx, sid, d)
 		})
 
-	sessionTool(srv, s, &sdk.Tool{Name: "signal_addressed", Title: "Signal that someone was addressed", Annotations: additive,
-		Description: `Signal that an utterance mentioned a participant (addressed). Returns {"event", "duplicate"}.`},
-		func(in addressedIn) string { return in.Session },
-		func(ctx context.Context, c coreapi.Client, sid string, in addressedIn) (*sessioncommandsv1.CommandResult, error) {
+	sessionTool(srv, s, tools.SignalAddressed,
+		func(in tools.AddressedIn) string { return in.Session },
+		func(ctx context.Context, c coreapi.Client, sid string, in tools.AddressedIn) (*sessioncommandsv1.CommandResult, error) {
 			if blank(in.Participant) || in.UtteranceEventID == 0 {
 				return nil, usagef("participant and utteranceEventId are required")
 			}
 			return c.Addressed(ctx, sid, in.Participant, in.UtteranceEventID)
 		})
 
-	sessionTool(srv, s, &sdk.Tool{Name: "hand_raise", Title: "Raise your hand", Annotations: additive,
-		Description: `Raise your hand (hand.raised), optionally with a topic, to ask for the floor without interrupting. Returns {"event", "duplicate"}.`},
-		func(in handIn) string { return in.Session },
-		func(ctx context.Context, c coreapi.Client, sid string, in handIn) (*sessioncommandsv1.CommandResult, error) {
+	sessionTool(srv, s, tools.HandRaise,
+		func(in tools.HandIn) string { return in.Session },
+		func(ctx context.Context, c coreapi.Client, sid string, in tools.HandIn) (*sessioncommandsv1.CommandResult, error) {
 			return c.RaiseHand(ctx, sid, in.Topic)
 		})
 
-	sessionTool(srv, s, &sdk.Tool{Name: "minutes_update", Title: "Update the minutes", Annotations: additive,
-		Description: `Replace the running minutes of the meeting (minutes.updated). Send the full new text, not a diff. Never include a sentence that is off the record. When the session ends, the hub stores the last version (see minutes_get). Give text, or file for a local file. Returns {"event", "duplicate"}.`},
-		func(in minutesIn) string { return in.Session },
-		func(ctx context.Context, c coreapi.Client, sid string, in minutesIn) (*sessioncommandsv1.CommandResult, error) {
+	sessionTool(srv, s, tools.MinutesUpdate,
+		func(in tools.MinutesIn) string { return in.Session },
+		func(ctx context.Context, c coreapi.Client, sid string, in tools.MinutesIn) (*sessioncommandsv1.CommandResult, error) {
 			text := in.Text
 			switch {
 			case in.File != "" && in.Text != "":
@@ -362,19 +192,17 @@ func (s *Server) addTools(srv *sdk.Server) {
 			return c.UpdateMinutes(ctx, sid, text)
 		})
 
-	sessionTool(srv, s, &sdk.Tool{Name: "stage_show", Title: "Show an artifact on the stage", Annotations: additive,
-		Description: `Show an artifact on the stage for everyone (artifact.shown), for example the id of a deck from slides_render. Returns {"event", "duplicate"}.`},
-		func(in stageShowIn) string { return in.Session },
-		func(ctx context.Context, c coreapi.Client, sid string, in stageShowIn) (*sessioncommandsv1.CommandResult, error) {
+	sessionTool(srv, s, tools.StageShow,
+		func(in tools.StageShowIn) string { return in.Session },
+		func(ctx context.Context, c coreapi.Client, sid string, in tools.StageShowIn) (*sessioncommandsv1.CommandResult, error) {
 			if blank(in.ArtifactID) {
 				return nil, usagef("artifactId is required")
 			}
 			return c.ShowArtifact(ctx, sid, in.ArtifactID)
 		})
 
-	tool(srv, s, &sdk.Tool{Name: "stage_link", Title: "Create a stage link", Annotations: additive,
-		Description: `Create a read-only link to the stage of the session, for people without a client. Returns {"url", "expiresAt"}.`},
-		func(ctx context.Context, c coreapi.Client, in sessionIn) (any, error) {
+	tool(srv, s, tools.StageLink,
+		func(ctx context.Context, c coreapi.Client, in tools.SessionIn) (any, error) {
 			sid, err := s.sessionID(ctx, c, in.Session)
 			if err != nil {
 				return nil, err
@@ -386,9 +214,8 @@ func (s *Server) addTools(srv *sdk.Server) {
 			return map[string]any{"url": res.GetUrl(), "expiresAt": res.GetExpiresAt().AsTime().Format(time.RFC3339)}, nil
 		})
 
-	tool(srv, s, &sdk.Tool{Name: "slides_render", Title: "Render slides", Annotations: additive,
-		Description: `Render a slide deck. The hub stores its input and the rendered deck. Give the deck as title and slides, as markdown, or as a local file. Returns {"id", "mediaType", "duplicate"}; show it with stage_show (artifactId = id).`},
-		func(ctx context.Context, c coreapi.Client, in slidesIn) (any, error) {
+	tool(srv, s, tools.SlidesRender,
+		func(ctx context.Context, c coreapi.Client, in tools.SlidesIn) (any, error) {
 			n := 0
 			for _, set := range []bool{len(in.Slides) > 0, in.Markdown != "", in.File != ""} {
 				if set {
@@ -429,9 +256,8 @@ func (s *Server) addTools(srv *sdk.Server) {
 				"duplicate": res.GetDuplicate()}, nil
 		})
 
-	tool(srv, s, &sdk.Tool{Name: "slides_get", Title: "Get a slide deck", Annotations: readOnly,
-		Description: `Load a slide deck by its ID, with its input and the rendered deck. Returns {"deck": {"id", "title", "slides", "authorParticipantId", "createTime", "mediaType", "content" (base64), …}}, or with out {"id", "mediaType", "file"}.`},
-		func(ctx context.Context, c coreapi.Client, in deckIn) (any, error) {
+	tool(srv, s, tools.SlidesGet,
+		func(ctx context.Context, c coreapi.Client, in tools.DeckIn) (any, error) {
 			if blank(in.ID) {
 				return nil, usagef("id is required")
 			}
@@ -448,9 +274,8 @@ func (s *Server) addTools(srv *sdk.Server) {
 			return map[string]any{"deck": coreapi.MessageJSON(a)}, nil
 		})
 
-	tool(srv, s, &sdk.Tool{Name: "decision_record", Title: "Record a decision", Annotations: additive,
-		Description: `Record a decision of the team, for example "We ship on Friday.", with you as its author. Never put a sentence that is off the record into a decision. Give session to link it to a meeting. Returns {"decision", "duplicate"}.`},
-		func(ctx context.Context, c coreapi.Client, in recordIn) (any, error) {
+	tool(srv, s, tools.DecisionRecord,
+		func(ctx context.Context, c coreapi.Client, in tools.RecordIn) (any, error) {
 			if blank(in.Text) {
 				return nil, usagef("text is required")
 			}
@@ -461,9 +286,8 @@ func (s *Server) addTools(srv *sdk.Server) {
 			return map[string]any{"decision": coreapi.MessageJSON(res.GetDecision()), "duplicate": res.GetDuplicate()}, nil
 		})
 
-	tool(srv, s, &sdk.Tool{Name: "decision_list", Title: "List decisions", Annotations: readOnly,
-		Description: `List the recorded decisions, oldest first. Page with afterId (the last ID you have). Returns {"decisions": […]}.`},
-		func(ctx context.Context, c coreapi.Client, in listIn) (any, error) {
+	tool(srv, s, tools.DecisionList,
+		func(ctx context.Context, c coreapi.Client, in tools.ListIn) (any, error) {
 			ds, err := c.ListDecisions(ctx, in.AfterID, in.Session, in.Limit)
 			if err != nil {
 				return nil, err
@@ -475,9 +299,8 @@ func (s *Server) addTools(srv *sdk.Server) {
 			return map[string]any{"decisions": out}, nil
 		})
 
-	tool(srv, s, &sdk.Tool{Name: "note_add", Title: "Add a note", Annotations: additive,
-		Description: `Add a free note, with you as its author. Never put a sentence that is off the record into a note. Give session to link it to a meeting. Returns {"note", "duplicate"}.`},
-		func(ctx context.Context, c coreapi.Client, in recordIn) (any, error) {
+	tool(srv, s, tools.NoteAdd,
+		func(ctx context.Context, c coreapi.Client, in tools.RecordIn) (any, error) {
 			if blank(in.Text) {
 				return nil, usagef("text is required")
 			}
@@ -488,9 +311,8 @@ func (s *Server) addTools(srv *sdk.Server) {
 			return map[string]any{"note": coreapi.MessageJSON(res.GetNote()), "duplicate": res.GetDuplicate()}, nil
 		})
 
-	tool(srv, s, &sdk.Tool{Name: "note_list", Title: "List notes", Annotations: readOnly,
-		Description: `List the notes, oldest first. Page with afterId (the last ID you have). Returns {"notes": […]}.`},
-		func(ctx context.Context, c coreapi.Client, in listIn) (any, error) {
+	tool(srv, s, tools.NoteList,
+		func(ctx context.Context, c coreapi.Client, in tools.ListIn) (any, error) {
 			ns, err := c.ListNotes(ctx, in.AfterID, in.Session, in.Limit)
 			if err != nil {
 				return nil, err
@@ -502,9 +324,8 @@ func (s *Server) addTools(srv *sdk.Server) {
 			return map[string]any{"notes": out}, nil
 		})
 
-	tool(srv, s, &sdk.Tool{Name: "minutes_get", Title: "Get the minutes of a session", Annotations: readOnly,
-		Description: `Get the minutes that the hub stored when a session ended: the last version written with minutes_update. Returns {"minutes": {"sessionId", "text", "authorParticipantId", …}}; fails with not_found if the session has no stored minutes (for example while it still runs; then read the minutes.updated lines of your log). While you write minutes, never include a sentence that is off the record.`},
-		func(ctx context.Context, c coreapi.Client, in minutesGetIn) (any, error) {
+	tool(srv, s, tools.MinutesGet,
+		func(ctx context.Context, c coreapi.Client, in tools.MinutesGetIn) (any, error) {
 			sid, err := s.sessionID(ctx, c, in.Session)
 			if err != nil {
 				return nil, err
@@ -516,9 +337,8 @@ func (s *Server) addTools(srv *sdk.Server) {
 			return map[string]any{"minutes": coreapi.MessageJSON(m)}, nil
 		})
 
-	tool(srv, s, &sdk.Tool{Name: "minutes_list", Title: "List stored minutes", Annotations: readOnly,
-		Description: `List the minutes of ended sessions, oldest first. Page with afterId (the last ID you have). Returns {"minutes": […]}.`},
-		func(ctx context.Context, c coreapi.Client, in listIn) (any, error) {
+	tool(srv, s, tools.MinutesList,
+		func(ctx context.Context, c coreapi.Client, in tools.ListIn) (any, error) {
 			ms, err := c.ListMinutes(ctx, in.AfterID, in.Session, in.Limit)
 			if err != nil {
 				return nil, err
@@ -530,10 +350,8 @@ func (s *Server) addTools(srv *sdk.Server) {
 			return map[string]any{"minutes": out}, nil
 		})
 
-	const drafts = ` Tasks are local drafts in the hub for now; later the hub syncs them with the team's task tool (for example GitHub issues), and the ref then names the synced task. Treat a ref as opaque.`
-	tool(srv, s, &sdk.Tool{Name: "task_create", Title: "Create a task", Annotations: additive,
-		Description: `Create a task of the team, with you as its author, for example "Write the release notes" assigned to a participant. Give session to link it to a meeting. Never put a sentence that is off the record into a task. Returns {"task": {"ref", "status", …}, "duplicate"}.` + drafts},
-		func(ctx context.Context, c coreapi.Client, in taskCreateIn) (any, error) {
+	tool(srv, s, tools.TaskCreate,
+		func(ctx context.Context, c coreapi.Client, in tools.TaskCreateIn) (any, error) {
 			if blank(in.Title) {
 				return nil, usagef("title is required")
 			}
@@ -545,9 +363,8 @@ func (s *Server) addTools(srv *sdk.Server) {
 			return map[string]any{"task": coreapi.MessageJSON(res.GetTask()), "duplicate": res.GetDuplicate()}, nil
 		})
 
-	tool(srv, s, &sdk.Tool{Name: "task_get", Title: "Get a task", Annotations: readOnly,
-		Description: `Get one task by its ref. Returns {"task"}; fails with not_found for an unknown ref.` + drafts},
-		func(ctx context.Context, c coreapi.Client, in taskRefIn) (any, error) {
+	tool(srv, s, tools.TaskGet,
+		func(ctx context.Context, c coreapi.Client, in tools.TaskRefIn) (any, error) {
 			if blank(in.Ref) {
 				return nil, usagef("ref is required")
 			}
@@ -558,9 +375,8 @@ func (s *Server) addTools(srv *sdk.Server) {
 			return map[string]any{"task": coreapi.MessageJSON(t)}, nil
 		})
 
-	tool(srv, s, &sdk.Tool{Name: "task_list", Title: "List tasks", Annotations: readOnly,
-		Description: `List tasks, oldest first, filtered by statuses, assignee and session. Returns {"tasks": […], "nextPageToken"}; while nextPageToken is not empty, pass it as pageToken to read the next page.` + drafts},
-		func(ctx context.Context, c coreapi.Client, in taskListIn) (any, error) {
+	tool(srv, s, tools.TaskList,
+		func(ctx context.Context, c coreapi.Client, in tools.TaskListIn) (any, error) {
 			ts, next, err := c.ListTasks(ctx, coreapi.TaskFilter{Statuses: in.Statuses, Assignee: in.Assignee, SessionID: in.Session,
 				PageToken: in.PageToken, Limit: in.Limit})
 			if err != nil {
@@ -573,9 +389,8 @@ func (s *Server) addTools(srv *sdk.Server) {
 			return map[string]any{"tasks": out, "nextPageToken": next}, nil
 		})
 
-	tool(srv, s, &sdk.Tool{Name: "task_update", Title: "Update a task", Annotations: additive,
-		Description: `Change a task: give its ref and only the fields to change (title, description, assignee, status, session). For example status "done" when the work is finished. Every change is kept in the history of the archive. Returns {"task", "duplicate"}; the revision of the task grows with every change.` + drafts},
-		func(ctx context.Context, c coreapi.Client, in taskUpdateIn) (any, error) {
+	tool(srv, s, tools.TaskUpdate,
+		func(ctx context.Context, c coreapi.Client, in tools.TaskUpdateIn) (any, error) {
 			if blank(in.Ref) {
 				return nil, usagef("ref is required")
 			}
@@ -587,9 +402,8 @@ func (s *Server) addTools(srv *sdk.Server) {
 			return map[string]any{"task": coreapi.MessageJSON(res.GetTask()), "duplicate": res.GetDuplicate()}, nil
 		})
 
-	tool(srv, s, &sdk.Tool{Name: "session_import", Title: "Import a conversation", Annotations: additive,
-		Description: `Import a whole conversation that happened outside the office (another meeting tool, a chat, an agent conversation) as a new session. The session is marked as imported: its first event is session.imported with the source, the speakers join as imported participants ("imported:<id>"), every message is an utterance.final, and import.completed ends the import. Give the conversation as {"source", "title", "participants": [{"id", "name", "kind": "human"|"agent"}], "utterances": [{"speaker", "text", "time", "modality": "text"|"voice"}]}, or as a file in that format. Returns {"sessionId", "firstEventId", "lastEventId", "participants", "utterances", "pages", "treeHead"}. Afterwards read it with meeting_events, join it with meeting_join to write minutes, and record decisions, notes and tasks with its session ID, as for any session.`},
-		func(ctx context.Context, c coreapi.Client, in importIn) (any, error) {
+	tool(srv, s, tools.SessionImport,
+		func(ctx context.Context, c coreapi.Client, in tools.ImportIn) (any, error) {
 			conv := in.Conversation
 			switch {
 			case (in.File == "") == (conv == nil):
@@ -611,9 +425,8 @@ func (s *Server) addTools(srv *sdk.Server) {
 			return coreapi.ImportedJSON(im), nil
 		})
 
-	tool(srv, s, &sdk.Tool{Name: "meeting_events", Title: "Read events after a cursor", Annotations: readOnly,
-		Description: `Read the events of a session after a cursor from the server: {"events": […], "more": bool}. Event IDs grow by one without gaps. Use this when you see a gap in the IDs of your log (for example 43 after 41: read with after 41), or poll it with your last ID if you cannot follow a file. An utterance with "offTheRecord": true is a placeholder: its speaker marked it off the record. Do not use or repeat such a sentence anywhere, not in minutes, decisions or notes.`},
-		func(ctx context.Context, c coreapi.Client, in eventsIn) (any, error) {
+	tool(srv, s, tools.MeetingEvents,
+		func(ctx context.Context, c coreapi.Client, in tools.EventsIn) (any, error) {
 			sid, err := s.sessionID(ctx, c, in.Session)
 			if err != nil {
 				return nil, err
@@ -629,9 +442,8 @@ func (s *Server) addTools(srv *sdk.Server) {
 			return map[string]any{"events": out, "more": more}, nil
 		})
 
-	tool(srv, s, &sdk.Tool{Name: "whoami", Title: "Who am I", Annotations: readOnly,
-		Description: `Authenticate and return your participant ID and key ID: {"participantId", "keyId"}. Use the participant ID to find your own lines in the log.`},
-		func(ctx context.Context, c coreapi.Client, _ noIn) (any, error) {
+	tool(srv, s, tools.Whoami,
+		func(ctx context.Context, c coreapi.Client, _ tools.NoIn) (any, error) {
 			pid, err := c.ParticipantID(ctx)
 			if err != nil {
 				return nil, err

@@ -57,7 +57,7 @@
 //     A stored log that does not verify is not used: its commands fail with DataLoss until a
 //     peer offers a whole copy.
 //   - Schema (dec-session-schema): a session belongs to the schema it was started with. A session
-//     this hub starts has sessionv1.Schema; every tree head the hub signs for it carries the schema,
+//     this hub starts has sessionstreamv1.Schema; every tree head the hub signs for it carries the schema,
 //     and the signature covers it, so the archive keeps the schema in the tree head file. A restored
 //     session keeps the schema of its stored tree head. A stored log of another schema is used only
 //     if its signature verifies and the leaves this hub computes give its root hash; then it is

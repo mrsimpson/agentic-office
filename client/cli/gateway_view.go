@@ -11,6 +11,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/mrsimpson/agentic-office/client/cli/commands"
+
 	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
 	"github.com/mrsimpson/agentic-office/client/replicator/locallog"
 
@@ -179,7 +181,7 @@ func (g *gatewayView) report(err error) {
 		return
 	}
 	if g.e.json {
-		g.e.printJSON(map[string]any{"error": map[string]string{"code": errorCode(err), "message": err.Error()}})
+		g.e.printJSON(commands.ErrorJSON(errorCode(err), err.Error()))
 		return
 	}
 	fmt.Fprintf(g.e.stderr, "office: %v%s", err, g.nl)

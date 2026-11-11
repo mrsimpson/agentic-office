@@ -1,11 +1,22 @@
-package agentrunner
+// Package acpclient is the client side of the Agent Client Protocol (if-acp-client): the agent
+// runner is the ACP client of an agent harness, for example Claude Code through its ACP adapter,
+// opencode or Kiro (dec-agent-runner-acp).
+//
+// It starts the harness command in its own process group and talks JSON-RPC with it over its
+// standard input and output (github.com/coder/acp-go-sdk, protocol version 1). It offers no file
+// system and no terminal. It opens one ACP session with the MCP server it is given, sends prompts
+// and waits for the end of each turn. It answers the permission requests of the harness by a Rule:
+// by default the office tools only, and never a tool of kind execute, edit, delete or move; with
+// patterns of the user, exactly the tools whose title matches. The title and kind come from the
+// request, else from the session/update of the same tool call. Stop closes the harness's stdin,
+// then sends SIGTERM and at last SIGKILL to its process group.
+package acpclient
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -16,8 +27,8 @@ import (
 	acp "github.com/coder/acp-go-sdk"
 )
 
-// harness is a running agent harness and the ACP connection to it. The runner is the ACP client.
-type harness struct {
+// Harness is a running agent harness and the ACP connection to it. The runner is the ACP client.
+type Harness struct {
 	cmd   *exec.Cmd
 	stdin io.WriteCloser
 	conn  *acp.ClientSideConnection
@@ -28,9 +39,9 @@ type harness struct {
 	logf  func(string, ...any)
 }
 
-// startHarness starts the harness command with its own process group, so that stopping it also
+// Start starts the harness command with its own process group, so that stopping it also
 // stops its children (for example node under npx). Its stderr goes to stderr.
-func startHarness(command []string, stderr io.Writer, logf func(string, ...any), allow permissionRule) (*harness, error) {
+func Start(command []string, stderr io.Writer, logf func(string, ...any), allow Rule) (*Harness, error) {
 	if len(command) == 0 {
 		return nil, errors.New("no harness command")
 	}
@@ -48,7 +59,7 @@ func startHarness(command []string, stderr io.Writer, logf func(string, ...any),
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start the harness %q: %w", command[0], err)
 	}
-	h := &harness{cmd: cmd, stdin: in, done: make(chan struct{}), logf: logf}
+	h := &Harness{cmd: cmd, stdin: in, done: make(chan struct{}), logf: logf}
 	h.cl = &acpClient{logf: logf, allow: allow, tools: map[acp.ToolCallId]toolInfo{}}
 	h.conn = acp.NewClientSideConnection(h.cl, in, out)
 	go func() {
@@ -58,8 +69,8 @@ func startHarness(command []string, stderr io.Writer, logf func(string, ...any),
 	return h, nil
 }
 
-// open negotiates the protocol and opens one ACP session with the given MCP server.
-func (h *harness) open(ctx context.Context, cwd string, office acp.McpServerStdio, version string) error {
+// Open negotiates the protocol and opens one ACP session with the given MCP server.
+func (h *Harness) Open(ctx context.Context, cwd string, office acp.McpServerStdio, version string) error {
 	ini, err := h.call(ctx, func(ctx context.Context) (any, error) {
 		return h.conn.Initialize(ctx, acp.InitializeRequest{
 			ProtocolVersion:    acp.ProtocolVersionNumber,
@@ -93,9 +104,9 @@ func (h *harness) open(ctx context.Context, cwd string, office acp.McpServerStdi
 	return nil
 }
 
-// prompt sends one prompt and waits for the end of the agent's turn. It returns the stop reason.
+// Prompt sends one prompt and waits for the end of the agent's turn. It returns the stop reason.
 // If ctx ends first, it cancels the turn and waits a little for the harness to confirm.
-func (h *harness) prompt(ctx context.Context, text string) (acp.StopReason, error) {
+func (h *Harness) Prompt(ctx context.Context, text string) (acp.StopReason, error) {
 	h.cl.beginTurn()
 	defer h.cl.endTurn()
 	type result struct {
@@ -113,7 +124,7 @@ func (h *harness) prompt(ctx context.Context, text string) (acp.StopReason, erro
 	case r := <-res:
 		return r.r.StopReason, r.err
 	case <-h.done:
-		return "", h.exitError()
+		return "", h.ExitError()
 	case <-ctx.Done():
 	}
 	_ = h.conn.Cancel(context.Background(), acp.CancelNotification{SessionId: h.sid})
@@ -127,7 +138,7 @@ func (h *harness) prompt(ctx context.Context, text string) (acp.StopReason, erro
 }
 
 // call runs f and gives up when the harness exits.
-func (h *harness) call(ctx context.Context, f func(context.Context) (any, error)) (any, error) {
+func (h *Harness) call(ctx context.Context, f func(context.Context) (any, error)) (any, error) {
 	type result struct {
 		v   any
 		err error
@@ -141,22 +152,26 @@ func (h *harness) call(ctx context.Context, f func(context.Context) (any, error)
 	case r := <-res:
 		return r.v, r.err
 	case <-h.done:
-		return nil, h.exitError()
+		return nil, h.ExitError()
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
 }
 
-func (h *harness) exitError() error {
+// ExitError returns the error with which the harness stopped.
+func (h *Harness) ExitError() error {
 	if h.err != nil {
 		return fmt.Errorf("the harness stopped: %w", h.err)
 	}
 	return errors.New("the harness stopped")
 }
 
-// stop ends the harness: it closes its stdin, then sends SIGTERM and at last SIGKILL to its
+// Done is closed when the harness process has exited.
+func (h *Harness) Done() <-chan struct{} { return h.done }
+
+// Stop ends the harness: it closes its stdin, then sends SIGTERM and at last SIGKILL to its
 // process group.
-func (h *harness) stop() {
+func (h *Harness) Stop() {
 	_ = h.stdin.Close()
 	pgid := -h.cmd.Process.Pid
 	for _, step := range []struct {
@@ -183,7 +198,7 @@ type toolInfo struct {
 // acpClient is the client side of ACP: it answers the requests of the harness.
 type acpClient struct {
 	logf  func(string, ...any)
-	allow permissionRule
+	allow Rule
 
 	mu    sync.Mutex
 	tools map[acp.ToolCallId]toolInfo
@@ -298,11 +313,11 @@ func (c *acpClient) WaitForTerminalExit(context.Context, acp.WaitForTerminalExit
 	return acp.WaitForTerminalExitResponse{}, errNoCapability
 }
 
-// permissionRule decides which tool calls of the harness the runner allows.
-type permissionRule struct {
-	// globs are patterns of the user ("*" matches any text), matched against the title of the
+// Rule decides which tool calls of the harness the runner allows.
+type Rule struct {
+	// Globs are patterns of the user ("*" matches any text), matched against the title of the
 	// tool call without regard to case. With no globs, the default rule applies.
-	globs []string
+	Globs []string
 }
 
 // officeTool matches the title of a call of an office tool, as harnesses name MCP tools: the
@@ -312,15 +327,15 @@ var officeTool = regexp.MustCompile(`(?i)(^|[^a-z0-9])office[_\W]+(meeting|utter
 
 // allows reports whether a tool call with this title and kind is allowed. The default rule
 // allows the office tools only, and never a tool that executes, edits, deletes or moves.
-func (r permissionRule) allows(title string, kind acp.ToolKind) bool {
-	if len(r.globs) == 0 {
+func (r Rule) allows(title string, kind acp.ToolKind) bool {
+	if len(r.Globs) == 0 {
 		switch kind {
 		case acp.ToolKindExecute, acp.ToolKindEdit, acp.ToolKindDelete, acp.ToolKindMove:
 			return false
 		}
 		return officeTool.MatchString(title)
 	}
-	for _, g := range r.globs {
+	for _, g := range r.Globs {
 		if globMatch(strings.ToLower(g), strings.ToLower(title)) {
 			return true
 		}
@@ -355,9 +370,3 @@ func oneLine(s string, max int) string {
 	}
 	return s
 }
-
-// absEnv returns the environment entry name=value.
-func absEnv(name, value string) acp.EnvVariable { return acp.EnvVariable{Name: name, Value: value} }
-
-// lookupOffice returns the path of the running office binary, for the MCP server.
-func lookupOffice() (string, error) { return os.Executable() }

@@ -1,4 +1,15 @@
-package ears
+// Package audio is the audio input of the ears (if-audio-in): what the ears take from the local
+// audio device of the participant, or from a WAV file in its place.
+//
+// A Source delivers 20 ms frames of 16 kHz mono audio (SampleRate), each with the time its last
+// sample was captured. While paused, a source captures nothing: the microphone recorder is
+// stopped, so the device is closed; a WAV file plays on in real time, but its frames are dropped.
+//
+// The microphone is read through a recorder program that runs as the user and writes raw 16-bit
+// little-endian PCM, 16 kHz mono, to its standard output: parec, arecord, rec or (on macOS)
+// ffmpeg, in this order, or the command in OFFICE_MIC_COMMAND (FindRecorder). A WAV file must be
+// 16-bit PCM; stereo is mixed down and other rates are resampled (ReadWAV).
+package audio
 
 import (
 	"bufio"
@@ -17,26 +28,28 @@ import (
 const (
 	// SampleRate is the rate that Whisper and the VAD expect: 16 kHz mono.
 	SampleRate = 16000
-	// frameSize is 20 ms of audio.
-	frameSize = SampleRate / 50
-	frameDur  = 20 * time.Millisecond
+	// FrameSize is the number of samples of a frame: 20 ms of audio.
+	FrameSize = SampleRate / 50
+	// FrameDur is the length of a frame.
+	FrameDur = 20 * time.Millisecond
 )
 
-// frame is 20 ms of mono audio and the time its last sample was captured.
-type frame struct {
-	samples []float32
-	at      time.Time
+// Frame is 20 ms of mono audio and the time its last sample was captured.
+type Frame struct {
+	Samples []float32
+	At      time.Time
 }
 
-// source delivers audio frames. It stops capture while paused() is true: frames that a source
+// Source delivers audio frames. It stops capture while paused() is true: frames that a source
 // would capture during a pause are never read.
-type source interface {
-	run(ctx context.Context, out chan<- frame, paused func() bool) error
+type Source interface {
+	// Run sends frames to out until ctx ends, the source ends or it fails.
+	Run(ctx context.Context, out chan<- Frame, paused func() bool) error
 }
 
-// readWAV reads a 16-bit PCM WAV file and returns mono samples at 16 kHz. Stereo is mixed down;
+// ReadWAV reads a 16-bit PCM WAV file and returns mono samples at 16 kHz. Stereo is mixed down;
 // other rates are resampled linearly.
-func readWAV(path string) ([]float32, error) {
+func ReadWAV(path string) ([]float32, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -89,14 +102,14 @@ func readWAV(path string) ([]float32, error) {
 	return out, nil
 }
 
-// wavSource plays a WAV file in real time, like a microphone. While paused, the file plays on
+// WAVSource plays a WAV file in real time, like a microphone. While paused, the file plays on
 // but its frames are dropped: the speaker talks on, and nothing of it is captured.
-type wavSource struct{ samples []float32 }
+type WAVSource struct{ Samples []float32 }
 
-func (w *wavSource) run(ctx context.Context, out chan<- frame, paused func() bool) error {
+func (w *WAVSource) Run(ctx context.Context, out chan<- Frame, paused func() bool) error {
 	start := time.Now()
-	for i, k := 0, 0; i+frameSize <= len(w.samples); i, k = i+frameSize, k+1 {
-		due := start.Add(time.Duration(k+1) * frameDur)
+	for i, k := 0, 0; i+FrameSize <= len(w.Samples); i, k = i+FrameSize, k+1 {
+		due := start.Add(time.Duration(k+1) * FrameDur)
 		select {
 		case <-time.After(time.Until(due)):
 		case <-ctx.Done():
@@ -106,7 +119,7 @@ func (w *wavSource) run(ctx context.Context, out chan<- frame, paused func() boo
 			continue
 		}
 		select {
-		case out <- frame{samples: w.samples[i : i+frameSize], at: time.Now()}:
+		case out <- Frame{Samples: w.Samples[i : i+FrameSize], At: time.Now()}:
 		case <-ctx.Done():
 			return nil
 		}
@@ -114,11 +127,11 @@ func (w *wavSource) run(ctx context.Context, out chan<- frame, paused func() boo
 	return nil
 }
 
-// micSource records the default microphone with a recorder program that writes raw 16-bit
+// MicSource records the default microphone with a recorder program that writes raw 16-bit
 // little-endian PCM, 16 kHz mono, to stdout. The ears need no special rights: the recorder runs
 // as the user, like any audio application. While paused, the recorder is stopped, so the
 // device is closed and the system shows that the microphone is not in use.
-type micSource struct{ command []string }
+type MicSource struct{ Command []string }
 
 // recorders are tried in this order when OFFICE_MIC_COMMAND is not set.
 var recorders = [][]string{
@@ -134,9 +147,9 @@ func init() {
 	}
 }
 
-// findRecorder returns the recorder command: OFFICE_MIC_COMMAND (run with sh -c) or the first
+// FindRecorder returns the recorder command: OFFICE_MIC_COMMAND (run with sh -c) or the first
 // recorder that is installed.
-func findRecorder() ([]string, error) {
+func FindRecorder() ([]string, error) {
 	if c := strings.TrimSpace(os.Getenv("OFFICE_MIC_COMMAND")); c != "" {
 		return []string{"sh", "-c", c}, nil
 	}
@@ -151,7 +164,7 @@ func findRecorder() ([]string, error) {
 		"to a command that writes 16 kHz mono s16le PCM to stdout", strings.Join(names, ", "))
 }
 
-func (m *micSource) run(ctx context.Context, out chan<- frame, paused func() bool) error {
+func (m *MicSource) Run(ctx context.Context, out chan<- Frame, paused func() bool) error {
 	for ctx.Err() == nil {
 		for paused() {
 			select {
@@ -168,10 +181,10 @@ func (m *micSource) run(ctx context.Context, out chan<- frame, paused func() boo
 }
 
 // record runs the recorder until ctx ends or the participant pauses.
-func (m *micSource) record(ctx context.Context, out chan<- frame, paused func() bool) error {
+func (m *MicSource) record(ctx context.Context, out chan<- Frame, paused func() bool) error {
 	rctx, stop := context.WithCancel(ctx)
 	defer stop()
-	cmd := exec.CommandContext(rctx, m.command[0], m.command[1:]...)
+	cmd := exec.CommandContext(rctx, m.Command[0], m.Command[1:]...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
@@ -179,10 +192,10 @@ func (m *micSource) record(ctx context.Context, out chan<- frame, paused func() 
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("start recorder %s: %w", m.command[0], err)
+		return fmt.Errorf("start recorder %s: %w", m.Command[0], err)
 	}
-	r := bufio.NewReaderSize(stdout, 8*frameSize*2)
-	buf := make([]byte, frameSize*2)
+	r := bufio.NewReaderSize(stdout, 8*FrameSize*2)
+	buf := make([]byte, FrameSize*2)
 	var readErr error
 	for {
 		if paused() {
@@ -192,12 +205,12 @@ func (m *micSource) record(ctx context.Context, out chan<- frame, paused func() 
 			readErr = err
 			break
 		}
-		s := make([]float32, frameSize)
+		s := make([]float32, FrameSize)
 		for i := range s {
 			s[i] = float32(int16(binary.LittleEndian.Uint16(buf[i*2:]))) / 32768
 		}
 		select {
-		case out <- frame{samples: s, at: time.Now()}:
+		case out <- Frame{Samples: s, At: time.Now()}:
 		case <-ctx.Done():
 		}
 		if ctx.Err() != nil {
@@ -208,7 +221,7 @@ func (m *micSource) record(ctx context.Context, out chan<- frame, paused func() 
 	_ = cmd.Wait()
 	if readErr != nil && ctx.Err() == nil && !paused() {
 		if errors.Is(readErr, io.EOF) || errors.Is(readErr, io.ErrUnexpectedEOF) {
-			return fmt.Errorf("recorder %s stopped: %s", m.command[0], strings.TrimSpace(stderr.String()))
+			return fmt.Errorf("recorder %s stopped: %s", m.Command[0], strings.TrimSpace(stderr.String()))
 		}
 		return readErr
 	}

@@ -43,6 +43,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mrsimpson/agentic-office/hub/stage/web"
+
 	"connectrpc.com/connect/v2"
 	"connectrpc.com/connect/v2/connecthttp"
 	"connectrpc.com/connect/v2/connectinprocess"
@@ -216,7 +218,7 @@ func main() {
 	mux := http.NewServeMux()
 	connecthttp.Mount(mux, cs)
 	// The stage subscribes in-process through the token check, with the token of the link.
-	mux.Handle(stage.PathPrefix, stage.New(stage.Options{
+	mux.Handle(web.PathPrefix, stage.New(stage.Options{
 		Session: connectinprocess.New(cs),
 		StageSession: func(token string) (string, error) {
 			c, err := ids.CheckToken(token)

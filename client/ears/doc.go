@@ -4,9 +4,9 @@
 // (concept-edge-transcription, dec-local-single-ear). Only text and metadata leave the device.
 // The pipeline is audio source, VAD, Whisper, local queue, SubmitUtterance with modality voice.
 //
-//   - Audio: the microphone through a recorder program that runs as the user (parec, arecord,
-//     rec or ffmpeg; OFFICE_MIC_COMMAND overrides it), or a WAV file played in real time. Both
-//     deliver 20 ms frames of 16 kHz mono audio.
+//   - Audio: the audio input (if-audio-in, package audio): the microphone through a recorder
+//     program that runs as the user (parec, arecord, rec or ffmpeg; OFFICE_MIC_COMMAND overrides
+//     it), or a WAV file played in real time. Both deliver 20 ms frames of 16 kHz mono audio.
 //   - VAD: the Silero model of whisper.cpp gives a speech probability for every 32 ms window.
 //     A sentence ends after EndSilence (default 500 ms) without speech. See vad.go for why the
 //     streaming API is used instead of whisper.cpp's segment API.

@@ -439,7 +439,8 @@ checks the code against the building block view on every test run (`concept-modu
 It reads the model from the arc42 tooling itself, not with an own parser, and the dependencies of
 the code from the Go toolchain. It fails on code without a building block, on a dependency
 between building blocks that does not go through a required interface, on a test that reaches
-into a building block, and on a required interface that is never used. A small workspace with
+into a building block, on a required interface that is never used, and on two elements of the
+model that share a path. A small workspace with
 deliberate violations proves that each rule fails when it should. **Consequences:** Every change
 of a dependency needs a change of the model first. The tests need the arc42 tooling and fail
 without it; they do not skip. **Rejected:** an own parser of the chapter files (it would drift

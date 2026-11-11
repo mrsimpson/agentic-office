@@ -82,6 +82,11 @@ func TestRulesCatchViolations(t *testing.T) {
 		"model: interface if-bad: x-realized-by bb-alpha is not a direct child of the provider bb-omega",
 		// a required interface that is never imported
 		"requires: building block bb-beta requires if-alpha but does not import its path alpha/api",
+		// two interfaces share a path
+		"model: path alpha/api is shared by if-alpha and if-alpha-twin",
+		// an interface shares the path of a building block
+		"model: path gamma is shared by bb-gamma and if-beta",
+		"model: path omega is shared by bb-omega and if-bad",
 	}
 	for _, w := range want {
 		found := false

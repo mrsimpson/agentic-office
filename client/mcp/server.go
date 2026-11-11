@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/mrsimpson/agentic-office/client/mcp/tools"
+
 	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
 	"github.com/mrsimpson/agentic-office/client/replicator/control"
 
@@ -63,7 +65,7 @@ func (s *Server) Run(ctx context.Context, in io.ReadCloser, out io.WriteCloser) 
 	s.mu.Unlock()
 
 	srv := sdk.NewServer(&sdk.Implementation{Name: "agentic-office", Title: "Agentic office", Version: s.Version},
-		&sdk.ServerOptions{Instructions: instructions})
+		&sdk.ServerOptions{Instructions: tools.Instructions})
 	s.addTools(srv)
 	srv.AddReceivingMiddleware(inputErrors)
 	err := srv.Run(ctx, &sdk.IOTransport{Reader: in, Writer: out})
@@ -179,7 +181,7 @@ func removePID(path string) {
 	}
 }
 
-// Errors of the tools have the form of the CLI's --json errors: {"error":{"code","message"}}.
+// Errors of the tools have the form of tools.ErrorJSON, like the --json errors of the CLI.
 
 // errUsage marks wrong tool arguments (code "usage").
 type errUsage struct{ msg string }
@@ -195,21 +197,21 @@ func errorCode(err error) string {
 	var ce *connect.Error
 	switch {
 	case errors.As(err, &u), errors.Is(err, coreapi.ErrBadInput):
-		return "usage"
+		return tools.CodeUsage
 	case errors.Is(err, coreapi.ErrNoKey):
-		return "no_key"
+		return tools.CodeNoKey
 	case errors.Is(err, coreapi.ErrNoSession):
-		return "no_session"
+		return tools.CodeNoSession
 	case errors.As(err, &ce):
 		return ce.Code().String()
 	}
-	return "error"
+	return tools.CodeError
 }
 
 // errorResult is a tool result with IsError set and the error object as text and as structured
 // content.
 func errorResult(code, msg string) *sdk.CallToolResult {
-	v := map[string]any{"error": map[string]string{"code": code, "message": msg}}
+	v := tools.ErrorJSON(code, msg)
 	b, _ := json.Marshal(v)
 	return &sdk.CallToolResult{IsError: true, Content: []sdk.Content{&sdk.TextContent{Text: string(b)}}, StructuredContent: v}
 }
@@ -218,7 +220,7 @@ func errorResult(code, msg string) *sdk.CallToolResult {
 func okResult(v any) *sdk.CallToolResult {
 	b, err := json.Marshal(v)
 	if err != nil {
-		return errorResult("error", err.Error())
+		return errorResult(tools.CodeError, err.Error())
 	}
 	return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: string(b)}}, StructuredContent: json.RawMessage(b)}
 }
@@ -241,6 +243,6 @@ func inputErrors(next sdk.MethodHandler) sdk.MethodHandler {
 				msg = t.Text
 			}
 		}
-		return errorResult("usage", msg), nil
+		return errorResult(tools.CodeUsage, msg), nil
 	}
 }

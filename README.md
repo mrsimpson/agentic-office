@@ -112,18 +112,20 @@ The hub speaks only TLS and needs an access token for every call. See
 ## Layout
 
 The layout follows the building blocks of chapter 5 of the architecture. Every building block and
-every interface has exactly one path. An interface lies inside the path of its provider and owns
-its types. An interface that crosses the boundary of the hub or the client belongs to that
+every interface has exactly one path, and no two share a path. An interface is its own package
+inside the path of its provider and owns its types. An interface that crosses the boundary of the hub or the client belongs to that
 black box and is realized by one part (for example the meeting session realizes the session
 commands of the office hub). There is no shared package. `make arch` checks that every import between building
-blocks goes through an interface that the importing block requires (concept-module-boundaries).
+blocks goes through an interface that the importing block requires, and that no two elements
+share a path (concept-module-boundaries).
 
 ```
 hub/                      bb-office-hub: wiring of the hub (binary office-hub)
   session/                bb-session-service; writes sessions to the archive
-    api/                  if-session-commands, if-session-stream: contract, generated code,
-                          event types in dotted form (api/events), Merkle code (api/merkle),
-                          stored form of a session log: lines and tree head (api/logfile)
+    commandsapi/          if-session-commands: contract and generated code
+    streamapi/            if-session-stream: contract, generated code, the event types and their
+                          dotted form (streamapi/events), Merkle code (streamapi/merkle),
+                          stored form of a session log: lines and tree head (streamapi/logfile)
     importapi/            if-session-import: contract and generated code
   archive/                bb-archive: local Git repository, push mocked
     storage/              if-archive-storage: write files as one commit, read them back (in-process)
@@ -139,15 +141,23 @@ hub/                      bb-office-hub: wiring of the hub (binary office-hub)
     api/                  if-task-api: contract and generated code
   slides/                 bb-slides: slide decks, input as YAML and output as HTML in the archive
     api/                  if-slides-api: contract and generated code
-  stage/                  bb-stage, realizes if-stage-web
+  stage/                  bb-stage: renders the stage from the session stream
+    web/                  if-stage-web: addresses, page, regions and event stream of the stage
 client/                   bb-participant-client: wiring of the client (binary office)
-  core/                   bb-client-core, if-client-core: shared core of CLI, MCP server and ears;
-                          command IDs (core/ids)
-  cli/                    bb-cli, if-cli
-  mcp/                    bb-mcp, if-mcp
-  replicator/             bb-replicator, if-replication (start, find and stop a replicator)
-  ears/                   bb-ears, if-audio-in
-  agentrunner/            bb-agent-runner, if-acp-client: keeps an agent in a meeting over ACP
+  core/                   bb-client-core: shared core of CLI, MCP server and ears
+    api/                  if-client-core: the Go interface of the core, its types, command IDs and
+                          the shared shapes of input and output
+  cli/                    bb-cli
+    commands/             if-cli: commands, exit codes and the form of --json output
+  mcp/                    bb-mcp
+    tools/                if-mcp: instructions, tools and their input types
+  replicator/             bb-replicator
+    control/              if-replication: start, find and stop a replicator (in-process)
+    locallog/             if-local-log: read the local session log
+  ears/                   bb-ears
+    audio/                if-audio-in: microphone recorder and WAV input, 20 ms frames at 16 kHz
+  agentrunner/            bb-agent-runner: keeps an agent in a meeting over ACP
+    acpclient/            if-acp-client: client side of the Agent Client Protocol
     decision/             if-decision-model: request, answer and JSON schema of a decision model
 tests/                    external actors: may use interfaces only
   acpdouble/              test double of an ACP agent harness (no model)
@@ -164,8 +174,8 @@ All interfaces are defined in Protobuf and served with Connect RPC (`dec-connect
 
 | Interface | Service | Kind |
 |---|---|---|
-| Session commands | `office.session.v1.SessionService` | unary |
-| Session stream | `office.session.v1.SessionService/Subscribe` | server stream from a cursor |
+| Session commands | `office.sessioncommands.v1.SessionCommandsService` | unary |
+| Session stream | `office.sessionstream.v1.SessionStreamService` (`Subscribe`, `GetEvents`) | server stream from a cursor; events after a cursor |
 | Session import | `office.sessionimport.v1.SessionImportService` | unary, one call per page |
 | Auth API | `office.identity.v1.IdentityService` | unary |
 | Decisions | `office.decision.v1.DecisionService` | unary |
@@ -189,7 +199,7 @@ Rules that hold for all of them:
   curl --cacert <data-dir>/tls.crt \
     -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN" \
     -d '{"sessionId":"demo","commandId":"…"}' \
-    https://127.0.0.1:8740/office.session.v1.SessionService/Join
+    https://127.0.0.1:8740/office.sessioncommands.v1.SessionCommandsService/Join
   ```
 
 ### Meeting session
@@ -242,14 +252,14 @@ the full contract. In short:
 - What the signature means: the tree heads over an imported log prove which participant imported
   it and that it has not changed since. They do not prove that the speakers said it.
 
-The new events are revision 2 of the session schema. Stored sessions of revision 1 are readable
-but not continued (`dec-session-schema`).
+The schema of the session is `office.sessionstream.v1/1`. Stored sessions of another schema are
+readable but not continued (`dec-session-schema`).
 
 ### Checking a session log (Merkle tree)
 
 The events of a session are the leaves of a Merkle tree in the style of RFC 9162 (Certificate
 Transparency), and the hub signs its tree heads (`dec-merkle-log`). Package
-`hub/session/api/merkle` has the exact bytes and the verification code for clients:
+`hub/session/streamapi/merkle` has the exact bytes and the verification code for clients:
 
 - Leaf hash = SHA-256(0x00 || leaf), node hash = SHA-256(0x01 || left || right). Event `n` is
   leaf `n-1`. The leaf of an event is its deterministic binary Protobuf encoding, as it is in the
@@ -261,8 +271,8 @@ Transparency), and the hub signs its tree heads (`dec-merkle-log`). Package
   the Ed25519 signature and the public key that signed. The signed message is
   `merkle.TreeHeadMessage`; it covers the schema.
 - Schema (`dec-session-schema`): a session belongs to the schema it was started with, the
-  version of the session contract. The schema of this code is `sessionv1.Schema`, for example
-  `office.session.v1/2`: the Protobuf package and a revision. The revision goes up with every
+  version of the session contract. The schema of this code is `sessionstreamv1.Schema`, for
+  example `office.sessionstream.v1/1`: the Protobuf package of the events and a revision. The revision goes up with every
   change of the events or their encoding that changes a leaf. Every check in package `merkle`
   fails with `merkle.ErrSchema` (and `merkle.ErrVerify`) for a tree head of another schema, so a
   verifier checks a session only with code of its own schema.
@@ -305,7 +315,7 @@ else `=` plus the base64url form of the ID without padding (`team/weekly 1` beco
 
 | File | What it is |
 |---|---|
-| `log.jsonl` | The raw session log: one line per event, the same lines as the local log of a participant (`hub/session/api/logfile`). It keeps the original text of sentences that are off the record and their `utterance.off_the_record` marks. Reading a session through the interfaces gives placeholders. |
+| `log.jsonl` | The raw session log: one line per event, the same lines as the local log of a participant (`hub/session/streamapi/logfile`). It keeps the original text of sentences that are off the record and their `utterance.off_the_record` marks. Reading a session through the interfaces gives placeholders. |
 | `tree-head.yaml` | The tree head signed by the hub over exactly this log: `session_id`, `schema` (the schema of the session), `tree_size` (the number of lines), `root_hash`, `signature`, `public_key` (bytes in base64). |
 
 Check a stored session:
@@ -823,7 +833,7 @@ text becomes the notes of the slide. A file that does not end with `.md` is JSON
 With `--json`, `slides render` prints `{"id", "mediaType", "duplicate"}`.
 
 **The local log** is `<runtime dir>/<session>/<participant>.jsonl` (directories 0700, file 0600):
-one compact JSON line per event (the line form of `hub/session/api/logfile`, the same as in the
+one compact JSON line per event (the line form of `hub/session/streamapi/logfile`, the same as in the
 archive of the hub), with the dotted type and the event ID as a
 number. It is append-only: marking a sentence off the record adds a new `utterance.off_the_record` line. The runtime
 directory also holds the join state (`<participant>.join`, the stored join command ID, so a
