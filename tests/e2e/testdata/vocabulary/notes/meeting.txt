@@ -1,0 +1,6 @@
+Meeting notes, 12 March
+
+Present: Katharina Weber, Jonas Becker and Priya Raman from Contoso Ltd in Dublin.
+
+Priya Raman showed the new SyncEngine. Contoso wants an API for the LMS of their customers.
+Jonas Becker will check the licence with the lawyers of Sonnenstrahl GmbH.

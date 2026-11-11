@@ -305,3 +305,27 @@ title: Imported session
 definition: A session whose log starts with a conversation that happened outside the office and that a participant imported; its first event marks it as imported and names the source
 :::
 ```
+
+## Vocabulary
+
+Words that the ears give Whisper before each sentence.
+
+```arc42
+:::glossary-term
+id: term-vocabulary
+title: Vocabulary
+definition: The names and terms of a project and the names of the participants, which the ears give Whisper as a prompt so that it writes them correctly (dec-vocabulary-prompt)
+:::
+```
+
+## Named-entity recognition (NER)
+
+A way to find names in text.
+
+```arc42
+:::glossary-term
+id: term-ner
+title: Named-entity recognition (NER)
+definition: A model that marks the words of a text that name a person, an organisation or a place; it labels words and writes no text of its own (dec-ner-model)
+:::
+```

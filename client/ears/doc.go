@@ -20,6 +20,10 @@
 //     its frames are dropped), audio that was heard before the pause is forgotten, and no
 //     sentence is transcribed.
 //
+// Vocabulary: before each sentence, Whisper gets a prompt with the terms of the vocabulary file
+// and the names of the participants (vocabulary.go). ExtractVocabulary builds such a file from
+// the documents of a project with rules and a NER model (extract.go, package ner).
+//
 // Report receives one Report per step with the measurements: Whisper time per sentence and the
 // time from the end of speech to the text (final) and to the confirmed submit (sent).
 //
