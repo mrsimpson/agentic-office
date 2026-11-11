@@ -1013,6 +1013,34 @@ prompt is full` (`--json`: `{"ears":{"type":"vocabulary","terms":12,"names":3,"c
 `--context` also gives Whisper the previous sentence. It is off by default, because its effect is
 not measured yet.
 
+**Vocabulary from documents.** `office vocabulary extract [DIR]` reads the Markdown and text
+files of a project (`.md`, `.markdown`, `.txt`, `.rst`, `.adoc`; also in subdirectories, but not
+in hidden ones, `node_modules` or `vendor`) and writes `.office/vocabulary.txt` (`dec-ner-model`):
+
+- A model for named-entity recognition finds persons, organisations and places, in German,
+  English and eight more languages. It is
+  [distilbert-base-multilingual-cased-ner-hrl](https://huggingface.co/Davlan/distilbert-base-multilingual-cased-ner-hrl)
+  (AFL-3.0). The client runs it in plain Go and downloads it on first use (about 540 MB, with a
+  pinned SHA-256, from the source or `OFFICE_MODEL_URL`, like the speech models). The model only
+  labels words; it writes no text.
+- Rules add CamelCase words (`SyncEngine`), acronyms (`DSGVO`, also in `DSGVO-Beauftragte`) and
+  words of headings. Code blocks, inline code, links and HTML are skipped.
+- Each occurrence scores: 3 for a name of the model, 2 for CamelCase or an acronym, 1 for a word
+  of a heading. The terms are ranked by score, then by their first occurrence.
+
+| Flag | Default | |
+|---|---|---|
+| `--out FILE` | `.office/vocabulary.txt` | the file to write |
+| `--max N` | `100` | the number of terms to keep |
+| `--no-model` | off | rules only: fast, no download |
+| `--force` | off | replace a file that was written by hand |
+
+The command does not replace a vocabulary file that it did not write; it knows its own files by
+their first line. `--json` prints `{"file", "documents", "model", "terms": [{"term", "score",
+"sources"}]}`. The model is slow: about 60 to 100 words per second on 4 CPUs, so 20,000 words take
+a few minutes. Check the file after the run: the most important terms belong at the top, because
+only about 30 fit into Whisper's prompt.
+
 **Microphone on a laptop.** The ears need no administrator rights. They read the microphone
 through a recorder program that runs as your user, like any audio application, and that writes
 raw 16 kHz mono 16-bit PCM to stdout. They try, in this order:

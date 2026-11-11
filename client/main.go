@@ -57,6 +57,20 @@ func main() {
 		}
 		return e.Run(ctx)
 	}
+	cli.ExtractVocabulary = func(ctx context.Context, o cli.VocabularyOptions, progress func(string)) (cli.VocabularyResult, error) {
+		x, err := ears.ExtractVocabulary(ctx, ears.ExtractOptions{Dir: o.Dir, Max: o.Max, NoModel: o.NoModel}, progress)
+		if err != nil {
+			return cli.VocabularyResult{}, err
+		}
+		if err := ears.WriteVocabulary(o.Out, o.Dir, x, o.Force); err != nil {
+			return cli.VocabularyResult{}, err
+		}
+		r := cli.VocabularyResult{File: o.Out, Documents: x.Documents, Model: x.Model, Terms: []cli.VocabularyTerm{}}
+		for _, t := range x.Terms {
+			r.Terms = append(r.Terms, cli.VocabularyTerm(t))
+		}
+		return r, nil
+	}
 	os.Exit(cli.Run(os.Args[1:], os.Stdout, os.Stderr))
 }
 

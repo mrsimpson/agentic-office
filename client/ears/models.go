@@ -186,7 +186,7 @@ func Catalogue(name, language string, fast bool) ([]ModelInfo, Choice, error) {
 		return nil, Choice{}, err
 	}
 	var out []ModelInfo
-	for _, m := range append(append([]model{}, catalogue...), vadModel) {
+	for _, m := range append(append(append([]model{}, catalogue...), vadModel), nerModels...) {
 		_, err := os.Stat(filepath.Join(ModelDir(), m.file))
 		out = append(out, ModelInfo{Name: m.name, File: filepath.Join(ModelDir(), m.file), SizeBytes: m.size,
 			Languages: m.languages, About: m.about, Downloaded: err == nil, Selected: m.name == c.Name})

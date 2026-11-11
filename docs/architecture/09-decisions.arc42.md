@@ -915,3 +915,44 @@ date: 2026-11-11
 addresses: qg-usability, qg-confidentiality
 :::
 ```
+
+## A multilingual NER model in plain Go finds the names in project documents
+
+**Context:** A good vocabulary needs the names of people, organisations, places and products of
+a project (`dec-vocabulary-prompt`). They are in the project's documents, in German and English.
+Rules alone find words such as CamelCase names and acronyms, but not "Katharina Weber" or
+"Sonnenstrahl GmbH". The maintainer allows models in the client, as long as they do not generate
+text (`con-no-intelligence` applies to the hub). The client is Go, and its only native library
+is whisper.cpp (`dec-languages`). **Options:**
+
+- a pure-Go NER library: the known one (prose) has an English model only;
+- an ONNX model through the ONNX runtime: fast, with small quantised models (about 135 MB), but
+  a second native library that must be built or shipped for every platform of the client;
+- Python tools such as spaCy or Flair: good German models, but a Python runtime next to the
+  client;
+- a generative model: excluded, it writes text.
+
+**Decision:** The client uses the multilingual DistilBERT model for named-entity recognition by
+Davlan (distilbert-base-multilingual-cased-ner-hrl, licence AFL-3.0). It knows German, English and
+eight more languages, and the entity types person, organisation, place and date. The client runs
+the model with its own forward pass in plain Go. It downloads the weights (about 540 MB) on first
+use, like the speech models, with a pinned checksum (`dec-model-download`). Rules for CamelCase
+words, acronyms and words of headings add terms that the model does not know. The command ranks
+all terms and writes the vocabulary file, which the participant can edit.
+**Consequences:** The client needs no new native library and runs the same on every platform. The
+model only labels words; it never writes text. The forward pass in Go is slow: on a shared host
+with 4 CPUs it handled about 60 to 100 words per second; 23,000 words took 4 minutes. The model
+was trained on news, so it misses many product and technical terms; the rules cover part of that. OPEN: whether the speed is good enough for large projects; the ONNX runtime is
+the faster option (#85). OPEN: the German training data (CoNLL 2003) has its own terms of use;
+the model itself is published under AFL-3.0. **Rejected:** the options above, for the reasons
+given.
+
+```arc42
+:::decision
+id: dec-ner-model
+title: A multilingual NER model in plain Go finds the names in project documents
+status: proposed
+date: 2026-11-11
+addresses: qg-usability, qg-confidentiality, con-no-intelligence
+:::
+```

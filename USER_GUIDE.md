@@ -243,6 +243,17 @@ The client gives these words, and the names of the people in the meeting, to Whi
 sentence. Only about 30 terms fit; the client says how many it uses. To use another file, add
 `--vocabulary FILE` to `meeting join`.
 
+The client can also write the file for you. It reads the Markdown and text files of your project
+and finds names of people, organisations and places, and terms such as `SyncEngine` or `DSGVO`:
+
+```sh
+office vocabulary extract docs/
+```
+
+The first run downloads a model of about 540 MB. The run can take a few minutes for many
+documents. Then check `.office/vocabulary.txt`: delete what is wrong and move the most important
+terms to the top.
+
 ### Speak in a meeting
 
 Use a headset: the client has no echo cancellation. Join with the name of the meeting, for

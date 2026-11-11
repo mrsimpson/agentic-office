@@ -39,16 +39,17 @@ every result of the hub must be deterministic and traceable. The agent does the 
 wording.
 
 The rule applies to the hub only. The participant client runs on the computer of a participant
-and may contain models, generative or not: the ears transcribe with a speech model, and the
-agent runner may ask a decision model that the user brings (`dec-models-in-client`).
-Speech-to-text counts as conversion, not as judgement.
+and may contain models, generative or not: the ears transcribe with a speech model, a model for
+named-entity recognition finds names in project documents (`dec-ner-model`), and the agent
+runner may ask a decision model that the user brings (`dec-models-in-client`). Speech-to-text
+counts as conversion, not as judgement.
 
 ```arc42
 :::constraint
 id: con-no-intelligence
 title: No intelligence of its own in the hub
 category: convention
-source: Product vision; scope limited to the hub by the maintainer on 2026-11-11
+source: Product vision; scope limited to the hub by the maintainer on 2026-11-11 (epics #65, #66)
 :::
 ```
 

@@ -40,6 +40,9 @@ Meeting:
                                      the speech models, what is downloaded, and which one join uses
   models download [--language L] [--fast] [<name>]
                                      download the chosen speech model and the VAD model ahead of time
+  vocabulary extract [DIR] [--out FILE] [--max N] [--no-model] [--force]
+                                     find names and terms in the documents of DIR (NER model and
+                                     heuristics) and write .office/vocabulary.txt for Whisper
   meeting log                        print the path of the local log
   meeting view                       gateway view: own utterances; keys p pause, o off the record, q quit
   meeting events [--after N] [--limit N]  events after a cursor, read from the server (for gaps or without a file system)
@@ -128,6 +131,7 @@ func init() {
 		"meeting join":             cmdJoin,
 		"models download":          cmdModelsDownload,
 		"models list":              cmdModelsList,
+		"vocabulary extract":       cmdVocabularyExtract,
 		"meeting log":              cmdLogPath,
 		"meeting events":           cmdEvents,
 		"meeting view":             cmdView,

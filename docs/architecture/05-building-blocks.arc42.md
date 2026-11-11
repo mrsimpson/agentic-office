@@ -843,6 +843,9 @@ transcribing and queue the utterances locally. They send them in order once the 
 The ears choose their speech model by language and speed (`dec-model-download`). They give Whisper
 the vocabulary of the project and the names of the participants as a prompt
 (`dec-vocabulary-prompt`); the CLI reads the names from the local log and passes them on.
+On request, the ears also build the vocabulary from the documents of a project: a model for
+named-entity recognition finds persons, organisations and places, and simple rules find other
+terms (`dec-ner-model`).
 
 ```arc42
 :::building-block
