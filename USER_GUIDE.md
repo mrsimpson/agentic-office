@@ -140,29 +140,49 @@ Whisper. Only text leaves your computer.
 
 Use a headset. The client has no echo cancellation.
 
-### Build the client
+### Get the client
 
-macOS:
+**Download it** (no build needed):
+
+| Computer | File |
+|---|---|
+| macOS, Apple silicon | `office-darwin-arm64.tar.gz` |
+| Linux, x86-64 | `office-linux-amd64.tar.gz` |
+| Linux, ARM64 | `office-linux-arm64.tar.gz` |
+
+```sh
+mkdir -p bin
+curl -fsSL https://github.com/mrsimpson/agentic-office/releases/latest/download/office-darwin-arm64.tar.gz | tar -xz -C bin
+bin/office version
+```
+
+The client needs a program that records the microphone: on macOS `ffmpeg`
+(`brew install ffmpeg`), on Linux `parec` (package `pulseaudio-utils`). If you download the file
+with a browser on macOS, run `xattr -d com.apple.quarantine bin/office` once.
+
+**Or build it** from source. macOS:
 
 ```sh
 xcode-select --install                 # compiler, once
 brew install go cmake ffmpeg           # ffmpeg records the microphone
-make third_party/whisper.cpp whisper models build
+make third_party/whisper.cpp whisper build
 ```
 
 Linux (Debian or Ubuntu):
 
 ```sh
 sudo apt install cmake g++ make git pulseaudio-utils
-make third_party/whisper.cpp whisper models build
+make third_party/whisper.cpp whisper build
 ```
 
 You also need Go 1.27 or newer. If your distribution has an older one, install Go from
-[go.dev/dl](https://go.dev/dl/).
-
-`make models` downloads about 490 MB. The client is then in `bin/office`.
+[go.dev/dl](https://go.dev/dl/). The client is then in `bin/office`.
 
 Windows: the native client is not supported. Use the containers, or a Linux computer.
+
+**Speech models.** The first join with `--mic` or `--wav` downloads the Whisper model and the
+voice detection model once, about 490 MB, and checks them. To do this ahead of time, run
+`bin/office models download`.
 
 ### Join the meeting
 

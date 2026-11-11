@@ -695,3 +695,28 @@ date: 2026-11-07
 addresses: qg-usability, con-no-intelligence
 :::
 ```
+
+## The client downloads its speech models on first use
+
+**Context:** The ears need a Whisper model and a voice activity model, about 490 MB together.
+The client is now published as a ready binary, so a participant has no build step that could
+fetch them. **Decision:** When the ears start and a default model is missing, the client downloads
+it once from the public source of whisper.cpp, or from a mirror that the participant configures.
+It checks every file against a checksum that is pinned in the client and keeps only a matching
+file. A separate command downloads the models ahead of time. A model that the participant chose
+is never downloaded. **Consequences:** The first join with the microphone needs the network and
+takes longer; later joins are offline as before. Only the model files come in; no audio, text or
+identity goes out (`qg-confidentiality`). A changed or damaged file at the source stops the
+download instead of changing the transcription. A new model version needs a new client.
+**Rejected:** models inside the binary (a download of half a gigabyte for agents that never
+listen); a download without a checksum (the client would load whatever the source serves).
+
+```arc42
+:::decision
+id: dec-model-download
+title: The client downloads its speech models on first use
+status: proposed
+date: 2026-11-10
+addresses: qg-usability, qg-confidentiality
+:::
+```

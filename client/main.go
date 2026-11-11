@@ -22,13 +22,11 @@ func main() {
 		s := &mcp.Server{Config: o.Config, Session: o.Session, Version: o.Version, Stderr: o.Stderr}
 		return s.Run(ctx, io.NopCloser(o.Stdin), nopWriteCloser{o.Stdout})
 	}
-	cli.CheckEars = func(o *cli.EarsOptions) error {
+	cli.CheckEars = func(ctx context.Context, o *cli.EarsOptions, progress func(string)) error {
 		cfg := earsConfig(*o)
-		if err := cfg.Prepare(); err != nil {
-			return err
-		}
-		return nil
+		return cfg.Prepare(ctx, progress)
 	}
+	cli.DownloadModels = ears.DownloadModels
 	cli.StartEars = func(ctx context.Context, c *core.Client, sid string, o cli.EarsOptions,
 		status func(cmdID, text string, s core.Status), paused func() bool) error {
 		e := &ears.Ears{Config: earsConfig(o), Client: c, SessionID: sid, Status: status, Paused: paused}

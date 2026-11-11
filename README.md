@@ -619,6 +619,30 @@ bin/office-hub -tls-cert /etc/office/fullchain.pem -tls-key /etc/office/privkey.
 - `-public-url` is the address in stage links. It defaults to `https://<listen address>`.
 - The hub reads the certificate at start. Restart it after you renew the certificate.
 
+## Client binaries
+
+Every release tag also publishes the `office` client as a ready binary. Download the newest one
+for your computer:
+
+| Computer | File |
+|---|---|
+| macOS, Apple silicon (with Metal) | `office-darwin-arm64.tar.gz` |
+| Linux, x86-64 | `office-linux-amd64.tar.gz` |
+| Linux, ARM64 | `office-linux-arm64.tar.gz` |
+
+```sh
+curl -fsSL https://github.com/mrsimpson/agentic-office/releases/latest/download/office-darwin-arm64.tar.gz | tar -xz
+./office version
+```
+
+Each archive has a `.sha256` file next to it. The Linux binary needs glibc 2.35 or newer and the
+libraries `libstdc++6` and `libgomp1`, which most distributions install. On macOS, a file
+downloaded with a browser is in quarantine; `curl` avoids that, or run
+`xattr -d com.apple.quarantine office`.
+
+The binary contains no speech models. The first `meeting join --mic` or `--wav` downloads them
+(see [Ears: speak into the meeting](#ears-speak-into-the-meeting)).
+
 ## Container images
 
 Every release tag (`v1.2.3`) publishes two images for `linux/amd64` and `linux/arm64`:
@@ -883,6 +907,14 @@ to the hub; the audio never leaves your computer (`concept-edge-transcription`).
 - Use a headset (`con-headset-only`): the ears have no echo cancellation.
 - Before join, the ears check the models, the WAV file or the recorder. If something is missing,
   join fails and you do not join.
+
+**Models.** The ears need a Whisper model and the Silero VAD model, about 490 MB together. When
+a default model is missing, the first `meeting join --mic` or `--wav` downloads it into the model
+directory and checks its SHA-256 (`dec-model-download`). `office models download` does the same
+ahead of time, for example before the first meeting. `OFFICE_MODEL_URL` sets a mirror: the files
+are then read from `<mirror>/ggml-small.bin` and `<mirror>/ggml-silero-v6.2.0.bin`. A model that
+you choose with a flag or a variable is never downloaded; `make models` fetches the same files
+with the scripts of whisper.cpp.
 
 | Flag | Variable | Default |
 |---|---|---|

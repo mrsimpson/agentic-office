@@ -4,12 +4,19 @@
 #   ghcr.io/<owner>/<repo>/office
 # Each platform builds natively on its own runner, because the client links whisper.cpp through
 # cgo and emulation would be very slow. A second job joins the two platforms into one image.
+#
+# It also builds the office client for linux/amd64, linux/arm64 and darwin/arm64 (Apple silicon,
+# with Metal) and attaches it to the GitHub release of the tag, with a SHA-256 file for each
+# archive. The client downloads its Whisper models on the first join with --mic or --wav.
 name: Release
 
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
+  # A pull request that changes this workflow builds the client binaries, but publishes nothing.
+  pull_request:
+    paths: ['.github/workflows/release.yml']
 
 permissions:
   contents: read
@@ -21,6 +28,7 @@ env:
 jobs:
   build:
     name: ${{ matrix.image.name }} (${{ matrix.platform.arch }})
+    if: github.event_name != 'pull_request'
     runs-on: ${{ matrix.platform.runner }}
     timeout-minutes: 45
     strategy:
@@ -69,6 +77,7 @@ jobs:
 
   publish:
     name: ${{ matrix.image.name }} (multi-arch)
+    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     strategy:
@@ -108,3 +117,69 @@ jobs:
             $(printf '${{ env.IMAGE_PREFIX }}/${{ matrix.image.name }}@sha256:%s ' *)
       - name: Show the image
         run: docker buildx imagetools inspect '${{ env.IMAGE_PREFIX }}/${{ matrix.image.name }}:${{ steps.meta.outputs.version }}'
+
+  client:
+    name: client ${{ matrix.os }}-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Ubuntu 22.04 for an older glibc (2.35), so that the binary runs on more distributions.
+          - { os: linux, arch: amd64, runner: ubuntu-22.04 }
+          - { os: linux, arch: arm64, runner: ubuntu-22.04-arm }
+          - { os: darwin, arch: arm64, runner: macos-15 }
+    env:
+      # Oldest macOS the client supports; read by cmake and by the Go linker.
+      MACOSX_DEPLOYMENT_TARGET: '14.0'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build whisper.cpp and the client
+        run: make whisper build VERSION='${{ github.ref_name }}'
+      - name: Check the binary
+        run: |
+          bin/office version
+      - name: Package
+        id: pack
+        run: |
+          # No version in the name, so that releases/latest/download/<name> stays the same link.
+          name="office-${{ matrix.os }}-${{ matrix.arch }}"
+          mkdir -p dist
+          tar -czf "dist/$name.tar.gz" -C bin office
+          (cd dist && shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256")
+          cat dist/*.sha256
+      - uses: actions/upload-artifact@v7
+        with:
+          name: client-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 1
+
+  github-release:
+    name: GitHub release
+    needs: [client, publish]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          pattern: client-*
+          merge-multiple: true
+      - name: Create the release or add the files to it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          ls -l dist
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" dist/* --verify-tag --generate-notes --repo "$GITHUB_REPOSITORY"
+          fi
