@@ -81,6 +81,12 @@ check-generated: generate
 # The whisper.cpp commit we build and test with. Change it on purpose, never by a fresh clone.
 WHISPER_REF ?= 727d3e7666485e12450746b523bfb4e7f057cc5e
 
+# ON builds whisper.cpp for the CPU of this computer (fastest, for local work). OFF builds a
+# portable binary (x86-64 with AVX2, or the ARMv8 baseline) that runs on other computers too; the
+# CI, the release binaries and the container images use OFF. A binary built with ON can stop
+# with SIGILL on another CPU.
+WHISPER_NATIVE ?= ON
+
 third_party/whisper.cpp:
 	git init -q $@
 	git -C $@ fetch -q --depth 1 https://github.com/ggml-org/whisper.cpp.git $(WHISPER_REF)
@@ -101,7 +107,14 @@ whisper: third_party/whisper.cpp
 	    rm -rf $(WHISPER_BUILD); \
 	  fi; \
 	fi
-	cmake -S $(WHISPER_DIR) -B $(WHISPER_BUILD) -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF
+	@# CMake keeps the CPU options of the last build in its cache, so a change of WHISPER_NATIVE
+	@# needs a new build directory.
+	@if [ -d $(WHISPER_BUILD) ] && [ ! -f $(WHISPER_BUILD)/.native-$(WHISPER_NATIVE) ]; then \
+	  echo "WHISPER_NATIVE changed to $(WHISPER_NATIVE); building whisper.cpp from scratch"; \
+	  rm -rf $(WHISPER_BUILD); \
+	fi
+	cmake -S $(WHISPER_DIR) -B $(WHISPER_BUILD) -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DGGML_NATIVE=$(WHISPER_NATIVE)
+	touch $(WHISPER_BUILD)/.native-$(WHISPER_NATIVE)
 	cmake --build $(WHISPER_BUILD) -j --target whisper
 
 # Downloads the models into MODEL_DIR (from Hugging Face), if they are not there yet.

@@ -11,7 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends cmake \
 WORKDIR /src
 # whisper.cpp first: this layer stays cached until WHISPER_REF in the Makefile changes.
 COPY Makefile ./
-RUN make third_party/whisper.cpp whisper
+# Portable build: the image runs on any CPU of its architecture.
+RUN make third_party/whisper.cpp whisper WHISPER_NATIVE=OFF
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
