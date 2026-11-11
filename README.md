@@ -45,6 +45,12 @@ default. To use other files, set `OFFICE_WHISPER_MODEL` and `OFFICE_VAD_MODEL`. 
 multilingual model, not a `.en` model: those only know English. On the reference host (CPU only),
 `small` needs about 0.7 s per sentence with 16 threads; larger models are too slow for live use.
 
+`make whisper` builds whisper.cpp for the CPU of your computer, which is fastest. Such a build
+can stop with `SIGILL` (illegal instruction) on another CPU. To build a client that you copy to
+other computers, use `make whisper build WHISPER_NATIVE=OFF`: it needs x86-64 with AVX2, or
+any ARMv8 CPU. The CI, the release binaries and the container images build this way. A change of
+`WHISPER_NATIVE` rebuilds whisper.cpp from scratch.
+
 The Makefile sets `CGO_CFLAGS` and `CGO_LDFLAGS` for cgo. To run `go build` or `go test`
 without make, export them as in the Makefile.
 

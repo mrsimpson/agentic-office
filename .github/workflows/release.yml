@@ -133,6 +133,8 @@ jobs:
     env:
       # Oldest macOS the client supports; read by cmake and by the Go linker.
       MACOSX_DEPLOYMENT_TARGET: '14.0'
+      # A portable build, so that the binary runs on every CPU of its architecture.
+      WHISPER_NATIVE: 'OFF'
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7

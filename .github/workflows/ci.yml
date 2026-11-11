@@ -93,10 +93,12 @@ jobs:
         uses: actions/cache@v6
         with:
           path: third_party/whisper.cpp
-          key: whisper-${{ runner.os }}-${{ steps.ref.outputs.whisper }}
+          key: whisper-portable-${{ runner.os }}-${{ runner.arch }}-${{ steps.ref.outputs.whisper }}
+      # Portable: runners differ in their CPUs, and the cache moves between them. A native build
+      # can stop with SIGILL on another runner.
       - name: Build whisper.cpp
         if: steps.whisper.outputs.cache-hit != 'true'
-        run: make whisper
+        run: make whisper WHISPER_NATIVE=OFF
       - name: Install the Protobuf tools
         run: |
           go install github.com/bufbuild/buf/cmd/buf@v1.57.0
@@ -127,10 +129,12 @@ jobs:
         uses: actions/cache@v6
         with:
           path: third_party/whisper.cpp
-          key: whisper-${{ runner.os }}-${{ steps.ref.outputs.whisper }}
+          key: whisper-portable-${{ runner.os }}-${{ runner.arch }}-${{ steps.ref.outputs.whisper }}
+      # Portable: runners differ in their CPUs, and the cache moves between them. A native build
+      # can stop with SIGILL on another runner.
       - name: Build whisper.cpp
         if: steps.whisper.outputs.cache-hit != 'true'
-        run: make whisper
+        run: make whisper WHISPER_NATIVE=OFF
       - name: Models from cache
         id: models
         uses: actions/cache@v6
