@@ -113,8 +113,15 @@ type Process struct {
 // the test ends.
 func Start(t testing.TB, name string, env []string, args ...string) *Process {
 	t.Helper()
+	return StartIn(t, "", name, env, args...)
+}
+
+// StartIn is Start in the working directory dir ("" for the directory of the test).
+func StartIn(t testing.TB, dir, name string, env []string, args ...string) *Process {
+	t.Helper()
 	cmd := exec.Command(Binary(t, name), args...)
 	cmd.Env = append(os.Environ(), env...)
+	cmd.Dir = dir
 	// An own pipe for stdout, not StdoutPipe: Wait closes the pipes it created, and output that
 	// the test has not read yet would be lost when the process exits.
 	stdout, stdoutW, err := os.Pipe()

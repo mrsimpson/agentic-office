@@ -55,6 +55,9 @@ func (t *transcriber) transcribe(samples []float32) (string, error) {
 	return clean(strings.Join(parts, " ")), nil
 }
 
+// setPrompt sets Whisper's initial prompt for the next sentences ("" for none).
+func (t *transcriber) setPrompt(p string) { t.ctx.SetInitialPrompt(p) }
+
 func (t *transcriber) close() { t.model.Close() }
 
 // clean removes what Whisper writes for non-speech: annotations in brackets such as "[Musik]"

@@ -985,7 +985,33 @@ and the VAD model with the scripts of whisper.cpp.
 | `--threads` | `OFFICE_WHISPER_THREADS` | half of the CPUs, at most 16 |
 | `--end-silence` | `OFFICE_EARS_END_SILENCE` | `500ms` |
 | | `OFFICE_VAD_THRESHOLD` | `0.5` (speech probability of the VAD) |
+| `--vocabulary` | | `.office/vocabulary.txt` in the current directory, if it is there |
+| `--context` | | off |
 | | `OFFICE_MIC_COMMAND` | the first recorder found (see below) |
+
+**Vocabulary.** Whisper often misspells names and terms of a project. The ears give Whisper a
+prompt with the words it should prefer (`dec-vocabulary-prompt`):
+
+1. the terms of `.office/vocabulary.txt` in the current directory, or of `--vocabulary FILE`: one
+   term per line, in the order of importance; empty lines and lines that start with `#` are
+   skipped;
+2. the display names of the participants of the session, from the local log.
+
+```text
+# .office/vocabulary.txt
+Businessplan
+agentic-office
+Quartalszahlen
+```
+
+The prompt holds about 200 tokens: Whisper keeps only the last 223 tokens of a longer prompt,
+and the ears estimate from above (one token per two bytes, plus one per term). What does not fit
+is cut at the end, so the first lines always count. Before each sentence, the ears add names that
+joined since; they report the vocabulary at the start and whenever it changes:
+`vocabulary: 12 terms and 3 names in the prompt (terms from .office/vocabulary.txt); 5 cut, the
+prompt is full` (`--json`: `{"ears":{"type":"vocabulary","terms":12,"names":3,"cut":5,"prompt":…}}`).
+`--context` also gives Whisper the previous sentence. It is off by default, because its effect is
+not measured yet.
 
 **Microphone on a laptop.** The ears need no administrator rights. They read the microphone
 through a recorder program that runs as your user, like any audio application, and that writes
@@ -1002,7 +1028,7 @@ logged-in user; on a server, the user may need the group `audio`. Choose another
 program with `OFFICE_MIC_COMMAND`, which is run with `sh -c`, for example
 `OFFICE_MIC_COMMAND='parec --raw --rate=16000 --channels=1 --format=s16le --device=my-headset'`.
 
-**What the ears report.** On stderr, the ears print one line per step: `listening`, `final`
+**What the ears report.** On stderr, the ears print one line per step: `listening`, `vocabulary`, `final`
 (with the Whisper time), `sent` (with the time from the end of speech to the confirmed submit),
 `retry` while the network is down, `dropped`, `unsent` and `done` (end of a WAV file). With
 `--json`, each is a JSON object `{"ears":{"type":"sent","commandId":…,"speechEndToSubmitMs":…}}`

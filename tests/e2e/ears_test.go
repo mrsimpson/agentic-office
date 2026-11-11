@@ -239,6 +239,11 @@ type earsReport struct {
 	Error               string     `json:"error"`
 	Model               string     `json:"model"`
 	Language            string     `json:"language"`
+	VocabularyFile      string     `json:"vocabularyFile"`
+	Terms               int        `json:"terms"`
+	Names               int        `json:"names"`
+	Cut                 int        `json:"cut"`
+	Prompt              string     `json:"prompt"`
 	seen                time.Time
 }
 
@@ -255,7 +260,13 @@ type ears struct {
 
 func (m *meeting) startEars(env []string, args ...string) *ears {
 	m.t.Helper()
-	p := contracttest.Start(m.t, "office", env, append([]string{"meeting", "join", m.sid, "--json"}, args...)...)
+	return m.startEarsIn("", env, args...)
+}
+
+// startEarsIn is startEars in the working directory dir.
+func (m *meeting) startEarsIn(dir string, env []string, args ...string) *ears {
+	m.t.Helper()
+	p := contracttest.StartIn(m.t, dir, "office", env, append([]string{"meeting", "join", m.sid, "--json"}, args...)...)
 	e := &ears{t: m.t, p: p, seen: map[int]time.Time{}}
 	line, err := p.Stdout.ReadString('\n')
 	var j map[string]any

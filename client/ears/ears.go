@@ -44,9 +44,16 @@ type Config struct {
 	// VADThreshold is the speech probability from which a window counts as speech.
 	// Env OFFICE_VAD_THRESHOLD.
 	VADThreshold float64
+	// Vocabulary is a file with terms for Whisper's initial prompt, one per line. Empty means
+	// DefaultVocabularyFile in the current directory, if it is there.
+	Vocabulary string
+	// Context adds the previous sentence to the prompt.
+	Context bool
 
 	recorder []string
 	samples  []float32
+	terms    []string
+	vocFile  string
 }
 
 // Defaults of Config.
@@ -143,6 +150,16 @@ func (c *Config) Prepare(ctx context.Context, progress func(string)) error {
 			return err
 		}
 	}
+	c.vocFile = c.Vocabulary
+	if c.vocFile == "" {
+		c.vocFile = DefaultVocabularyFile
+	}
+	if c.terms, err = readVocabulary(c.vocFile, c.Vocabulary == ""); err != nil {
+		return err
+	}
+	if c.terms == nil {
+		c.vocFile = ""
+	}
 	switch {
 	case c.Mic == (c.WAV != ""):
 		return errors.New("use either the microphone or a WAV file")
@@ -175,13 +192,16 @@ type Ears struct {
 	Paused func() bool
 	// Report receives progress and measurements (see Report). May be nil.
 	Report func(Report)
+	// Names returns the display names of the participants of the session. They go into
+	// Whisper's prompt after the vocabulary. May be nil.
+	Names func() []string
 }
 
 // Report is one line of progress or measurement. Times are in milliseconds.
 type Report struct {
-	// Type is listening, final, sent, retry (not sent yet, repeating), dropped (the server
-	// rejected it for good), skipped (Whisper failed), unsent (lost because the ears stopped) or
-	// done (the WAV file is over and everything is sent).
+	// Type is listening, vocabulary (Whisper's prompt changed), final, sent, retry (not sent yet,
+	// repeating), dropped (the server rejected it for good), skipped (Whisper failed), unsent
+	// (lost because the ears stopped) or done (the WAV file is over and everything is sent).
 	Type      string `json:"type"`
 	CommandID string `json:"commandId,omitempty"`
 	Text      string `json:"text,omitempty"`
@@ -208,6 +228,14 @@ type Report struct {
 	Model    string `json:"model,omitempty"`
 	Language string `json:"language,omitempty"`
 	Threads  int    `json:"threads,omitempty"`
+
+	// For type vocabulary: the terms of the vocabulary file and the names of participants in
+	// Whisper's prompt, and how many were cut because the prompt is full.
+	VocabularyFile string `json:"vocabularyFile,omitempty"`
+	Terms          int    `json:"terms,omitempty"`
+	Names          int    `json:"names,omitempty"`
+	Cut            int    `json:"cut,omitempty"`
+	Prompt         string `json:"prompt,omitempty"`
 }
 
 // String is the short text form of a report for the terminal.
@@ -215,6 +243,15 @@ func (r Report) String() string {
 	switch r.Type {
 	case "listening":
 		return fmt.Sprintf("listening to %s (model %s, language %s, %d threads)", r.Source, filepath.Base(r.Model), r.Language, r.Threads)
+	case "vocabulary":
+		s := fmt.Sprintf("vocabulary: %d terms and %d names in the prompt", r.Terms, r.Names)
+		if r.VocabularyFile != "" {
+			s += " (terms from " + r.VocabularyFile + ")"
+		}
+		if r.Cut > 0 {
+			s += fmt.Sprintf("; %d cut, the prompt is full", r.Cut)
+		}
+		return s
 	case "final":
 		return fmt.Sprintf("final after %d ms (whisper %d ms for %d ms of audio)", r.SpeechEndToFinalMs, r.WhisperMs, r.AudioMs)
 	case "sent":
@@ -283,6 +320,31 @@ func (e *Ears) Run(ctx context.Context) error {
 	srcCtx, stopSrc := context.WithCancel(ctx)
 	defer stopSrc()
 	report(Report{Type: "listening", Source: name, Model: e.Model, Language: e.Language, Threads: e.Threads})
+	names := func() []string {
+		if e.Names == nil {
+			return nil
+		}
+		return e.Names()
+	}
+	// setPrompt sets Whisper's prompt before a sentence and reports the vocabulary when it
+	// changed. The previous sentence (--context) does not count as a change.
+	first, reported, current := true, "", ""
+	setPrompt := func(prev string) {
+		v := buildPrompt(e.terms, names(), "")
+		if first || v.text != reported {
+			first, reported = false, v.text
+			report(Report{Type: "vocabulary", VocabularyFile: e.vocFile, Terms: v.terms, Names: v.names, Cut: v.cut, Prompt: v.text})
+		}
+		p := v
+		if e.Context {
+			p = buildPrompt(e.terms, names(), prev)
+		}
+		if p.text != current {
+			current = p.text
+			tr.setPrompt(p.text)
+		}
+	}
+	setPrompt("")
 	go func() {
 		defer close(frames)
 		srcErr <- src.run(srcCtx, frames, e.Paused)
@@ -293,10 +355,12 @@ func (e *Ears) Run(ctx context.Context) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		prev := ""
 		for s := range segs {
 			if e.Paused() {
 				continue // paused before the sentence was transcribed: never transcribe it
 			}
+			setPrompt(prev)
 			start := time.Now()
 			text, err := tr.transcribe(s.samples)
 			done := time.Now()
@@ -307,6 +371,7 @@ func (e *Ears) Run(ctx context.Context) error {
 			if text == "" || e.Paused() {
 				continue
 			}
+			prev = text
 			u := utterance{cmdID: ids.NewCommandID(), text: text, speechEnd: s.speechEnd, transcribedAt: done}
 			e.Status(u.cmdID, u.text, core.StatusFinal)
 			report(Report{Type: "final", CommandID: u.cmdID, Text: text, SpeechEnd: &u.speechEnd, TranscribedAt: &u.transcribedAt,

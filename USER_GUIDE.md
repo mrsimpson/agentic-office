@@ -227,6 +227,22 @@ To use a certain model, name it: `--model small`, `--model large-v3-turbo`, or a
 
 They are stored in `~/.local/share/agentic-office/models/` (or `$XDG_DATA_HOME/agentic-office/models/`).
 
+### Teach the client your words
+
+Whisper often misspells names and terms of your project. Write them into `.office/vocabulary.txt`
+in the directory where you start the client, one per line, the most important first:
+
+```text
+# names and terms of our project
+Businessplan
+agentic-office
+Quartalszahlen
+```
+
+The client gives these words, and the names of the people in the meeting, to Whisper before each
+sentence. Only about 30 terms fit; the client says how many it uses. To use another file, add
+`--vocabulary FILE` to `meeting join`.
+
 ### Speak in a meeting
 
 Use a headset: the client has no echo cancellation. Join with the name of the meeting, for

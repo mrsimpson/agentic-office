@@ -33,7 +33,7 @@ Keys and identity:
 
 Meeting:
   meeting join <session> [--name N] [--foreground] [--mic | --wav FILE]
-               [--language L] [--fast] [--model NAME|FILE]
+               [--language L] [--fast] [--model NAME|FILE] [--vocabulary FILE] [--context]
                                      join, start the log replicator, print the log path; with
                                      --mic or --wav, a missing model is downloaded once
   models list [--language L] [--fast] [--model NAME|FILE]

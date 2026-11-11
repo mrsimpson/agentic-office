@@ -840,6 +840,9 @@ Only for humans with `--mic`. Pipeline: microphone → VAD → Whisper (local) �
 session. The first stage needs a headset and has no voice print and no echo cancellation
 (`con-headset-only`). Raw audio never leaves the device. During a network drop, the ears keep
 transcribing and queue the utterances locally. They send them in order once the connection is back.
+The ears choose their speech model by language and speed (`dec-model-download`). They give Whisper
+the vocabulary of the project and the names of the participants as a prompt
+(`dec-vocabulary-prompt`); the CLI reads the names from the local log and passes them on.
 
 ```arc42
 :::building-block

@@ -51,7 +51,7 @@ func main() {
 	}
 	cli.StartEars = func(ctx context.Context, c *core.Client, sid string, o cli.EarsOptions,
 		status func(cmdID, text string, s core.Status), paused func() bool) error {
-		e := &ears.Ears{Config: earsConfig(o), Client: c, SessionID: sid, Status: status, Paused: paused}
+		e := &ears.Ears{Config: earsConfig(o), Client: c, SessionID: sid, Status: status, Paused: paused, Names: o.Names}
 		if o.Report != nil {
 			e.Report = func(r ears.Report) { o.Report(r.String(), r) }
 		}
@@ -62,7 +62,7 @@ func main() {
 
 func earsConfig(o cli.EarsOptions) ears.Config {
 	return ears.Config{Mic: o.Mic, WAV: o.WAV, Model: o.Model, Fast: o.Fast, VADModel: o.VADModel, Language: o.Language,
-		Threads: o.Threads, EndSilence: o.EndSilence}
+		Threads: o.Threads, EndSilence: o.EndSilence, Vocabulary: o.Vocabulary, Context: o.Context}
 }
 
 type nopWriteCloser struct{ io.Writer }
