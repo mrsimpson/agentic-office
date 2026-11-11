@@ -11,6 +11,10 @@ The office has two programs:
 | `office-hub` | One person per team, the **operator**, on a server or a computer that everyone can reach | Orders the meeting, keeps the archive, serves the stage |
 | `office` | Every **participant**: each human and each agent, on their own computer | Joins meetings, transcribes your speech locally, keeps a local copy of the meeting log, offers the tools (CLI and MCP) |
 
+The examples have comments after `#`. In zsh, the default shell on macOS, run
+`setopt interactivecomments` once in your terminal, or leave the comments out; otherwise zsh
+takes them for commands or file names.
+
 Contents:
 
 1. [Get the software](#1-get-the-software): pre-built, or built yourself
@@ -104,17 +108,19 @@ office key create        # prints "public key: …"
 
 ### Start the hub with the binary
 
-On the server:
+On the server. `CFG` is where the programs keep their files: `~/.config/agentic-office` on Linux,
+`~/Library/Application Support/agentic-office` on macOS. The first line sets it for both:
 
 ```sh
+CFG="$([ "$(uname)" = Darwin ] && echo "$HOME/Library/Application Support" || echo "${XDG_CONFIG_HOME:-$HOME/.config}")/agentic-office"
 office-hub keygen ~/office-hub/signing.key           # once; keep the file safe and back it up
-mkdir -p ~/.config/agentic-office/hub
-echo "ada <your public key> Ada" > ~/.config/agentic-office/hub/admins
+mkdir -p "$CFG/hub"
+echo "ada <your public key> Ada" > "$CFG/hub/admins"
 office-hub -signing-key ~/office-hub/signing.key -addr 0.0.0.0:8740 \
   -tls-hosts hub.example.org -public-url https://hub.example.org:8740
 ```
 
-- The data of the hub lives in `~/.config/agentic-office/hub` (`-data-dir` changes it): the
+- The data of the hub lives in `$CFG/hub` (`-data-dir` changes it): the
   registered keys, the TLS certificate and the archive with all sessions and records.
 - On the first start, the hub creates a self-signed TLS certificate for the names in
   `-tls-hosts`, in `tls.crt`. To use your own certificate, see "TLS and your own certificate" in
@@ -170,8 +176,9 @@ office admin key register minutes-bot <public key> --name "Minute Bot" --kind ag
 3. Put the certificate of the hub where the client looks for it:
 
    ```sh
-   mkdir -p ~/.config/agentic-office/client
-   cp hub.crt ~/.config/agentic-office/client/hub.crt
+   CFG="$([ "$(uname)" = Darwin ] && echo "$HOME/Library/Application Support" || echo "${XDG_CONFIG_HOME:-$HOME/.config}")/agentic-office"
+   mkdir -p "$CFG/client"
+   cp hub.crt "$CFG/client/hub.crt"
    ```
 
 4. Create your key and send the public key to your admin:
@@ -182,8 +189,7 @@ office admin key register minutes-bot <public key> --name "Minute Bot" --kind ag
 
 5. After the admin has registered you, check it: `office whoami` prints your participant ID.
 
-Your private key stays in `~/.config/agentic-office/client/key.pem`. It never leaves your
-computer.
+Your private key stays in `$CFG/client/key.pem`. It never leaves your computer.
 
 ### The speech models
 
@@ -323,7 +329,7 @@ scripts/try-local.sh tail bot                        # what the agent reads; sto
 
 | Problem | What to do |
 |---|---|
-| `certificate signed by unknown authority` | The client lacks the certificate of the hub. Copy `tls.crt` to `~/.config/agentic-office/client/hub.crt`, or set `OFFICE_CA_CERT`. |
+| `certificate signed by unknown authority` or `certificate is not standards compliant` | The client lacks the certificate of the hub. Copy `tls.crt` to `$CFG/client/hub.crt` (on macOS `~/Library/Application Support/agentic-office/client/hub.crt`), or set `OFFICE_CA_CERT`. |
 | `certificate is valid for …, not …` or `cannot validate certificate for …` | The name or address in `OFFICE_HUB` is not in the certificate. Delete `tls.crt` and `tls.key` in the data directory of the hub and start it with this name in `-tls-hosts`. Then give the participants the new `tls.crt`. |
 | `public key is not registered: ask an admin to register SHA256:…` | Send your public key to your admin (`office key show` prints it). Check with `office whoami`. |
 | `no audio recorder found` | Install `ffmpeg` (macOS) or `pulseaudio-utils` (Linux), or set `OFFICE_MIC_COMMAND` (see [`README.md`](README.md)). |
