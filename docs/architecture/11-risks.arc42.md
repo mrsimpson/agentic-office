@@ -9,7 +9,7 @@ context of the agents that read it. It cannot be removed from an agent's context
 :::risk
 id: risk-retraction-leak
 title: Sentences marked off the record stay in agent context
-severity: medium
+severity: high
 mitigation: The interfaces suppress the text of sentences off the record for every later reader (dec-off-the-record); the agent contract requires respecting the mark
 :::
 ```
@@ -22,7 +22,7 @@ Consent, retention and how to handle people without a client are not settled yet
 :::risk
 id: risk-consent
 title: Consent and retention not settled
-severity: medium
+severity: high
 mitigation: Joining with the microphone is the consent (dec-consent-by-mic); capture status on the stage; data protection review before first use
 :::
 ```
@@ -38,7 +38,7 @@ of speech to the log it took about 1.4 s. The jitter of the Go audio loop is no 
 :::risk
 id: risk-whisper-latency
 title: Local transcription too slow
-severity: medium
+severity: high
 mitigation: Smaller or quantised models; a shorter audio window per sentence; a GPU where available; measure on real participant laptops; if echo cancellation later needs tighter timing, build it as a small Rust or C component behind a clear interface
 :::
 ```
@@ -95,7 +95,7 @@ the copy it supplies after a crash.
 :::risk
 id: risk-forged-copy
 title: Forged session copies
-severity: medium
+severity: high
 mitigation: Merkle tree with tree heads signed by the hub; the hub checks every peer copy, and every reader can check the repository (dec-merkle-log)
 :::
 ```
