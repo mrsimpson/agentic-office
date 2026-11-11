@@ -625,29 +625,31 @@ bin/office-hub -tls-cert /etc/office/fullchain.pem -tls-key /etc/office/privkey.
 - `-public-url` is the address in stage links. It defaults to `https://<listen address>`.
 - The hub reads the certificate at start. Restart it after you renew the certificate.
 
-## Client binaries
+## Binaries
 
-Every release tag also publishes the `office` client as a ready binary. Download the newest one
-for your computer:
+Every release tag also publishes the client and the hub as ready binaries, each archive with a
+`.sha256` file. The hub archives exist from `v0.0.4` on.
 
-| Computer | File |
-|---|---|
-| macOS, Apple silicon (with Metal) | `office-darwin-arm64.tar.gz` |
-| Linux, x86-64 | `office-linux-amd64.tar.gz` |
-| Linux, ARM64 | `office-linux-arm64.tar.gz` |
+| Computer | Client | Hub |
+|---|---|---|
+| macOS, Apple silicon (the client with Metal) | `office-darwin-arm64.tar.gz` | `office-hub-darwin-arm64.tar.gz` |
+| Linux, x86-64 | `office-linux-amd64.tar.gz` | `office-hub-linux-amd64.tar.gz` |
+| Linux, ARM64 | `office-linux-arm64.tar.gz` | `office-hub-linux-arm64.tar.gz` |
 
 ```sh
 curl -fsSL https://github.com/mrsimpson/agentic-office/releases/latest/download/office-darwin-arm64.tar.gz | tar -xz
 ./office version
 ```
 
-Each archive has a `.sha256` file next to it. The Linux binary needs glibc 2.35 or newer and the
-libraries `libstdc++6` and `libgomp1`, which most distributions install. On macOS, a file
-downloaded with a browser is in quarantine; `curl` avoids that, or run
-`xattr -d com.apple.quarantine office`.
+- The Linux binaries need glibc 2.34 or newer. The client also needs `libstdc++6` and
+  `libgomp1`, which most distributions install. The hub needs `git`.
+- The binaries are portable builds (`WHISPER_NATIVE=OFF`): x86-64 with AVX2, or any ARM64 CPU.
+- On macOS, a file downloaded with a browser is in quarantine; `curl` avoids that, or run
+  `xattr -d com.apple.quarantine office`.
+- The client contains no speech models. The first `meeting join --mic` or `--wav` downloads them
+  (see [Ears: speak into the meeting](#ears-speak-into-the-meeting)).
 
-The binary contains no speech models. The first `meeting join --mic` or `--wav` downloads them
-(see [Ears: speak into the meeting](#ears-speak-into-the-meeting)).
+The [user guide](USER_GUIDE.md) shows how a team sets up a hub and joins meetings.
 
 ## Container images
 
