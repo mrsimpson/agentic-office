@@ -83,6 +83,8 @@ Agent runner (keeps an agent in the meeting over the Agent Client Protocol; see 
   agent run --session S [--role T | --role-file F] [--allow PATTERN]... [--cwd DIR] -- <harness command>
                                      join S with this key, start the harness (for example
                                      "opencode acp") and wake it at each change of speaker
+      [--decide-cmd CMD | --decide-url URL --decide-model M] [--decide-timeout D] [--topic-task T]
+                                     ask a decision model you bring first (key: OFFICE_DECIDE_KEY)
 
 Other:
   version                            print the version

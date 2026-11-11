@@ -152,7 +152,10 @@ model fails or does not answer in time, the runner wakes the agent and logs why.
 **Consequences:** The office ships no model and stays free of a model vendor. A wrong answer of
 the model can keep the agent silent when it was addressed; the fallback covers only errors and
 time-outs. Utterances that did not wake the agent stay queued and reach it with the next prompt,
-so nothing is lost. **Rejected:** a model built into the office; a fixed vendor API.
+so nothing is lost. The decision model gets what was said, like the harness of the agent: with a
+hosted endpoint, the text of the meeting leaves the device. The runner never sends it sentences
+that are off the record. The user who brings the model decides where it runs. **Rejected:** a
+model built into the office; a fixed vendor API.
 
 ```arc42
 :::decision

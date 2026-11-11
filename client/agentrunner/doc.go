@@ -24,6 +24,11 @@
 //     pending utterances before it as one prompt (dec-wake-on-turn-end). One prompt runs at a
 //     time; turns that come while the agent works go out together afterwards. After
 //     session.ended it sends a last prompt with what is left, and stops when that turn ends.
+//   - With a DecisionModel (dec-byo-decision-model), it asks the model before each turn prompt,
+//     in the background, so the runner keeps reading the log. It sends the prompt when the
+//     answer says act or topic_closed, or when the model fails, times out or answers something
+//     that does not follow the contract (it logs why). Otherwise the batch goes back to the
+//     pending utterances (requeue) and reaches the agent with the next prompt.
 //   - It answers permission requests by a permissionRule: by default the office tools only, and
 //     never a tool of kind execute, edit, delete or move; with patterns of the user, exactly the
 //     tools whose title matches. The title and kind come from the request, else from the

@@ -22,7 +22,10 @@ type utterance struct {
 //   - offNotices: delivered utterances that went off the record later; the next prompt names them.
 //   - the last turn.end of another participant that is not delivered yet. While the agent works,
 //     later turns only move it on, so they go out together.
+//   - recent: the last utterances of everybody, the agent included, as context for a decision
+//     model. Sentences off the record are removed.
 type delivery struct {
+	recent     []utterance
 	pending    []utterance
 	delivered  map[uint32]bool
 	offNotices []uint32
@@ -58,12 +61,25 @@ func (d *delivery) apply(ev *sessionv1.Event, self string) {
 	switch ev.GetType() {
 	case events.UtteranceFinal:
 		u := ev.GetUtteranceFinal()
-		if u.GetParticipantId() == self || u.GetOffTheRecord() {
+		if u.GetOffTheRecord() {
 			return
 		}
-		d.pending = append(d.pending, utterance{id: ev.GetId(), pid: u.GetParticipantId(), text: u.GetText()})
+		ut := utterance{id: ev.GetId(), pid: u.GetParticipantId(), text: u.GetText()}
+		d.recent = append(d.recent, ut)
+		if len(d.recent) > 2*contextSize {
+			d.recent = append([]utterance(nil), d.recent[len(d.recent)-contextSize:]...)
+		}
+		if u.GetParticipantId() != self {
+			d.pending = append(d.pending, ut)
+		}
 	case events.UtteranceOffTheRecord:
 		id := ev.GetUtteranceOffTheRecord().GetUtteranceEventId()
+		for i, u := range d.recent {
+			if u.id == id {
+				d.recent = append(d.recent[:i:i], d.recent[i+1:]...)
+				break
+			}
+		}
 		for i, u := range d.pending {
 			if u.id == id {
 				d.pending = append(d.pending[:i:i], d.pending[i+1:]...)
@@ -119,4 +135,33 @@ func (d *delivery) markDelivered(b batch) {
 	for _, u := range b.utterances {
 		d.delivered[u.id] = true
 	}
+}
+
+// requeue puts a batch back that did not wake the agent: its utterances go before the pending
+// ones and its notices stay, so the next prompt carries them (nothing is lost). A sentence of
+// the batch that went off the record meanwhile came in as a notice; it is dropped with its
+// notice, because the agent never got it.
+func (d *delivery) requeue(b batch) {
+	off := map[uint32]bool{}
+	for _, id := range d.offNotices {
+		off[id] = true
+	}
+	var back []utterance
+	dropped := map[uint32]bool{}
+	for _, u := range b.utterances {
+		delete(d.delivered, u.id)
+		if off[u.id] {
+			dropped[u.id] = true
+			continue
+		}
+		back = append(back, u)
+	}
+	notices := append([]uint32(nil), b.offNotices...)
+	for _, id := range d.offNotices {
+		if !dropped[id] {
+			notices = append(notices, id)
+		}
+	}
+	d.pending = append(back, d.pending...)
+	d.offNotices = notices
 }

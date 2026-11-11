@@ -290,9 +290,17 @@ type meetingOf struct {
 
 func newMeetingWithRunner(t *testing.T, flags ...string) *meetingOf {
 	t.Helper()
+	return newMeetingWithRunnerEnv(t, nil, flags...)
+}
+
+// newMeetingWithRunnerEnv is newMeetingWithRunner with extra environment variables for the
+// runner.
+func newMeetingWithRunnerEnv(t *testing.T, env []string, flags ...string) *meetingOf {
+	t.Helper()
 	m := newMachine(t)
 	mt := &meetingOf{t: t, sid: newSession(), ada: m.user("ada", "Ada", "human"), carl: m.user("carl", "Carl", "agent"),
 		bot: m.user("bot", "Bot", "agent")}
+	mt.bot.env = append(mt.bot.env, env...)
 	mt.adaLog = mt.ada.join(mt.sid).LogPath
 	mt.carl.join(mt.sid)
 	mt.runner, mt.rec = mt.bot.agentRun(t, mt.sid, append([]string{"--role", `You are Bot. please say "Bot is here."`}, flags...)...)

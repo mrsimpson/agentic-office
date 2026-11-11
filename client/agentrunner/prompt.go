@@ -3,6 +3,8 @@ package agentrunner
 import (
 	"fmt"
 	"strings"
+
+	"github.com/mrsimpson/agentic-office/client/agentrunner/decision"
 )
 
 // firstPrompt tells the agent its role and how the meeting works.
@@ -48,14 +50,31 @@ func (r *runner) writeBatch(b *strings.Builder, bt batch) {
 	}
 }
 
-// turnPrompt is the prompt at a change of speaker (dec-wake-on-turn-end).
-func (r *runner) turnPrompt(bt batch) string {
+// defaultTopicTask is the task at the end of a block of topics when the user gave none.
+const defaultTopicTask = "If your role asks for it, update the minutes and record the decisions and tasks of that block now."
+
+// turnPrompt is the prompt at a change of speaker (dec-wake-on-turn-end). With an answer of the
+// decision model, it says whom the speaker addressed and whether a block of topics has ended.
+func (r *runner) turnPrompt(bt batch, ans *decision.Answer) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "New in the meeting %q since my last message (event ID, speaker, human or agent, text):\n\n", r.o.Session)
 	r.writeBatch(&b, bt)
 	if bt.turnBy != "" {
 		p := r.who(bt.turnBy)
 		fmt.Fprintf(&b, "\nThe turn of %s (%s) has ended.\n", p.name, p.kind)
+	}
+	if ans != nil && ans.TopicClosed {
+		task := strings.TrimSpace(r.o.TopicTask)
+		if task == "" {
+			task = defaultTopicTask
+		}
+		fmt.Fprintf(&b, "\nA block of topics has ended. %s\n", task)
+		if !ans.Act {
+			b.WriteString("Nobody asked you anything; do not speak unless your role asks you to.\n")
+		}
+	}
+	if ans != nil && ans.Addressed != "" {
+		fmt.Fprintf(&b, "\nA decision model thinks that the speaker addressed: %s.\n", ans.Addressed)
 	}
 	b.WriteString("\nDecide yourself whether someone addressed you or whether your role asks you to contribute now. If not, do nothing and end your turn. To speak, call utterance_say.")
 	return b.String()

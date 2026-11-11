@@ -11,6 +11,7 @@ import (
 
 	acp "github.com/coder/acp-go-sdk"
 
+	"github.com/mrsimpson/agentic-office/client/agentrunner/decision"
 	"github.com/mrsimpson/agentic-office/client/core"
 	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 )
@@ -36,6 +37,11 @@ type Options struct {
 	Office string
 	// Version is reported to the harness.
 	Version string
+	// Decision is the decision model that the user brings. The zero value: wake the agent at
+	// every change of speaker (dec-byo-decision-model).
+	Decision DecisionModel
+	// TopicTask is the task of the role when a block of topics has ended. Empty: a default task.
+	TopicTask string
 	// Stderr receives the log of the runner and the stderr of the harness. Nil: os.Stderr.
 	Stderr io.Writer
 }
@@ -95,6 +101,9 @@ func Run(ctx context.Context, o Options) error {
 		return err
 	}
 
+	if o.Decision.configured() {
+		logf("decision model: %s", o.Decision)
+	}
 	r := &runner{o: o, m: m, h: h, logf: logf, self: m.joined.ParticipantID,
 		start: m.joined.Result.GetEvent().GetId(), names: map[string]participant{}}
 	err = r.loop(ctx)
@@ -138,11 +147,12 @@ type runner struct {
 	d     delivery
 }
 
-// result is the end of one piece of work: a prompt.
+// result is the end of one piece of work: a decision and a prompt, or only a decision.
 type result struct {
-	stop  acp.StopReason
-	err   error
-	final bool // the last prompt after session.ended
+	stop    acp.StopReason
+	err     error
+	final   bool   // the last prompt after session.ended
+	requeue *batch // the decision model did not wake the agent; the batch goes back
 }
 
 // loop sends the first prompt and follows the local log until the run ends. At most one prompt
@@ -180,6 +190,10 @@ func (r *runner) loop(ctx context.Context) error {
 			if res.err != nil {
 				return fmt.Errorf("prompt: %w", res.err)
 			}
+			if res.requeue != nil {
+				r.d.requeue(*res.requeue)
+				break
+			}
 			r.logf("the agent ended its turn (%s)", res.stop)
 			if res.final {
 				return nil
@@ -207,10 +221,43 @@ func (r *runner) loop(ctx context.Context) error {
 				continue
 			}
 			busy = true
+			if r.o.Decision.configured() {
+				r.decideAndSend(ctx, done, b)
+				continue
+			}
 			r.logf("sending %d utterances (events %d to %d)", len(b.utterances), b.first(), b.turnEnd)
-			r.send(ctx, done, r.turnPrompt(b), false)
+			r.send(ctx, done, r.turnPrompt(b, nil), false)
 		}
 	}
+}
+
+// decideAndSend asks the decision model in the background. It sends the prompt when the model
+// says act or topic_closed, or when the model fails (dec-byo-decision-model). Otherwise it
+// reports the batch back for a later prompt.
+func (r *runner) decideAndSend(ctx context.Context, done chan<- result, b batch) {
+	req := r.decisionRequest(b)
+	go func() {
+		a, err := r.o.Decision.ask(ctx, req)
+		if ctx.Err() != nil {
+			done <- result{err: ctx.Err()}
+			return
+		}
+		var ans *decision.Answer
+		switch {
+		case err != nil:
+			r.logf("decision model failed (%v); waking the agent", err)
+		case !a.Act && !a.TopicClosed:
+			r.logf("decision: do not wake (addressed %q): %s", a.Addressed, oneLine(a.Reason, 200))
+			done <- result{requeue: &b}
+			return
+		default:
+			r.logf("decision: wake (act %t, addressed %q, topic closed %t): %s", a.Act, a.Addressed, a.TopicClosed, oneLine(a.Reason, 200))
+			ans = &a
+		}
+		r.logf("sending %d utterances (events %d to %d)", len(b.utterances), b.first(), b.turnEnd)
+		stop, err := r.h.prompt(ctx, r.turnPrompt(b, ans))
+		done <- result{stop: stop, err: err}
+	}()
 }
 
 // send runs one prompt in the background and reports its end on done.

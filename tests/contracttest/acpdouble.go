@@ -22,24 +22,46 @@ var (
 func ACPDouble(t testing.TB) string {
 	t.Helper()
 	acpDoubleOnce.Do(func() {
-		dir, err := os.MkdirTemp("", "office-acpdouble-")
-		if err != nil {
-			acpDoubleErr = err.Error()
-			return
-		}
-		p := filepath.Join(dir, "acpdouble")
-		cmd := exec.Command("go", "build", "-o", p, "github.com/mrsimpson/agentic-office/tests/acpdouble")
-		cmd.Dir = moduleRoot(t)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			acpDoubleErr = err.Error() + "\n" + string(out)
-			return
-		}
-		acpDoublePath = p
+		acpDoublePath, acpDoubleErr = buildTool(t, "acpdouble")
 	})
 	if acpDoubleErr != "" {
 		t.Fatalf("build the ACP test double: %s", acpDoubleErr)
 	}
 	return acpDoublePath
+}
+
+var (
+	decisionDoubleOnce sync.Once
+	decisionDoublePath string
+	decisionDoubleErr  string
+)
+
+// DecisionDouble builds the test double of a decision model (tests/decisiondouble, the command
+// kind of if-decision-model) once and returns the path of its binary.
+func DecisionDouble(t testing.TB) string {
+	t.Helper()
+	decisionDoubleOnce.Do(func() {
+		decisionDoublePath, decisionDoubleErr = buildTool(t, "decisiondouble")
+	})
+	if decisionDoubleErr != "" {
+		t.Fatalf("build the decision model test double: %s", decisionDoubleErr)
+	}
+	return decisionDoublePath
+}
+
+// buildTool builds the program tests/<name> into a temporary directory.
+func buildTool(t testing.TB, name string) (string, string) {
+	dir, err := os.MkdirTemp("", "office-"+name+"-")
+	if err != nil {
+		return "", err.Error()
+	}
+	p := filepath.Join(dir, name)
+	cmd := exec.Command("go", "build", "-o", p, "github.com/mrsimpson/agentic-office/tests/"+name)
+	cmd.Dir = moduleRoot(t)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return "", err.Error() + "\n" + string(out)
+	}
+	return p, ""
 }
 
 // ACPRecord is one step that the ACP test double recorded.
