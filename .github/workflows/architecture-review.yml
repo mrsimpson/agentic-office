@@ -266,8 +266,8 @@ jobs:
             const existing = comments.find((c) => c.user?.type === "Bot" && c.body?.includes(marker));
             if (existing) {
               await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
-            } else if (changed || groups.warnings.length > 0 || groups.untouched.length > 0) {
-              // Without anything to review, no new comment; an existing one is updated above.
+            } else {
+              // Every pull request gets the comment, also when it does not change the architecture.
               await github.rest.issues.createComment({ owner, repo, issue_number, body });
             }
 
