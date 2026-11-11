@@ -26,11 +26,16 @@ type Config struct {
 	Mic bool
 	WAV string
 
-	// Model is the Whisper model (ggml format). Env OFFICE_WHISPER_MODEL.
+	// Model is the Whisper model: a name from the catalogue (see Catalogue) or a file in ggml
+	// format. Env OFFICE_WHISPER_MODEL. Empty means the best model for the language (see Choose).
+	// Prepare sets it to the file.
 	Model string
+	// Fast chooses the fast model (small) when Model is empty.
+	Fast bool
 	// VADModel is the Silero VAD model for whisper.cpp. Env OFFICE_VAD_MODEL.
 	VADModel string
-	// Language is the spoken language, for example "de". Env OFFICE_WHISPER_LANGUAGE.
+	// Language is the spoken language, a code or a name: "de", "german", "en", "english" or
+	// "auto". Env OFFICE_WHISPER_LANGUAGE. Prepare sets it to the code.
 	Language string
 	// Threads is the number of CPU threads for Whisper. Env OFFICE_WHISPER_THREADS.
 	Threads int
@@ -70,9 +75,9 @@ func ModelDir() string {
 }
 
 // Prepare fills empty fields and checks that the models, the WAV file or a recorder are there.
-// It reads the WAV file. A default model that is missing is downloaded once (see
-// DownloadModels); progress receives a line per step and may be nil. A model that the user chose
-// with a flag or a variable is never downloaded.
+// It chooses the speech model (see Choose) and reads the WAV file. A model of the catalogue that
+// is missing is downloaded once (see DownloadModels); progress receives a line per step and may
+// be nil. A model file that the user chose with a flag or a variable is never downloaded.
 func (c *Config) Prepare(ctx context.Context, progress func(string)) error {
 	str := func(v *string, env, def string) bool {
 		if *v == "" {
@@ -84,9 +89,18 @@ func (c *Config) Prepare(ctx context.Context, progress func(string)) error {
 		}
 		return false
 	}
-	defModel := str(&c.Model, "OFFICE_WHISPER_MODEL", filepath.Join(ModelDir(), defaultModelFile))
+	choice, err := Choose(c.Model, c.Language, c.Fast)
+	if err != nil {
+		return err
+	}
+	if choice.Note != "" && progress != nil {
+		progress(choice.Note)
+	}
+	if err := choice.ensure(ctx, progress); err != nil {
+		return err
+	}
+	c.Model, c.Language = choice.Path, choice.Language
 	defVAD := str(&c.VADModel, "OFFICE_VAD_MODEL", filepath.Join(ModelDir(), defaultVADFile))
-	str(&c.Language, "OFFICE_WHISPER_LANGUAGE", DefaultLanguage)
 	if c.Threads <= 0 {
 		if v := os.Getenv("OFFICE_WHISPER_THREADS"); v != "" {
 			n, err := strconv.Atoi(v)
@@ -120,21 +134,12 @@ func (c *Config) Prepare(ctx context.Context, progress func(string)) error {
 			c.VADThreshold = DefaultVADThreshold
 		}
 	}
-	for _, m := range []struct {
-		what, path, env string
-		def             bool
-		model           model
-	}{
-		{"Whisper model", c.Model, "OFFICE_WHISPER_MODEL or --model", defModel, models[0]},
-		{"VAD model", c.VADModel, "OFFICE_VAD_MODEL or --vad-model", defVAD, models[1]},
-	} {
-		if _, err := os.Stat(m.path); err == nil {
-			continue
+	if _, err := os.Stat(c.VADModel); err != nil {
+		if !defVAD {
+			return fmt.Errorf("VAD model %s not found; set OFFICE_VAD_MODEL or --vad-model to an existing file, "+
+				"or unset it to use the default model", c.VADModel)
 		}
-		if !m.def {
-			return fmt.Errorf("%s %s not found; set %s to an existing file, or unset it to use the default model", m.what, m.path, m.env)
-		}
-		if err := ensureModel(ctx, m.model, m.path, progress); err != nil {
+		if err := ensureModel(ctx, vadModel, c.VADModel, progress); err != nil {
 			return err
 		}
 	}

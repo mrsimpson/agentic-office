@@ -43,7 +43,9 @@ make models                    # downloads ggml-small.bin (about 490 MB) and the
 `$XDG_DATA_HOME/agentic-office/models`; change it with `MODEL_DIR=…`). The ears look there by
 default. To use other files, set `OFFICE_WHISPER_MODEL` and `OFFICE_VAD_MODEL`. Use a
 multilingual model, not a `.en` model: those only know English. On the reference host (CPU only),
-`small` needs about 0.7 s per sentence with 16 threads; larger models are too slow for live use.
+`small` needs about 0.7 s per sentence with 16 threads; larger models are too slow for live use
+there. Which model the ears choose is described in
+[Ears: speak into the meeting](#ears-speak-into-the-meeting).
 
 `make whisper` builds whisper.cpp for the CPU of your computer, which is fastest. Such a build
 can stop with `SIGILL` (illegal instruction) on another CPU. To build a client that you copy to
@@ -941,19 +943,45 @@ to the hub; the audio never leaves your computer (`concept-edge-transcription`).
 - Before join, the ears check the models, the WAV file or the recorder. If something is missing,
   join fails and you do not join.
 
-**Models.** The ears need a Whisper model and the Silero VAD model, about 490 MB together. When
-a default model is missing, the first `meeting join --mic` or `--wav` downloads it into the model
-directory and checks its SHA-256 (`dec-model-download`). `office models download` does the same
-ahead of time, for example before the first meeting. `OFFICE_MODEL_URL` sets a mirror: the files
-are then read from `<mirror>/ggml-small.bin` and `<mirror>/ggml-silero-v6.2.0.bin`. A model that
-you choose with a flag or a variable is never downloaded; `make models` fetches the same files
-with the scripts of whisper.cpp.
+**Models.** The ears need a Whisper model and the Silero VAD model. The client knows a catalogue
+of Whisper models by name (`dec-model-download`):
+
+| Name | Size | Use |
+|---|---|---|
+| `small` | 490 MB | fast, all languages; real time on a CPU |
+| `large-v3-turbo` | 1.6 GB | accurate, all languages; needs a GPU for live use |
+| `large-v3-turbo-german` | 1.6 GB | accurate, fine-tuned for German ([primeline](https://huggingface.co/primeline/whisper-large-v3-turbo-german), Apache-2.0); needs a GPU for live use |
+
+The ears choose the model in this order:
+
+1. `--model NAME|FILE`: a name of the catalogue or a model file.
+2. `--fast`: `small`.
+3. `OFFICE_WHISPER_MODEL`: a name or a file.
+4. The best model for `--language`: `large-v3-turbo-german` for German, `large-v3-turbo` for every
+   other language. If the build of the client has no GPU support, the ears take `small` instead
+   and say so on stderr. Only the macOS build for Apple silicon (Metal) counts as a GPU build;
+   `OFFICE_WHISPER_GPU=1` or `0` overrides this, for example for an own build with CUDA.
+
+`--language` takes a code or an English name, such as `de`, `german`, `en` or `english`, or
+`auto` (Whisper detects the language). `office models list [--language L] [--fast] [--model M]`
+shows the catalogue, what is downloaded, and which model join would use (`--json`: `{"models":
+[…], "selected", "language", "note"}`).
+
+When the chosen model of the catalogue or the VAD model is missing, the first `meeting join --mic`
+or `--wav` downloads it into the model directory and checks its SHA-256. `office models download
+[--language L] [--fast] [<name>]` does the same ahead of time, for example before the first
+meeting. `OFFICE_MODEL_URL` sets a mirror: the files are then read from `<mirror>/<file>`, for
+example `<mirror>/ggml-large-v3-turbo-german.bin` and `<mirror>/ggml-silero-v6.2.0.bin`. A model
+file that you choose with a flag or a variable is never downloaded; `make models` fetches `small`
+and the VAD model with the scripts of whisper.cpp.
 
 | Flag | Variable | Default |
 |---|---|---|
-| `--model` | `OFFICE_WHISPER_MODEL` | `~/.local/share/agentic-office/models/ggml-small.bin` |
+| `--model` | `OFFICE_WHISPER_MODEL` | the best model for the language (see above), in `~/.local/share/agentic-office/models/` |
+| `--fast` | | off |
 | `--vad-model` | `OFFICE_VAD_MODEL` | `~/.local/share/agentic-office/models/ggml-silero-v6.2.0.bin` |
 | `--language` | `OFFICE_WHISPER_LANGUAGE` | `de` |
+| | `OFFICE_WHISPER_GPU` | `1` for the macOS build on Apple silicon, else `0` |
 | `--threads` | `OFFICE_WHISPER_THREADS` | half of the CPUs, at most 16 |
 | `--end-silence` | `OFFICE_EARS_END_SILENCE` | `500ms` |
 | | `OFFICE_VAD_THRESHOLD` | `0.5` (speech probability of the VAD) |

@@ -33,9 +33,13 @@ Keys and identity:
 
 Meeting:
   meeting join <session> [--name N] [--foreground] [--mic | --wav FILE]
+               [--language L] [--fast] [--model NAME|FILE]
                                      join, start the log replicator, print the log path; with
-                                     --mic or --wav, missing default models are downloaded once
-  models download                    download the Whisper and VAD models ahead of time (about 490 MB)
+                                     --mic or --wav, a missing model is downloaded once
+  models list [--language L] [--fast] [--model NAME|FILE]
+                                     the speech models, what is downloaded, and which one join uses
+  models download [--language L] [--fast] [<name>]
+                                     download the chosen speech model and the VAD model ahead of time
   meeting log                        print the path of the local log
   meeting view                       gateway view: own utterances; keys p pause, o off the record, q quit
   meeting events [--after N] [--limit N]  events after a cursor, read from the server (for gaps or without a file system)
@@ -123,6 +127,7 @@ func init() {
 		"admin key revoke":         cmdAdminRevoke,
 		"meeting join":             cmdJoin,
 		"models download":          cmdModelsDownload,
+		"models list":              cmdModelsList,
 		"meeting log":              cmdLogPath,
 		"meeting events":           cmdEvents,
 		"meeting view":             cmdView,

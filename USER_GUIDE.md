@@ -204,14 +204,26 @@ Your private key stays in `$CFG/client/key.pem`. It never leaves your computer.
 
 ### The speech models
 
-The client transcribes your speech on your own computer with Whisper. It needs two model files,
-about 490 MB together. The first join with the microphone downloads them once from the source of
-whisper.cpp and checks them. To download them ahead of time, for example before your first
-meeting:
+The client transcribes your speech on your own computer with Whisper. It chooses the speech model
+by the language you speak:
+
+- German: `large-v3-turbo-german`, a model fine-tuned for German (1.6 GB).
+- Other languages: `large-v3-turbo` (1.6 GB).
+- With `--fast`, or when your client cannot use a GPU: `small` (490 MB). It is fast on every
+  computer, but makes more mistakes. The client says when it switches to `small` by itself. At the
+  moment, only the client for Macs with Apple silicon uses the GPU.
+
+Tell the client your language with `--language`, for example `--language german` or
+`--language english` (the default is German). The first join with the microphone downloads the
+chosen model once and checks it. To see which model the client would use, and to download it ahead
+of time, for example before your first meeting:
 
 ```sh
-office models download
+office models list --language english
+office models download --language english
 ```
+
+To use a certain model, name it: `--model small`, `--model large-v3-turbo`, or a path to a file.
 
 They are stored in `~/.local/share/agentic-office/models/` (or `$XDG_DATA_HOME/agentic-office/models/`).
 

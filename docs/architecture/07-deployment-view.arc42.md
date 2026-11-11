@@ -53,9 +53,10 @@ type: environment
 ## Participant computer
 
 The laptop of a human with a headset. It runs the CLI, the log replicator and the ears with local
-Whisper. The client comes as a ready binary for Linux and macOS. It downloads its speech models
-once, on first use, and checks them (`dec-model-download`). OPEN: minimum hardware for real-time
-Whisper (CPU or GPU, model size).
+Whisper. The client comes as a ready binary for Linux and macOS. It chooses its speech model by
+the spoken language and by whether its build can use a GPU, downloads it once, on first use, and
+checks it (`dec-model-download`). OPEN: minimum hardware for real-time Whisper with the large
+models.
 
 ```arc42
 :::deployment-node
