@@ -248,11 +248,12 @@ office meeting end
 
 An agent is a participant like you. It follows the meeting and acts through tools: it can keep
 the minutes, record decisions, raise its hand, show slides and speak. Several agents can take
-part in the same meeting, for example Claude Code, opencode and Kiro next to each other. Each
+part in the same meeting, for example Claude Code, opencode and Kiro next to each other. The
+**agent runner** keeps each one in the meeting, so that you can talk to it in plain words. Each
 agent needs:
 
 - its **own participant ID and key**, so that everyone sees who said or recorded what;
-- its **own folder**, where its tool keeps the connection to the office;
+- its **own folder**, where its tool keeps its work and settings;
 - the **hub and its certificate**, as for a human (see [Set up once](#set-up-once)). On the
   computer of a human participant, the agent uses the same `OFFICE_HUB` and the same certificate.
 
@@ -288,77 +289,151 @@ done
 
 Check a key: `OFFICE_KEY="$CFG/agents/kiro/key.pem" office whoami` prints `kiro-bot`.
 
-### Connect the agent
+### Keep the agent in the meeting: the agent runner
 
-Each tool starts `office mcp` as its MCP server. The examples use the meeting `weekly`; the
-agent can still join another one. In a configuration file, write absolute paths: no `~` and no
-`$HOME`. The `cat <<EOF` in the Kiro example fills them in for you.
+Claude Code, opencode and Kiro work in turns: they answer and then wait for you. In a meeting
+nobody types into their chat, so they would stop listening. The **agent runner** keeps an agent
+in the meeting. You start it once per agent:
 
-**Claude Code**
+```sh
+office agent run --session weekly --role "You keep the minutes." -- <harness command>
+```
+
+The runner joins the meeting with the agent's key and starts the agent's program, the
+**harness**, after `--`. It talks to the harness over the Agent Client Protocol (ACP) and gives it
+the office tools. Each time the speaker changes, it tells the agent what the others said: who
+spoke, whether a human or an agent, and what they said. The agent decides by itself whether
+someone addressed it. So people talk to it in plain words, without a keyword: "Claude, what did
+we decide on the budget?" or "Can the minute taker read back the last point?".
+
+The agent speaks only through the tool `utterance_say`; what it writes in its chat reaches
+nobody. When the meeting ends, the runner tells the agent and gives it time for its last work,
+for example the minutes. Then it stops. Stop it earlier with Ctrl+C.
+
+Start each agent in its own folder and terminal, with its own key. Log in to each harness once
+before, as you would to use it alone.
+
+**Claude Code**, through its ACP adapter (needs Node.js):
 
 ```sh
 mkdir -p ~/office-agent-claude && cd ~/office-agent-claude
-claude mcp add office -e OFFICE_KEY="$CFG/agents/claude/key.pem" -e OFFICE_HUB="$OFFICE_HUB" \
-  -- "$(command -v office)" mcp --session weekly
-claude
+OFFICE_KEY="$CFG/agents/claude/key.pem" office agent run --session weekly --role-file minutes.md \
+  -- npx -y @agentclientprotocol/claude-agent-acp
 ```
 
-**opencode**
+**opencode**:
 
 ```sh
 mkdir -p ~/office-agent-opencode && cd ~/office-agent-opencode
-opencode mcp add office --env OFFICE_KEY="$CFG/agents/opencode/key.pem" --env OFFICE_HUB="$OFFICE_HUB" \
-  -- "$(command -v office)" mcp --session weekly
-opencode mcp list
-opencode
+OFFICE_KEY="$CFG/agents/opencode/key.pem" office agent run --session weekly --role-file tasks.md \
+  -- opencode acp
 ```
 
-`opencode mcp add` writes the server into `opencode.json` in the folder. Inside opencode,
-`/mcps` shows whether it is connected.
-
-**Kiro**
+**Kiro**:
 
 ```sh
-mkdir -p ~/office-agent-kiro/.kiro/settings && cd ~/office-agent-kiro
+mkdir -p ~/office-agent-kiro && cd ~/office-agent-kiro
+OFFICE_KEY="$CFG/agents/kiro/key.pem" office agent run --session weekly --role-file decisions.md \
+  -- kiro-cli acp
+```
+
+The runner prints what it does on its terminal: each delivery, each tool call and what the agent
+wrote in its chat. You do not need to add the office as an MCP server in the harness: the runner
+hands it over for this meeting.
+
+**What the agent may do.** The harness asks the runner before it uses a tool. By default the
+runner allows the office tools and rejects everything else, for example shell commands or edits
+of files. To allow more, give patterns of the tool titles with `--allow` (`*` is any text);
+`--allow '*'` allows everything. A harness that does not ask, because its own settings allow a
+tool, uses its own settings.
+
+### Give each agent a role
+
+The role tells the agent what to do in the meeting. Write it in plain words, with `--role` or in
+a file with `--role-file`. Give each agent its own role, so that they do not talk over each
+other. For example:
+
+- `minutes.md`, for Claude Code:
+  > You are Claude, the minute taker. Keep the minutes with minutes_update after each topic.
+  > Answer when someone asks you about what was said or decided. Otherwise stay silent.
+- `tasks.md`, for opencode:
+  > You are opencode, the task keeper. When someone takes on a piece of work, create a task with
+  > task_create, with the person as the assignee. Speak only when someone asks you about tasks.
+- `decisions.md`, for Kiro:
+  > You are Kiro, the decision keeper. Record each decision with decision_record, in one clear
+  > sentence. Speak only when someone asks you about decisions.
+
+Several agents can take part in the same meeting. Each one hears the others: the runner tells it
+also what the other agents said, and that they are agents.
+
+### Optional: a decision model you bring
+
+The runner wakes each agent at every change of speaker. With a large model, that costs time and
+money, also when nobody needs the agent. You can let a small, cheap model decide first whether
+the agent should act. The office ships no model; you bring one:
+
+- a server with an OpenAI-compatible API, for example Ollama or llama.cpp on your computer, or a
+  hosted service:
+
+  ```sh
+  OFFICE_KEY="$CFG/agents/kiro/key.pem" office agent run --session weekly --role-file decisions.md \
+    --decide-url http://127.0.0.1:11434/v1 --decide-model <model> -- kiro-cli acp
+  ```
+
+  If the service needs a key, put it into `OFFICE_DECIDE_KEY`. The server must support
+  structured output with a JSON schema.
+- or your own program: `--decide-cmd "python3 decide.py"`. It gets the request as JSON on stdin
+  and writes the answer as JSON on stdout. [`README.md`](README.md) describes both.
+
+The decision model answers whether the agent should act now, whom the speaker addressed, and
+whether a block of topics has ended. At the end of a block, the runner wakes the agent with the
+task you give with `--topic-task`, for example "Update the minutes and record the decisions of
+this block". If the model fails or takes longer than `--decide-timeout` (10 seconds), the runner
+wakes the agent anyway. What did not wake the agent reaches it with the next message, so it
+misses nothing.
+
+A hosted decision model gets the text of the meeting, as the agent's own model does. Sentences
+off the record are never sent. Choose where the model runs.
+
+### Without the runner: the tools only
+
+A tool can also use the office directly as an MCP server, without the runner. Then the agent
+must keep reading new events itself, and it stops listening when its turn ends. This suits
+short jobs, for example writing the minutes after a meeting. Add `office mcp` as an MCP server
+in the agent's folder. In a configuration file, write absolute paths: no `~` and no `$HOME`.
+
+```sh
+# Claude Code
+claude mcp add office -e OFFICE_KEY="$CFG/agents/claude/key.pem" -e OFFICE_HUB="$OFFICE_HUB" \
+  -- "$(command -v office)" mcp --session weekly
+# opencode (writes opencode.json in the folder)
+opencode mcp add office --env OFFICE_KEY="$CFG/agents/opencode/key.pem" --env OFFICE_HUB="$OFFICE_HUB" \
+  -- "$(command -v office)" mcp --session weekly
+```
+
+For Kiro, write `.kiro/settings/mcp.json` in the folder:
+
+```sh
+mkdir -p .kiro/settings
 cat > .kiro/settings/mcp.json <<EOF
 {
   "mcpServers": {
     "office": {
       "command": "$(command -v office)",
       "args": ["mcp", "--session", "weekly"],
-      "env": {
-        "OFFICE_KEY": "$CFG/agents/kiro/key.pem",
-        "OFFICE_HUB": "$OFFICE_HUB"
-      },
+      "env": { "OFFICE_KEY": "$CFG/agents/kiro/key.pem", "OFFICE_HUB": "$OFFICE_HUB" },
       "autoApprove": ["meeting_events", "meeting_log", "whoami"]
     }
   }
 }
 EOF
-kiro-cli mcp list workspace
-kiro-cli chat
 ```
 
-In the Kiro IDE, open the folder `~/office-agent-kiro` instead. `autoApprove` lets the tools that
-only read run without a question each time. Tools that write, such as `utterance_say`, still ask;
-add them to the list, or use `"*"`, to let the agent act alone.
+Then tell the agent what to do, for example:
 
-### Tell the agent what to do
-
-Give each agent its own task, so that they do not talk over each other. For example:
-
-- **Claude Code**, the minute taker:
-  > Join the meeting "weekly" (meeting_join). Keep reading new events with meeting_events, from
-  > the last one you read. Keep the minutes with minutes_update. Speak (utterance_say) only when
-  > someone addresses you as "Claude". Stop when the session ends.
-- **opencode**, the task keeper:
-  > Join the meeting "weekly". Keep reading new events with meeting_events. When someone takes
-  > on a piece of work, create a task with task_create. Speak only when someone addresses you as
-  > "opencode". Stop when the session ends.
-- **Kiro**, the decision keeper:
-  > Join the meeting "weekly". Keep reading new events with meeting_events. Record each decision
-  > with decision_record. Speak only when someone addresses you as "Kiro". Stop when the session
-  > ends.
+> Join the meeting "weekly" (meeting_join). Keep reading new events with meeting_events, from the
+> last one you read. Keep the minutes with minutes_update. Speak (utterance_say) only when someone
+> addresses you as "Claude". Stop when the session ends.
 
 The tools do not wait for new events by themselves: the agent calls `meeting_events` again and
 again. If it stops in between, tell it to keep listening.
@@ -434,5 +509,8 @@ scripts/try-local.sh tail bot                        # what the agent reads; sto
 | `no audio recorder found` | Install `ffmpeg` (macOS) or `pulseaudio-utils` (Linux), or set `OFFICE_MIC_COMMAND` (see [`README.md`](README.md)). |
 | The model download fails | Check your network, or download the models elsewhere and set `OFFICE_MODEL_URL` to a mirror. |
 | `SIGILL: illegal instruction` | A client built on another computer uses CPU features yours lacks. Use the pre-built client, or build with `WHISPER_NATIVE=OFF`. |
+| `office agent: … the harness stopped` | The harness ended. Run its command alone (for example `opencode acp`) and read its error; often it needs a login first. |
+| The agent never speaks | Read the runner's terminal: does it send the turns (`sending … utterances`), and does the harness ask for tools that the runner rejects (`permission rejected`)? Allow them with `--allow`, or in the harness's own settings. Check that someone's client ends the turn (`turn.end`): the ears do it after a pause; with typed text, use `office signal turn-end`. |
+| `decision model failed` | The runner woke the agent anyway. Check `--decide-url`, `--decide-model` and `OFFICE_DECIDE_KEY`, and that the server supports structured output with a JSON schema. |
 | `the trial is running already` | Run `scripts/try-local.sh down`, then `up` again. |
 | `Apple's container needs a DNS domain` | Do the one-time setup in [Try everything on one computer](#5-try-everything-on-one-computer). |
