@@ -4,6 +4,7 @@ go 1.27
 
 require (
 	connectrpc.com/connect/v2 v2.0.2
+	github.com/coder/acp-go-sdk v0.13.5
 	github.com/ggerganov/whisper.cpp/bindings/go v0.0.0-00010101000000-000000000000
 	github.com/google/uuid v1.6.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
