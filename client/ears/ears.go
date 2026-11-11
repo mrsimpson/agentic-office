@@ -299,6 +299,45 @@ type utterance struct {
 	speechEnd     time.Time
 	transcribedAt time.Time
 	turnEnd       bool
+	// pauses is the number of pauses when the turn of a turn.end began.
+	pauses uint64
+}
+
+// pauses counts the pauses of the participant. Every stage of the ears looks at it, and so does
+// a ticker: a source drops its frames while paused, so the stage that reads the frames may see no
+// frame of a short pause at all.
+type pauses struct {
+	paused func() bool
+	mu     sync.Mutex
+	was    bool
+	n      uint64
+}
+
+// observe returns the number of pauses that have begun so far and whether the participant is
+// paused now.
+func (p *pauses) observe() (uint64, bool) {
+	now := p.paused()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if now && !p.was {
+		p.n++
+	}
+	p.was = now
+	return p.n, now
+}
+
+// watch observes the pauses every 20 ms until ctx ends.
+func (p *pauses) watch(ctx context.Context) {
+	t := time.NewTicker(20 * time.Millisecond)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			p.observe()
+		}
+	}
 }
 
 // Run captures, transcribes and sends until ctx ends or the audio is over. At the end of a WAV
@@ -370,29 +409,37 @@ func (e *Ears) Run(ctx context.Context) error {
 		}
 	}
 	setPrompt("")
+	ps := &pauses{paused: e.Paused}
+	pctx, stopPauses := context.WithCancel(ctx)
+	defer stopPauses()
+	go ps.watch(pctx)
 	go func() {
 		defer close(frames)
 		srcErr <- src.Run(srcCtx, frames, e.Paused)
 	}()
-	go func() { sendErr <- e.send(ctx, queue, report) }()
+	go func() { sendErr <- e.send(ctx, queue, ps, report) }()
 
 	// Transcription: one sentence after the other.
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		prev := ""
-		// spoke is true when a sentence of the current turn is in the queue.
-		spoke := false
+		// spoke is true when a sentence of the current turn is in the queue; turn is the number of
+		// pauses when it was put there. A pause ends the turn without turn.end.
+		spoke, turn := false, uint64(0)
 		for s := range segs {
-			if e.Paused() {
-				spoke = false // the pause ends the turn without turn.end
-				continue      // paused before the sentence was transcribed: never transcribe it
+			n, paused := ps.observe()
+			if paused || n != turn {
+				spoke = false
+			}
+			if paused {
+				continue // paused before the sentence was transcribed: never transcribe it
 			}
 			if s.turnEnd {
 				// One turn.end per turn, and only after a sentence that is in the queue.
 				if spoke {
 					spoke = false
-					queue.push(utterance{cmdID: coreapi.NewCommandID(), speechEnd: s.speechEnd, turnEnd: true})
+					queue.push(utterance{cmdID: coreapi.NewCommandID(), speechEnd: s.speechEnd, turnEnd: true, pauses: turn})
 				}
 				continue
 			}
@@ -404,7 +451,11 @@ func (e *Ears) Run(ctx context.Context) error {
 				report(Report{Type: "skipped", Error: "whisper: " + err.Error()})
 				continue
 			}
-			if text == "" || e.Paused() {
+			if text == "" {
+				continue
+			}
+			if n, paused = ps.observe(); paused {
+				spoke = false
 				continue
 			}
 			prev = text
@@ -414,24 +465,23 @@ func (e *Ears) Run(ctx context.Context) error {
 				AudioMs: int64(len(s.samples)) * 1000 / audio.SampleRate, WhisperMs: done.Sub(start).Milliseconds(),
 				SpeechEndToFinalMs: done.Sub(s.speechEnd).Milliseconds()})
 			queue.push(u)
-			spoke = true
+			spoke, turn = true, n
 		}
 	}()
 
 	// Voice activity detection on the stream of frames.
 	var last time.Time
-	wasPaused := false
+	seen, _ := ps.observe()
 	var vadErr error
 	for f := range frames {
-		if p := e.Paused(); p || wasPaused {
-			// Forget what was heard before the pause, and start fresh after it.
-			if p != wasPaused {
-				seg.drop()
-			}
-			wasPaused = p
-			if p {
-				continue
-			}
+		n, paused := ps.observe()
+		if n != seen {
+			// Forget what was heard before the pause and the open turn; start fresh after it.
+			seg.drop()
+			seen = n
+		}
+		if paused {
+			continue
 		}
 		last = f.At
 		out, err := seg.push(f.Samples, f.At)
@@ -463,7 +513,7 @@ func (e *Ears) Run(ctx context.Context) error {
 // send submits the utterances and the ends of turns in order. A failed submit is repeated with
 // the same command ID until it works, so a network drop neither loses nor duplicates an
 // utterance or a turn.end (dec-idempotent-commands). Errors that a repeat cannot fix drop it.
-func (e *Ears) send(ctx context.Context, q *queue, report func(Report)) error {
+func (e *Ears) send(ctx context.Context, q *queue, ps *pauses, report func(Report)) error {
 	// stopped reports the utterances that are lost because the ears stop before they are sent.
 	stopped := func(current int) error {
 		if n := q.len() + current; n > 0 {
@@ -476,8 +526,8 @@ func (e *Ears) send(ctx context.Context, q *queue, report func(Report)) error {
 		if !ok {
 			return stopped(0)
 		}
-		if u.turnEnd && e.Paused() {
-			continue // no signal while paused; the pause has ended the turn
+		if n, paused := ps.observe(); u.turnEnd && (paused || n != u.pauses) {
+			continue // no signal while paused; a pause has ended the turn
 		}
 		backoff := 100 * time.Millisecond
 		for attempt := 1; ; attempt++ {

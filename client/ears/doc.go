@@ -25,7 +25,8 @@
 //   - Pause: while Paused() is true, the microphone recorder is stopped (a WAV file plays on, but
 //     its frames are dropped), audio that was heard before the pause is forgotten, and no
 //     sentence is transcribed. A pause also ends the open turn without a turn.end, and no
-//     turn.end is submitted while paused.
+//     turn.end is submitted while paused. Each stage and a ticker count the pauses, because a
+//     source drops its frames while paused: the VAD may see no frame of a pause at all.
 //
 // Vocabulary: before each sentence, Whisper gets a prompt with the terms of the vocabulary file
 // and the names of the participants (vocabulary.go). ExtractVocabulary builds such a file from
