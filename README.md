@@ -145,6 +145,8 @@ client/                   bb-participant-client: wiring of the client (binary of
   mcp/                    bb-mcp, if-mcp
   replicator/             bb-replicator, if-replication (start, find and stop a replicator)
   ears/                   bb-ears, if-audio-in
+  agentrunner/            bb-agent-runner, if-acp-client: keeps an agent in a meeting over ACP
+    decision/             if-decision-model: request, answer and JSON schema of a decision model
 tests/                    external actors: may use interfaces only
   architecture/           architecture test
   contracttest/           harness for black-box contract tests

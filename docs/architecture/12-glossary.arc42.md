@@ -193,6 +193,58 @@ definition: A participant with its own key pair; every human device and every ag
 :::
 ```
 
+## Agent harness
+
+The program in which an agent runs and that holds its conversation with a model, for example
+Claude Code, opencode or Kiro. We say "harness" and not "agent" when we mean the program that the
+agent runner starts.
+
+```arc42
+:::glossary-term
+id: term-agent-harness
+title: Agent harness
+definition: The program that runs an agent and its model, for example Claude Code, opencode or Kiro; the agent runner starts it and talks to it over ACP
+:::
+```
+
+## Agent runner
+
+The part of the participant client that keeps an agent in a meeting (`bb-agent-runner`).
+
+```arc42
+:::glossary-term
+id: term-agent-runner
+title: Agent runner
+definition: The part of the client that follows the local log for an agent and starts the agent's turns in its harness over ACP, when the check after an utterance says it should act
+:::
+```
+
+## Agent Client Protocol (ACP)
+
+An open protocol between a client and a coding agent, published at agentclientprotocol.com. The
+client starts the agent and talks JSON-RPC with it over standard input and output.
+
+```arc42
+:::glossary-term
+id: term-acp
+title: Agent Client Protocol (ACP)
+definition: An open JSON-RPC protocol over standard input and output between a client, here the agent runner, and an agent harness
+:::
+```
+
+## Decision model
+
+A model that the user brings for the agent runner (`dec-byo-decision-model`). It is not the agent:
+it only decides whether the agent should be woken.
+
+```arc42
+:::glossary-term
+id: term-decision-model
+title: Decision model
+definition: A model that the user brings and that tells the agent runner after each utterance whether the agent should act and whether a block of topics has ended
+:::
+```
+
 ## Off the record
 
 A later mark on an own sentence.

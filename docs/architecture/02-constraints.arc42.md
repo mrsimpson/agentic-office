@@ -19,7 +19,8 @@ source: Legislation (DE/EU)
 
 Today's agents work in turns. Standard MCP clients usually do not pass server notifications on to
 the model. The model only sees tool results. So the live connection must not depend on push
-features of the client.
+features of the client. An agent finishes a turn and then waits for a new prompt; something
+outside the agent must start its next turn (`dec-agent-runner-acp`).
 
 ```arc42
 :::constraint
@@ -30,18 +31,24 @@ source: Behaviour of common agent clients (2026)
 :::
 ```
 
-## No intelligence in the application
+## No intelligence in the hub
 
-The application contains no LLM and makes no judgements about content. It stores, calculates,
-renders, transcribes and checks against rules. The agent does the judging and the wording.
+The office hub contains no LLM and makes no judgements about content. It stores, calculates,
+renders and checks against rules. The hub holds the state of the team and needs governance:
+every result of the hub must be deterministic and traceable. The agent does the judging and the
+wording.
+
+The rule applies to the hub only. The participant client runs on the computer of a participant
+and may contain models, generative or not: the ears transcribe with a speech model, and the
+agent runner may ask a decision model that the user brings (`dec-models-in-client`).
 Speech-to-text counts as conversion, not as judgement.
 
 ```arc42
 :::constraint
 id: con-no-intelligence
-title: No intelligence of its own in the application
+title: No intelligence of its own in the hub
 category: convention
-source: Product vision
+source: Product vision; scope limited to the hub by the maintainer on 2026-11-11
 :::
 ```
 

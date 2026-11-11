@@ -7,8 +7,8 @@ maintainer made explicitly are `accepted`. Proposals that still need confirmatio
 
 **Context:** Agents improve fast, and every team uses different ones. **Decision:** The application
 only exposes APIs (MCP, CLI) and media connectors. The agent makes the judgements.
-**Consequences:** The application stays deterministic and testable. Features that need judgement
-do not belong in the application.
+**Consequences:** The hub stays deterministic and testable. Features that need judgement do not
+belong in the hub (`dec-models-in-client`).
 
 ```arc42
 :::decision
@@ -17,6 +17,157 @@ title: Headless office, bring your own agent
 status: accepted
 date: 2026-11-06
 addresses: con-no-intelligence
+:::
+```
+
+## The rule "no intelligence" binds the hub, not the client
+
+**Context:** The rule "no intelligence" was written for the whole application. The hub holds the
+state of the team and needs governance: its results must be deterministic and traceable. The
+client runs on the computer of a participant, and the ears already use a speech model there. To
+keep an agent in a meeting at a sensible cost, the client may want to ask a small model whether
+the agent should act. **Decision:** `con-no-intelligence` applies to the hub only. The
+participant client may contain models, generative or not, on the participant's side. The office
+ships no generative model; a user brings one (`dec-byo-decision-model`). **Consequences:** The
+hub stays as it is. A model in the client can only change what the client of that participant
+does, never what the hub stores or how it decides. Tests of the client use test doubles of such
+models and never call a real model. **Rejected:** a model in the hub (no governance); no model in
+the client at all (the agent would have to be woken at every utterance, also when nobody needs
+it).
+
+```arc42
+:::decision
+id: dec-models-in-client
+title: The rule "no intelligence" binds the hub, not the client
+status: accepted
+date: 2026-11-11
+addresses: con-no-intelligence
+:::
+```
+
+## An agent runner drives the agent harness over ACP
+
+**Context:** Claude Code, opencode and Kiro work in turns (`con-turn-based-agents`). They finish
+a turn and wait for a human. Following the local log with `tail -f` in a background task works
+only while the agent is in a turn, and people must use a keyword so that a filter wakes the
+agent. People want to address the agent in plain words. **Decision:** A new part of the client,
+the agent runner, keeps the agent in the meeting. It follows the local log of the agent and
+starts the agent's turns. Runner and harness are separate programs. They talk over the Agent
+Client Protocol (ACP): the runner is the ACP client and starts the harness as its ACP agent over
+standard input and output. The runner opens one ACP session per meeting and hands it the office
+tools as an MCP server that runs with the key of the agent. **Consequences:** Every harness that
+speaks ACP can take part without code for that harness in the office. The agent keeps its
+context across the meeting in one ACP session. The agent still acts only through the office
+tools, as itself. A harness that does not speak ACP still works the old way, through MCP or the
+CLI and the log file. The runner depends on a protocol that is young and still changes.
+**Rejected:** a runner per harness (code for every product); building the agent into the office
+(`dec-headless-byoa`); MCP notifications to wake the agent (most clients do not pass them on,
+`con-turn-based-agents`).
+
+```arc42
+:::decision
+id: dec-agent-runner-acp
+title: An agent runner drives the agent harness over ACP
+status: accepted
+date: 2026-11-11
+addresses: con-turn-based-agents, qg-usability
+:::
+```
+
+## Check after each utterance whether to wake the agent
+
+**Context:** The agent should notice when it is addressed, without a keyword. It should also
+notice when a speaker starts a new topic within a monologue, or talks about something that
+concerns the role of the agent. The end of a turn (`turn.end`) comes too late for that.
+**Decision:** After each utterance of another participant, the runner checks whether to wake the
+agent. A decision model that the user brings makes the check (`dec-byo-decision-model`). When it
+says the agent should act, the runner sends the agent what others said since its last delivery,
+as one prompt. Each utterance says who spoke and whether that participant is a human or an
+agent. The agent decides by itself how to act: answer, raise its hand, or update the minutes
+silently. OPEN: what the runner does without a decision model. A check per utterance would then
+wake the agent at every utterance. Until this is decided, the runner wakes it at each change of
+speaker instead. **Consequences:** People talk to the agent in plain words, and the agent can
+follow topics within a long monologue. The check runs for every utterance, so the decision model
+must be fast and cheap. An agent may act while someone still speaks; it should not interrupt
+speech, but raise its hand or write. **Rejected:** a wake-up only at each change of speaker (it
+misses a new topic within a monologue); a keyword (not natural).
+
+```arc42
+:::decision
+id: dec-wake-check-per-utterance
+title: Check after each utterance whether to wake the agent
+status: accepted
+date: 2026-11-12
+addresses: con-turn-based-agents, qg-usability
+:::
+```
+
+## What the agent runner sends, and when
+
+**Context:** The runner must deliver what was said reliably, while the agent may be busy and the
+log may grow. **Decision:**
+
+- The runner joins the session with the key of the agent and runs the log replicator in its own
+  process. The agent does not need to join; a join through the tools reuses the same participant
+  and the same local log.
+- It delivers utterances in the order of the log, from the cursor of its last delivery. It leaves
+  out the agent's own utterances and sentences off the record. A sentence that goes off the record
+  before it was delivered is never delivered; for a delivered one, the next prompt tells the
+  agent that it is off the record.
+- One prompt runs at a time. While the agent works, the runner queues further turns and sends
+  them together in one prompt afterwards. A turn without new utterances of others wakes nobody.
+- After `session.ended`, the runner sends what is left and a last prompt with the task of the
+  role for the end, then stops the harness. It does not leave the session, because a session
+  command would open it again (`dec-session-end-milestone`).
+- The runner answers permission requests of the harness by a rule of the user: by default it
+  allows the office tools and rejects every other tool. It offers the harness no access to its
+  file system or terminal.
+- A new runner opens a new ACP session. It starts its delivery after the join of the agent, so
+  a new runner for the same agent delivers what was said since that join.
+
+**Consequences:** Nothing is lost and nothing is sent twice within one ACP session. The agent
+gets fewer, larger prompts when it is slow. The permission rule keeps an unattended agent from
+running other tools unless the user allows them. **Rejected:** cancelling a running prompt when a
+new turn comes (the agent would lose its work); one prompt per turn while busy (the agent would
+lag behind more and more).
+
+```arc42
+:::decision
+id: dec-agent-runner-delivery
+title: What the agent runner sends, and when
+status: proposed
+date: 2026-11-11
+addresses: qg-resumability, qg-usability, risk-retraction-leak, risk-agent-wakeups, risk-harness-drift
+:::
+```
+
+## A decision model that the user brings
+
+**Context:** The runner checks after each utterance whether to wake the agent
+(`dec-wake-check-per-utterance`). Waking a harness with a large model for this costs time and
+money, and it is slow to decide that it is not addressed. A small model can decide this faster
+and cheaper. The hub must stay without intelligence (`con-no-intelligence`), and the office
+should not pick a model for its users. **Decision:** The runner has an interface for a decision
+model that the user brings and configures (`if-decision-model`). It is an OpenAI-compatible chat
+endpoint with structured output by JSON schema (for example llama.cpp, Ollama or a hosted model),
+or a command that reads the request as JSON and writes the answer as JSON. After each utterance,
+the runner asks it and gets `act`, `addressed`, `topic_closed` and `reason`. It wakes the agent
+when `act` is true. When `topic_closed` is true, it wakes the agent with the task of the role for
+the end of a topic, for example to update the minutes or to record decisions. Without a decision
+model, the runner wakes the agent at each change of speaker (OPEN, see
+`dec-wake-check-per-utterance`). If the model fails or does not answer in time, the runner wakes the agent and logs why.
+**Consequences:** The office ships no model and stays free of a model vendor. A wrong answer of
+the model can keep the agent silent when it was addressed; the fallback covers only errors and
+time-outs. Utterances that did not wake the agent stay queued and reach it with the next prompt,
+so nothing is lost. **Rejected:** a model built into the office; a fixed vendor API.
+
+```arc42
+:::decision
+id: dec-byo-decision-model
+title: A decision model that the user brings
+status: accepted
+date: 2026-11-11
+addresses: con-no-intelligence, qg-performance, qg-usability, risk-agent-wakeups
 :::
 ```
 
