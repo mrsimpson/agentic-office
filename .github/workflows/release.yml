@@ -5,9 +5,9 @@
 # Each platform builds natively on its own runner, because the client links whisper.cpp through
 # cgo and emulation would be very slow. A second job joins the two platforms into one image.
 #
-# It also builds the office client for linux/amd64, linux/arm64 and darwin/arm64 (Apple silicon,
-# with Metal) and attaches it to the GitHub release of the tag, with a SHA-256 file for each
-# archive. The client downloads its Whisper models on the first join with --mic or --wav.
+# It also builds the office client and the hub for linux/amd64, linux/arm64 and darwin/arm64
+# (Apple silicon; the client with Metal) and attaches them to the GitHub release of the tag, with
+# a SHA-256 file for each archive. The client downloads its Whisper models on the first join with --mic or --wav.
 name: Release
 
 on:
@@ -119,7 +119,7 @@ jobs:
         run: docker buildx imagetools inspect '${{ env.IMAGE_PREFIX }}/${{ matrix.image.name }}:${{ steps.meta.outputs.version }}'
 
   client:
-    name: client ${{ matrix.os }}-${{ matrix.arch }}
+    name: binaries ${{ matrix.os }}-${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     strategy:
@@ -145,14 +145,18 @@ jobs:
       - name: Check the binary
         run: |
           bin/office version
+          bin/office-hub -h 2>&1 | head -3
       - name: Package
         id: pack
         run: |
-          # No version in the name, so that releases/latest/download/<name> stays the same link.
-          name="office-${{ matrix.os }}-${{ matrix.arch }}"
+          # One archive for the client and one for the hub. No version in the names, so that
+          # releases/latest/download/<name> stays the same link.
           mkdir -p dist
-          tar -czf "dist/$name.tar.gz" -C bin office
-          (cd dist && shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256")
+          for bin in office office-hub; do
+            name="$bin-${{ matrix.os }}-${{ matrix.arch }}"
+            tar -czf "dist/$name.tar.gz" -C bin "$bin"
+            (cd dist && shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256")
+          done
           cat dist/*.sha256
       - uses: actions/upload-artifact@v7
         with:

@@ -1,245 +1,333 @@
 # User guide
 
-This guide is for people who want to try the agentic office on their own computer. In a few
-minutes you start a hub and two participants: Ada, a human, and a bot, an agent. You then watch
-the meeting on the stage in your browser. After that you can speak into the meeting with your
-headset, or connect your own agent.
+This guide shows how a team uses the agentic office: how to get the software, run a hub, join
+meetings as a human with a headset, and bring in agents. For the architecture and every command
+in detail, see [`README.md`](README.md).
 
-You do not need to build anything for the first part. The script uses the published container
-images. To build from source, see [`README.md`](README.md).
+The office has two programs:
+
+| Program | Who runs it | What it does |
+|---|---|---|
+| `office-hub` | One person per team, the **operator**, on a server or a computer that everyone can reach | Orders the meeting, keeps the archive, serves the stage |
+| `office` | Every **participant**: each human and each agent, on their own computer | Joins meetings, transcribes your speech locally, keeps a local copy of the meeting log, offers the tools (CLI and MCP) |
 
 Contents:
 
-1. [Try it in containers](#1-try-it-in-containers) (Linux, macOS, Windows)
-2. [Speak with your headset](#2-speak-with-your-headset) (Linux, macOS)
-3. [Connect your agent](#3-connect-your-agent)
-4. [Troubleshooting](#4-troubleshooting)
+1. [Get the software](#1-get-the-software): pre-built, or built yourself
+2. [Run a hub](#2-run-a-hub) (operator, once per team)
+3. [Join a meeting](#3-join-a-meeting) (humans)
+4. [Bring in an agent](#4-bring-in-an-agent)
+5. [Try everything on one computer](#5-try-everything-on-one-computer)
+6. [Troubleshooting](#6-troubleshooting)
 
-## 1. Try it in containers
+## 1. Get the software
 
-### What you need
+You have two ways: download the pre-built programs, or build them from the source.
 
-| Platform | Container runtime | Notes |
+| Platform | `office` (client) | `office-hub` |
 |---|---|---|
-| Linux | Docker or Podman | |
-| macOS | Docker Desktop, Podman, or Apple's [`container`](https://github.com/apple/container) | `container` needs Apple silicon and macOS 26, plus a one-time DNS setup (see below) |
-| Windows | Docker Desktop with WSL 2 | Run the script in a WSL 2 shell (for example Ubuntu), not in PowerShell |
+| macOS, Apple silicon | pre-built or built yourself | pre-built, built yourself or container image |
+| Linux, x86-64 or ARM64 | pre-built or built yourself | pre-built, built yourself or container image |
+| Windows | in WSL 2, as on Linux (the microphone in WSL is not tested) | in WSL 2, or the container image |
 
-You also need `bash` and `git`. The images exist for `linux/amd64` and `linux/arm64`. Your
-runtime picks the right one.
+### Pre-built
 
-Get the script:
+Each release on GitHub has one archive per program and computer, each with a `.sha256` file:
 
-```sh
-git clone https://github.com/mrsimpson/agentic-office.git
-cd agentic-office
-```
-
-### Apple `container`: set up once
-
-Containers find the hub by its DNS name. Apple's `container` gives each container a name only if
-you set a DNS domain. Do this once:
-
-1. Start the service, if it is not running: `container system start`.
-2. Add these lines to `~/.config/container/config.toml`:
-
-   ```toml
-   [dns]
-   domain = "test"
-   ```
-
-3. Restart the service:
-
-   ```sh
-   container system stop
-   container system start
-   ```
-
-You do not need `sudo container system dns create`. Your Mac reaches the hub through
-`localhost`, not through the DNS name.
-
-The script uses Docker if it finds it, then Podman, then `container`. If you have more than one,
-choose one with `OFFICE_RUNTIME`:
-
-```sh
-export OFFICE_RUNTIME=container
-```
-
-### Start
-
-```sh
-scripts/try-local.sh up
-```
-
-The script:
-
-1. starts a container for Ada and creates her key;
-2. creates the signing key of the hub and makes Ada its first admin;
-3. starts the hub on `https://localhost:8740`;
-4. starts a container for the bot and registers its key as an agent;
-5. prints the stage link and the next steps.
-
-Open the stage link in your browser. The hub uses a self-signed certificate, so the browser
-shows a warning. Accept it for this page.
-
-### Hold a meeting
-
-Each participant runs the `office` command in its own container. `scripts/try-local.sh as <name>`
-runs it for you:
-
-```sh
-scripts/try-local.sh as bot meeting join weekly     # the agent joins first and keeps a local log
-scripts/try-local.sh as ada meeting join weekly
-scripts/try-local.sh as ada say "Good morning, everyone"
-scripts/try-local.sh as bot hand raise --topic "Budget"
-scripts/try-local.sh tail bot                       # what the agent reads; stop with Ctrl+C
-```
-
-Watch the stage while you do this. Some more things to try:
-
-```sh
-scripts/try-local.sh as ada utterance off-the-record --last
-scripts/try-local.sh as bot decision record "We meet again on Friday."
-scripts/try-local.sh as bot task create "Send the numbers" --assignee ada
-scripts/try-local.sh as ada meeting end
-```
-
-`scripts/try-local.sh as ada --help` lists every command. [`README.md`](README.md) describes
-them in detail.
-
-More participants:
-
-```sh
-scripts/try-local.sh add grace human
-scripts/try-local.sh add claude agent
-```
-
-### Remove everything
-
-```sh
-scripts/try-local.sh down
-```
-
-This removes the containers, the data of the hub and the folder `office-trial`. The keys of the
-participants live in their containers, so they are gone too.
-
-### Settings
-
-| Variable | Default | Meaning |
+| Computer | Client | Hub |
 |---|---|---|
-| `OFFICE_RUNTIME` | the first of `docker`, `podman`, `container` | Container runtime |
-| `OFFICE_VERSION` | `latest` | Image tag, for example `0.0.2` |
-| `OFFICE_PORT` | `8740` | Port of the hub on your computer |
-| `OFFICE_TRIAL_DIR` | `./office-trial` | Where the script puts the certificate of the hub |
+| macOS, Apple silicon | `office-darwin-arm64.tar.gz` | `office-hub-darwin-arm64.tar.gz` |
+| Linux, x86-64 | `office-linux-amd64.tar.gz` | `office-hub-linux-amd64.tar.gz` |
+| Linux, ARM64 | `office-linux-arm64.tar.gz` | `office-hub-linux-arm64.tar.gz` |
 
-## 2. Speak with your headset
-
-The containers have no microphone. To speak into the meeting, run the `office` client directly
-on your computer and join the hub from part 1. The client transcribes your speech locally with
-Whisper. Only text leaves your computer.
-
-Use a headset. The client has no echo cancellation.
-
-### Get the client
-
-**Download it** (no build needed):
-
-| Computer | File |
-|---|---|
-| macOS, Apple silicon | `office-darwin-arm64.tar.gz` |
-| Linux, x86-64 | `office-linux-amd64.tar.gz` |
-| Linux, ARM64 | `office-linux-arm64.tar.gz` |
+The hub archives exist from release `v0.0.4` on. Download the newest release, for example the
+client for a Mac, and check it:
 
 ```sh
-mkdir -p bin
-curl -fsSL https://github.com/mrsimpson/agentic-office/releases/latest/download/office-darwin-arm64.tar.gz | tar -xz -C bin
-bin/office version
+mkdir -p ~/bin && cd ~/bin
+base=https://github.com/mrsimpson/agentic-office/releases/latest/download
+curl -fsSLO $base/office-darwin-arm64.tar.gz
+curl -fsSLO $base/office-darwin-arm64.tar.gz.sha256
+shasum -a 256 -c office-darwin-arm64.tar.gz.sha256
+tar -xzf office-darwin-arm64.tar.gz
+./office version
 ```
 
-The client needs a program that records the microphone: on macOS `ffmpeg`
-(`brew install ffmpeg`), on Linux `parec` (package `pulseaudio-utils`). If you download the file
-with a browser on macOS, run `xattr -d com.apple.quarantine bin/office` once.
+Put the folder on your `PATH`, or call the programs with their full path. Notes:
 
-**Or build it** from source. macOS:
+- On macOS, a file that you download with a browser is in quarantine. `curl` avoids that; or run
+  `xattr -d com.apple.quarantine office` once.
+- On Linux, the programs need glibc 2.34 or newer. The client also needs `libstdc++6` and
+  `libgomp1`, which most distributions install.
+- The hub needs `git`, because its archive is a Git repository.
+- The hub also exists as a container image, `ghcr.io/mrsimpson/agentic-office/office-hub`
+  (see [Run a hub](#2-run-a-hub)).
+
+### Built yourself
+
+You need Go 1.27 or newer, `make`, `git`, `cmake` and a C/C++ compiler.
+
+macOS:
 
 ```sh
 xcode-select --install                 # compiler, once
 brew install go cmake ffmpeg           # ffmpeg records the microphone
+git clone https://github.com/mrsimpson/agentic-office.git && cd agentic-office
 make third_party/whisper.cpp whisper build
 ```
 
 Linux (Debian or Ubuntu):
 
 ```sh
-sudo apt install cmake g++ make git pulseaudio-utils
+sudo apt install cmake g++ make git pulseaudio-utils    # Go from go.dev/dl if yours is older than 1.27
+git clone https://github.com/mrsimpson/agentic-office.git && cd agentic-office
 make third_party/whisper.cpp whisper build
 ```
 
-You also need Go 1.27 or newer. If your distribution has an older one, install Go from
-[go.dev/dl](https://go.dev/dl/). The client is then in `bin/office`.
+The programs are then in `bin/office` and `bin/office-hub`. This build is optimised for the CPU of
+your computer. To copy the client to other computers, build it with
+`make whisper build WHISPER_NATIVE=OFF`.
 
-Windows: the native client is not supported. Use the containers, or a Linux computer.
+## 2. Run a hub
 
-**Speech models.** The first join with `--mic` or `--wav` downloads the Whisper model and the
-voice detection model once, about 490 MB, and checks them. To do this ahead of time, run
-`bin/office models download`.
+The operator does this once per team. The hub must be reachable by all participants on one
+port, by default 8740. Below, `hub.example.org` stands for the name of your server.
 
-### Join the meeting
+### The first admin
 
-```sh
-mkdir -p ~/.config/agentic-office/client
-cp office-trial/hub.crt ~/.config/agentic-office/client/hub.crt
-export OFFICE_HUB=https://localhost:8740
-
-bin/office key create                              # prints your public key
-scripts/try-local.sh register me <public-key> human
-bin/office meeting join weekly --mic
-```
-
-The terminal shows each sentence and its status. Press `p` to pause and `q` to quit. On macOS,
-the system asks once whether the terminal may use the microphone.
-
-To try it without a microphone, play a recording instead:
-`bin/office meeting join weekly --wav tests/e2e/testdata/german-3-sentences.wav`.
-
-## 3. Connect your agent
-
-Your agent uses the office through the `office mcp` server. It is the same `office` command
-that you used in part 1. The example uses Claude Code; other MCP clients work the same way.
-
-**With a participant container** (no build needed):
+An admin registers the keys of the other participants. You are the first admin, so create your
+key on **your own computer** first:
 
 ```sh
-scripts/try-local.sh add claude agent
-claude mcp add office -- docker exec -i office-trial-claude office mcp --session weekly
+office key create        # prints "public key: …"
 ```
 
-With Podman or Apple's `container`, write `podman exec -i` or `container exec -i` instead of
-`docker exec -i`.
+### Start the hub with the binary
 
-**With the native client** from part 2:
+On the server:
 
 ```sh
-bin/office key create --key ~/.config/agentic-office/agent/key.pem
-scripts/try-local.sh register claude <public-key> agent
-claude mcp add office -e OFFICE_KEY=$HOME/.config/agentic-office/agent/key.pem \
-  -e OFFICE_HUB=https://localhost:8740 -- $PWD/bin/office mcp --session weekly
+office-hub keygen ~/office-hub/signing.key           # once; keep the file safe and back it up
+mkdir -p ~/.config/agentic-office/hub
+echo "ada <your public key> Ada" > ~/.config/agentic-office/hub/admins
+office-hub -signing-key ~/office-hub/signing.key -addr 0.0.0.0:8740 \
+  -tls-hosts hub.example.org -public-url https://hub.example.org:8740
 ```
 
-Then ask your agent, for example: "Join the meeting weekly, follow it and keep the minutes."
-The agent joins with `meeting_join`. It reads new events with `meeting_events`, and it acts with
-tools such as `utterance_say`, `hand_raise` and `minutes_update`.
+- The data of the hub lives in `~/.config/agentic-office/hub` (`-data-dir` changes it): the
+  registered keys, the TLS certificate and the archive with all sessions and records.
+- On the first start, the hub creates a self-signed TLS certificate for the names in
+  `-tls-hosts`, in `tls.crt`. To use your own certificate, see "TLS and your own certificate" in
+  [`README.md`](README.md).
+- The hub reads `admins` at start. After you change it, restart the hub.
+- To keep the hub running, start it as a service of your system, for example with systemd or
+  launchd.
 
-## 4. Troubleshooting
+### Or start the hub as a container
+
+```sh
+H=ghcr.io/mrsimpson/agentic-office/office-hub
+docker volume create office-hub
+docker run --rm -v office-hub:/data $H keygen /data/signing.key
+docker run --rm -v office-hub:/data --entrypoint sh $H -c 'echo "ada <your public key> Ada" > /data/admins'
+docker run -d --name office-hub --restart unless-stopped -p 8740:8740 -v office-hub:/data $H \
+  -data-dir /data -addr 0.0.0.0:8740 -signing-key /data/signing.key \
+  -tls-hosts hub.example.org -public-url https://hub.example.org:8740
+docker cp office-hub:/data/tls.crt hub.crt          # the certificate for the participants
+```
+
+### Give the participants the certificate
+
+With the self-signed certificate, each participant needs the file `tls.crt` of the hub. Send it
+to them, for example in your team chat; it holds no secret. With a certificate from a public CA,
+they need nothing.
+
+### Register a participant
+
+Each participant sends you their public key (see [Join a meeting](#3-join-a-meeting)). You
+register it from your computer:
+
+```sh
+office admin key register grace <public key> --name "Grace Hopper" --kind human
+office admin key register minutes-bot <public key> --name "Minute Bot" --kind agent
+```
+
+`office admin key revoke <key-id>` removes a key again.
+
+## 3. Join a meeting
+
+### Set up once
+
+1. Get the client (see [Get the software](#1-get-the-software)). To speak, you also need a
+   program that records the microphone: `ffmpeg` on macOS (`brew install ffmpeg`), `parec` on
+   Linux (package `pulseaudio-utils`).
+2. Tell the client where the hub is, for example in your `~/.zshrc` or `~/.bashrc`:
+
+   ```sh
+   export OFFICE_HUB=https://hub.example.org:8740
+   ```
+
+3. Put the certificate of the hub where the client looks for it:
+
+   ```sh
+   mkdir -p ~/.config/agentic-office/client
+   cp hub.crt ~/.config/agentic-office/client/hub.crt
+   ```
+
+4. Create your key and send the public key to your admin:
+
+   ```sh
+   office key create
+   ```
+
+5. After the admin has registered you, check it: `office whoami` prints your participant ID.
+
+Your private key stays in `~/.config/agentic-office/client/key.pem`. It never leaves your
+computer.
+
+### The speech models
+
+The client transcribes your speech on your own computer with Whisper. It needs two model files,
+about 490 MB together. The first join with the microphone downloads them once from the source of
+whisper.cpp and checks them. To download them ahead of time, for example before your first
+meeting:
+
+```sh
+office models download
+```
+
+They are stored in `~/.local/share/agentic-office/models/` (or `$XDG_DATA_HOME/agentic-office/models/`).
+
+### Speak in a meeting
+
+Use a headset: the client has no echo cancellation. Join with the name of the meeting, for
+example `weekly`:
+
+```sh
+office meeting join weekly --mic
+```
+
+- Joining with the microphone means that you agree that your speech is transcribed and stored.
+- The terminal shows each of your sentences: `final` when Whisper has the text, `sent` when it is
+  in the meeting log. Only text leaves your computer, never audio.
+- `p` pauses and resumes the microphone. `o` marks your last sentence as off the record: the
+  others then see a placeholder instead of the text. `q` leaves.
+- On macOS, the system asks once whether your terminal may use the microphone.
+
+Without a microphone, join with `office meeting join weekly` and write instead of speaking:
+`office say "I agree"`.
+
+### Show the stage
+
+The stage shows the meeting: who is captured, the latest sentences, raised hands, slides and the
+minutes. One person creates a link, opens it in a browser and shares the window in your meeting
+tool (Zoom, Teams, Meet, Jitsi):
+
+```sh
+office stage link --session weekly
+```
+
+### More things you can do
+
+```sh
+office hand raise --topic "Budget"
+office decision record "We rent the new office from January."
+office task create "Send the numbers to the bank" --assignee grace
+office meeting end
+```
+
+`office help` lists all commands. [`README.md`](README.md) describes each one.
+
+## 4. Bring in an agent
+
+An agent is a participant like you, with its own key. It follows the meeting and acts through
+tools: it can keep the minutes, raise its hand, show slides and record decisions.
+
+1. Create a key for the agent, on the computer where the agent runs, and have it registered as
+   an agent (see [Register a participant](#register-a-participant)):
+
+   ```sh
+   office key create --key ~/.config/agentic-office/agent/key.pem
+   ```
+
+2. Connect the agent. **With MCP**, for example Claude Code:
+
+   ```sh
+   claude mcp add office -e OFFICE_KEY=$HOME/.config/agentic-office/agent/key.pem \
+     -e OFFICE_HUB=https://hub.example.org:8740 -- $(command -v office) mcp --session weekly
+   ```
+
+   Then ask your agent, for example: "Join the meeting weekly, follow it and keep the minutes."
+   The agent joins with `meeting_join`, reads new events with `meeting_events` and acts with
+   tools such as `utterance_say`, `hand_raise` and `minutes_update`.
+
+3. **Or with the CLI and the log file**, for agents that work in a shell:
+
+   ```sh
+   export OFFICE_KEY=$HOME/.config/agentic-office/agent/key.pem
+   LOG=$(office meeting join weekly)       # prints the path of the local log
+   tail -f "$LOG" | grep '"utterance.final"\|"turn.end"'
+   ```
+
+   Each line of the log is one event as JSON. The agent acts with the same commands as a human.
+
+An agent that runs in a container uses the image `ghcr.io/mrsimpson/agentic-office/office`.
+See "Container images" in [`README.md`](README.md).
+
+## 5. Try everything on one computer
+
+To get to know the office before you set up a hub, `scripts/try-local.sh` starts a hub and two
+participants in containers: Ada, a human, and a bot, an agent. You need the repository
+(`git clone`), `bash` and one of these container runtimes:
+
+| Platform | Container runtime |
+|---|---|
+| Linux | Docker or Podman |
+| macOS | Docker Desktop, Podman, or Apple's [`container`](https://github.com/apple/container) (Apple silicon, macOS 26) |
+| Windows | Docker Desktop with WSL 2; run the script in a WSL 2 shell |
+
+**Apple `container`, once:** containers find the hub by its DNS name, and `container` gives them
+names only if you set a DNS domain. Add these lines to `~/.config/container/config.toml`, then run
+`container system stop` and `container system start`:
+
+```toml
+[dns]
+domain = "test"
+```
+
+**Start and try:**
+
+```sh
+scripts/try-local.sh up                              # prints the stage link; open it in a browser
+scripts/try-local.sh as bot meeting join weekly
+scripts/try-local.sh as ada meeting join weekly
+scripts/try-local.sh as ada say "Good morning, everyone"
+scripts/try-local.sh as bot hand raise --topic "Budget"
+scripts/try-local.sh tail bot                        # what the agent reads; stop with Ctrl+C
+```
+
+- `scripts/try-local.sh add grace human` adds a participant.
+- `scripts/try-local.sh register me <public key> human` registers a client on your computer. That
+  client then joins this hub with `OFFICE_HUB=https://localhost:8740` and the certificate in
+  `office-trial/hub.crt`. This is how you try your headset (see [Join a meeting](#3-join-a-meeting)).
+- `scripts/try-local.sh down` removes everything again.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `OFFICE_RUNTIME` | the first of `docker`, `podman`, `container` | Container runtime |
+| `OFFICE_VERSION` | `latest` | Image tag, for example `0.0.3` |
+| `OFFICE_PORT` | `8740` | Port of the hub on your computer |
+| `OFFICE_TRIAL_DIR` | `./office-trial` | Where the script puts the certificate of the hub |
+
+## 6. Troubleshooting
 
 | Problem | What to do |
 |---|---|
-| `the trial is running already` | Run `scripts/try-local.sh down`, then `up` again. |
-| `the hub did not start` | The script prints the log of the hub. Is port 8740 in use? Choose another port with `OFFICE_PORT=8750`. |
-| `Apple's container needs a DNS domain` | Do the one-time setup in [Apple `container`: set up once](#apple-container-set-up-once). |
-| A participant cannot reach the hub | The hub name inside the containers must match its certificate. Run `down` and `up` again after you change the runtime or the DNS domain. |
-| The browser does not open the stage | Use the link from `scripts/try-local.sh stage` and accept the certificate warning. |
+| `certificate signed by unknown authority` | The client lacks the certificate of the hub. Copy `tls.crt` to `~/.config/agentic-office/client/hub.crt`, or set `OFFICE_CA_CERT`. |
+| `certificate is valid for …, not …` or `cannot validate certificate for …` | The name or address in `OFFICE_HUB` is not in the certificate. Delete `tls.crt` and `tls.key` in the data directory of the hub and start it with this name in `-tls-hosts`. Then give the participants the new `tls.crt`. |
+| `public key is not registered: ask an admin to register SHA256:…` | Send your public key to your admin (`office key show` prints it). Check with `office whoami`. |
 | `no audio recorder found` | Install `ffmpeg` (macOS) or `pulseaudio-utils` (Linux), or set `OFFICE_MIC_COMMAND` (see [`README.md`](README.md)). |
-
-To run a hub for your team on a server, see "Container images" and "Hub setup" in
-[`README.md`](README.md).
+| The model download fails | Check your network, or download the models elsewhere and set `OFFICE_MODEL_URL` to a mirror. |
+| `SIGILL: illegal instruction` | A client built on another computer uses CPU features yours lacks. Use the pre-built client, or build with `WHISPER_NATIVE=OFF`. |
+| `the trial is running already` | Run `scripts/try-local.sh down`, then `up` again. |
+| `Apple's container needs a DNS domain` | Do the one-time setup in [Try everything on one computer](#5-try-everything-on-one-computer). |
