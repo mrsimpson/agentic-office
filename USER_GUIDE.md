@@ -97,6 +97,11 @@ your computer. To copy the client to other computers, build it with
 The operator does this once per team. The hub must be reachable by all participants on one
 port, by default 8740. Below, `hub.example.org` stands for the name of your server.
 
+Run the hub as a binary (on Linux or macOS) or as a container with Docker or Podman. **On a Mac,
+use the binary.** It runs directly on macOS, without a virtual machine. Apple's `container`
+is not a good base for a hub yet: in our tests its service stopped answering, and `container exec`
+and `container system stop` hung (see [Troubleshooting](#6-troubleshooting)).
+
 ### The first admin
 
 An admin registers the keys of the other participants. You are the first admin, so create your
@@ -131,6 +136,8 @@ office-hub -signing-key ~/office-hub/signing.key -addr 0.0.0.0:8740 \
 
 ### Or start the hub as a container
 
+With Docker or Podman (`podman` instead of `docker`):
+
 ```sh
 H=ghcr.io/mrsimpson/agentic-office/office-hub
 docker volume create office-hub
@@ -139,8 +146,12 @@ docker run --rm -v office-hub:/data --entrypoint sh $H -c 'echo "ada <your publi
 docker run -d --name office-hub --restart unless-stopped -p 8740:8740 -v office-hub:/data $H \
   -data-dir /data -addr 0.0.0.0:8740 -signing-key /data/signing.key \
   -tls-hosts hub.example.org -public-url https://hub.example.org:8740
-docker cp office-hub:/data/tls.crt hub.crt          # the certificate for the participants
+docker cp office-hub:/data/tls.crt hub.crt
 ```
+
+The last command copies the certificate for the participants. `--restart unless-stopped` starts
+the hub again after a restart of the server. When you pass flags to the image, pass all of them,
+as in the example.
 
 ### Give the participants the certificate
 
@@ -400,6 +411,11 @@ names only if you set a DNS domain. Add these lines to `~/.config/container/conf
 domain = "test"
 ```
 
+Apple's `container` is fine for this tour, but its service can stop answering (see
+[Troubleshooting](#6-troubleshooting)). Docker Desktop or Podman are more reliable on a Mac. A
+port that `container` publishes listens on all network interfaces of your Mac, not only on
+`localhost`.
+
 **Start and try:**
 
 ```sh
@@ -436,3 +452,5 @@ scripts/try-local.sh tail bot                        # what the agent reads; sto
 | `SIGILL: illegal instruction` | A client built on another computer uses CPU features yours lacks. Use the pre-built client, or build with `WHISPER_NATIVE=OFF`. |
 | `the trial is running already` | Run `scripts/try-local.sh down`, then `up` again. |
 | `Apple's container needs a DNS domain` | Do the one-time setup in [Try everything on one computer](#5-try-everything-on-one-computer). |
+| Apple's `container` hangs: `container exec`, `logs` or `system stop` do not return, or the port takes connections but answers nothing | Stop the `container` services with launchd, then start them again: `launchctl list \| awk '/com\.apple\.container\./ {print $3}' \| while read s; do launchctl bootout "gui/$(id -u)/$s"; done`, then `container system start`. If that does not help, restart the Mac. |
+| `bind: address already in use` for port 8740 | Another hub runs, for example `office-trial-hub` from `scripts/try-local.sh`. Find it with `lsof -i :8740`; remove the trial with `scripts/try-local.sh down`. |
