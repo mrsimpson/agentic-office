@@ -215,7 +215,7 @@ The part of the participant client that keeps an agent in a meeting (`bb-agent-r
 :::glossary-term
 id: term-agent-runner
 title: Agent runner
-definition: The part of the client that follows the local log for an agent and starts the agent's turns in its harness over ACP, for example at each change of speaker
+definition: The part of the client that follows the local log for an agent and starts the agent's turns in its harness over ACP, when the check after an utterance says it should act
 :::
 ```
 
@@ -241,7 +241,7 @@ it only decides whether the agent should be woken.
 :::glossary-term
 id: term-decision-model
 title: Decision model
-definition: A model that the user brings and that tells the agent runner per change of speaker whether the agent should act and whether a block of topics has ended
+definition: A model that the user brings and that tells the agent runner after each utterance whether the agent should act and whether a block of topics has ended
 :::
 ```
 

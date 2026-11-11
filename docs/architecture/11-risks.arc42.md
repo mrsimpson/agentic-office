@@ -74,15 +74,16 @@ mitigation: The runner uses only the stable core of ACP (initialize, one session
 
 ## Waking the agent costs time and money
 
-Woken at every change of speaker, a harness with a large model spends tokens on turns that do not
-concern it, and it may lag behind a fast meeting.
+The runner checks after each utterance whether to wake the agent. If it wakes a harness with a
+large model too often, the agent spends tokens on utterances that do not concern it, and it may
+lag behind a fast meeting. The check itself also runs for every utterance.
 
 ```arc42
 :::risk
 id: risk-agent-wakeups
-title: Waking the agent at every change of speaker is slow and costly
+title: Checking and waking the agent per utterance is slow and costly
 severity: medium
-mitigation: Queued turns go out together in one prompt (dec-agent-runner-delivery); a decision model that the user brings wakes the agent only when it should act (dec-byo-decision-model)
+mitigation: A small, fast decision model that the user brings makes the check and wakes the agent only when it should act (dec-byo-decision-model); queued utterances go out together in one prompt (dec-agent-runner-delivery)
 :::
 ```
 

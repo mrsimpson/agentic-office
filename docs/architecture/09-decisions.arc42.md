@@ -32,7 +32,7 @@ ships no generative model; a user brings one (`dec-byo-decision-model`). **Conse
 hub stays as it is. A model in the client can only change what the client of that participant
 does, never what the hub stores or how it decides. Tests of the client use test doubles of such
 models and never call a real model. **Rejected:** a model in the hub (no governance); no model in
-the client at all (the agent would be woken at every change of speaker, also when nobody needs
+the client at all (the agent would have to be woken at every utterance, also when nobody needs
 it).
 
 ```arc42
@@ -74,24 +74,30 @@ addresses: con-turn-based-agents, qg-usability
 :::
 ```
 
-## Wake the agent at each change of speaker
+## Check after each utterance whether to wake the agent
 
-**Context:** The agent should notice when it is addressed, without a keyword. The log already has
-a signal for the end of a turn (`turn.end`). **Decision:** At each change of speaker, the runner
-sends the agent what others said since its last delivery, as one prompt. Each utterance says who
-spoke and whether that participant is a human or an agent. The prompt tells the agent to decide
-by itself whether it is addressed, and to do nothing if not. **Consequences:** People talk to the
-agent in plain words. The agent is woken also when nobody needs it, which costs time and money;
-a decision model can reduce this (`dec-byo-decision-model`). The agent hears a turn only after it
-ended, so it never interrupts. **Rejected:** a wake-up per utterance (too many prompts, and the
-agent would answer in the middle of a turn); a keyword (not natural).
+**Context:** The agent should notice when it is addressed, without a keyword. It should also
+notice when a speaker starts a new topic within a monologue, or talks about something that
+concerns the role of the agent. The end of a turn (`turn.end`) comes too late for that.
+**Decision:** After each utterance of another participant, the runner checks whether to wake the
+agent. A decision model that the user brings makes the check (`dec-byo-decision-model`). When it
+says the agent should act, the runner sends the agent what others said since its last delivery,
+as one prompt. Each utterance says who spoke and whether that participant is a human or an
+agent. The agent decides by itself how to act: answer, raise its hand, or update the minutes
+silently. OPEN: what the runner does without a decision model. A check per utterance would then
+wake the agent at every utterance. Until this is decided, the runner wakes it at each change of
+speaker instead. **Consequences:** People talk to the agent in plain words, and the agent can
+follow topics within a long monologue. The check runs for every utterance, so the decision model
+must be fast and cheap. An agent may act while someone still speaks; it should not interrupt
+speech, but raise its hand or write. **Rejected:** a wake-up only at each change of speaker (it
+misses a new topic within a monologue); a keyword (not natural).
 
 ```arc42
 :::decision
-id: dec-wake-on-turn-end
-title: Wake the agent at each change of speaker
+id: dec-wake-check-per-utterance
+title: Check after each utterance whether to wake the agent
 status: accepted
-date: 2026-11-11
+date: 2026-11-12
 addresses: con-turn-based-agents, qg-usability
 :::
 ```
@@ -137,18 +143,19 @@ addresses: qg-resumability, qg-usability, risk-retraction-leak, risk-agent-wakeu
 
 ## A decision model that the user brings
 
-**Context:** Waking the agent at every change of speaker costs time and money, and a harness with
-a large model is slow to decide that it is not addressed. A small model can decide this faster
+**Context:** The runner checks after each utterance whether to wake the agent
+(`dec-wake-check-per-utterance`). Waking a harness with a large model for this costs time and
+money, and it is slow to decide that it is not addressed. A small model can decide this faster
 and cheaper. The hub must stay without intelligence (`con-no-intelligence`), and the office
 should not pick a model for its users. **Decision:** The runner has an interface for a decision
 model that the user brings and configures (`if-decision-model`). It is an OpenAI-compatible chat
 endpoint with structured output by JSON schema (for example llama.cpp, Ollama or a hosted model),
-or a command that reads the request as JSON and writes the answer as JSON. Per change of speaker,
+or a command that reads the request as JSON and writes the answer as JSON. After each utterance,
 the runner asks it and gets `act`, `addressed`, `topic_closed` and `reason`. It wakes the agent
 when `act` is true. When `topic_closed` is true, it wakes the agent with the task of the role for
 the end of a topic, for example to update the minutes or to record decisions. Without a decision
-model, the runner wakes the agent at every change of speaker (`dec-wake-on-turn-end`). If the
-model fails or does not answer in time, the runner wakes the agent and logs why.
+model, the runner wakes the agent at each change of speaker (OPEN, see
+`dec-wake-check-per-utterance`). If the model fails or does not answer in time, the runner wakes the agent and logs why.
 **Consequences:** The office ships no model and stays free of a model vendor. A wrong answer of
 the model can keep the agent silent when it was addressed; the fallback covers only errors and
 time-outs. Utterances that did not wake the agent stay queued and reach it with the next prompt,

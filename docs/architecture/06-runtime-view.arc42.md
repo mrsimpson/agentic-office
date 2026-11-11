@@ -413,29 +413,30 @@ sequenceDiagram
     bb_session->>bb_records: store the minutes
 ```
 
-## The agent runner wakes an agent at a change of speaker
+## The agent runner checks after each utterance whether to wake an agent
 
 An agent takes part through the agent runner (`dec-agent-runner-acp`). The runner joined the
 session with the key of the agent and follows its local log. It started the harness, opened one
 ACP session with the office tools and sent a first prompt with the role.
 
-A human asks a question and stops talking. Their client submits `turn.end`. The runner reads it
-from the local log. It collects what others said since its last delivery, leaves out the agent's
-own utterances and sentences off the record, and sends it as one prompt
-(`dec-wake-on-turn-end`). With a decision model, the runner asks it first and sends the prompt
-only if the model says the agent should act, or if a block of topics has ended
-(`dec-byo-decision-model`). The agent reads the prompt, decides that it is addressed and answers
-with `utterance_say` through the MCP server. The answer reaches every local log, also that of the
-runner, which leaves it out of the next prompt. If the agent is still busy when the next
-`turn.end` comes, the runner queues it and sends the queued turns together afterwards
+A human talks. Each sentence reaches the local log as `utterance.final`. After each utterance,
+the runner checks whether to wake the agent (`dec-wake-check-per-utterance`): it asks the
+decision model whether the agent should act now, for example because the speaker addressed it,
+started a new topic within a monologue or talks about something that concerns the role of the
+agent (`dec-byo-decision-model`). If so, the runner collects what others said since its last
+delivery, leaves out the agent's own utterances and sentences off the record, and sends it as one
+prompt. The agent decides how to act: it answers with `utterance_say` when the speaker asked it,
+raises its hand instead of interrupting, or updates the minutes silently. Its actions reach every
+local log, also that of the runner, which leaves them out of the next prompt. If the agent is
+still busy, the runner queues what comes and sends it together afterwards
 (`dec-agent-runner-delivery`). When the session ends, the runner sends a last prompt and stops
 the harness.
 
 ```arc42
 :::runtime-scenario
 id: rs-agent-runner-turn
-title: The agent runner wakes an agent at a change of speaker
-trigger: turn.end of another participant in the local log of the agent
+title: The agent runner checks after each utterance whether to wake an agent
+trigger: utterance.final of another participant in the local log of the agent
 involves: bb-agent-runner, bb-client-core, bb-replicator, bb-mcp, bb-cli, bb-session-service, bb-participant-client, bb-office-hub
 :::
 ```
@@ -460,14 +461,12 @@ sequenceDiagram
     participant actor_agent as Agent harness
     participant bb_mcp as MCP server
     actor_human->>bb_cli: speaks or types a question
-    bb_cli->>bb_session: utterance.submit, then turn.end
-    bb_session-->>bb_replicator: utterance.final, turn.end
+    bb_cli->>bb_session: utterance.submit
+    bb_session-->>bb_replicator: utterance.final
     bb_replicator->>bb_replicator: append lines to the local log of the agent
     bb_agent_runner->>bb_replicator: read new lines
-    opt a decision model is configured
-        bb_agent_runner->>actor_decision_model: new utterances, context, role
-        actor_decision_model-->>bb_agent_runner: act, addressed, topic_closed, reason
-    end
+    bb_agent_runner->>actor_decision_model: new utterance, context, role
+    actor_decision_model-->>bb_agent_runner: act, addressed, topic_closed, reason
     bb_agent_runner->>actor_agent: session/prompt (who said what)
     actor_agent->>bb_mcp: utterance_say (answer)
     bb_mcp->>bb_session: utterance.submit (as the agent)

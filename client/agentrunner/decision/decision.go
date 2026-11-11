@@ -1,8 +1,8 @@
 // Package decision is the contract of a decision model (if-decision-model in
 // docs/architecture/05-building-blocks.arc42.md, dec-byo-decision-model).
 //
-// The user brings the model. At each change of speaker, the agent runner sends a Request and
-// expects an Answer. The model is reached in one of two ways:
+// The user brings the model. After each utterance of another participant, the agent runner sends
+// a Request and expects an Answer. The model is reached in one of two ways:
 //
 //   - a command: it reads one Request as JSON on stdin and writes one Answer as JSON on stdout,
 //     then exits;
@@ -37,7 +37,7 @@ type Utterance struct {
 	Text string `json:"text"`
 }
 
-// Request is what the runner asks the decision model at a change of speaker.
+// Request is what the runner asks the decision model after an utterance.
 type Request struct {
 	// Session is the ID of the session.
 	Session string `json:"session"`
@@ -53,8 +53,8 @@ type Request struct {
 	// New are the utterances that the agent has not got yet, oldest first. The agent's own
 	// utterances and sentences off the record are left out.
 	New []Utterance `json:"new"`
-	// TurnEndedBy is the participant whose turn just ended.
-	TurnEndedBy Participant `json:"turn_ended_by"`
+	// TurnEnded is true when the speaker of the last utterance in New ended their turn.
+	TurnEnded bool `json:"turn_ended"`
 }
 
 // Answer is the structured output of the decision model.

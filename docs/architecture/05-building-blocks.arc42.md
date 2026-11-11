@@ -764,14 +764,14 @@ session and one agent key, it:
 - starts the agent harness, opens one ACP session and hands it the office tools as an MCP server
   with the key of the agent;
 - sends a first prompt with the role of the agent and the meeting;
-- at each change of speaker, sends what others said since its last delivery, with who said it
-  and whether that participant is a human or an agent (`dec-wake-on-turn-end`). It leaves out
-  the agent's own utterances and sentences off the record. While the agent works, it queues the
-  turns and sends them together afterwards, so nothing is lost and nothing is sent twice
-  (`dec-agent-runner-delivery`);
-- optionally asks a decision model first and wakes the agent only when the model says so, or
-  when a block of topics has ended (`dec-byo-decision-model`); if the model fails or is slow, it
-  wakes the agent;
+- after each utterance of another participant, checks whether to wake the agent
+  (`dec-wake-check-per-utterance`): it asks the decision model, if the user brought one
+  (`dec-byo-decision-model`), and wakes the agent when the model says it should act or a block
+  of topics has ended; if the model fails or is slow, it wakes the agent;
+- when it wakes the agent, sends what others said since its last delivery, with who said it and
+  whether that participant is a human or an agent. It leaves out the agent's own utterances and
+  sentences off the record. While the agent works, it queues what comes and sends it together
+  afterwards, so nothing is lost and nothing is sent twice (`dec-agent-runner-delivery`);
 - after the session ends, sends a last prompt and stops the harness.
 
 The runner never speaks for the agent and judges nothing itself: the agent decides whether it is

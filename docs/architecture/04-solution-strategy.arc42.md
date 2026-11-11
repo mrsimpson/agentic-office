@@ -30,10 +30,10 @@ speech model of the ears or a decision model that the user brings (`dec-models-i
 ## Keep the agent in the meeting
 
 Agents work in turns (`con-turn-based-agents`). The agent runner of the client follows the
-local log for an agent and starts the agent's next turn when the speaker changes. It talks to
-the agent harness over the Agent Client Protocol and hands it the office tools (see
-`dec-agent-runner-acp`, `dec-wake-on-turn-end`). The agent itself decides whether it is
-addressed.
+local log for an agent and checks after each utterance whether to start the agent's next turn.
+It talks to the agent harness over the Agent Client Protocol and hands it the office tools (see
+`dec-agent-runner-acp`, `dec-wake-check-per-utterance`). The agent itself decides whether it is
+addressed and how to act.
 
 ## Read from the file, write through tools
 

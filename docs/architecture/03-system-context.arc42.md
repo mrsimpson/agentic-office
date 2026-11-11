@@ -80,17 +80,16 @@ requires: if-mcp, if-cli, if-local-log, if-acp-client
 ## Decision model
 
 A model that a user brings and configures for the agent runner (`dec-byo-decision-model`), for
-example a small local model behind an OpenAI-compatible endpoint, or a program. At each change of
-speaker, the runner asks it whether the agent should act now, whom the speaker addressed and
-whether a block of topics has ended. The office ships no such model. Without one, the runner wakes
-the agent at every change of speaker.
+example a small local model behind an OpenAI-compatible endpoint, or a program. After each
+utterance of another participant, the runner asks it whether the agent should act now, whom the
+speaker addressed and whether a block of topics has ended. The office ships no such model.
 
 ```arc42
 :::actor
 id: actor-decision-model
 title: Decision model
 type: system
-description: Optional, brought by the user; answers per change of speaker whether the agent should act and whether a topic has ended
+description: Optional, brought by the user; answers after each utterance whether the agent should act and whether a topic has ended
 requires: if-decision-model
 :::
 ```
