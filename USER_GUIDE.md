@@ -125,16 +125,33 @@ office-hub -signing-key ~/office-hub/signing.key -addr 0.0.0.0:8740 \
 
 ### Or start the hub as a container
 
+The same commands work with Docker, Podman and Apple's `container`. Set `RT` to yours:
+
 ```sh
+RT=docker                       # or: podman, container
 H=ghcr.io/mrsimpson/agentic-office/office-hub
-docker volume create office-hub
-docker run --rm -v office-hub:/data $H keygen /data/signing.key
-docker run --rm -v office-hub:/data --entrypoint sh $H -c 'echo "ada <your public key> Ada" > /data/admins'
-docker run -d --name office-hub --restart unless-stopped -p 8740:8740 -v office-hub:/data $H \
+$RT volume create office-hub
+# Once: signing key and first admin. As root, because a new volume can belong to root;
+# the hub itself runs as the user "office".
+$RT run --rm -u root -v office-hub:/data --entrypoint sh $H -c '
+  office-hub keygen /data/signing.key &&
+  echo "ada <your public key> Ada" > /data/admins &&
+  chown -R office:office /data'
+$RT run -d --name office-hub -p 8740:8740 -v office-hub:/data $H \
   -data-dir /data -addr 0.0.0.0:8740 -signing-key /data/signing.key \
   -tls-hosts hub.example.org -public-url https://hub.example.org:8740
-docker cp office-hub:/data/tls.crt hub.crt          # the certificate for the participants
+$RT cp office-hub:/data/tls.crt hub.crt          # the certificate for the participants
 ```
+
+- **Keep it running.** With Docker or Podman, add `--restart unless-stopped` to the second
+  `run`. Apple's `container` has no restart option: after a restart of your Mac, or after
+  `container system stop`, start the hub again with `container start office-hub`. Its data stays
+  in the volume.
+- **Apple's `container` and other computers.** `container` forwards a published port from the
+  loopback address of your Mac. So the hub is reachable as `https://localhost:8740` on your Mac.
+  Whether other computers reach it through `-p 0.0.0.0:8740:8740` is not tested. For a hub that
+  your team reaches, run the hub binary on the Mac instead, or use Docker Desktop.
+- **On one Mac only**, use `-tls-hosts localhost,127.0.0.1 -public-url https://localhost:8740`.
 
 ### Give the participants the certificate
 
