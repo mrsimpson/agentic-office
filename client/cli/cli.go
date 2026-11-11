@@ -79,6 +79,11 @@ Tasks (local drafts in the hub for now; a ref such as local:42 is opaque):
 MCP:
   mcp                                run the MCP server on stdin/stdout (for an MCP client; see README.md)
 
+Agent runner (keeps an agent in the meeting over the Agent Client Protocol; see README.md):
+  agent run --session S [--role T | --role-file F] [--allow PATTERN]... [--cwd DIR] -- <harness command>
+                                     join S with this key, start the harness (for example
+                                     "opencode acp") and wake it at each change of speaker
+
 Other:
   version                            print the version
   help                               print this help
@@ -149,6 +154,7 @@ func init() {
 		"task update":              cmdTaskUpdate,
 		"replicator run":           cmdReplicatorRun,
 		"mcp":                      cmdMCP,
+		"agent run":                cmdAgentRun,
 	}
 }
 

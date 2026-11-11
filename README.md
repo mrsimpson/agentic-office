@@ -148,6 +148,7 @@ client/                   bb-participant-client: wiring of the client (binary of
   agentrunner/            bb-agent-runner, if-acp-client: keeps an agent in a meeting over ACP
     decision/             if-decision-model: request, answer and JSON schema of a decision model
 tests/                    external actors: may use interfaces only
+  acpdouble/              test double of an ACP agent harness (no model)
   architecture/           architecture test
   contracttest/           harness for black-box contract tests
   contract/               contract tests, one file per building block
@@ -1089,6 +1090,73 @@ to the agent.
   agent reads the file (`dec-log-as-file`). It can be added later without changing the other
   tools.
 
+## Agent runner
+
+`office agent run` keeps an agent in a meeting (`bb-agent-runner`, `dec-agent-runner-acp`).
+Claude Code, opencode and Kiro work in turns: they finish a turn and wait. The runner starts the
+agent's **harness** as an Agent Client Protocol (ACP) agent and starts its turns for it.
+
+```sh
+export OFFICE_KEY=$HOME/.config/agentic-office/bot/key.pem   # the agent's own, registered key
+office agent run --session weekly --role "You keep the minutes." -- opencode acp
+office agent run --session weekly --role-file minute-taker.md -- kiro-cli acp
+office agent run --session weekly --role-file minute-taker.md -- npx -y @agentclientprotocol/claude-agent-acp
+```
+
+Everything after `--` is the harness command. Flags:
+
+- `--session S` (or `OFFICE_SESSION`): the session. Required.
+- `--role TEXT` or `--role-file F`: the role of the agent, in plain words. It goes into the first
+  prompt.
+- `--allow PATTERN` (repeatable): allow tool calls whose title matches the pattern (`*` is any
+  text, without regard to case). `--allow '*'` allows every tool. See the permission rule below.
+- `--cwd DIR`: the working directory of the agent's session (default: the current directory).
+- The common flags and `OFFICE_*` variables of the CLI (key, hub, certificate, runtime directory).
+
+**What the runner does:**
+
+1. It joins the session with the key and runs the log replicator in its own process. If
+   `office meeting join` already runs a replicator for the same participant, it follows that
+   log.
+2. It starts the harness in its own process group and talks ACP (protocol version 1) on its
+   stdin and stdout. The harness's stderr goes to the runner's stderr.
+3. It opens one ACP session with the working directory and one MCP server, `office`:
+   `<this office binary> mcp --session S`, with `OFFICE_HUB`, `OFFICE_CA_CERT`, `OFFICE_KEY` and
+   `OFFICE_RUNTIME_DIR` as absolute values. So the agent acts as itself through the office tools.
+   The agent does not need to call `meeting_join`; if it does, the MCP server reuses the log.
+4. It sends a first prompt: the session, the agent's participant ID, its role, how the meeting
+   works (speak with `utterance_say`; the reply in the chat reaches nobody; respect sentences
+   off the record) and the path of the local log.
+5. It stops after `session.ended`, after the agent's own `participant.left`, on SIGINT or
+   SIGTERM, or when the harness stops. It closes the harness's stdin, then sends SIGTERM and at
+   last SIGKILL to the process group. A harness that stops by itself is an error (exit 1).
+
+The runner logs to stderr (`office agent: …`): the ACP session, each tool call, each permission
+decision and the agent's reply text, which is not spoken.
+
+**The permission rule.** The runner offers the harness no file system and no terminal of its
+own. When the harness asks for permission to use a tool (`session/request_permission`), the
+runner answers by a rule:
+
+- Default: allow a call of an office tool (a title such as `mcp__office__utterance_say` or
+  `office_utterance_say`), unless its kind is `execute`, `edit`, `delete` or `move`. Reject every
+  other call.
+- With `--allow`: allow exactly the calls whose title matches one of the patterns.
+
+The runner picks an `allow_once` option (or `allow_always`) to allow and a `reject_once` option
+(or `reject_always`) to reject. Harnesses that do not ask, because their own configuration
+allows a tool, are not affected. Configure the harness itself for what it may do without asking.
+
+**Harnesses.** Any program that speaks ACP over stdio works. Known commands:
+
+| Harness | Command |
+|---|---|
+| opencode | `opencode acp` |
+| Kiro | `kiro-cli acp` |
+| Claude Code | `npx -y @agentclientprotocol/claude-agent-acp` (the ACP adapter; it needs Node.js and a login of Claude Code) |
+
+Log in with the harness itself first. The runner does not authenticate a harness.
+
 ## Tests
 
 We write no unit tests (`dec-contract-tests`). Every building block is tested as a black box
@@ -1107,6 +1175,13 @@ through its interfaces:
   and that no writer is left
   when the MCP process closes or is killed. `tests/e2e/mcp_test.go`: an agent works only through
   MCP and follows its log with the `tail -f | grep` filter from the tool description.
+- `tests/contract/agentrunner_test.go` runs `office agent run` with the ACP test double
+  `tests/acpdouble` as the harness (`contracttest.ACPDouble` builds it). The double speaks raw
+  ACP JSON-RPC without a library, starts the MCP server that the runner hands it, records every
+  step in a file and follows instructions in the prompt text (`please say "…"`, `please run
+  "…"`, `please wait 2s`). The tests check the ACP steps, the MCP server and its key, the
+  permission rule and `--allow`, the role file, usage errors, a harness that stops, and that the
+  harness stops with the runner. No real harness and no model run in the tests.
 - `tests/contract/cli_test.go` and `replicator_test.go` run the real `office` binary and check
   its output and the local log it leaves, including kills of the replicator and torn lines.
 - `tests/e2e/ears_test.go` runs the ears with the German test WAV (`tests/e2e/testdata/`): the
