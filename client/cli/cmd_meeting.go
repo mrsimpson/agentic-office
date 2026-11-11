@@ -6,7 +6,10 @@ import (
 	"flag"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
+
+	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
 
 	"github.com/mrsimpson/agentic-office/client/core"
 	"github.com/mrsimpson/agentic-office/client/replicator"
@@ -34,6 +37,14 @@ type EarsOptions struct {
 	Threads int
 	// EndSilence is the silence that ends a sentence.
 	EndSilence time.Duration
+	// Vocabulary is a file with terms for Whisper's prompt. Empty means .office/vocabulary.txt
+	// in the current directory, if it is there.
+	Vocabulary string
+	// Context adds the previous sentence to Whisper's prompt.
+	Context bool
+	// Names returns the display names of the participants of the session, for Whisper's prompt.
+	// Set by the CLI from the local log.
+	Names func() []string
 	// Report prints progress and measurements of the ears: text is the short form for the
 	// terminal, fields the form for --json. Set by the CLI.
 	Report func(text string, fields any)
@@ -104,10 +115,13 @@ func cmdJoin(e *env, fs *flag.FlagSet) func([]string) error {
 		"(env OFFICE_WHISPER_LANGUAGE, default de)")
 	fs.IntVar(&eo.Threads, "threads", 0, "Whisper threads for --mic/--wav (env OFFICE_WHISPER_THREADS)")
 	fs.DurationVar(&eo.EndSilence, "end-silence", 0, "silence that ends a sentence (env OFFICE_EARS_END_SILENCE, default 500ms)")
+	fs.StringVar(&eo.Vocabulary, "vocabulary", "", "file with terms for Whisper, one per line (default .office/vocabulary.txt, if it is there)")
+	fs.BoolVar(&eo.Context, "context", false, "give Whisper the previous sentence as context")
 	return func(args []string) error {
 		if len(args) != 1 {
 			return usagef("usage: office meeting join <session> [--name N] [--foreground] [--mic | --wav FILE] " +
-				"[--language L] [--fast] [--model NAME|FILE] [--vad-model F] [--threads N] [--end-silence D]")
+				"[--language L] [--fast] [--model NAME|FILE] [--vocabulary FILE] [--context] [--vad-model F] [--threads N] " +
+				"[--end-silence D]")
 		}
 		sid := args[0]
 		ears := *mic || *wav != ""
@@ -160,6 +174,7 @@ func runEarsGateway(e *env, c *core.Client, j *core.Joined, opts EarsOptions, re
 	local := make(chan localStatus, 64)
 	gw := &gatewayView{e: e, c: c, sid: j.SessionID, pid: j.ParticipantID, log: j.Paths.Log, local: local}
 	opts.Report = gw.earsReport
+	opts.Names = followNames(ctx, j.Paths.Log)
 	earsErr := make(chan error, 1)
 	go func() {
 		err := StartEars(ctx, c, j.SessionID, opts, func(cmdID, text string, s core.Status) {
@@ -332,4 +347,28 @@ func cmdModelsList(e *env, fs *flag.FlagSet) func([]string) error {
 func modelFlags(fs *flag.FlagSet, o *ModelOptions) {
 	fs.StringVar(&o.Language, "language", "", "spoken language, a code or a name (env OFFICE_WHISPER_LANGUAGE, default de)")
 	fs.BoolVar(&o.Fast, "fast", false, "the fast model small instead of the best one for the language")
+}
+
+// followNames follows the local log and returns a function with the display names of the
+// participants who joined the session so far, in the order they joined, each once.
+func followNames(ctx context.Context, log string) func() []string {
+	var mu sync.Mutex
+	var names []string
+	seen := map[string]bool{}
+	go core.FollowLog(ctx, log, true, func(ev *sessionv1.Event) error {
+		if n := ev.GetParticipantJoined().GetDisplayName(); n != "" {
+			mu.Lock()
+			if !seen[n] {
+				seen[n] = true
+				names = append(names, n)
+			}
+			mu.Unlock()
+		}
+		return nil
+	})
+	return func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]string(nil), names...)
+	}
 }

@@ -885,3 +885,33 @@ date: 2026-11-10
 addresses: qg-usability, qg-confidentiality
 :::
 ```
+
+## The ears give Whisper the vocabulary of the project and the names of the participants
+
+**Context:** Whisper often misspells names and terms of a project, for example product names,
+abbreviations and the names of the people in the meeting. These words matter most in minutes and
+tasks. Whisper accepts a short text as a prompt before each sentence and then prefers its words
+and spellings. The prompt is short: Whisper keeps only the last part of a long one.
+**Decision:** The ears build the prompt from two sources: a vocabulary file of the project in the
+working directory of the client (or a file the participant names), then the display names of the
+participants of the session, which the client knows from its local log. The terms keep their
+order in the file; the names follow. What does not fit is cut at the end, so the first terms of
+the file always count. The ears report how many terms and names they use and how many they cut.
+The previous sentence as additional context is an option and off by default, because nobody has
+measured yet whether it helps. **Consequences:** A team improves the transcription by writing a
+plain text file; no model is trained. The vocabulary and the names stay on the device like the
+audio (`concept-edge-transcription`). A wrong or very long vocabulary can make Whisper write a
+term that was not said. OPEN: the effect on the error rate is not measured; a measurement corpus
+is out of scope of the epic (#66). **Rejected:** fine-tuning a model per team (training data and
+compute that a team does not have); correcting the text after Whisper (it cannot recover a word
+that Whisper did not hear as such).
+
+```arc42
+:::decision
+id: dec-vocabulary-prompt
+title: The ears give Whisper the vocabulary of the project and the names of the participants
+status: proposed
+date: 2026-11-11
+addresses: qg-usability, qg-confidentiality
+:::
+```
