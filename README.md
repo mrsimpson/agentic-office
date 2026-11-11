@@ -606,9 +606,15 @@ To remove an admin, delete the line and restart. Admin keys cannot be revoked th
 ### TLS and your own certificate
 
 On the first start, the hub creates a self-signed certificate for `localhost`, `127.0.0.1`,
-`::1` and the host name (`-tls-hosts` changes the list) and logs its SHA-256 fingerprint.
-Clients trust it by its file: copy `tls.crt` to the client and pass it to `auth.TLSConfig` or
-`auth.HTTPClient` (or to `curl --cacert`).
+`::1` and the host name (`-tls-hosts` changes the list) and logs its SHA-256 fingerprint. It is
+valid for 820 days, because macOS and the browsers on it reject TLS server certificates that are
+valid for more than 825 days. The hub warns at start when its certificate is valid for longer;
+delete `tls.crt` and `tls.key` and restart to get a new one.
+
+Clients trust it by its file: copy `tls.crt` to the client (`~/.config/agentic-office/client/hub.crt`
+or `OFFICE_CA_CERT`). With a certificate file, the client trusts only the certificates in it, not
+the system roots, and checks them itself on every system (`auth.TLSConfig`, `auth.HTTPClient`;
+or `curl --cacert`).
 
 To use your own certificate, for example from your CA or Let's Encrypt:
 
@@ -621,7 +627,7 @@ bin/office-hub -tls-cert /etc/office/fullchain.pem -tls-key /etc/office/privkey.
   or SEC 1).
 - Or put both into the data directory as `tls.crt` and `tls.key`. The hub never overwrites
   existing files.
-- Clients then trust the system roots: pass an empty certificate file to `auth.TLSConfig`.
+- Clients then trust the system roots: give them no certificate file.
 - `-public-url` is the address in stage links. It defaults to `https://<listen address>`.
 - The hub reads the certificate at start. Restart it after you renew the certificate.
 
@@ -720,7 +726,7 @@ Every command takes these flags. The environment variables set the defaults.
 | Flag | Variable | Default |
 |---|---|---|
 | `--hub` | `OFFICE_HUB` | `https://127.0.0.1:8740` |
-| `--ca-cert` | `OFFICE_CA_CERT` | `~/.config/agentic-office/client/hub.crt` if it exists, else the system roots |
+| `--ca-cert` | `OFFICE_CA_CERT` | `~/.config/agentic-office/client/hub.crt` if it exists (then only it is trusted), else the system roots |
 | `--key` | `OFFICE_KEY` | `~/.config/agentic-office/client/key.pem` |
 | `--runtime-dir` | `OFFICE_RUNTIME_DIR` | `$XDG_RUNTIME_DIR/agentic-office`, else `/tmp/agentic-office-<uid>` |
 | `--session` | `OFFICE_SESSION` | the only session this participant joined on this machine |

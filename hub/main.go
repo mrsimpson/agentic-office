@@ -130,6 +130,9 @@ func main() {
 		log.Printf("created a self-signed TLS certificate %s for %s", or(*certFile, "tls.crt"), *tlsHosts)
 	}
 	log.Printf("TLS certificate %s sha256 %s", or(*certFile, "tls.crt"), fingerprint(cert))
+	if warn := validityWarning(cert); warn != "" {
+		log.Printf("warning: TLS certificate %s: %s", or(*certFile, "tls.crt"), warn)
+	}
 
 	// The operator gives the signing key (dec-hub-signing-key). It must stay the same across
 	// restarts, so old tree heads still verify (dec-merkle-log).
