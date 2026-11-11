@@ -10,7 +10,7 @@ import (
 
 	"connectrpc.com/connect/v2"
 
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
 )
 
 // Regions of the page. Each region is an element with this ID. The event stream sends a region
@@ -111,25 +111,25 @@ func (v *view) lowerHand(id string) {
 }
 
 // apply updates the view with one event. decks loads a shown deck.
-func (v *view) apply(ctx context.Context, ev *sessionv1.Event, decks Slides) {
+func (v *view) apply(ctx context.Context, ev *sessionstreamv1.Event, decks Slides) {
 	switch p := ev.GetPayload().(type) {
-	case *sessionv1.Event_ParticipantJoined:
+	case *sessionstreamv1.Event_ParticipantJoined:
 		j := p.ParticipantJoined
 		pt := v.participant(j.GetParticipantId())
 		if j.GetDisplayName() != "" {
 			pt.Name = j.GetDisplayName()
 		}
-		pt.Agent = j.GetKind() == sessionv1.ParticipantKind_PARTICIPANT_KIND_AGENT
+		pt.Agent = j.GetKind() == sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_AGENT
 		pt.imported = j.GetImported()
 		pt.captured, pt.paused, pt.left = j.GetCaptured(), false, false
-	case *sessionv1.Event_ParticipantLeft:
+	case *sessionstreamv1.Event_ParticipantLeft:
 		v.participant(p.ParticipantLeft.GetParticipantId()).left = true
 		v.lowerHand(p.ParticipantLeft.GetParticipantId())
-	case *sessionv1.Event_ParticipantPaused:
+	case *sessionstreamv1.Event_ParticipantPaused:
 		v.participant(p.ParticipantPaused.GetParticipantId()).paused = true
-	case *sessionv1.Event_ParticipantResumed:
+	case *sessionstreamv1.Event_ParticipantResumed:
 		v.participant(p.ParticipantResumed.GetParticipantId()).paused = false
-	case *sessionv1.Event_UtteranceFinal:
+	case *sessionstreamv1.Event_UtteranceFinal:
 		u := &utteranceView{EventID: ev.GetId(), Speaker: v.participant(p.UtteranceFinal.GetParticipantId()),
 			Text: p.UtteranceFinal.GetText(), offTheRecord: p.UtteranceFinal.GetOffTheRecord()}
 		if t := p.UtteranceFinal.GetOriginalTime(); t != nil {
@@ -139,30 +139,30 @@ func (v *view) apply(ctx context.Context, ev *sessionv1.Event, decks Slides) {
 		v.byEvent[ev.GetId()] = u
 		// A raised hand is lowered when its participant speaks: they had the floor.
 		v.lowerHand(u.Speaker.ID)
-	case *sessionv1.Event_UtteranceOffTheRecord:
+	case *sessionstreamv1.Event_UtteranceOffTheRecord:
 		if u := v.byEvent[p.UtteranceOffTheRecord.GetUtteranceEventId()]; u != nil {
 			u.offTheRecord = true
 		}
-	case *sessionv1.Event_UtteranceCorrected:
+	case *sessionstreamv1.Event_UtteranceCorrected:
 		if u := v.byEvent[p.UtteranceCorrected.GetUtteranceEventId()]; u != nil {
 			u.Text, u.Corrected = p.UtteranceCorrected.GetText(), true
 		}
-	case *sessionv1.Event_HandRaised:
+	case *sessionstreamv1.Event_HandRaised:
 		pt := v.participant(p.HandRaised.GetParticipantId())
 		v.lowerHand(pt.ID)
 		v.hands = append(v.hands, handView{Participant: pt, Topic: p.HandRaised.GetTopic()})
-	case *sessionv1.Event_MinutesUpdated:
+	case *sessionstreamv1.Event_MinutesUpdated:
 		v.minutes = p.MinutesUpdated.GetText()
-	case *sessionv1.Event_ArtifactShown:
+	case *sessionstreamv1.Event_ArtifactShown:
 		v.artifact = loadArtifact(ctx, p.ArtifactShown.GetArtifactId(), decks)
-	case *sessionv1.Event_SessionImported:
+	case *sessionstreamv1.Event_SessionImported:
 		v.imported = &importView{Source: p.SessionImported.GetSource(), Title: p.SessionImported.GetTitle(),
 			By: ev.GetActorParticipantId()}
-	case *sessionv1.Event_ImportCompleted:
+	case *sessionstreamv1.Event_ImportCompleted:
 		if v.imported != nil {
 			v.imported.Complete = true
 		}
-	case *sessionv1.Event_SessionEnded:
+	case *sessionstreamv1.Event_SessionEnded:
 		v.ended = true
 		v.hands = nil
 	}

@@ -9,10 +9,11 @@ import (
 	"sync"
 	"time"
 
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
+	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
+	"github.com/mrsimpson/agentic-office/client/replicator/control"
+	"github.com/mrsimpson/agentic-office/client/replicator/locallog"
 
-	"github.com/mrsimpson/agentic-office/client/core"
-	"github.com/mrsimpson/agentic-office/client/replicator"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
 )
 
 // errEarsNotImplemented is returned by join --mic and --wav in a build without the ears.
@@ -99,8 +100,8 @@ var ListModels func(o ModelOptions) (ModelList, error)
 // It submits final utterances with c.SubmitUtterance under a command ID it creates, and reports
 // the local status of each utterance (partial, final) to status before it sends it. It must not
 // transcribe while paused() is true. Nil means the ears are not built in.
-var StartEars func(ctx context.Context, c *core.Client, sessionID string, opts EarsOptions,
-	status func(cmdID, text string, s core.Status), paused func() bool) error
+var StartEars func(ctx context.Context, c coreapi.Client, sessionID string, opts EarsOptions,
+	status func(cmdID, text string, s coreapi.Status), paused func() bool) error
 
 func cmdJoin(e *env, fs *flag.FlagSet) func([]string) error {
 	name := fs.String("name", "", "display name in this session (default: the registered name)")
@@ -141,7 +142,7 @@ func cmdJoin(e *env, fs *flag.FlagSet) func([]string) error {
 		if err != nil {
 			return err
 		}
-		j, err := c.Join(e.ctx, sid, core.JoinOptions{DisplayName: *name, Captured: ears})
+		j, err := c.Join(e.ctx, sid, coreapi.JoinOptions{DisplayName: *name, Captured: ears})
 		if err != nil {
 			return err
 		}
@@ -168,7 +169,7 @@ func cmdJoin(e *env, fs *flag.FlagSet) func([]string) error {
 // runEarsGateway runs the ears and the gateway view in the foreground (join --mic or --wav).
 // The view stays when the audio of a WAV file is over; q or the end of the session stops it.
 // If the ears fail, join stops with their error.
-func runEarsGateway(e *env, c *core.Client, j *core.Joined, opts EarsOptions, rep *replicatorProc) error {
+func runEarsGateway(e *env, c coreapi.Client, j *coreapi.Joined, opts EarsOptions, rep *replicatorProc) error {
 	ctx, cancel := context.WithCancel(e.ctx)
 	defer cancel()
 	local := make(chan localStatus, 64)
@@ -177,7 +178,7 @@ func runEarsGateway(e *env, c *core.Client, j *core.Joined, opts EarsOptions, re
 	opts.Names = followNames(ctx, j.Paths.Log)
 	earsErr := make(chan error, 1)
 	go func() {
-		err := StartEars(ctx, c, j.SessionID, opts, func(cmdID, text string, s core.Status) {
+		err := StartEars(ctx, c, j.SessionID, opts, func(cmdID, text string, s coreapi.Status) {
 			select {
 			case local <- localStatus{cmdID, text, s}:
 			case <-ctx.Done():
@@ -208,13 +209,13 @@ func cmdLogPath(e *env, fs *flag.FlagSet) func([]string) error {
 		if err != nil {
 			return err
 		}
-		p, err := c.Paths(sid, pid)
+		p, err := c.Config().Paths(sid, pid)
 		if err != nil {
 			return err
 		}
 		if e.json {
 			e.printJSON(map[string]any{"sessionId": sid, "participantId": pid, "logPath": p.Log,
-				"replicatorRunning": replicator.Running(p.Log)})
+				"replicatorRunning": control.Running(p.Log)})
 		} else {
 			fmt.Fprintln(e.stdout, p.Log)
 		}
@@ -223,7 +224,7 @@ func cmdLogPath(e *env, fs *flag.FlagSet) func([]string) error {
 }
 
 // joined returns a client, the session and the participant.
-func (e *env) joined() (*core.Client, string, string, error) {
+func (e *env) joined() (coreapi.Client, string, string, error) {
 	c, err := e.client()
 	if err != nil {
 		return nil, "", "", err
@@ -254,9 +255,9 @@ func cmdLeave(e *env, fs *flag.FlagSet) func([]string) error {
 		}
 		// The replicator stops after it wrote participant.left. Wait for it, so that a join right
 		// after this starts a new one.
-		if p, err := c.Paths(sid, pid); err == nil {
+		if p, err := c.Config().Paths(sid, pid); err == nil {
 			deadline := time.Now().Add(5 * time.Second)
-			for replicator.Running(p.Log) && time.Now().Before(deadline) && e.ctx.Err() == nil {
+			for control.Running(p.Log) && time.Now().Before(deadline) && e.ctx.Err() == nil {
 				time.Sleep(20 * time.Millisecond)
 			}
 		}
@@ -273,7 +274,7 @@ func cmdView(e *env, fs *flag.FlagSet) func([]string) error {
 		if err != nil {
 			return err
 		}
-		p, err := c.Paths(sid, pid)
+		p, err := c.Config().Paths(sid, pid)
 		if err != nil {
 			return err
 		}
@@ -355,7 +356,7 @@ func followNames(ctx context.Context, log string) func() []string {
 	var mu sync.Mutex
 	var names []string
 	seen := map[string]bool{}
-	go core.FollowLog(ctx, log, true, func(ev *sessionv1.Event) error {
+	go locallog.Follow(ctx, log, true, func(ev *sessionstreamv1.Event) error {
 		if n := ev.GetParticipantJoined().GetDisplayName(); n != "" {
 			mu.Lock()
 			if !seen[n] {

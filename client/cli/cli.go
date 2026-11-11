@@ -12,12 +12,22 @@ import (
 	"strings"
 	"syscall"
 
+	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
+	"github.com/mrsimpson/agentic-office/client/replicator/control"
+
 	"connectrpc.com/connect/v2"
 
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
-
-	"github.com/mrsimpson/agentic-office/client/core"
+	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
 )
+
+// Dial dials the office hub (if-client-core). The wiring of the participant client (client/) sets
+// it.
+var Dial coreapi.Dial
+
+// NewReplicator creates a log replicator (if-replication) for "office replicator run". The wiring
+// of the participant client (client/) sets it.
+var NewReplicator control.New
 
 // Version is set at build time with -ldflags "-X .../client/cli.Version=...".
 var Version = "dev"
@@ -113,7 +123,7 @@ type env struct {
 	stdin          io.Reader
 	json           bool
 	session        string
-	cfg            core.Config
+	cfg            coreapi.Config
 }
 
 // commands maps a command path (one, two or three words) to its implementation. The function
@@ -136,9 +146,9 @@ func init() {
 		"meeting events":           cmdEvents,
 		"meeting view":             cmdView,
 		"meeting leave":            cmdLeave,
-		"meeting pause":            cmdSimple("pause", (*core.Client).Pause),
-		"meeting resume":           cmdSimple("resume", (*core.Client).Resume),
-		"meeting end":              cmdSimple("end", (*core.Client).EndSession),
+		"meeting pause":            cmdSimple("pause", coreapi.Client.Pause),
+		"meeting resume":           cmdSimple("resume", coreapi.Client.Resume),
+		"meeting end":              cmdSimple("end", coreapi.Client.EndSession),
 		"session import":           cmdImport,
 		"say":                      cmdSay,
 		"utterance off-the-record": cmdOffTheRecord,
@@ -206,7 +216,7 @@ func RunContext(ctx context.Context, args []string, stdin io.Reader, stdout, std
 			}
 		}
 	}
-	e := &env{ctx: ctx, stdout: stdout, stderr: stderr, stdin: stdin, cfg: core.ConfigFromEnv(),
+	e := &env{ctx: ctx, stdout: stdout, stderr: stderr, stdin: stdin, cfg: coreapi.ConfigFromEnv(),
 		session: os.Getenv("OFFICE_SESSION"), json: os.Getenv("OFFICE_JSON") == "1"}
 	if name == "" {
 		for _, a := range args {
@@ -292,9 +302,9 @@ func errorCode(err error) string {
 	switch {
 	case errors.As(err, &u):
 		return "usage"
-	case errors.Is(err, core.ErrNoKey):
+	case errors.Is(err, coreapi.ErrNoKey):
 		return "no_key"
-	case errors.Is(err, core.ErrNoSession):
+	case errors.Is(err, coreapi.ErrNoSession):
 		return "no_session"
 	case errors.Is(err, errEarsNotImplemented):
 		return "unimplemented"
@@ -314,12 +324,12 @@ func (e *env) printJSON(v any) {
 }
 
 // eventJSON returns the event as in the local log.
-func eventJSON(ev *sessionv1.Event) json.RawMessage { return core.EventJSON(ev) }
+func eventJSON(ev *sessionstreamv1.Event) json.RawMessage { return coreapi.EventJSON(ev) }
 
 // printResult prints the result of a session command.
-func (e *env) printResult(res *sessionv1.CommandResult) error {
+func (e *env) printResult(res *sessioncommandsv1.CommandResult) error {
 	if e.json {
-		e.printJSON(core.ResultJSON(res))
+		e.printJSON(coreapi.ResultJSON(res))
 		return nil
 	}
 	dup := ""
@@ -331,7 +341,12 @@ func (e *env) printResult(res *sessionv1.CommandResult) error {
 }
 
 // client dials the server with the configuration of e.
-func (e *env) client() (*core.Client, error) { return core.Dial(e.cfg) }
+func (e *env) client() (coreapi.Client, error) {
+	if Dial == nil {
+		return nil, errors.New("no client core: the wiring of the participant client sets cli.Dial")
+	}
+	return Dial(e.cfg)
+}
 
 // progress prints a line of progress to stderr; with --json, as {"progress": text}.
 func (e *env) progress(text string) {
@@ -344,7 +359,7 @@ func (e *env) progress(text string) {
 }
 
 // sessionID returns --session or the only session this participant joined on this machine.
-func (e *env) sessionID(c *core.Client) (string, error) {
+func (e *env) sessionID(c coreapi.Client) (string, error) {
 	if e.session != "" {
 		return e.session, nil
 	}
@@ -352,7 +367,7 @@ func (e *env) sessionID(c *core.Client) (string, error) {
 }
 
 // sessionCommand dials, finds the session and runs f.
-func (e *env) sessionCommand(f func(c *core.Client, sid string) (*sessionv1.CommandResult, error)) error {
+func (e *env) sessionCommand(f func(c coreapi.Client, sid string) (*sessioncommandsv1.CommandResult, error)) error {
 	c, err := e.client()
 	if err != nil {
 		return err
@@ -376,13 +391,13 @@ func noArgs(args []string) error {
 }
 
 // cmdSimple is a session command without arguments.
-func cmdSimple(_ string, f func(*core.Client, context.Context, string) (*sessionv1.CommandResult, error)) func(e *env, fs *flag.FlagSet) func([]string) error {
+func cmdSimple(_ string, f func(coreapi.Client, context.Context, string) (*sessioncommandsv1.CommandResult, error)) func(e *env, fs *flag.FlagSet) func([]string) error {
 	return func(e *env, fs *flag.FlagSet) func([]string) error {
 		return func(args []string) error {
 			if err := noArgs(args); err != nil {
 				return err
 			}
-			return e.sessionCommand(func(c *core.Client, sid string) (*sessionv1.CommandResult, error) {
+			return e.sessionCommand(func(c coreapi.Client, sid string) (*sessioncommandsv1.CommandResult, error) {
 				return f(c, e.ctx, sid)
 			})
 		}

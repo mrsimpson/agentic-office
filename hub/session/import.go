@@ -10,11 +10,11 @@ import (
 	"connectrpc.com/connect/v2"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
-	"github.com/mrsimpson/agentic-office/hub/session/api/events"
-	"github.com/mrsimpson/agentic-office/hub/session/api/merkle"
 	sessionimportv1 "github.com/mrsimpson/agentic-office/hub/session/importapi"
 	"github.com/mrsimpson/agentic-office/hub/session/importapi/sessionimportv1connect"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/events"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/merkle"
 )
 
 // This file is the session import (if-session-import, dec-session-import). The Service realizes
@@ -65,7 +65,7 @@ func (s *Service) ImportConversation(ctx context.Context, req *sessionimportv1.I
 			return nil, invalid(field("participants", i, "key") + " is repeated in the page")
 		case strings.TrimSpace(p.GetDisplayName()) == "":
 			return nil, invalid(field("participants", i, "display_name") + " is required")
-		case p.GetKind() != sessionv1.ParticipantKind_PARTICIPANT_KIND_HUMAN && p.GetKind() != sessionv1.ParticipantKind_PARTICIPANT_KIND_AGENT:
+		case p.GetKind() != sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_HUMAN && p.GetKind() != sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_AGENT:
 			return nil, invalid(field("participants", i, "kind") + " must be human or agent")
 		}
 		page[p.GetKey()] = true
@@ -76,7 +76,7 @@ func (s *Service) ImportConversation(ctx context.Context, req *sessionimportv1.I
 			return nil, invalid(field("utterances", i, "speaker") + " is required")
 		case strings.TrimSpace(u.GetText()) == "":
 			return nil, invalid(field("utterances", i, "text") + " is required")
-		case u.GetModality() == sessionv1.Modality_MODALITY_UNSPECIFIED:
+		case u.GetModality() == sessionstreamv1.Modality_MODALITY_UNSPECIFIED:
 			return nil, invalid(field("utterances", i, "modality") + " is required")
 		}
 	}
@@ -139,22 +139,22 @@ func (s *Service) ImportConversation(ctx context.Context, req *sessionimportv1.I
 		}
 	}
 
-	var payloads []*sessionv1.Event
+	var payloads []*sessionstreamv1.Event
 	if first {
-		payloads = append(payloads, &sessionv1.Event{Payload: &sessionv1.Event_SessionImported{SessionImported: &sessionv1.SessionImported{
+		payloads = append(payloads, &sessionstreamv1.Event{Payload: &sessionstreamv1.Event_SessionImported{SessionImported: &sessionstreamv1.SessionImported{
 			Source: req.GetConversation().GetSource(), Title: req.GetConversation().GetTitle()}}})
 	}
 	for _, p := range req.GetParticipants() {
-		payloads = append(payloads, &sessionv1.Event{Payload: &sessionv1.Event_ParticipantJoined{ParticipantJoined: &sessionv1.ParticipantJoined{
+		payloads = append(payloads, &sessionstreamv1.Event{Payload: &sessionstreamv1.Event_ParticipantJoined{ParticipantJoined: &sessionstreamv1.ParticipantJoined{
 			ParticipantId: ImportedPrefix + p.GetKey(), DisplayName: p.GetDisplayName(), Kind: p.GetKind(), Imported: true}}})
 	}
 	for _, u := range req.GetUtterances() {
-		payloads = append(payloads, &sessionv1.Event{Payload: &sessionv1.Event_UtteranceFinal{UtteranceFinal: &sessionv1.UtteranceFinal{
+		payloads = append(payloads, &sessionstreamv1.Event{Payload: &sessionstreamv1.Event_UtteranceFinal{UtteranceFinal: &sessionstreamv1.UtteranceFinal{
 			ParticipantId: ImportedPrefix + u.GetSpeaker(), Text: u.GetText(), Modality: u.GetModality(), OriginalTime: u.GetTime()}}})
 	}
 	if req.GetComplete() {
 		n := st.imported + uint32(len(req.GetUtterances()))
-		payloads = append(payloads, &sessionv1.Event{Payload: &sessionv1.Event_ImportCompleted{ImportCompleted: &sessionv1.ImportCompleted{Utterances: n}}})
+		payloads = append(payloads, &sessionstreamv1.Event{Payload: &sessionstreamv1.Event_ImportCompleted{ImportCompleted: &sessionstreamv1.ImportCompleted{Utterances: n}}})
 	}
 	firstID := st.lastID + 1
 	for _, ev := range payloads {
@@ -189,7 +189,7 @@ func (s *Service) importResult(sid string, st *state, cmdID string, last uint32,
 }
 
 // signedHeadAt returns the signed tree head over the first n events. The caller holds st.mu.
-func (s *Service) signedHeadAt(sid string, st *state, n int) *sessionv1.SignedTreeHead {
+func (s *Service) signedHeadAt(sid string, st *state, n int) *sessionstreamv1.SignedTreeHead {
 	if n == len(st.leaves) {
 		return s.signedHead(sid, st)
 	}

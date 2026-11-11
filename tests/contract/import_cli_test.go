@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mrsimpson/agentic-office/hub/session/api/events"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/events"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 

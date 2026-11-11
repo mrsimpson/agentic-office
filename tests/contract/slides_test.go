@@ -11,13 +11,14 @@ import (
 	"testing"
 	"time"
 
+	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
+
 	"connectrpc.com/connect/v2"
 	"go.yaml.in/yaml/v3"
 	"golang.org/x/net/html"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/mrsimpson/agentic-office/client/core/ids"
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 	slidesv1 "github.com/mrsimpson/agentic-office/hub/slides/api"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
@@ -37,7 +38,7 @@ func budgetDeck() *slidesv1.RenderDeckRequest {
 func render(t *testing.T, a *contracttest.Actor, deck *slidesv1.RenderDeckRequest) *slidesv1.Deck {
 	t.Helper()
 	req := proto.Clone(deck).(*slidesv1.RenderDeckRequest)
-	req.CommandId, req.AuthorParticipantId = ids.NewCommandID(), a.ParticipantID
+	req.CommandId, req.AuthorParticipantId = coreapi.NewCommandID(), a.ParticipantID
 	res, err := a.Slides.RenderDeck(ctx10(t), req)
 	if err != nil {
 		t.Fatalf("render %q as %s: %v", deck.GetTitle(), a.ParticipantID, err)
@@ -224,7 +225,7 @@ func TestSlidesIdempotent(t *testing.T) {
 	ada := srv.Participant(t, "ada", "Ada", human)
 
 	req := budgetDeck()
-	req.CommandId, req.AuthorParticipantId = ids.NewCommandID(), "bot"
+	req.CommandId, req.AuthorParticipantId = coreapi.NewCommandID(), "bot"
 	first, err := bot.Slides.RenderDeck(ctx10(t), req)
 	if err != nil || first.GetDuplicate() {
 		t.Fatalf("first: %v, %v", first, err)
@@ -259,7 +260,7 @@ func TestSlidesErrors(t *testing.T) {
 	ada := srv.Participant(t, "ada", "Ada", human)
 	ok := func() *slidesv1.RenderDeckRequest {
 		r := budgetDeck()
-		r.CommandId, r.AuthorParticipantId = ids.NewCommandID(), "ada"
+		r.CommandId, r.AuthorParticipantId = coreapi.NewCommandID(), "ada"
 		return r
 	}
 	huge := make([]string, 20000)
@@ -302,7 +303,7 @@ func TestSlidesErrors(t *testing.T) {
 	wantCode(t, "get with a bad token", err, connect.CodeUnauthenticated)
 
 	// The stage renders on the hub; a stage link cannot use the slides interface.
-	link, err := ada.Identity.CreateStageLink(ctx10(t), &identityv1.CreateStageLinkRequest{SessionId: "s1", CommandId: ids.NewCommandID()})
+	link, err := ada.Identity.CreateStageLink(ctx10(t), &identityv1.CreateStageLinkRequest{SessionId: "s1", CommandId: coreapi.NewCommandID()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -491,7 +492,7 @@ func TestSlidesSurviveRestart(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
 	req := budgetDeck()
-	req.CommandId, req.AuthorParticipantId = ids.NewCommandID(), "ada"
+	req.CommandId, req.AuthorParticipantId = coreapi.NewCommandID(), "ada"
 	res, err := ada.Slides.RenderDeck(ctx10(t), req)
 	if err != nil {
 		t.Fatal(err)

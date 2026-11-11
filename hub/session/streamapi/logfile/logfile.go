@@ -21,12 +21,12 @@ import (
 	"go.yaml.in/yaml/v3"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
 )
 
 // MarshalLine returns the line for ev, including the final newline.
 // protojson adds random spaces on purpose; the line is compacted so it is stable.
-func MarshalLine(ev *sessionv1.Event) ([]byte, error) {
+func MarshalLine(ev *sessionstreamv1.Event) ([]byte, error) {
 	raw, err := protojson.Marshal(ev)
 	if err != nil {
 		return nil, err
@@ -40,8 +40,8 @@ func MarshalLine(ev *sessionv1.Event) ([]byte, error) {
 }
 
 // UnmarshalLine parses one line (with or without the final newline).
-func UnmarshalLine(line []byte) (*sessionv1.Event, error) {
-	ev := &sessionv1.Event{}
+func UnmarshalLine(line []byte) (*sessionstreamv1.Event, error) {
+	ev := &sessionstreamv1.Event{}
 	if err := protojson.Unmarshal(bytes.TrimRight(line, "\n"), ev); err != nil {
 		return nil, err
 	}
@@ -50,8 +50,8 @@ func UnmarshalLine(line []byte) (*sessionv1.Event, error) {
 
 // UnmarshalLines parses a whole log file: one event per line. A last line without a newline is
 // parsed too.
-func UnmarshalLines(data []byte) ([]*sessionv1.Event, error) {
-	var out []*sessionv1.Event
+func UnmarshalLines(data []byte) ([]*sessionstreamv1.Event, error) {
+	var out []*sessionstreamv1.Event
 	for len(data) > 0 {
 		line := data
 		if i := bytes.IndexByte(data, '\n'); i >= 0 {
@@ -73,7 +73,7 @@ func UnmarshalLines(data []byte) ([]*sessionv1.Event, error) {
 
 // MarshalTreeHead returns the YAML form of a signed tree head. The fields are in the order of
 // the contract.
-func MarshalTreeHead(h *sessionv1.SignedTreeHead) ([]byte, error) {
+func MarshalTreeHead(h *sessionstreamv1.SignedTreeHead) ([]byte, error) {
 	raw, err := protojson.MarshalOptions{UseProtoNames: true, EmitUnpopulated: true}.Marshal(h)
 	if err != nil {
 		return nil, err
@@ -100,7 +100,7 @@ func blockStyle(n *yaml.Node) {
 }
 
 // UnmarshalTreeHead parses the YAML form of a signed tree head.
-func UnmarshalTreeHead(data []byte) (*sessionv1.SignedTreeHead, error) {
+func UnmarshalTreeHead(data []byte) (*sessionstreamv1.SignedTreeHead, error) {
 	var m map[string]any
 	if err := yaml.Unmarshal(data, &m); err != nil {
 		return nil, err
@@ -109,7 +109,7 @@ func UnmarshalTreeHead(data []byte) (*sessionv1.SignedTreeHead, error) {
 	if err != nil {
 		return nil, err
 	}
-	h := &sessionv1.SignedTreeHead{}
+	h := &sessionstreamv1.SignedTreeHead{}
 	if err := protojson.Unmarshal(raw, h); err != nil {
 		return nil, err
 	}

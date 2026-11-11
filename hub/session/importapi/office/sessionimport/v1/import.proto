@@ -31,7 +31,7 @@ syntax = "proto3";
 package office.sessionimport.v1;
 
 import "google/protobuf/timestamp.proto";
-import "office/session/v1/events.proto";
+import "office/sessionstream/v1/events.proto";
 
 option go_package = "github.com/mrsimpson/agentic-office/hub/session/importapi;sessionimportv1";
 
@@ -73,7 +73,7 @@ message ImportedParticipant {
   // display_name is required.
   string display_name = 2;
   // kind is required: human or agent.
-  office.session.v1.ParticipantKind kind = 3;
+  office.sessionstream.v1.ParticipantKind kind = 3;
 }
 
 message ImportedUtterance {
@@ -82,7 +82,7 @@ message ImportedUtterance {
   // text is required.
   string text = 2;
   // modality is required: voice for speech, text for written messages.
-  office.session.v1.Modality modality = 3;
+  office.sessionstream.v1.Modality modality = 3;
   // time is when the utterance was made in the original conversation. Optional; the hub does not
   // check it.
   google.protobuf.Timestamp time = 4;
@@ -97,5 +97,5 @@ message ImportConversationResponse {
   // complete is true if the import is complete.
   bool complete = 4;
   // tree_head is a tree head signed by the hub over the events 1 to last_event_id.
-  office.session.v1.SignedTreeHead tree_head = 5;
+  office.sessionstream.v1.SignedTreeHead tree_head = 5;
 }

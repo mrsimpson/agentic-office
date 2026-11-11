@@ -11,18 +11,18 @@ import (
 	"strconv"
 	"sync"
 
+	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
+	"github.com/mrsimpson/agentic-office/client/replicator/control"
+
 	"connectrpc.com/connect/v2"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
-
-	"github.com/mrsimpson/agentic-office/client/core"
-	"github.com/mrsimpson/agentic-office/client/replicator"
 )
 
 // Server is the MCP server of one actor (one key). It serves the tools over one MCP
 // connection and runs one replicator per joined session in its own process.
 type Server struct {
 	// Config tells where the server is, which key to use and where the local files live.
-	Config core.Config
+	Config coreapi.Config
 	// Session is the default session of the tools (--session, OFFICE_SESSION). Empty: the only
 	// session this participant joined from this machine.
 	Session string
@@ -30,11 +30,15 @@ type Server struct {
 	Version string
 	// Stderr receives the log of the server and of its replicators. Nil means os.Stderr.
 	Stderr io.Writer
+	// Dial dials the office hub (if-client-core).
+	Dial coreapi.Dial
+	// NewReplicator creates the replicators of this process (if-replication).
+	NewReplicator control.New
 
 	log *log.Logger
 
 	mu     sync.Mutex
-	client *core.Client
+	client coreapi.Client
 	ctx    context.Context // lives as long as Run; the replicators run under it
 	reps   map[string]*rep // by local log path
 	wg     sync.WaitGroup
@@ -72,13 +76,13 @@ func (s *Server) Run(ctx context.Context, in io.ReadCloser, out io.WriteCloser) 
 }
 
 // dial returns the client of this actor. A successful client is kept, so its token is reused.
-func (s *Server) dial() (*core.Client, error) {
+func (s *Server) dial() (coreapi.Client, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.client != nil {
 		return s.client, nil
 	}
-	c, err := core.Dial(s.Config)
+	c, err := s.Dial(s.Config)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +91,7 @@ func (s *Server) dial() (*core.Client, error) {
 }
 
 // sessionID returns the session argument, else the default session.
-func (s *Server) sessionID(ctx context.Context, c *core.Client, arg string) (string, error) {
+func (s *Server) sessionID(ctx context.Context, c coreapi.Client, arg string) (string, error) {
 	if arg != "" {
 		return arg, nil
 	}
@@ -95,10 +99,10 @@ func (s *Server) sessionID(ctx context.Context, c *core.Client, arg string) (str
 		return s.Session, nil
 	}
 	sid, err := c.DefaultSession(ctx)
-	if errors.Is(err, core.ErrNoSession) {
+	if errors.Is(err, coreapi.ErrNoSession) {
 		// The message of the core names the CLI flag; name the tool argument instead.
 		pid, _ := c.ParticipantID(ctx)
-		return "", fmt.Errorf("%w: %s has not joined exactly one session on this machine; pass \"session\"", core.ErrNoSession, pid)
+		return "", fmt.Errorf("%w: %s has not joined exactly one session on this machine; pass \"session\"", coreapi.ErrNoSession, pid)
 	}
 	return sid, err
 }
@@ -107,7 +111,7 @@ func (s *Server) sessionID(ctx context.Context, c *core.Client, arg string) (str
 // the process that writes it: this process, or another one (for example a replicator that
 // "office meeting join" started). The replicator of this process stops when Run ends, after
 // session.ended, or after the participant's own participant.left.
-func (s *Server) startReplicator(c *core.Client, j *core.Joined) (int, error) {
+func (s *Server) startReplicator(c coreapi.Client, j *coreapi.Joined) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p := j.Paths
@@ -118,10 +122,10 @@ func (s *Server) startReplicator(c *core.Client, j *core.Joined) (int, error) {
 			return os.Getpid(), nil
 		}
 	}
-	r := &replicator.Replicator{Session: c.Session, SessionID: j.SessionID, ParticipantID: j.ParticipantID, Path: p.Log,
-		Logf: s.log.Printf}
+	r := s.NewReplicator(control.Options{Commands: c.Commands(), Stream: c.Stream(), SessionID: j.SessionID,
+		ParticipantID: j.ParticipantID, Path: p.Log, Logf: s.log.Printf})
 	if err := r.Open(); err != nil {
-		if errors.Is(err, replicator.ErrRunning) {
+		if errors.Is(err, control.ErrRunning) {
 			return readPID(p.PID), nil
 		}
 		return 0, err
@@ -190,11 +194,11 @@ func errorCode(err error) string {
 	var u errUsage
 	var ce *connect.Error
 	switch {
-	case errors.As(err, &u), errors.Is(err, core.ErrBadInput):
+	case errors.As(err, &u), errors.Is(err, coreapi.ErrBadInput):
 		return "usage"
-	case errors.Is(err, core.ErrNoKey):
+	case errors.Is(err, coreapi.ErrNoKey):
 		return "no_key"
-	case errors.Is(err, core.ErrNoSession):
+	case errors.Is(err, coreapi.ErrNoSession):
 		return "no_session"
 	case errors.As(err, &ce):
 		return ce.Code().String()

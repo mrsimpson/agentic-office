@@ -1,6 +1,6 @@
 // Package merkle is the Merkle tree over a session log (dec-merkle-log). It belongs to the session
-// interface (if-session-commands, if-session-stream), which owns the event types, so the hub and
-// every client use the same code to build and to check a tree.
+// stream (if-session-stream), which owns the event types, so the hub and every client use the same
+// code to build and to check a tree. The session commands return the tree heads and proofs.
 //
 // The tree follows RFC 9162 (Certificate Transparency 2.0), section 2.1:
 //
@@ -16,7 +16,7 @@
 //     tree proves: it can only hide the text.
 //   - The hub signs a tree head with Ed25519 over TreeHeadMessage: a fixed prefix, the schema of
 //     the session, the session ID, the tree size and the root hash.
-//   - A session belongs to one schema (dec-session-schema, sessionv1.Schema). The leaves depend on
+//   - A session belongs to one schema (dec-session-schema, sessionstreamv1.Schema). The leaves depend on
 //     the encoding of the events, so this code checks only logs of the schema it knows: every
 //     check of a tree head fails with ErrSchema for a head of another schema.
 //
@@ -36,7 +36,7 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
 )
 
 // HashSize is the size of every hash in the tree.
@@ -50,7 +50,7 @@ const TreeHeadPrefix = "agentic-office/session/v1/tree-head\x00"
 var ErrVerify = errors.New("merkle: verification failed")
 
 // ErrSchema is wrapped, together with ErrVerify, by the error of a check of a tree head with
-// another schema than sessionv1.Schema.
+// another schema than sessionstreamv1.Schema.
 var ErrSchema = errors.New("the log has another schema")
 
 func fail(format string, a ...any) error {
@@ -76,12 +76,12 @@ func NodeHash(left, right []byte) []byte {
 
 // EventLeaf returns the leaf of an event: its deterministic Protobuf encoding with leaf_hash
 // empty. It fails for a placeholder, whose original text is gone.
-func EventLeaf(ev *sessionv1.Event) ([]byte, error) {
+func EventLeaf(ev *sessionstreamv1.Event) ([]byte, error) {
 	if ev.GetUtteranceFinal().GetOffTheRecord() {
 		return nil, fail("event %d is a placeholder; its leaf is the original", ev.GetId())
 	}
 	if len(ev.GetLeafHash()) > 0 {
-		ev = proto.Clone(ev).(*sessionv1.Event)
+		ev = proto.Clone(ev).(*sessionstreamv1.Event)
 		ev.LeafHash = nil
 	}
 	return proto.MarshalOptions{Deterministic: true}.Marshal(ev)
@@ -90,7 +90,7 @@ func EventLeaf(ev *sessionv1.Event) ([]byte, error) {
 // EventLeafHash returns the leaf hash of an event. For a placeholder it returns the leaf hash
 // the placeholder carries. Any other event with a leaf_hash, or a placeholder without one,
 // fails.
-func EventLeafHash(ev *sessionv1.Event) ([]byte, error) {
+func EventLeafHash(ev *sessionstreamv1.Event) ([]byte, error) {
 	if ev.GetUtteranceFinal().GetOffTheRecord() {
 		if len(ev.GetLeafHash()) != HashSize {
 			return nil, fail("placeholder %d has no leaf hash of %d bytes", ev.GetId(), HashSize)
@@ -262,9 +262,9 @@ func TreeHeadMessage(schema, sessionID string, size uint64, root []byte) []byte 
 
 // SignTreeHead returns the signed tree head of a session of the given schema over the leaf
 // hashes.
-func SignTreeHead(key ed25519.PrivateKey, schema, sessionID string, leaves [][]byte) *sessionv1.SignedTreeHead {
+func SignTreeHead(key ed25519.PrivateKey, schema, sessionID string, leaves [][]byte) *sessionstreamv1.SignedTreeHead {
 	root := RootHash(leaves)
-	return &sessionv1.SignedTreeHead{
+	return &sessionstreamv1.SignedTreeHead{
 		SessionId: sessionID, Schema: schema, TreeSize: uint32(len(leaves)), RootHash: root,
 		Signature: ed25519.Sign(key, TreeHeadMessage(schema, sessionID, uint64(len(leaves)), root)),
 		PublicKey: key.Public().(ed25519.PublicKey),
@@ -272,22 +272,22 @@ func SignTreeHead(key ed25519.PrivateKey, schema, sessionID string, leaves [][]b
 }
 
 // VerifyTreeHead checks a tree head with the hub key the caller trusts: its signature, and that
-// it has the schema of this code (sessionv1.Schema). It fails if the head names another key. A
+// it has the schema of this code (sessionstreamv1.Schema). It fails if the head names another key. A
 // head of another schema fails with ErrSchema.
-func VerifyTreeHead(sth *sessionv1.SignedTreeHead, hubKey ed25519.PublicKey) error {
+func VerifyTreeHead(sth *sessionstreamv1.SignedTreeHead, hubKey ed25519.PublicKey) error {
 	if err := VerifyTreeHeadSignature(sth, hubKey); err != nil {
 		return err
 	}
-	if sth.GetSchema() != sessionv1.Schema {
+	if sth.GetSchema() != sessionstreamv1.Schema {
 		return fmt.Errorf("%w: %w: the tree head has schema %q, this code checks only schema %q",
-			ErrVerify, ErrSchema, sth.GetSchema(), sessionv1.Schema)
+			ErrVerify, ErrSchema, sth.GetSchema(), sessionstreamv1.Schema)
 	}
 	return nil
 }
 
 // VerifyTreeHeadSignature checks only the signature of a tree head, whatever its schema. A hub
 // uses it to serve a stored session of another schema; a verifier uses VerifyTreeHead.
-func VerifyTreeHeadSignature(sth *sessionv1.SignedTreeHead, hubKey ed25519.PublicKey) error {
+func VerifyTreeHeadSignature(sth *sessionstreamv1.SignedTreeHead, hubKey ed25519.PublicKey) error {
 	if len(hubKey) != ed25519.PublicKeySize {
 		return fail("hub key has %d bytes, not %d", len(hubKey), ed25519.PublicKeySize)
 	}
@@ -306,7 +306,7 @@ func VerifyTreeHeadSignature(sth *sessionv1.SignedTreeHead, hubKey ed25519.Publi
 
 // LeafHashes returns the leaf hashes of a complete log: the events must have the IDs 1 to
 // len(evs) in order and belong to sessionID.
-func LeafHashes(sessionID string, evs []*sessionv1.Event) ([][]byte, error) {
+func LeafHashes(sessionID string, evs []*sessionstreamv1.Event) ([][]byte, error) {
 	out := make([][]byte, 0, len(evs))
 	for i, ev := range evs {
 		if ev.GetId() != uint32(i+1) {
@@ -327,7 +327,7 @@ func LeafHashes(sessionID string, evs []*sessionv1.Event) ([][]byte, error) {
 // VerifyEvents checks a copy of a session log against a signed tree head: the signature, and
 // that the events 1 to tree_size give its root hash. evs must hold exactly the events 1 to
 // tree_size, in order. Placeholders verify by the leaf hash they carry.
-func VerifyEvents(evs []*sessionv1.Event, sth *sessionv1.SignedTreeHead, hubKey ed25519.PublicKey) error {
+func VerifyEvents(evs []*sessionstreamv1.Event, sth *sessionstreamv1.SignedTreeHead, hubKey ed25519.PublicKey) error {
 	if err := VerifyTreeHead(sth, hubKey); err != nil {
 		return err
 	}
@@ -346,7 +346,7 @@ func VerifyEvents(evs []*sessionv1.Event, sth *sessionv1.SignedTreeHead, hubKey 
 
 // VerifyEventInclusion checks that one event is in the tree of a signed tree head, with the
 // audit path from GetInclusionProof. It also checks the signature of the head.
-func VerifyEventInclusion(ev *sessionv1.Event, proof [][]byte, sth *sessionv1.SignedTreeHead, hubKey ed25519.PublicKey) error {
+func VerifyEventInclusion(ev *sessionstreamv1.Event, proof [][]byte, sth *sessionstreamv1.SignedTreeHead, hubKey ed25519.PublicKey) error {
 	if err := VerifyTreeHead(sth, hubKey); err != nil {
 		return err
 	}
@@ -365,8 +365,8 @@ func VerifyEventInclusion(ev *sessionv1.Event, proof [][]byte, sth *sessionv1.Si
 
 // VerifyTreeHeadConsistency checks two signed tree heads of one session and the consistency
 // proof between them: the newer log extends the older one.
-func VerifyTreeHeadConsistency(older, newer *sessionv1.SignedTreeHead, proof [][]byte, hubKey ed25519.PublicKey) error {
-	for _, sth := range []*sessionv1.SignedTreeHead{older, newer} {
+func VerifyTreeHeadConsistency(older, newer *sessionstreamv1.SignedTreeHead, proof [][]byte, hubKey ed25519.PublicKey) error {
+	for _, sth := range []*sessionstreamv1.SignedTreeHead{older, newer} {
 		if err := VerifyTreeHead(sth, hubKey); err != nil {
 			return err
 		}

@@ -7,7 +7,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/mrsimpson/agentic-office/client/core"
+	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
 )
 
 // cmdImport imports a conversation as a new session (dec-session-import). The file is in the
@@ -26,8 +26,8 @@ func cmdImport(e *env, fs *flag.FlagSet) func([]string) error {
 			defer f.Close()
 			r = f
 		}
-		conv, err := core.ParseConversation(r)
-		if errors.Is(err, core.ErrBadInput) {
+		conv, err := coreapi.ParseConversation(r)
+		if errors.Is(err, coreapi.ErrBadInput) {
 			return usagef("%s: %v", args[0], err)
 		}
 		if err != nil {
@@ -38,14 +38,14 @@ func cmdImport(e *env, fs *flag.FlagSet) func([]string) error {
 			return err
 		}
 		im, err := c.Import(e.ctx, e.session, conv)
-		if errors.Is(err, core.ErrBadInput) {
+		if errors.Is(err, coreapi.ErrBadInput) {
 			return usagef("%s: %v", args[0], err)
 		}
 		if err != nil {
 			return err
 		}
 		if e.json {
-			e.printJSON(core.ImportedJSON(im))
+			e.printJSON(coreapi.ImportedJSON(im))
 			return nil
 		}
 		fmt.Fprintf(e.stdout, "%s\n", im.SessionID)

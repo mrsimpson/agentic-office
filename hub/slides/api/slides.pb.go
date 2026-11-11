@@ -6,7 +6,7 @@
 // (con-no-intelligence): the same title and slides give the same bytes.
 //
 // A deck has an ID such as "slides/42". The stage shows a deck by this ID (artifact.shown in
-// session.proto): "artifact" is the general word for anything the stage can show, and the part
+// commands.proto): "artifact" is the general word for anything the stage can show, and the part
 // before the slash names its type.
 //
 // Every call needs an access token of a participant (see identity.proto). A stage link cannot

@@ -13,8 +13,8 @@ import (
 	"testing"
 
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
-	"github.com/mrsimpson/agentic-office/hub/session/api/merkle"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/merkle"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
@@ -118,14 +118,14 @@ func TestSigningKeyFromFile(t *testing.T) {
 	pub := keygen(t, file)
 
 	m := newMeetingArgs(t, "-signing-key", file)
-	if got := hubKey(t, m.reader.Session); !bytes.Equal(got, pub) {
+	if got := hubKey(t, m.reader.Commands); !bytes.Equal(got, pub) {
 		t.Fatalf("GetHubKey: %x, want the key of the file %x", got, pub)
 	}
-	ada := m.join("Ada", sessionv1.ParticipantKind_PARTICIPANT_KIND_HUMAN)
+	ada := m.join("Ada", sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_HUMAN)
 	m.say(ada, "Signed with the key of the operator.")
 	ended := m.end(ada)
 	log := m.readAll(0)
-	heads := []*sessionv1.SignedTreeHead{ended.GetSessionEnded().GetTreeHead(), m.head(0)}
+	heads := []*sessionstreamv1.SignedTreeHead{ended.GetSessionEnded().GetTreeHead(), m.head(0)}
 	for _, h := range heads {
 		if !bytes.Equal(h.GetPublicKey(), pub) {
 			t.Fatalf("tree head of size %d names key %x, want %x", h.GetTreeSize(), h.GetPublicKey(), pub)
@@ -138,7 +138,7 @@ func TestSigningKeyFromFile(t *testing.T) {
 	m.srv.Kill()
 	srv := contracttest.StartHubIn(t, m.srv.DataDir, m.srv.AdminKey, nil, "-signing-key", file)
 	reader := srv.WithKey(t, m.reader.Key)
-	if got := hubKey(t, reader.Session); !bytes.Equal(got, pub) {
+	if got := hubKey(t, reader.Commands); !bytes.Equal(got, pub) {
 		t.Fatalf("GetHubKey after a restart: %x, want %x", got, pub)
 	}
 	for _, h := range heads {

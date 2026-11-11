@@ -11,12 +11,11 @@ import (
 	"sync"
 	"time"
 
+	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
+
 	"connectrpc.com/connect/v2"
 
-	"github.com/mrsimpson/agentic-office/client/core/ids"
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
-
-	"github.com/mrsimpson/agentic-office/client/core"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
 )
 
 // Config says what the ears listen to and which models they use. Empty fields take their
@@ -182,11 +181,11 @@ func (c *Config) Prepare(ctx context.Context, progress func(string)) error {
 // Ears connect one audio source to one participant in one session.
 type Ears struct {
 	Config
-	Client    *core.Client
+	Client    coreapi.Client
 	SessionID string
 	// Status receives the local status of each utterance: final when Whisper has the text (the
 	// command ID is created then), before it is sent.
-	Status func(cmdID, text string, s core.Status)
+	Status func(cmdID, text string, s coreapi.Status)
 	// Paused reports whether the participant is paused. While it is true, the ears neither
 	// capture nor transcribe.
 	Paused func() bool
@@ -372,8 +371,8 @@ func (e *Ears) Run(ctx context.Context) error {
 				continue
 			}
 			prev = text
-			u := utterance{cmdID: ids.NewCommandID(), text: text, speechEnd: s.speechEnd, transcribedAt: done}
-			e.Status(u.cmdID, u.text, core.StatusFinal)
+			u := utterance{cmdID: coreapi.NewCommandID(), text: text, speechEnd: s.speechEnd, transcribedAt: done}
+			e.Status(u.cmdID, u.text, coreapi.StatusFinal)
 			report(Report{Type: "final", CommandID: u.cmdID, Text: text, SpeechEnd: &u.speechEnd, TranscribedAt: &u.transcribedAt,
 				AudioMs: int64(len(s.samples)) * 1000 / SampleRate, WhisperMs: done.Sub(start).Milliseconds(),
 				SpeechEndToFinalMs: done.Sub(s.speechEnd).Milliseconds()})
@@ -442,7 +441,7 @@ func (e *Ears) send(ctx context.Context, q *queue, report func(Report)) error {
 		backoff := 100 * time.Millisecond
 		for attempt := 1; ; attempt++ {
 			actx, cancel := context.WithTimeout(ctx, 10*time.Second)
-			res, err := e.Client.SubmitUtterance(actx, e.SessionID, u.cmdID, u.text, sessionv1.Modality_MODALITY_VOICE, u.transcribedAt)
+			res, err := e.Client.SubmitUtterance(actx, e.SessionID, u.cmdID, u.text, sessionstreamv1.Modality_MODALITY_VOICE, u.transcribedAt)
 			cancel()
 			if err == nil {
 				at := time.Now()

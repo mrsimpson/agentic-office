@@ -6,12 +6,12 @@ import (
 	"flag"
 	"io"
 
-	"github.com/mrsimpson/agentic-office/client/core"
+	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
 )
 
 // MCPOptions are what the MCP server (bb-mcp) needs from the CLI.
 type MCPOptions struct {
-	Config  core.Config
+	Config  coreapi.Config
 	Session string // default session (--session, OFFICE_SESSION)
 	Version string
 	Stdin   io.Reader

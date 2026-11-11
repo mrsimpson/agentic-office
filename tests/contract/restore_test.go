@@ -12,21 +12,23 @@ import (
 	"testing"
 	"time"
 
+	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
+
 	"connectrpc.com/connect/v2"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/mrsimpson/agentic-office/client/core/ids"
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
-	"github.com/mrsimpson/agentic-office/hub/session/api/merkle"
+	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/merkle"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
 // peerCopy is what a peer holds: the events it received from the stream and the signed tree head
 // that came with the last of them.
 type peerCopy struct {
-	events []*sessionv1.Event
-	head   *sessionv1.SignedTreeHead
+	events []*sessionstreamv1.Event
+	head   *sessionstreamv1.SignedTreeHead
 }
 
 // follow subscribes after cursor 0 and reads n events. The head is the one on the last event.
@@ -34,7 +36,7 @@ func follow(t *testing.T, a *contracttest.Actor, sid string, n int) peerCopy {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	st, err := a.Session.Subscribe(ctx, &sessionv1.SubscribeRequest{SessionId: sid})
+	st, err := a.Stream.Subscribe(ctx, &sessionstreamv1.SubscribeRequest{SessionId: sid})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +68,7 @@ type lost struct {
 	archived int      // events in the archive
 	live     peerCopy // followed live: the original of the sentence that went off the record
 	late     peerCopy // read after the mark: a placeholder for it
-	short    *sessionv1.SignedTreeHead
+	short    *sessionstreamv1.SignedTreeHead
 }
 
 // loseTail runs a session on a hub that writes it to the archive, then stops the writes, adds
@@ -78,9 +80,9 @@ func loseTail(t *testing.T, restoreWait string) *lost {
 	srv := contracttest.StartHub(t, gate.Env, "-archive-interval", "200ms")
 	ada := srv.Participant(t, "ada", "Ada", human)
 	bot := srv.Participant(t, "bot", "Bot", agent)
-	m := &meeting{t: t, srv: srv, sid: "s-" + ids.NewCommandID(), actors: map[string]*contracttest.Actor{"ada": ada, "bot": bot}, reader: bot}
+	m := &meeting{t: t, srv: srv, sid: "s-" + coreapi.NewCommandID(), actors: map[string]*contracttest.Actor{"ada": ada, "bot": bot}, reader: bot}
 	for _, a := range []*contracttest.Actor{ada, bot} {
-		if _, err := a.Session.Join(m.ctx(), &sessionv1.JoinRequest{SessionId: m.sid, CommandId: ids.NewCommandID()}); err != nil {
+		if _, err := a.Commands.Join(m.ctx(), &sessioncommandsv1.JoinRequest{SessionId: m.sid, CommandId: coreapi.NewCommandID()}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -89,7 +91,7 @@ func loseTail(t *testing.T, restoreWait string) *lost {
 	contracttest.WaitArchived(t, srv.ArchiveDir(), m.sid, 10*time.Second, func(a *contracttest.ArchivedSession) bool {
 		return len(a.Events) == int(last.GetId())
 	})
-	l := &lost{t: t, sid: m.sid, key: hubKey(t, ada.Session), archived: int(last.GetId())}
+	l := &lost{t: t, sid: m.sid, key: hubKey(t, ada.Commands), archived: int(last.GetId())}
 	l.short = m.head(uint32(l.archived - 1))
 
 	// From now on nothing reaches the archive.
@@ -100,8 +102,8 @@ func loseTail(t *testing.T, restoreWait string) *lost {
 	m.say("ada", "Lost one.")
 	secret := m.say("ada", "Lost secret.")
 	time.Sleep(100 * time.Millisecond) // let the live peer receive the original
-	if _, err := ada.Session.MarkOffTheRecord(m.ctx(), &sessionv1.MarkOffTheRecordRequest{SessionId: m.sid,
-		CommandId: ids.NewCommandID(), ParticipantId: "ada", UtteranceEventId: secret.GetId()}); err != nil {
+	if _, err := ada.Commands.MarkOffTheRecord(m.ctx(), &sessioncommandsv1.MarkOffTheRecordRequest{SessionId: m.sid,
+		CommandId: coreapi.NewCommandID(), ParticipantId: "ada", UtteranceEventId: secret.GetId()}); err != nil {
 		t.Fatal(err)
 	}
 	m.say("ada", "Lost three.")
@@ -125,23 +127,23 @@ func loseTail(t *testing.T, restoreWait string) *lost {
 	return l
 }
 
-func (l *lost) offer(c peerCopy, after int) (*sessionv1.OfferLogResponse, error) {
-	return l.ada.Session.OfferLog(ctx10(l.t), &sessionv1.OfferLogRequest{SessionId: l.sid,
+func (l *lost) offer(c peerCopy, after int) (*sessioncommandsv1.OfferLogResponse, error) {
+	return l.ada.Commands.OfferLog(ctx10(l.t), &sessioncommandsv1.OfferLogRequest{SessionId: l.sid,
 		AfterEventId: uint32(after), Events: c.events[after:c.head.GetTreeSize()], TreeHead: c.head})
 }
 
-func (l *lost) events() []*sessionv1.Event {
+func (l *lost) events() []*sessionstreamv1.Event {
 	l.t.Helper()
-	res, err := l.ada.Session.GetEvents(ctx10(l.t), &sessionv1.GetEventsRequest{SessionId: l.sid, Limit: 1000})
+	res, err := l.ada.Stream.GetEvents(ctx10(l.t), &sessionstreamv1.GetEventsRequest{SessionId: l.sid, Limit: 1000})
 	if err != nil {
 		l.t.Fatal(err)
 	}
 	return res.GetEvents()
 }
 
-func (l *lost) say(text string) (*sessionv1.Event, error) {
-	res, err := l.ada.Session.SubmitUtterance(ctx10(l.t), &sessionv1.SubmitUtteranceRequest{SessionId: l.sid,
-		CommandId: ids.NewCommandID(), ParticipantId: "ada", Text: text, Modality: sessionv1.Modality_MODALITY_TEXT})
+func (l *lost) say(text string) (*sessionstreamv1.Event, error) {
+	res, err := l.ada.Commands.SubmitUtterance(ctx10(l.t), &sessioncommandsv1.SubmitUtteranceRequest{SessionId: l.sid,
+		CommandId: coreapi.NewCommandID(), ParticipantId: "ada", Text: text, Modality: sessionstreamv1.Modality_MODALITY_TEXT})
 	return res.GetResult().GetEvent(), err
 }
 
@@ -163,7 +165,7 @@ func TestRestoreFromArchiveThenPeer(t *testing.T) {
 		}
 	}
 	// A peer with a longer copy is beyond the end; commands wait for the peers.
-	st, err := l.ada.Session.Subscribe(ctx10(t), &sessionv1.SubscribeRequest{SessionId: l.sid, AfterEventId: uint32(n)})
+	st, err := l.ada.Stream.Subscribe(ctx10(t), &sessionstreamv1.SubscribeRequest{SessionId: l.sid, AfterEventId: uint32(n)})
 	if err == nil {
 		_, err = st.Receive()
 		st.Close()
@@ -180,17 +182,17 @@ func TestRestoreFromArchiveThenPeer(t *testing.T) {
 	}
 
 	// Forged: a changed event, a changed signature, a head of another session.
-	forged := peerCopy{events: append([]*sessionv1.Event{}, l.live.events...), head: l.live.head}
-	ev := proto.Clone(forged.events[l.archived]).(*sessionv1.Event)
+	forged := peerCopy{events: append([]*sessionstreamv1.Event{}, l.live.events...), head: l.live.head}
+	ev := proto.Clone(forged.events[l.archived]).(*sessionstreamv1.Event)
 	ev.GetUtteranceFinal().Text = "Never said."
 	forged.events[l.archived] = ev
 	_, err = l.offer(forged, l.archived)
 	wantCode(t, "copy with a changed event", err, connect.CodeInvalidArgument)
-	badSig := proto.Clone(l.live.head).(*sessionv1.SignedTreeHead)
+	badSig := proto.Clone(l.live.head).(*sessionstreamv1.SignedTreeHead)
 	badSig.Signature[0] ^= 1
 	_, err = l.offer(peerCopy{events: l.live.events, head: badSig}, l.archived)
 	wantCode(t, "copy with a forged signature", err, connect.CodeInvalidArgument)
-	_, err = l.ada.Session.OfferLog(ctx10(t), &sessionv1.OfferLogRequest{SessionId: l.sid, AfterEventId: uint32(l.archived),
+	_, err = l.ada.Commands.OfferLog(ctx10(t), &sessioncommandsv1.OfferLogRequest{SessionId: l.sid, AfterEventId: uint32(l.archived),
 		Events: l.live.events[l.archived : n-1], TreeHead: l.live.head})
 	wantCode(t, "copy with fewer events than its head", err, connect.CodeInvalidArgument)
 	if got := l.events(); len(got) != l.archived {
@@ -200,7 +202,7 @@ func TestRestoreFromArchiveThenPeer(t *testing.T) {
 	// Two peers at once: one with the original of the sentence off the record, offering the
 	// tail; one with the placeholder, offering the whole log. One fills in, the other is a no-op.
 	var wg sync.WaitGroup
-	results := make([]*sessionv1.OfferLogResponse, 2)
+	results := make([]*sessioncommandsv1.OfferLogResponse, 2)
 	errs := make([]error, 2)
 	for i, o := range []struct {
 		c     peerCopy
@@ -253,7 +255,7 @@ func TestRestoreFromArchiveThenPeer(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	st, err = l.ada.Session.Subscribe(ctx, &sessionv1.SubscribeRequest{SessionId: l.sid, AfterEventId: uint32(n)})
+	st, err = l.ada.Stream.Subscribe(ctx, &sessionstreamv1.SubscribeRequest{SessionId: l.sid, AfterEventId: uint32(n)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,8 +266,8 @@ func TestRestoreFromArchiveThenPeer(t *testing.T) {
 	}
 
 	// The archive gets the whole log, which verifies.
-	if _, err := l.ada.Session.EndSession(ctx10(t), &sessionv1.EndSessionRequest{SessionId: l.sid,
-		CommandId: ids.NewCommandID(), ParticipantId: "ada"}); err != nil {
+	if _, err := l.ada.Commands.EndSession(ctx10(t), &sessioncommandsv1.EndSessionRequest{SessionId: l.sid,
+		CommandId: coreapi.NewCommandID(), ParticipantId: "ada"}); err != nil {
 		t.Fatal(err)
 	}
 	a := contracttest.WaitArchived(t, l.srv.ArchiveDir(), l.sid, 10*time.Second, (*contracttest.ArchivedSession).Ended)
@@ -279,7 +281,7 @@ func TestRestoreFromArchiveThenPeer(t *testing.T) {
 // the archive. A copy of the old tail then forks from the log and fails.
 func TestRestoreForkedCopyFails(t *testing.T) {
 	l := loseTail(t, "500ms")
-	var next *sessionv1.Event
+	var next *sessionstreamv1.Event
 	waitUntil(t, 10*time.Second, "the hub takes commands after the restore wait", func() bool {
 		ev, err := l.say("Another sentence.")
 		if connect.CodeOf(err) == connect.CodeUnavailable {
@@ -308,27 +310,27 @@ func TestRestoreForkedCopyFails(t *testing.T) {
 func TestRestoreAfterCleanStop(t *testing.T) {
 	srv := contracttest.StartHub(t, nil, "-archive-interval", "1h")
 	ada := srv.Participant(t, "ada", "Ada", identityv1.ActorKind_ACTOR_KIND_HUMAN)
-	running, ended := "s-"+ids.NewCommandID(), "s-"+ids.NewCommandID()
+	running, ended := "s-"+coreapi.NewCommandID(), "s-"+coreapi.NewCommandID()
 	var last uint32
 	for _, sid := range []string{running, ended} {
-		if _, err := ada.Session.Join(ctx10(t), &sessionv1.JoinRequest{SessionId: sid, CommandId: ids.NewCommandID()}); err != nil {
+		if _, err := ada.Commands.Join(ctx10(t), &sessioncommandsv1.JoinRequest{SessionId: sid, CommandId: coreapi.NewCommandID()}); err != nil {
 			t.Fatal(err)
 		}
-		res, err := ada.Session.SubmitUtterance(ctx10(t), &sessionv1.SubmitUtteranceRequest{SessionId: sid,
-			CommandId: ids.NewCommandID(), ParticipantId: "ada", Text: "Before the stop.", Modality: sessionv1.Modality_MODALITY_TEXT})
+		res, err := ada.Commands.SubmitUtterance(ctx10(t), &sessioncommandsv1.SubmitUtteranceRequest{SessionId: sid,
+			CommandId: coreapi.NewCommandID(), ParticipantId: "ada", Text: "Before the stop.", Modality: sessionstreamv1.Modality_MODALITY_TEXT})
 		if err != nil {
 			t.Fatal(err)
 		}
 		last = res.GetResult().GetEvent().GetId()
 	}
-	repeat := &sessionv1.SubmitUtteranceRequest{SessionId: running, CommandId: ids.NewCommandID(), ParticipantId: "ada",
-		Text: "Repeated after the restart.", Modality: sessionv1.Modality_MODALITY_TEXT}
-	first, err := ada.Session.SubmitUtterance(ctx10(t), repeat)
+	repeat := &sessioncommandsv1.SubmitUtteranceRequest{SessionId: running, CommandId: coreapi.NewCommandID(), ParticipantId: "ada",
+		Text: "Repeated after the restart.", Modality: sessionstreamv1.Modality_MODALITY_TEXT}
+	first, err := ada.Commands.SubmitUtterance(ctx10(t), repeat)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ada.Session.EndSession(ctx10(t), &sessionv1.EndSessionRequest{SessionId: ended,
-		CommandId: ids.NewCommandID(), ParticipantId: "ada"}); err != nil {
+	if _, err := ada.Commands.EndSession(ctx10(t), &sessioncommandsv1.EndSessionRequest{SessionId: ended,
+		CommandId: coreapi.NewCommandID(), ParticipantId: "ada"}); err != nil {
 		t.Fatal(err)
 	}
 	if code, err := srv.Stop(10 * time.Second); err != nil || code != 0 {
@@ -338,35 +340,35 @@ func TestRestoreAfterCleanStop(t *testing.T) {
 	srv = contracttest.StartHubIn(t, srv.DataDir, srv.AdminKey, nil, "-archive-interval", "1h", "-restore-wait", "1h")
 	ada = srv.WithKey(t, ada.Key)
 	// Idempotency covers the events from before the restart.
-	again, err := ada.Session.SubmitUtterance(ctx10(t), repeat)
+	again, err := ada.Commands.SubmitUtterance(ctx10(t), repeat)
 	if err != nil || !again.GetResult().GetDuplicate() || !proto.Equal(again.GetResult().GetEvent(), first.GetResult().GetEvent()) {
 		t.Fatalf("repeated command after the restart: %v, %v", again, err)
 	}
-	res, err := ada.Session.SubmitUtterance(ctx10(t), &sessionv1.SubmitUtteranceRequest{SessionId: running,
-		CommandId: ids.NewCommandID(), ParticipantId: "ada", Text: "After the restart.", Modality: sessionv1.Modality_MODALITY_TEXT})
+	res, err := ada.Commands.SubmitUtterance(ctx10(t), &sessioncommandsv1.SubmitUtteranceRequest{SessionId: running,
+		CommandId: coreapi.NewCommandID(), ParticipantId: "ada", Text: "After the restart.", Modality: sessionstreamv1.Modality_MODALITY_TEXT})
 	if err != nil {
 		t.Fatalf("command after a clean restart: %v", err)
 	}
 	if res.GetResult().GetEvent().GetId() != first.GetResult().GetEvent().GetId()+1 {
 		t.Fatalf("ID after the restart %d, want %d", res.GetResult().GetEvent().GetId(), first.GetResult().GetEvent().GetId()+1)
 	}
-	_, err = ada.Session.SubmitUtterance(ctx10(t), &sessionv1.SubmitUtteranceRequest{SessionId: ended,
-		CommandId: ids.NewCommandID(), ParticipantId: "ada", Text: "Too late.", Modality: sessionv1.Modality_MODALITY_TEXT})
+	_, err = ada.Commands.SubmitUtterance(ctx10(t), &sessioncommandsv1.SubmitUtteranceRequest{SessionId: ended,
+		CommandId: coreapi.NewCommandID(), ParticipantId: "ada", Text: "Too late.", Modality: sessionstreamv1.Modality_MODALITY_TEXT})
 	wantCode(t, "command in an ended session after the restart", err, connect.CodeFailedPrecondition)
-	evs, err := ada.Session.GetEvents(ctx10(t), &sessionv1.GetEventsRequest{SessionId: ended})
+	evs, err := ada.Stream.GetEvents(ctx10(t), &sessionstreamv1.GetEventsRequest{SessionId: ended})
 	if err != nil || len(evs.GetEvents()) != int(last)+1 || evs.GetEvents()[last].GetSessionEnded() == nil {
 		t.Fatalf("ended session after the restart: %v, %v", evs, err)
 	}
 
-	link, err := ada.Identity.CreateStageLink(ctx10(t), &identityv1.CreateStageLinkRequest{SessionId: running, CommandId: ids.NewCommandID()})
+	link, err := ada.Identity.CreateStageLink(ctx10(t), &identityv1.CreateStageLinkRequest{SessionId: running, CommandId: coreapi.NewCommandID()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	head, err := ada.Session.GetTreeHead(ctx10(t), &sessionv1.GetTreeHeadRequest{SessionId: running})
+	head, err := ada.Commands.GetTreeHead(ctx10(t), &sessioncommandsv1.GetTreeHeadRequest{SessionId: running})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = srv.WithToken(t, stageToken(t, link.GetUrl())).Session.OfferLog(ctx10(t), &sessionv1.OfferLogRequest{SessionId: running,
+	_, err = srv.WithToken(t, stageToken(t, link.GetUrl())).Commands.OfferLog(ctx10(t), &sessioncommandsv1.OfferLogRequest{SessionId: running,
 		AfterEventId: head.GetTreeHead().GetTreeSize(), TreeHead: head.GetTreeHead()})
 	if code := connect.CodeOf(err); code != connect.CodePermissionDenied && code != connect.CodeUnauthenticated {
 		t.Errorf("offer with a stage link: %v", err)

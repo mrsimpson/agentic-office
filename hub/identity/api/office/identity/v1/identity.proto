@@ -23,7 +23,7 @@ service IdentityService {
   // A challenge can be exchanged once, also if the signature is wrong.
   rpc ExchangeChallenge(ExchangeChallengeRequest) returns (ExchangeChallengeResponse);
   // CreateStageLink returns a read-only link to the stage of one session. Any participant may
-  // create one. The token of the link only allows SessionService.Subscribe for that session.
+  // create one. The token of the link only allows SessionStreamService.Subscribe for that session.
   rpc CreateStageLink(CreateStageLinkRequest) returns (CreateStageLinkResponse);
 
   // Admin commands. Only a token of an admin key may call them.

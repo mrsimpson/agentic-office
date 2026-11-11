@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mrsimpson/agentic-office/client/core"
+	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
 )
 
 // Tasks are local drafts in the hub for now (#40 syncs them with the team's task tool). A ref
@@ -14,7 +14,7 @@ import (
 
 // taskErr turns bad input into a usage error (exit code 2).
 func taskErr(err error) error {
-	if errors.Is(err, core.ErrBadInput) {
+	if errors.Is(err, coreapi.ErrBadInput) {
 		return usagef("%v", err)
 	}
 	return err
@@ -43,7 +43,7 @@ func cmdTaskCreate(e *env, fs *flag.FlagSet) func([]string) error {
 	desc := fs.String("description", "", "description of the task")
 	descFile := fs.String("description-file", "", "read the description from this file (- for stdin)")
 	assignee := fs.String("assignee", "", "participant who does the task")
-	status := fs.String("status", "", "status: "+strings.Join(core.TaskStatusNames, ", ")+" (default open)")
+	status := fs.String("status", "", "status: "+strings.Join(coreapi.TaskStatusNames, ", ")+" (default open)")
 	return func(args []string) error {
 		title := strings.Join(args, " ")
 		if strings.TrimSpace(title) == "" {
@@ -58,12 +58,12 @@ func cmdTaskCreate(e *env, fs *flag.FlagSet) func([]string) error {
 			return err
 		}
 		// --session links the task to a session.
-		res, err := c.CreateTask(e.ctx, core.TaskDraft{Title: title, Description: d, Assignee: *assignee, Status: *status, SessionID: e.session})
+		res, err := c.CreateTask(e.ctx, coreapi.TaskDraft{Title: title, Description: d, Assignee: *assignee, Status: *status, SessionID: e.session})
 		if err != nil {
 			return taskErr(err)
 		}
 		if e.json {
-			e.printJSON(map[string]any{"task": core.MessageJSON(res.GetTask()), "duplicate": res.GetDuplicate()})
+			e.printJSON(map[string]any{"task": coreapi.MessageJSON(res.GetTask()), "duplicate": res.GetDuplicate()})
 		} else {
 			fmt.Fprintf(e.stdout, "task %s\n", res.GetTask().GetRef())
 		}
@@ -85,10 +85,10 @@ func cmdTaskGet(e *env, fs *flag.FlagSet) func([]string) error {
 			return err
 		}
 		if e.json {
-			e.printJSON(map[string]any{"task": core.MessageJSON(t)})
+			e.printJSON(map[string]any{"task": coreapi.MessageJSON(t)})
 			return nil
 		}
-		fmt.Fprintf(e.stdout, "%s [%s] %s\n", t.GetRef(), core.TaskStatusName(t.GetStatus()), oneLine(t.GetTitle()))
+		fmt.Fprintf(e.stdout, "%s [%s] %s\n", t.GetRef(), coreapi.TaskStatusName(t.GetStatus()), oneLine(t.GetTitle()))
 		for _, kv := range [][2]string{{"assignee", t.GetAssigneeParticipantId()}, {"session", t.GetSessionId()},
 			{"author", t.GetAuthorParticipantId()}, {"revision", fmt.Sprint(t.GetRevision())}} {
 			if kv[1] != "" {
@@ -103,7 +103,7 @@ func cmdTaskGet(e *env, fs *flag.FlagSet) func([]string) error {
 }
 
 func cmdTaskList(e *env, fs *flag.FlagSet) func([]string) error {
-	status := fs.String("status", "", "only tasks with one of these statuses, comma-separated: "+strings.Join(core.TaskStatusNames, ", "))
+	status := fs.String("status", "", "only tasks with one of these statuses, comma-separated: "+strings.Join(coreapi.TaskStatusNames, ", "))
 	assignee := fs.String("assignee", "", "only tasks of this participant")
 	page := fs.String("page-token", "", "read the page after the one that printed this token")
 	limit := fs.Uint("limit", 0, "at most this many tasks (0: the hub's default)")
@@ -111,7 +111,7 @@ func cmdTaskList(e *env, fs *flag.FlagSet) func([]string) error {
 		if err := noArgs(args); err != nil {
 			return err
 		}
-		f := core.TaskFilter{Assignee: *assignee, SessionID: e.session, PageToken: *page, Limit: uint32(*limit)}
+		f := coreapi.TaskFilter{Assignee: *assignee, SessionID: e.session, PageToken: *page, Limit: uint32(*limit)}
 		for _, s := range strings.Split(*status, ",") {
 			if s = strings.TrimSpace(s); s != "" {
 				f.Statuses = append(f.Statuses, s)
@@ -128,7 +128,7 @@ func cmdTaskList(e *env, fs *flag.FlagSet) func([]string) error {
 		if e.json {
 			out := make([]any, len(ts))
 			for i, t := range ts {
-				out[i] = core.MessageJSON(t)
+				out[i] = coreapi.MessageJSON(t)
 			}
 			e.printJSON(map[string]any{"tasks": out, "nextPageToken": next})
 			return nil
@@ -138,7 +138,7 @@ func cmdTaskList(e *env, fs *flag.FlagSet) func([]string) error {
 			if a := t.GetAssigneeParticipantId(); a != "" {
 				who = " @" + a
 			}
-			fmt.Fprintf(e.stdout, "%s [%s]%s %s\n", t.GetRef(), core.TaskStatusName(t.GetStatus()), who, oneLine(t.GetTitle()))
+			fmt.Fprintf(e.stdout, "%s [%s]%s %s\n", t.GetRef(), coreapi.TaskStatusName(t.GetStatus()), who, oneLine(t.GetTitle()))
 		}
 		if next != "" {
 			fmt.Fprintf(e.stderr, "more tasks: --page-token %s\n", next)
@@ -152,14 +152,14 @@ func cmdTaskUpdate(e *env, fs *flag.FlagSet) func([]string) error {
 	desc := fs.String("description", "", "new description")
 	descFile := fs.String("description-file", "", "read the new description from this file (- for stdin)")
 	assignee := fs.String("assignee", "", "new assignee; empty removes the assignee")
-	status := fs.String("status", "", "new status: "+strings.Join(core.TaskStatusNames, ", "))
+	status := fs.String("status", "", "new status: "+strings.Join(coreapi.TaskStatusNames, ", "))
 	return func(args []string) error {
 		const use = "usage: office task update <ref> [--title T] [--description D | --description-file F] [--assignee P] [--status S] [--session S]"
 		if len(args) != 1 {
 			return usagef(use)
 		}
 		set := setFlags(fs)
-		var ch core.TaskChange
+		var ch coreapi.TaskChange
 		if set["title"] {
 			ch.Title = title
 		}
@@ -180,7 +180,7 @@ func cmdTaskUpdate(e *env, fs *flag.FlagSet) func([]string) error {
 		if set["session"] {
 			ch.SessionID = &e.session
 		}
-		if ch == (core.TaskChange{}) {
+		if ch == (coreapi.TaskChange{}) {
 			return usagef("%s: nothing to change", use)
 		}
 		c, err := e.client()
@@ -192,7 +192,7 @@ func cmdTaskUpdate(e *env, fs *flag.FlagSet) func([]string) error {
 			return taskErr(err)
 		}
 		if e.json {
-			e.printJSON(map[string]any{"task": core.MessageJSON(res.GetTask()), "duplicate": res.GetDuplicate()})
+			e.printJSON(map[string]any{"task": coreapi.MessageJSON(res.GetTask()), "duplicate": res.GetDuplicate()})
 		} else {
 			fmt.Fprintf(e.stdout, "task %s revision %d\n", res.GetTask().GetRef(), res.GetTask().GetRevision())
 		}

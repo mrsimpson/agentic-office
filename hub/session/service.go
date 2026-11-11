@@ -14,10 +14,12 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	minutesv1 "github.com/mrsimpson/agentic-office/hub/records/minutes/api"
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
-	"github.com/mrsimpson/agentic-office/hub/session/api/events"
-	"github.com/mrsimpson/agentic-office/hub/session/api/merkle"
-	sessionv1connect "github.com/mrsimpson/agentic-office/hub/session/api/sessionv1connect"
+	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
+	"github.com/mrsimpson/agentic-office/hub/session/commandsapi/sessioncommandsv1connect"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/events"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/merkle"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/sessionstreamv1connect"
 )
 
 // Caller is who makes a call, as the token check (if-token-check) learned it from the token.
@@ -25,7 +27,7 @@ type Caller struct {
 	// ParticipantID is the identity of the caller. It is also the participant ID in the session.
 	ParticipantID string
 	DisplayName   string
-	Kind          sessionv1.ParticipantKind
+	Kind          sessionstreamv1.ParticipantKind
 	// StageSessionID is set for the read-only token of a stage link. Such a caller may only
 	// subscribe to this session.
 	StageSessionID string
@@ -80,7 +82,10 @@ type Service struct {
 	wake   chan struct{}   // wakes the writer when a session ends
 }
 
-var _ sessionv1connect.SessionServiceHandler = (*Service)(nil)
+var (
+	_ sessioncommandsv1connect.SessionCommandsServiceHandler = (*Service)(nil)
+	_ sessionstreamv1connect.SessionStreamServiceHandler     = (*Service)(nil)
+)
 
 // New returns a Service that keeps its logs in store and stores the minutes of ended sessions
 // with minutes. It signs tree heads with key. If auth is nil, every call fails with
@@ -120,15 +125,15 @@ func (s *Service) UseArchive(ctx context.Context, opts ArchiveOptions) error {
 type state struct {
 	mu     sync.Mutex // serialises the commands of the session
 	loaded bool
-	// schema is the schema of the session (dec-session-schema): sessionv1.Schema for a session
+	// schema is the schema of the session (dec-session-schema): sessionstreamv1.Schema for a session
 	// this hub started, the schema of the stored tree head for a restored one. The hub continues
 	// only sessions of its own schema; see checkSchema.
 	schema       string
 	lastID       uint32
 	ended        bool
 	participants map[string]*participant
-	utterances   map[uint32]*utterance // utterance.final event ID -> utterance
-	minutes      *sessionv1.Event      // the last minutes.updated event
+	utterances   map[uint32]*utterance  // utterance.final event ID -> utterance
+	minutes      *sessionstreamv1.Event // the last minutes.updated event
 	// An imported session (dec-session-import, import.go): importer is the participant who sent
 	// the first page; importing is true until import.completed.
 	importer  string
@@ -141,7 +146,7 @@ type state struct {
 	// the root hash of the current log takes O(log n) hashes per event.
 	frontier [][]byte
 	// head is the signed tree head of the current log, once it was needed; nil after a new event.
-	head *sessionv1.SignedTreeHead
+	head *sessionstreamv1.SignedTreeHead
 
 	// After a restart (dec-restore-from-peers): restoring is set while the hub waits for a peer
 	// to fill in the events after the last write to the archive. Commands wait until
@@ -153,7 +158,7 @@ type state struct {
 }
 
 type participant struct {
-	joined *sessionv1.Event // the participant.joined event of the current membership
+	joined *sessionstreamv1.Event // the participant.joined event of the current membership
 	left   bool
 	paused bool
 }
@@ -165,7 +170,7 @@ type utterance struct {
 
 // apply updates the state with one event of the log. It fails only if the event cannot be a leaf
 // of the Merkle tree, for example a placeholder in the log.
-func (st *state) apply(ev *sessionv1.Event) error {
+func (st *state) apply(ev *sessionstreamv1.Event) error {
 	if ev.GetId() != uint32(len(st.leaves)+1) {
 		return connect.NewError(connect.CodeInternal, "session log has a gap")
 	}
@@ -176,33 +181,33 @@ func (st *state) apply(ev *sessionv1.Event) error {
 	st.pushLeaf(h)
 	st.lastID = ev.GetId()
 	switch p := ev.GetPayload().(type) {
-	case *sessionv1.Event_ParticipantJoined:
+	case *sessionstreamv1.Event_ParticipantJoined:
 		st.participants[p.ParticipantJoined.GetParticipantId()] = &participant{joined: ev}
-	case *sessionv1.Event_ParticipantLeft:
+	case *sessionstreamv1.Event_ParticipantLeft:
 		if pt := st.participants[p.ParticipantLeft.GetParticipantId()]; pt != nil {
 			pt.left = true
 		}
-	case *sessionv1.Event_ParticipantPaused:
+	case *sessionstreamv1.Event_ParticipantPaused:
 		if pt := st.participants[p.ParticipantPaused.GetParticipantId()]; pt != nil {
 			pt.paused = true
 		}
-	case *sessionv1.Event_ParticipantResumed:
+	case *sessionstreamv1.Event_ParticipantResumed:
 		if pt := st.participants[p.ParticipantResumed.GetParticipantId()]; pt != nil {
 			pt.paused = false
 		}
-	case *sessionv1.Event_UtteranceFinal:
+	case *sessionstreamv1.Event_UtteranceFinal:
 		st.utterances[ev.GetId()] = &utterance{speaker: p.UtteranceFinal.GetParticipantId()}
-	case *sessionv1.Event_UtteranceOffTheRecord:
+	case *sessionstreamv1.Event_UtteranceOffTheRecord:
 		if u := st.utterances[p.UtteranceOffTheRecord.GetUtteranceEventId()]; u != nil {
 			u.offTheRecord = true
 		}
-	case *sessionv1.Event_MinutesUpdated:
+	case *sessionstreamv1.Event_MinutesUpdated:
 		st.minutes = ev
-	case *sessionv1.Event_SessionEnded:
+	case *sessionstreamv1.Event_SessionEnded:
 		st.ended = true
-	case *sessionv1.Event_SessionImported:
+	case *sessionstreamv1.Event_SessionImported:
 		st.importer, st.importing = ev.GetActorParticipantId(), true
-	case *sessionv1.Event_ImportCompleted:
+	case *sessionstreamv1.Event_ImportCompleted:
 		st.importing = false
 	}
 	if ev.GetUtteranceFinal() != nil && st.importing {
@@ -219,14 +224,14 @@ func newState(schema string) *state {
 // checkSchema fails for a session of another schema than the one of this hub
 // (dec-session-schema): the hub serves its log but does not continue it. The caller holds st.mu.
 func (st *state) checkSchema() error {
-	if st.schema == sessionv1.Schema {
+	if st.schema == sessionstreamv1.Schema {
 		return nil
 	}
 	return precondition(schemaMismatch(st.schema))
 }
 
 func schemaMismatch(schema string) string {
-	return "the session has schema \"" + schema + "\"; this hub has schema \"" + sessionv1.Schema +
+	return "the session has schema \"" + schema + "\"; this hub has schema \"" + sessionstreamv1.Schema +
 		"\" and does not continue a session of another schema"
 }
 
@@ -236,7 +241,7 @@ func (s *Service) lock(sessionID string) (*state, error) {
 	s.mu.Lock()
 	st, ok := s.sessions[sessionID]
 	if !ok {
-		st = newState(sessionv1.Schema)
+		st = newState(sessionstreamv1.Schema)
 		s.sessions[sessionID] = st
 	}
 	s.mu.Unlock()
@@ -274,14 +279,14 @@ type command struct {
 	types []string
 	// check, if set, checks the command against the caller before anything else.
 	check func(Caller) error
-	build func(st *state, c Caller) (*sessionv1.Event, error)
+	build func(st *state, c Caller) (*sessionstreamv1.Event, error)
 }
 
 // run carries out a command once (dec-idempotent-commands).
 //
 // Order of checks: required fields, caller (token, participant_id), repeated command_id, end of
 // session, participant, then the checks of the command itself.
-func (s *Service) run(ctx context.Context, c command, isJoin bool) (*sessionv1.CommandResult, error) {
+func (s *Service) run(ctx context.Context, c command, isJoin bool) (*sessioncommandsv1.CommandResult, error) {
 	if c.sessionID == "" {
 		return nil, invalid("session_id is required")
 	}
@@ -324,7 +329,7 @@ func (s *Service) run(ctx context.Context, c command, isJoin bool) (*sessionv1.C
 			return nil, connect.NewError(connect.CodeAlreadyExists,
 				"command_id was already used for another command")
 		}
-		return &sessionv1.CommandResult{Event: prev, Duplicate: true}, nil
+		return &sessioncommandsv1.CommandResult{Event: prev, Duplicate: true}, nil
 	}
 	if err := st.checkSchema(); err != nil {
 		return nil, err
@@ -343,7 +348,7 @@ func (s *Service) run(ctx context.Context, c command, isJoin bool) (*sessionv1.C
 		// A participant joins once. Another join while it is in the session (for example from a
 		// second client of the same participant) returns the first join.
 		if pt != nil && !pt.left {
-			return &sessionv1.CommandResult{Event: pt.joined, Duplicate: true}, nil
+			return &sessioncommandsv1.CommandResult{Event: pt.joined, Duplicate: true}, nil
 		}
 	} else {
 		if pt == nil {
@@ -370,7 +375,7 @@ func (s *Service) run(ctx context.Context, c command, isJoin bool) (*sessionv1.C
 		return nil, err
 	}
 	s.markDirty(c.sessionID, ev.GetType())
-	return &sessionv1.CommandResult{Event: ev}, nil
+	return &sessioncommandsv1.CommandResult{Event: ev}, nil
 }
 
 // knownParticipant checks a participant ID that a command names in its payload.
@@ -398,23 +403,23 @@ func knownUtterance(st *state, id uint32) (*utterance, error) {
 
 // Join adds the participant of the access token to the session. display_name defaults to the
 // registered name. kind is optional; if set, it must be the registered kind.
-func (s *Service) Join(ctx context.Context, req *sessionv1.JoinRequest) (*sessionv1.JoinResponse, error) {
+func (s *Service) Join(ctx context.Context, req *sessioncommandsv1.JoinRequest) (*sessioncommandsv1.JoinResponse, error) {
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(),
 		types: []string{events.ParticipantJoined},
 		check: func(c Caller) error {
-			if k := req.GetKind(); k != sessionv1.ParticipantKind_PARTICIPANT_KIND_UNSPECIFIED && k != c.Kind {
+			if k := req.GetKind(); k != sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_UNSPECIFIED && k != c.Kind {
 				return connect.NewError(connect.CodePermissionDenied, "kind is not the registered kind of the participant")
 			}
 			return nil
 		},
-		build: func(_ *state, c Caller) (*sessionv1.Event, error) {
+		build: func(_ *state, c Caller) (*sessionstreamv1.Event, error) {
 			name := req.GetDisplayName()
 			if name == "" {
 				name = c.DisplayName
 			}
-			return &sessionv1.Event{
-				Payload: &sessionv1.Event_ParticipantJoined{ParticipantJoined: &sessionv1.ParticipantJoined{
+			return &sessionstreamv1.Event{
+				Payload: &sessionstreamv1.Event_ParticipantJoined{ParticipantJoined: &sessionstreamv1.ParticipantJoined{
 					ParticipantId: c.ParticipantID, DisplayName: name, Kind: c.Kind,
 					Captured: req.GetCaptured(),
 				}},
@@ -424,38 +429,38 @@ func (s *Service) Join(ctx context.Context, req *sessionv1.JoinRequest) (*sessio
 	if err != nil {
 		return nil, err
 	}
-	return &sessionv1.JoinResponse{
+	return &sessioncommandsv1.JoinResponse{
 		ParticipantId: res.GetEvent().GetParticipantJoined().GetParticipantId(), Result: res,
 	}, nil
 }
 
-func (s *Service) Leave(ctx context.Context, req *sessionv1.LeaveRequest) (*sessionv1.LeaveResponse, error) {
+func (s *Service) Leave(ctx context.Context, req *sessioncommandsv1.LeaveRequest) (*sessioncommandsv1.LeaveResponse, error) {
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.ParticipantLeft},
-		build: func(*state, Caller) (*sessionv1.Event, error) {
-			return &sessionv1.Event{Payload: &sessionv1.Event_ParticipantLeft{
-				ParticipantLeft: &sessionv1.ParticipantLeft{ParticipantId: req.GetParticipantId()}}}, nil
+		build: func(*state, Caller) (*sessionstreamv1.Event, error) {
+			return &sessionstreamv1.Event{Payload: &sessionstreamv1.Event_ParticipantLeft{
+				ParticipantLeft: &sessionstreamv1.ParticipantLeft{ParticipantId: req.GetParticipantId()}}}, nil
 		},
 	}, false)
 	if err != nil {
 		return nil, err
 	}
-	return &sessionv1.LeaveResponse{Result: res}, nil
+	return &sessioncommandsv1.LeaveResponse{Result: res}, nil
 }
 
-func (s *Service) SubmitUtterance(ctx context.Context, req *sessionv1.SubmitUtteranceRequest) (*sessionv1.SubmitUtteranceResponse, error) {
+func (s *Service) SubmitUtterance(ctx context.Context, req *sessioncommandsv1.SubmitUtteranceRequest) (*sessioncommandsv1.SubmitUtteranceResponse, error) {
 	if req.GetText() == "" {
 		return nil, invalid("text is required")
 	}
-	if req.GetModality() == sessionv1.Modality_MODALITY_UNSPECIFIED {
+	if req.GetModality() == sessionstreamv1.Modality_MODALITY_UNSPECIFIED {
 		return nil, invalid("modality is required")
 	}
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.UtteranceFinal},
-		build: func(*state, Caller) (*sessionv1.Event, error) {
-			return &sessionv1.Event{Payload: &sessionv1.Event_UtteranceFinal{UtteranceFinal: &sessionv1.UtteranceFinal{
+		build: func(*state, Caller) (*sessionstreamv1.Event, error) {
+			return &sessionstreamv1.Event{Payload: &sessionstreamv1.Event_UtteranceFinal{UtteranceFinal: &sessionstreamv1.UtteranceFinal{
 				ParticipantId: req.GetParticipantId(), Text: req.GetText(), Modality: req.GetModality(),
 				TranscribedAt: req.GetTranscribedAt(),
 			}}}, nil
@@ -464,16 +469,16 @@ func (s *Service) SubmitUtterance(ctx context.Context, req *sessionv1.SubmitUtte
 	if err != nil {
 		return nil, err
 	}
-	return &sessionv1.SubmitUtteranceResponse{Result: res}, nil
+	return &sessioncommandsv1.SubmitUtteranceResponse{Result: res}, nil
 }
 
 // MarkOffTheRecord appends utterance.off_the_record (dec-off-the-record). Only the speaker can mark
 // an utterance off the record, and each one only once. A moderator role is out of scope (#31).
-func (s *Service) MarkOffTheRecord(ctx context.Context, req *sessionv1.MarkOffTheRecordRequest) (*sessionv1.MarkOffTheRecordResponse, error) {
+func (s *Service) MarkOffTheRecord(ctx context.Context, req *sessioncommandsv1.MarkOffTheRecordRequest) (*sessioncommandsv1.MarkOffTheRecordResponse, error) {
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.UtteranceOffTheRecord},
-		build: func(st *state, _ Caller) (*sessionv1.Event, error) {
+		build: func(st *state, _ Caller) (*sessionstreamv1.Event, error) {
 			u, err := knownUtterance(st, req.GetUtteranceEventId())
 			if err != nil {
 				return nil, err
@@ -484,7 +489,7 @@ func (s *Service) MarkOffTheRecord(ctx context.Context, req *sessionv1.MarkOffTh
 			if u.offTheRecord {
 				return nil, precondition("the utterance is already off the record")
 			}
-			return &sessionv1.Event{Payload: &sessionv1.Event_UtteranceOffTheRecord{UtteranceOffTheRecord: &sessionv1.UtteranceOffTheRecord{
+			return &sessionstreamv1.Event{Payload: &sessionstreamv1.Event_UtteranceOffTheRecord{UtteranceOffTheRecord: &sessionstreamv1.UtteranceOffTheRecord{
 				UtteranceEventId: req.GetUtteranceEventId(),
 			}}}, nil
 		},
@@ -492,7 +497,7 @@ func (s *Service) MarkOffTheRecord(ctx context.Context, req *sessionv1.MarkOffTh
 	if err != nil {
 		return nil, err
 	}
-	return &sessionv1.MarkOffTheRecordResponse{Result: res}, nil
+	return &sessioncommandsv1.MarkOffTheRecordResponse{Result: res}, nil
 }
 
 // SubmitSignal appends turn.end, silence.long or addressed.
@@ -502,7 +507,7 @@ func (s *Service) MarkOffTheRecord(ctx context.Context, req *sessionv1.MarkOffTh
 // We chose this because it is the easiest to change: if the session should later detect
 // addressed itself (#14), that adds events with an empty command_id and keeps this command
 // valid. The reverse change would remove events that clients already rely on.
-func (s *Service) SubmitSignal(ctx context.Context, req *sessionv1.SubmitSignalRequest) (*sessionv1.SubmitSignalResponse, error) {
+func (s *Service) SubmitSignal(ctx context.Context, req *sessioncommandsv1.SubmitSignalRequest) (*sessioncommandsv1.SubmitSignalResponse, error) {
 	if req.GetSignal() == nil {
 		return nil, invalid("one of turn_end, silence_long or addressed is required")
 	}
@@ -512,23 +517,23 @@ func (s *Service) SubmitSignal(ctx context.Context, req *sessionv1.SubmitSignalR
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.TurnEnd, events.SilenceLong, events.Addressed},
-		build: func(st *state, _ Caller) (*sessionv1.Event, error) {
+		build: func(st *state, _ Caller) (*sessionstreamv1.Event, error) {
 			switch sig := req.GetSignal().(type) {
-			case *sessionv1.SubmitSignalRequest_TurnEnd:
+			case *sessioncommandsv1.SubmitSignalRequest_TurnEnd:
 				if err := knownParticipant(st, sig.TurnEnd.GetParticipantId(), "turn_end.participant_id"); err != nil {
 					return nil, err
 				}
-				return &sessionv1.Event{Payload: &sessionv1.Event_TurnEnd{TurnEnd: sig.TurnEnd}}, nil
-			case *sessionv1.SubmitSignalRequest_SilenceLong:
-				return &sessionv1.Event{Payload: &sessionv1.Event_SilenceLong{SilenceLong: sig.SilenceLong}}, nil
-			case *sessionv1.SubmitSignalRequest_Addressed:
+				return &sessionstreamv1.Event{Payload: &sessionstreamv1.Event_TurnEnd{TurnEnd: sig.TurnEnd}}, nil
+			case *sessioncommandsv1.SubmitSignalRequest_SilenceLong:
+				return &sessionstreamv1.Event{Payload: &sessionstreamv1.Event_SilenceLong{SilenceLong: sig.SilenceLong}}, nil
+			case *sessioncommandsv1.SubmitSignalRequest_Addressed:
 				if err := knownParticipant(st, sig.Addressed.GetParticipantId(), "addressed.participant_id"); err != nil {
 					return nil, err
 				}
 				if _, err := knownUtterance(st, sig.Addressed.GetUtteranceEventId()); err != nil {
 					return nil, err
 				}
-				return &sessionv1.Event{Payload: &sessionv1.Event_Addressed{Addressed: sig.Addressed}}, nil
+				return &sessionstreamv1.Event{Payload: &sessionstreamv1.Event_Addressed{Addressed: sig.Addressed}}, nil
 			}
 			return nil, invalid("unknown signal")
 		},
@@ -536,93 +541,93 @@ func (s *Service) SubmitSignal(ctx context.Context, req *sessionv1.SubmitSignalR
 	if err != nil {
 		return nil, err
 	}
-	return &sessionv1.SubmitSignalResponse{Result: res}, nil
+	return &sessioncommandsv1.SubmitSignalResponse{Result: res}, nil
 }
 
-func (s *Service) Pause(ctx context.Context, req *sessionv1.PauseRequest) (*sessionv1.PauseResponse, error) {
+func (s *Service) Pause(ctx context.Context, req *sessioncommandsv1.PauseRequest) (*sessioncommandsv1.PauseResponse, error) {
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.ParticipantPaused},
-		build: func(st *state, _ Caller) (*sessionv1.Event, error) {
+		build: func(st *state, _ Caller) (*sessionstreamv1.Event, error) {
 			if st.participants[req.GetParticipantId()].paused {
 				return nil, precondition("the participant is already paused")
 			}
-			return &sessionv1.Event{Payload: &sessionv1.Event_ParticipantPaused{
-				ParticipantPaused: &sessionv1.ParticipantPaused{ParticipantId: req.GetParticipantId()}}}, nil
+			return &sessionstreamv1.Event{Payload: &sessionstreamv1.Event_ParticipantPaused{
+				ParticipantPaused: &sessionstreamv1.ParticipantPaused{ParticipantId: req.GetParticipantId()}}}, nil
 		},
 	}, false)
 	if err != nil {
 		return nil, err
 	}
-	return &sessionv1.PauseResponse{Result: res}, nil
+	return &sessioncommandsv1.PauseResponse{Result: res}, nil
 }
 
-func (s *Service) Resume(ctx context.Context, req *sessionv1.ResumeRequest) (*sessionv1.ResumeResponse, error) {
+func (s *Service) Resume(ctx context.Context, req *sessioncommandsv1.ResumeRequest) (*sessioncommandsv1.ResumeResponse, error) {
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.ParticipantResumed},
-		build: func(st *state, _ Caller) (*sessionv1.Event, error) {
+		build: func(st *state, _ Caller) (*sessionstreamv1.Event, error) {
 			if !st.participants[req.GetParticipantId()].paused {
 				return nil, precondition("the participant is not paused")
 			}
-			return &sessionv1.Event{Payload: &sessionv1.Event_ParticipantResumed{
-				ParticipantResumed: &sessionv1.ParticipantResumed{ParticipantId: req.GetParticipantId()}}}, nil
+			return &sessionstreamv1.Event{Payload: &sessionstreamv1.Event_ParticipantResumed{
+				ParticipantResumed: &sessionstreamv1.ParticipantResumed{ParticipantId: req.GetParticipantId()}}}, nil
 		},
 	}, false)
 	if err != nil {
 		return nil, err
 	}
-	return &sessionv1.ResumeResponse{Result: res}, nil
+	return &sessioncommandsv1.ResumeResponse{Result: res}, nil
 }
 
-func (s *Service) RaiseHand(ctx context.Context, req *sessionv1.RaiseHandRequest) (*sessionv1.RaiseHandResponse, error) {
+func (s *Service) RaiseHand(ctx context.Context, req *sessioncommandsv1.RaiseHandRequest) (*sessioncommandsv1.RaiseHandResponse, error) {
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.HandRaised},
-		build: func(*state, Caller) (*sessionv1.Event, error) {
-			return &sessionv1.Event{Payload: &sessionv1.Event_HandRaised{HandRaised: &sessionv1.HandRaised{
+		build: func(*state, Caller) (*sessionstreamv1.Event, error) {
+			return &sessionstreamv1.Event{Payload: &sessionstreamv1.Event_HandRaised{HandRaised: &sessionstreamv1.HandRaised{
 				ParticipantId: req.GetParticipantId(), Topic: req.GetTopic()}}}, nil
 		},
 	}, false)
 	if err != nil {
 		return nil, err
 	}
-	return &sessionv1.RaiseHandResponse{Result: res}, nil
+	return &sessioncommandsv1.RaiseHandResponse{Result: res}, nil
 }
 
-func (s *Service) UpdateMinutes(ctx context.Context, req *sessionv1.UpdateMinutesRequest) (*sessionv1.UpdateMinutesResponse, error) {
+func (s *Service) UpdateMinutes(ctx context.Context, req *sessioncommandsv1.UpdateMinutesRequest) (*sessioncommandsv1.UpdateMinutesResponse, error) {
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.MinutesUpdated},
-		build: func(*state, Caller) (*sessionv1.Event, error) {
-			return &sessionv1.Event{Payload: &sessionv1.Event_MinutesUpdated{
-				MinutesUpdated: &sessionv1.MinutesUpdated{Text: req.GetText()}}}, nil
+		build: func(*state, Caller) (*sessionstreamv1.Event, error) {
+			return &sessionstreamv1.Event{Payload: &sessionstreamv1.Event_MinutesUpdated{
+				MinutesUpdated: &sessionstreamv1.MinutesUpdated{Text: req.GetText()}}}, nil
 		},
 	}, false)
 	if err != nil {
 		return nil, err
 	}
-	return &sessionv1.UpdateMinutesResponse{Result: res}, nil
+	return &sessioncommandsv1.UpdateMinutesResponse{Result: res}, nil
 }
 
 // ShowArtifact appends artifact.shown. It does not check that the artifact exists: the session is
 // only the log of what participants did, and the stage handles an unknown ID.
-func (s *Service) ShowArtifact(ctx context.Context, req *sessionv1.ShowArtifactRequest) (*sessionv1.ShowArtifactResponse, error) {
+func (s *Service) ShowArtifact(ctx context.Context, req *sessioncommandsv1.ShowArtifactRequest) (*sessioncommandsv1.ShowArtifactResponse, error) {
 	if req.GetArtifactId() == "" {
 		return nil, invalid("artifact_id is required")
 	}
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.ArtifactShown},
-		build: func(*state, Caller) (*sessionv1.Event, error) {
-			return &sessionv1.Event{Payload: &sessionv1.Event_ArtifactShown{
-				ArtifactShown: &sessionv1.ArtifactShown{ArtifactId: req.GetArtifactId()}}}, nil
+		build: func(*state, Caller) (*sessionstreamv1.Event, error) {
+			return &sessionstreamv1.Event{Payload: &sessionstreamv1.Event_ArtifactShown{
+				ArtifactShown: &sessionstreamv1.ArtifactShown{ArtifactId: req.GetArtifactId()}}}, nil
 		},
 	}, false)
 	if err != nil {
 		return nil, err
 	}
-	return &sessionv1.ShowArtifactResponse{Result: res}, nil
+	return &sessioncommandsv1.ShowArtifactResponse{Result: res}, nil
 }
 
 // EndSession stores the confirmed minutes (if-minutes-api) and then appends session.ended
@@ -637,28 +642,28 @@ func (s *Service) ShowArtifact(ctx context.Context, req *sessionv1.ShowArtifactR
 // the minutes is MinutesCommandPrefix plus the command ID of EndSession, so a repeated EndSession
 // does not store the minutes twice. If storing fails, the session does not end and EndSession
 // fails with Internal; the client can repeat it.
-func (s *Service) EndSession(ctx context.Context, req *sessionv1.EndSessionRequest) (*sessionv1.EndSessionResponse, error) {
+func (s *Service) EndSession(ctx context.Context, req *sessioncommandsv1.EndSessionRequest) (*sessioncommandsv1.EndSessionResponse, error) {
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.SessionEnded},
-		build: func(st *state, _ Caller) (*sessionv1.Event, error) {
+		build: func(st *state, _ Caller) (*sessionstreamv1.Event, error) {
 			if err := s.storeMinutes(ctx, st, req); err != nil {
 				return nil, err
 			}
 			// The head of the log before session.ended (dec-merkle-log).
 			head := s.signedHead(req.GetSessionId(), st)
-			return &sessionv1.Event{Payload: &sessionv1.Event_SessionEnded{SessionEnded: &sessionv1.SessionEnded{
+			return &sessionstreamv1.Event{Payload: &sessionstreamv1.Event_SessionEnded{SessionEnded: &sessionstreamv1.SessionEnded{
 				TreeHead: head}}}, nil
 		},
 	}, false)
 	if err != nil {
 		return nil, err
 	}
-	return &sessionv1.EndSessionResponse{Result: res}, nil
+	return &sessioncommandsv1.EndSessionResponse{Result: res}, nil
 }
 
 // storeMinutes stores the last minutes of the session. The caller holds st.mu.
-func (s *Service) storeMinutes(ctx context.Context, st *state, req *sessionv1.EndSessionRequest) error {
+func (s *Service) storeMinutes(ctx context.Context, st *state, req *sessioncommandsv1.EndSessionRequest) error {
 	if s.minutes == nil || st.minutes == nil {
 		return nil
 	}
@@ -667,7 +672,7 @@ func (s *Service) storeMinutes(ctx context.Context, st *state, req *sessionv1.En
 		return nil
 	}
 	author := st.minutes.GetActorParticipantId()
-	var kind sessionv1.ParticipantKind
+	var kind sessionstreamv1.ParticipantKind
 	if pt := st.participants[author]; pt != nil {
 		kind = pt.joined.GetParticipantJoined().GetKind()
 	}
@@ -684,7 +689,7 @@ func (s *Service) storeMinutes(ctx context.Context, st *state, req *sessionv1.En
 // Subscribe sends every event after the cursor, then live events. It returns after it has sent
 // session.ended. A cursor beyond the last event fails with OutOfRange: the client has events the
 // server does not know, for example after the server lost its memory store in a restart.
-func (s *Service) Subscribe(ctx context.Context, req *sessionv1.SubscribeRequest, stream sessionv1connect.SessionServiceSubscribeServerStream) error {
+func (s *Service) Subscribe(ctx context.Context, req *sessionstreamv1.SubscribeRequest, stream sessionstreamv1connect.SessionStreamServiceSubscribeServerStream) error {
 	sid := req.GetSessionId()
 	if sid == "" {
 		return invalid("session_id is required")
@@ -727,7 +732,7 @@ func (s *Service) Subscribe(ctx context.Context, req *sessionv1.SubscribeRequest
 			return err
 		}
 		for i, ev := range evs {
-			res := &sessionv1.SubscribeResponse{Event: ev}
+			res := &sessionstreamv1.SubscribeResponse{Event: ev}
 			if i == len(evs)-1 {
 				// A signed head over the whole copy of the subscriber (dec-restore-from-peers).
 				res.TreeHead = head
@@ -757,18 +762,18 @@ func (s *Service) Subscribe(ctx context.Context, req *sessionv1.SubscribeRequest
 
 // authorKind maps the kind of a participant to the kind of the author of minutes. The minutes
 // own their type (if-minutes-api), so the session maps it here.
-func authorKind(k sessionv1.ParticipantKind) minutesv1.AuthorKind {
+func authorKind(k sessionstreamv1.ParticipantKind) minutesv1.AuthorKind {
 	switch k {
-	case sessionv1.ParticipantKind_PARTICIPANT_KIND_HUMAN:
+	case sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_HUMAN:
 		return minutesv1.AuthorKind_AUTHOR_KIND_HUMAN
-	case sessionv1.ParticipantKind_PARTICIPANT_KIND_AGENT:
+	case sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_AGENT:
 		return minutesv1.AuthorKind_AUTHOR_KIND_AGENT
 	}
 	return minutesv1.AuthorKind_AUTHOR_KIND_UNSPECIFIED
 }
 
 // GetEvents returns the events after a cursor, at most limit of them (dec-events-from-cursor).
-func (s *Service) GetEvents(ctx context.Context, req *sessionv1.GetEventsRequest) (*sessionv1.GetEventsResponse, error) {
+func (s *Service) GetEvents(ctx context.Context, req *sessionstreamv1.GetEventsRequest) (*sessionstreamv1.GetEventsResponse, error) {
 	sid := req.GetSessionId()
 	if sid == "" {
 		return nil, invalid("session_id is required")
@@ -808,30 +813,30 @@ func (s *Service) GetEvents(ctx context.Context, req *sessionv1.GetEventsRequest
 	if evs, _, err = s.prepare(sid, evs); err != nil {
 		return nil, err
 	}
-	return &sessionv1.GetEventsResponse{Events: evs, More: more}, nil
+	return &sessionstreamv1.GetEventsResponse{Events: evs, More: more}, nil
 }
 
 // prepare replaces every utterance that is off the record by a placeholder with the same ID
 // and without its text (dec-off-the-record). The placeholder carries the leaf hash of the
 // original. The log itself keeps the original. prepare also returns the signed tree head over
 // the events up to the last one in evs if that is the last event of the session, else nil.
-func (s *Service) prepare(sid string, evs []*sessionv1.Event) ([]*sessionv1.Event, *sessionv1.SignedTreeHead, error) {
+func (s *Service) prepare(sid string, evs []*sessionstreamv1.Event) ([]*sessionstreamv1.Event, *sessionstreamv1.SignedTreeHead, error) {
 	st, err := s.lock(sid)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer st.mu.Unlock()
-	var head *sessionv1.SignedTreeHead
+	var head *sessionstreamv1.SignedTreeHead
 	// Commands append to the store and apply to the state under st.mu, so the state is at least
 	// as far as the events that were read before.
 	if n := len(evs); n > 0 && evs[n-1].GetId() == st.lastID {
 		head = s.signedHead(sid, st)
 	}
-	out := make([]*sessionv1.Event, 0, len(evs))
+	out := make([]*sessionstreamv1.Event, 0, len(evs))
 	for _, ev := range evs {
 		if ev.GetUtteranceFinal() != nil {
 			if u := st.utterances[ev.GetId()]; u != nil && u.offTheRecord {
-				c := proto.Clone(ev).(*sessionv1.Event)
+				c := proto.Clone(ev).(*sessionstreamv1.Event)
 				f := c.GetUtteranceFinal()
 				f.Text, f.TranscribedAt, f.OffTheRecord = "", nil, true
 				// The placeholder keeps the leaf hash of the original (dec-merkle-log).
@@ -880,7 +885,7 @@ func treeSize(req uint32, current int, field string) (int, error) {
 
 // GetTreeHead returns the signed tree head of the session log, for the current log or for its
 // first tree_size events (dec-merkle-log). The head of an empty session has size 0.
-func (s *Service) GetTreeHead(ctx context.Context, req *sessionv1.GetTreeHeadRequest) (*sessionv1.GetTreeHeadResponse, error) {
+func (s *Service) GetTreeHead(ctx context.Context, req *sessioncommandsv1.GetTreeHeadRequest) (*sessioncommandsv1.GetTreeHeadResponse, error) {
 	leaves, schema, err := s.tree(ctx, req.GetSessionId())
 	if err != nil {
 		return nil, err
@@ -891,15 +896,15 @@ func (s *Service) GetTreeHead(ctx context.Context, req *sessionv1.GetTreeHeadReq
 	}
 	if n == len(leaves) {
 		if head := s.currentHead(req.GetSessionId(), n); head != nil {
-			return &sessionv1.GetTreeHeadResponse{TreeHead: head}, nil
+			return &sessioncommandsv1.GetTreeHeadResponse{TreeHead: head}, nil
 		}
 	}
-	return &sessionv1.GetTreeHeadResponse{TreeHead: merkle.SignTreeHead(s.key, schema, req.GetSessionId(), leaves[:n])}, nil
+	return &sessioncommandsv1.GetTreeHeadResponse{TreeHead: merkle.SignTreeHead(s.key, schema, req.GetSessionId(), leaves[:n])}, nil
 }
 
 // GetConsistencyProof returns the proof that the log of second_size events extends the log of
 // first_size events. first_size must be at least 1 and at most second_size.
-func (s *Service) GetConsistencyProof(ctx context.Context, req *sessionv1.GetConsistencyProofRequest) (*sessionv1.GetConsistencyProofResponse, error) {
+func (s *Service) GetConsistencyProof(ctx context.Context, req *sessioncommandsv1.GetConsistencyProofRequest) (*sessioncommandsv1.GetConsistencyProofResponse, error) {
 	leaves, _, err := s.tree(ctx, req.GetSessionId())
 	if err != nil {
 		return nil, err
@@ -915,12 +920,12 @@ func (s *Service) GetConsistencyProof(ctx context.Context, req *sessionv1.GetCon
 	if first > second {
 		return nil, invalid("first_size is greater than second_size")
 	}
-	return &sessionv1.GetConsistencyProofResponse{FirstSize: uint32(first), SecondSize: uint32(second),
+	return &sessioncommandsv1.GetConsistencyProofResponse{FirstSize: uint32(first), SecondSize: uint32(second),
 		Hashes: merkle.ConsistencyProof(leaves[:second], first)}, nil
 }
 
 // GetInclusionProof returns the audit path of one event in the tree of tree_size events.
-func (s *Service) GetInclusionProof(ctx context.Context, req *sessionv1.GetInclusionProofRequest) (*sessionv1.GetInclusionProofResponse, error) {
+func (s *Service) GetInclusionProof(ctx context.Context, req *sessioncommandsv1.GetInclusionProofRequest) (*sessioncommandsv1.GetInclusionProofResponse, error) {
 	leaves, _, err := s.tree(ctx, req.GetSessionId())
 	if err != nil {
 		return nil, err
@@ -936,14 +941,14 @@ func (s *Service) GetInclusionProof(ctx context.Context, req *sessionv1.GetInclu
 	if int(id) > n {
 		return nil, connect.NewError(connect.CodeOutOfRange, "event_id is beyond the tree size")
 	}
-	return &sessionv1.GetInclusionProofResponse{EventId: id, TreeSize: uint32(n),
+	return &sessioncommandsv1.GetInclusionProofResponse{EventId: id, TreeSize: uint32(n),
 		Hashes: merkle.InclusionProof(leaves[:n], int(id-1))}, nil
 }
 
 // GetHubKey returns the public key that signs tree heads. Every caller with a token may read it.
-func (s *Service) GetHubKey(ctx context.Context, _ *sessionv1.GetHubKeyRequest) (*sessionv1.GetHubKeyResponse, error) {
+func (s *Service) GetHubKey(ctx context.Context, _ *sessioncommandsv1.GetHubKeyRequest) (*sessioncommandsv1.GetHubKeyResponse, error) {
 	if _, err := s.auth.Caller(ctx); err != nil {
 		return nil, err
 	}
-	return &sessionv1.GetHubKeyResponse{PublicKey: s.key.Public().(ed25519.PublicKey)}, nil
+	return &sessioncommandsv1.GetHubKeyResponse{PublicKey: s.key.Public().(ed25519.PublicKey)}, nil
 }

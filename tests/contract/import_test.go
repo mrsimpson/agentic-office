@@ -9,26 +9,28 @@ import (
 	"testing"
 	"time"
 
+	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
+
 	"connectrpc.com/connect/v2"
 	"golang.org/x/net/html"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/mrsimpson/agentic-office/client/core/ids"
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 	decisionv1 "github.com/mrsimpson/agentic-office/hub/records/decision/api"
 	minutesv1 "github.com/mrsimpson/agentic-office/hub/records/minutes/api"
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
-	"github.com/mrsimpson/agentic-office/hub/session/api/events"
-	"github.com/mrsimpson/agentic-office/hub/session/api/merkle"
+	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
 	sessionimportv1 "github.com/mrsimpson/agentic-office/hub/session/importapi"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/events"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/merkle"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
 const (
-	pHuman = sessionv1.ParticipantKind_PARTICIPANT_KIND_HUMAN
-	pAgent = sessionv1.ParticipantKind_PARTICIPANT_KIND_AGENT
-	mText  = sessionv1.Modality_MODALITY_TEXT
-	mVoice = sessionv1.Modality_MODALITY_VOICE
+	pHuman = sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_HUMAN
+	pAgent = sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_AGENT
+	mText  = sessionstreamv1.Modality_MODALITY_TEXT
+	mVoice = sessionstreamv1.Modality_MODALITY_VOICE
 )
 
 // importer is a participant who imports into one session.
@@ -40,7 +42,7 @@ type importer struct {
 
 func newImporter(t *testing.T, srv *contracttest.Hub, pid string) *importer {
 	t.Helper()
-	return &importer{t: t, a: srv.Participant(t, pid, pid, agent), sid: "imp-" + ids.NewCommandID()}
+	return &importer{t: t, a: srv.Participant(t, pid, pid, agent), sid: "imp-" + coreapi.NewCommandID()}
 }
 
 // page sends one page with a new command ID. The caller sets everything but the IDs.
@@ -49,7 +51,7 @@ func (im *importer) page(req *sessionimportv1.ImportConversationRequest) (*sessi
 		req.SessionId = im.sid
 	}
 	if req.CommandId == "" {
-		req.CommandId = ids.NewCommandID()
+		req.CommandId = coreapi.NewCommandID()
 	}
 	if req.ParticipantId == "" {
 		req.ParticipantId = im.a.ParticipantID
@@ -73,9 +75,9 @@ func (im *importer) fails(code connect.Code, req *sessionimportv1.ImportConversa
 	}
 }
 
-func (im *importer) events() []*sessionv1.Event {
+func (im *importer) events() []*sessionstreamv1.Event {
 	im.t.Helper()
-	res, err := im.a.Session.GetEvents(ctx10(im.t), &sessionv1.GetEventsRequest{SessionId: im.sid, Limit: 1000})
+	res, err := im.a.Stream.GetEvents(ctx10(im.t), &sessionstreamv1.GetEventsRequest{SessionId: im.sid, Limit: 1000})
 	if err != nil {
 		im.t.Fatal(err)
 	}
@@ -108,7 +110,7 @@ func TestImportInPages(t *testing.T) {
 	im := newImporter(t, srv, "importer")
 	spoken := time.Date(2026, 11, 6, 10, 0, 0, 0, time.UTC)
 
-	p1 := &sessionimportv1.ImportConversationRequest{CommandId: ids.NewCommandID(), Conversation: conversation(),
+	p1 := &sessionimportv1.ImportConversationRequest{CommandId: coreapi.NewCommandID(), Conversation: conversation(),
 		Participants: people(), Utterances: []*sessionimportv1.ImportedUtterance{
 			{Speaker: "ada", Text: "Shall we ship the import?", Modality: mVoice, Time: timestamppb.New(spoken)},
 			utt("claude", "Yes, with contract tests."),
@@ -168,7 +170,7 @@ func TestImportInPages(t *testing.T) {
 	}
 
 	// Signed tree heads: the one of the last page covers the whole log.
-	key := hubKey(t, im.a.Session)
+	key := hubKey(t, im.a.Commands)
 	if err := merkle.VerifyEvents(evs, r3.GetTreeHead(), key); err != nil {
 		t.Fatalf("tree head of the last page: %v", err)
 	}
@@ -200,19 +202,19 @@ func TestImportThenDeriveRecords(t *testing.T) {
 		Utterances: []*sessionimportv1.ImportedUtterance{utt("ada", "We ship on Friday."), utt("claude", "I will write the notes.")},
 		Complete:   true})
 	ctx := ctx10(t)
-	s := im.a.Session
-	if _, err := s.Join(ctx, &sessionv1.JoinRequest{SessionId: im.sid, CommandId: ids.NewCommandID()}); err != nil {
+	s := im.a.Commands
+	if _, err := s.Join(ctx, &sessioncommandsv1.JoinRequest{SessionId: im.sid, CommandId: coreapi.NewCommandID()}); err != nil {
 		t.Fatalf("join an imported session: %v", err)
 	}
-	if _, err := s.UpdateMinutes(ctx, &sessionv1.UpdateMinutesRequest{SessionId: im.sid, CommandId: ids.NewCommandID(),
+	if _, err := s.UpdateMinutes(ctx, &sessioncommandsv1.UpdateMinutesRequest{SessionId: im.sid, CommandId: coreapi.NewCommandID(),
 		ParticipantId: "scribe", Text: "# Design review\n\n- Ship on Friday."}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := im.a.Decision.RecordDecision(ctx, &decisionv1.RecordDecisionRequest{CommandId: ids.NewCommandID(),
+	if _, err := im.a.Decision.RecordDecision(ctx, &decisionv1.RecordDecisionRequest{CommandId: coreapi.NewCommandID(),
 		Text: "We ship on Friday.", AuthorParticipantId: "scribe", SessionId: im.sid}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.EndSession(ctx, &sessionv1.EndSessionRequest{SessionId: im.sid, CommandId: ids.NewCommandID(),
+	if _, err := s.EndSession(ctx, &sessioncommandsv1.EndSessionRequest{SessionId: im.sid, CommandId: coreapi.NewCommandID(),
 		ParticipantId: "scribe"}); err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +258,7 @@ func TestImportRules(t *testing.T) {
 			t.Errorf("%s: want invalid_argument, got %v", name, err)
 		}
 	}
-	if _, err := im.a.Import.ImportConversation(ctx10(t), &sessionimportv1.ImportConversationRequest{CommandId: ids.NewCommandID(),
+	if _, err := im.a.Import.ImportConversation(ctx10(t), &sessionimportv1.ImportConversationRequest{CommandId: coreapi.NewCommandID(),
 		ParticipantId: "importer", Conversation: conversation()}); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Errorf("no session: want invalid_argument, got %v", err)
 	}
@@ -269,15 +271,15 @@ func TestImportRules(t *testing.T) {
 	im.fails(connect.CodePermissionDenied, r)
 
 	start := first()
-	start.CommandId = ids.NewCommandID()
+	start.CommandId = coreapi.NewCommandID()
 	im.ok(start)
 	ctx := ctx10(t)
 	// While the import runs, the session takes no session commands, and no pages of others.
-	if _, err := other.Session.Join(ctx, &sessionv1.JoinRequest{SessionId: im.sid, CommandId: ids.NewCommandID()}); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+	if _, err := other.Commands.Join(ctx, &sessioncommandsv1.JoinRequest{SessionId: im.sid, CommandId: coreapi.NewCommandID()}); connect.CodeOf(err) != connect.CodeFailedPrecondition {
 		t.Errorf("join during the import: want failed_precondition, got %v", err)
 	}
 	if _, err := other.Import.ImportConversation(ctx, &sessionimportv1.ImportConversationRequest{SessionId: im.sid,
-		CommandId: ids.NewCommandID(), ParticipantId: "other", Utterances: []*sessionimportv1.ImportedUtterance{utt("ada", "Mine.")}}); connect.CodeOf(err) != connect.CodePermissionDenied {
+		CommandId: coreapi.NewCommandID(), ParticipantId: "other", Utterances: []*sessionimportv1.ImportedUtterance{utt("ada", "Mine.")}}); connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Errorf("page of another participant: want permission_denied, got %v", err)
 	}
 	// A later page starts no new import, adds no known speaker again, and is not empty.
@@ -288,45 +290,45 @@ func TestImportRules(t *testing.T) {
 		Participants: []*sessionimportv1.ImportedParticipant{{Key: "ada", DisplayName: "Ada", Kind: pHuman}}})
 	im.fails(connect.CodeInvalidArgument, &sessionimportv1.ImportConversationRequest{})
 	// The command ID of a page is not a session command.
-	if _, err := im.a.Session.Join(ctx, &sessionv1.JoinRequest{SessionId: im.sid, CommandId: start.GetCommandId()}); connect.CodeOf(err) != connect.CodeAlreadyExists {
+	if _, err := im.a.Commands.Join(ctx, &sessioncommandsv1.JoinRequest{SessionId: im.sid, CommandId: start.GetCommandId()}); connect.CodeOf(err) != connect.CodeAlreadyExists {
 		t.Errorf("join with the command ID of a page: want already_exists, got %v", err)
 	}
 	done := im.ok(&sessionimportv1.ImportConversationRequest{Complete: true})
 	// After the import: no more pages; session commands work.
 	im.fails(connect.CodeFailedPrecondition, &sessionimportv1.ImportConversationRequest{Utterances: []*sessionimportv1.ImportedUtterance{utt("ada", "Late.")}})
-	if _, err := other.Session.Join(ctx, &sessionv1.JoinRequest{SessionId: im.sid, CommandId: ids.NewCommandID()}); err != nil {
+	if _, err := other.Commands.Join(ctx, &sessioncommandsv1.JoinRequest{SessionId: im.sid, CommandId: coreapi.NewCommandID()}); err != nil {
 		t.Errorf("join after the import: %v", err)
 	}
 	// Nobody can mark an imported sentence off the record: its speaker has no key (#50).
-	if _, err := im.a.Session.Join(ctx, &sessionv1.JoinRequest{SessionId: im.sid, CommandId: ids.NewCommandID()}); err != nil {
+	if _, err := im.a.Commands.Join(ctx, &sessioncommandsv1.JoinRequest{SessionId: im.sid, CommandId: coreapi.NewCommandID()}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := im.a.Session.MarkOffTheRecord(ctx, &sessionv1.MarkOffTheRecordRequest{SessionId: im.sid, CommandId: ids.NewCommandID(),
+	if _, err := im.a.Commands.MarkOffTheRecord(ctx, &sessioncommandsv1.MarkOffTheRecordRequest{SessionId: im.sid, CommandId: coreapi.NewCommandID(),
 		ParticipantId: "importer", UtteranceEventId: done.GetFirstEventId() - 1}); connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Errorf("mark an imported sentence off the record: want permission_denied, got %v", err)
 	}
 
 	// A session with live events cannot be imported into.
 	live := newImporter(t, srv, "live")
-	if _, err := live.a.Session.Join(ctx, &sessionv1.JoinRequest{SessionId: live.sid, CommandId: ids.NewCommandID()}); err != nil {
+	if _, err := live.a.Commands.Join(ctx, &sessioncommandsv1.JoinRequest{SessionId: live.sid, CommandId: coreapi.NewCommandID()}); err != nil {
 		t.Fatal(err)
 	}
 	live.fails(connect.CodeFailedPrecondition, first())
 	live.fails(connect.CodeFailedPrecondition, &sessionimportv1.ImportConversationRequest{Utterances: []*sessionimportv1.ImportedUtterance{utt("ada", "Hi.")}})
 
 	// A stage link cannot import.
-	link, err := im.a.Identity.CreateStageLink(ctx, &identityv1.CreateStageLinkRequest{SessionId: im.sid, CommandId: ids.NewCommandID()})
+	link, err := im.a.Identity.CreateStageLink(ctx, &identityv1.CreateStageLinkRequest{SessionId: im.sid, CommandId: coreapi.NewCommandID()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, err = srv.WithToken(t, stageToken(t, link.GetUrl())).Import.ImportConversation(ctx, &sessionimportv1.ImportConversationRequest{SessionId: "x",
-		CommandId: ids.NewCommandID(), ParticipantId: "importer", Conversation: conversation()})
+		CommandId: coreapi.NewCommandID(), ParticipantId: "importer", Conversation: conversation()})
 	if code := connect.CodeOf(err); code != connect.CodePermissionDenied {
 		t.Errorf("import with a stage link: want permission_denied, got %v", err)
 	}
 	// Without a token nothing is imported.
 	if _, err := srv.Anonymous(t).Import.ImportConversation(ctx, &sessionimportv1.ImportConversationRequest{SessionId: "x",
-		CommandId: ids.NewCommandID(), ParticipantId: "importer", Conversation: conversation()}); connect.CodeOf(err) != connect.CodeUnauthenticated {
+		CommandId: coreapi.NewCommandID(), ParticipantId: "importer", Conversation: conversation()}); connect.CodeOf(err) != connect.CodeUnauthenticated {
 		t.Errorf("import without a token: want unauthenticated, got %v", err)
 	}
 }
@@ -343,7 +345,7 @@ func TestImportSurvivesRestart(t *testing.T) {
 	}
 	srv2 := contracttest.StartHubIn(t, srv.DataDir, srv.AdminKey, nil, "-archive-interval", "1h")
 	im.a = srv2.WithKey(t, im.a.Key)
-	if _, err := im.a.Session.Join(ctx10(t), &sessionv1.JoinRequest{SessionId: im.sid, CommandId: ids.NewCommandID()}); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+	if _, err := im.a.Commands.Join(ctx10(t), &sessioncommandsv1.JoinRequest{SessionId: im.sid, CommandId: coreapi.NewCommandID()}); connect.CodeOf(err) != connect.CodeFailedPrecondition {
 		t.Errorf("join a restored import that is not complete: want failed_precondition, got %v", err)
 	}
 	res := im.ok(&sessionimportv1.ImportConversationRequest{Utterances: []*sessionimportv1.ImportedUtterance{utt("claude", "After it.")},
@@ -352,7 +354,7 @@ func TestImportSurvivesRestart(t *testing.T) {
 		t.Fatalf("page after the restart: %v", res)
 	}
 	evs := im.events()
-	if err := merkle.VerifyEvents(evs, res.GetTreeHead(), hubKey(t, im.a.Session)); err != nil {
+	if err := merkle.VerifyEvents(evs, res.GetTreeHead(), hubKey(t, im.a.Commands)); err != nil {
 		t.Fatal(err)
 	}
 	if evs[0].GetType() != events.SessionImported || evs[5].GetImportCompleted().GetUtterances() != 2 {
@@ -398,7 +400,7 @@ func TestStageShowsImportedSession(t *testing.T) {
 		t.Errorf("origin of a complete import: %q", text(o))
 	}
 	// A participant who joins live is not marked imported; their contributions have no original time.
-	if _, err := im.a.Session.Join(ctx10(t), &sessionv1.JoinRequest{SessionId: im.sid, CommandId: ids.NewCommandID(), Kind: pAgent}); err != nil {
+	if _, err := im.a.Commands.Join(ctx10(t), &sessioncommandsv1.JoinRequest{SessionId: im.sid, CommandId: coreapi.NewCommandID(), Kind: pAgent}); err != nil {
 		t.Fatal(err)
 	}
 	p = st.wait("participants", "ada joined", func(n *html.Node) bool { return participantEl(n, "ada") != nil })

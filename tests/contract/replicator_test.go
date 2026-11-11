@@ -13,17 +13,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mrsimpson/agentic-office/client/core/ids"
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
-	"github.com/mrsimpson/agentic-office/hub/session/api/events"
-	"github.com/mrsimpson/agentic-office/hub/session/api/logfile"
+	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
+	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/events"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/logfile"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
 // serverLog reads the whole session log from the server, up to session.ended.
 func serverLog(t *testing.T, a *contracttest.Actor, sid string) []string {
 	t.Helper()
-	st, err := a.Session.Subscribe(ctx10(t), &sessionv1.SubscribeRequest{SessionId: sid})
+	st, err := a.Stream.Subscribe(ctx10(t), &sessionstreamv1.SubscribeRequest{SessionId: sid})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +70,7 @@ func TestReplicatorResumesAfterKill(t *testing.T) {
 	bot := m.user("bot", "Bot", "agent")
 	writer := m.srv.Participant(t, "writer", "Writer", agent)
 	sid := newSession()
-	if _, err := writer.Session.Join(ctx10(t), &sessionv1.JoinRequest{SessionId: sid, CommandId: ids.NewCommandID()}); err != nil {
+	if _, err := writer.Commands.Join(ctx10(t), &sessioncommandsv1.JoinRequest{SessionId: sid, CommandId: coreapi.NewCommandID()}); err != nil {
 		t.Fatal(err)
 	}
 	j := bot.join(sid)
@@ -80,9 +81,9 @@ func TestReplicatorResumesAfterKill(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		for i := range total {
-			_, err := writer.Session.SubmitUtterance(ctx10(t), &sessionv1.SubmitUtteranceRequest{SessionId: sid,
-				CommandId: ids.NewCommandID(), ParticipantId: "writer", Text: "sentence " + string(rune('a'+i%26)),
-				Modality: sessionv1.Modality_MODALITY_TEXT})
+			_, err := writer.Commands.SubmitUtterance(ctx10(t), &sessioncommandsv1.SubmitUtteranceRequest{SessionId: sid,
+				CommandId: coreapi.NewCommandID(), ParticipantId: "writer", Text: "sentence " + string(rune('a'+i%26)),
+				Modality: sessionstreamv1.Modality_MODALITY_TEXT})
 			if err != nil {
 				done <- err
 				return
@@ -121,7 +122,7 @@ func TestReplicatorResumesAfterKill(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
-	if _, err := writer.Session.EndSession(ctx10(t), &sessionv1.EndSessionRequest{SessionId: sid, CommandId: ids.NewCommandID(),
+	if _, err := writer.Commands.EndSession(ctx10(t), &sessioncommandsv1.EndSessionRequest{SessionId: sid, CommandId: coreapi.NewCommandID(),
 		ParticipantId: "writer"}); err != nil {
 		t.Fatal(err)
 	}
@@ -253,14 +254,14 @@ func TestReplicatorCatchesUpAfterNetworkDrop(t *testing.T) {
 	viaProxy.env = append(append([]string{}, bot.env...), "OFFICE_HUB="+proxy.URL)
 	writer := m.srv.Participant(t, "writer", "Writer", agent)
 	sid := newSession()
-	if _, err := writer.Session.Join(ctx10(t), &sessionv1.JoinRequest{SessionId: sid, CommandId: ids.NewCommandID()}); err != nil {
+	if _, err := writer.Commands.Join(ctx10(t), &sessioncommandsv1.JoinRequest{SessionId: sid, CommandId: coreapi.NewCommandID()}); err != nil {
 		t.Fatal(err)
 	}
 	j := viaProxy.join(sid)
 	say := func(text string) uint32 {
 		t.Helper()
-		res, err := writer.Session.SubmitUtterance(ctx10(t), &sessionv1.SubmitUtteranceRequest{SessionId: sid,
-			CommandId: ids.NewCommandID(), ParticipantId: "writer", Text: text, Modality: sessionv1.Modality_MODALITY_TEXT})
+		res, err := writer.Commands.SubmitUtterance(ctx10(t), &sessioncommandsv1.SubmitUtteranceRequest{SessionId: sid,
+			CommandId: coreapi.NewCommandID(), ParticipantId: "writer", Text: text, Modality: sessionstreamv1.Modality_MODALITY_TEXT})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -292,7 +293,7 @@ func TestReplicatorCatchesUpAfterNetworkDrop(t *testing.T) {
 		t.Fatalf("local log complete only %v after the network is back, want at most 2 s", catchUp)
 	}
 
-	if _, err := writer.Session.EndSession(ctx10(t), &sessionv1.EndSessionRequest{SessionId: sid, CommandId: ids.NewCommandID(),
+	if _, err := writer.Commands.EndSession(ctx10(t), &sessioncommandsv1.EndSessionRequest{SessionId: sid, CommandId: coreapi.NewCommandID(),
 		ParticipantId: "writer"}); err != nil {
 		t.Fatal(err)
 	}

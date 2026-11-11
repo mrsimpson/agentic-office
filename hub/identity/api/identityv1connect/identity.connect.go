@@ -97,7 +97,7 @@ type IdentityServiceClient interface {
 	// A challenge can be exchanged once, also if the signature is wrong.
 	ExchangeChallenge(context.Context, *api.ExchangeChallengeRequest) (*api.ExchangeChallengeResponse, error)
 	// CreateStageLink returns a read-only link to the stage of one session. Any participant may
-	// create one. The token of the link only allows SessionService.Subscribe for that session.
+	// create one. The token of the link only allows SessionStreamService.Subscribe for that session.
 	CreateStageLink(context.Context, *api.CreateStageLinkRequest) (*api.CreateStageLinkResponse, error)
 	// Admin commands. Only a token of an admin key may call them.
 	RegisterKey(context.Context, *api.RegisterKeyRequest) (*api.RegisterKeyResponse, error)
@@ -118,7 +118,7 @@ type IdentityServiceHandler interface {
 	// A challenge can be exchanged once, also if the signature is wrong.
 	ExchangeChallenge(context.Context, *api.ExchangeChallengeRequest) (*api.ExchangeChallengeResponse, error)
 	// CreateStageLink returns a read-only link to the stage of one session. Any participant may
-	// create one. The token of the link only allows SessionService.Subscribe for that session.
+	// create one. The token of the link only allows SessionStreamService.Subscribe for that session.
 	CreateStageLink(context.Context, *api.CreateStageLinkRequest) (*api.CreateStageLinkResponse, error)
 	// Admin commands. Only a token of an admin key may call them.
 	RegisterKey(context.Context, *api.RegisterKeyRequest) (*api.RegisterKeyResponse, error)

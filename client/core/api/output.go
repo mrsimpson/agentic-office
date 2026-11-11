@@ -1,9 +1,8 @@
-package core
+package coreapi
 
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,8 +12,9 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
-	"github.com/mrsimpson/agentic-office/hub/session/api/logfile"
+	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/logfile"
 	slidesv1 "github.com/mrsimpson/agentic-office/hub/slides/api"
 )
 
@@ -22,7 +22,7 @@ import (
 // that both have the same shapes (dec-cli-and-mcp).
 
 // EventJSON returns the event as in the local log: its canonical, compact JSON.
-func EventJSON(ev *sessionv1.Event) json.RawMessage {
+func EventJSON(ev *sessionstreamv1.Event) json.RawMessage {
 	line, err := logfile.MarshalLine(ev)
 	if err != nil {
 		return json.RawMessage("null")
@@ -44,7 +44,7 @@ func MessageJSON(m proto.Message) json.RawMessage {
 }
 
 // ResultJSON is the output of a session command: {"event": …, "duplicate": …}.
-func ResultJSON(res *sessionv1.CommandResult) map[string]any {
+func ResultJSON(res *sessioncommandsv1.CommandResult) map[string]any {
 	return map[string]any{"event": EventJSON(res.GetEvent()), "duplicate": res.GetDuplicate()}
 }
 
@@ -97,28 +97,3 @@ func ParseDeckMarkdown(b []byte) (*slidesv1.RenderDeckRequest, error) {
 
 // ErrNothingOffTheRecord means that the local log has no own sentence that can be off the record.
 var ErrNothingOffTheRecord = errors.New("the local log has no own sentence to mark off the record")
-
-// MarkOffTheRecordLast marks off the record the newest own sentence that is not off the record yet. It reads the local log.
-func (c *Client) MarkOffTheRecordLast(ctx context.Context, sessionID string) (*sessionv1.CommandResult, error) {
-	pid, err := c.ParticipantID(ctx)
-	if err != nil {
-		return nil, err
-	}
-	p, err := c.Paths(sessionID, pid)
-	if err != nil {
-		return nil, err
-	}
-	evs, err := ReadLog(p.Log)
-	if err != nil {
-		return nil, err
-	}
-	g := NewGateway(pid)
-	for _, ev := range evs {
-		g.Apply(ev)
-	}
-	u := g.LastSent()
-	if u == nil {
-		return nil, ErrNothingOffTheRecord
-	}
-	return c.MarkOffTheRecord(ctx, sessionID, u.EventID)
-}

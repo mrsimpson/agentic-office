@@ -1,8 +1,8 @@
-package core
+package coreapi
 
 import (
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
-	"github.com/mrsimpson/agentic-office/hub/session/api/events"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/events"
 )
 
 // Status of an own utterance in the gateway view (dec-gateway-cli).
@@ -76,7 +76,7 @@ func (g *Gateway) Local(cmdID, text string, status Status) Change {
 }
 
 // Apply takes one event of the local log and returns what changed for the view.
-func (g *Gateway) Apply(ev *sessionv1.Event) []Change {
+func (g *Gateway) Apply(ev *sessionstreamv1.Event) []Change {
 	me := g.ParticipantID
 	switch ev.GetType() {
 	case events.UtteranceFinal:

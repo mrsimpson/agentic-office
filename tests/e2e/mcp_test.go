@@ -17,8 +17,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
-	"github.com/mrsimpson/agentic-office/hub/session/api/events"
-	"github.com/mrsimpson/agentic-office/hub/session/api/logfile"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/events"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/logfile"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 

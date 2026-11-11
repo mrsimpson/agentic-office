@@ -12,6 +12,9 @@ import (
 	"io"
 	"os"
 
+	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
+	"github.com/mrsimpson/agentic-office/client/replicator"
+
 	"github.com/mrsimpson/agentic-office/client/agentrunner"
 	"github.com/mrsimpson/agentic-office/client/cli"
 	"github.com/mrsimpson/agentic-office/client/core"
@@ -20,13 +23,17 @@ import (
 )
 
 func main() {
+	cli.Dial = core.Dial
+	cli.NewReplicator = replicator.New
 	cli.RunMCP = func(ctx context.Context, o cli.MCPOptions) error {
-		s := &mcp.Server{Config: o.Config, Session: o.Session, Version: o.Version, Stderr: o.Stderr}
+		s := &mcp.Server{Config: o.Config, Session: o.Session, Version: o.Version, Stderr: o.Stderr,
+			Dial: core.Dial, NewReplicator: replicator.New}
 		return s.Run(ctx, io.NopCloser(o.Stdin), nopWriteCloser{o.Stdout})
 	}
 	cli.RunAgent = func(ctx context.Context, o cli.AgentOptions) error {
 		return agentrunner.Run(ctx, agentrunner.Options{Config: o.Config, Session: o.Session, Role: o.Role,
-			Harness: o.Harness, Allow: o.Allow, Cwd: o.Cwd, Office: o.Office, Version: o.Version, Stderr: o.Stderr})
+			Harness: o.Harness, Allow: o.Allow, Cwd: o.Cwd, Office: o.Office, Version: o.Version, Stderr: o.Stderr,
+			Dial: core.Dial, NewReplicator: replicator.New})
 	}
 	cli.CheckEars = func(ctx context.Context, o *cli.EarsOptions, progress func(string)) error {
 		cfg := earsConfig(*o)
@@ -49,8 +56,8 @@ func main() {
 		}
 		return l, nil
 	}
-	cli.StartEars = func(ctx context.Context, c *core.Client, sid string, o cli.EarsOptions,
-		status func(cmdID, text string, s core.Status), paused func() bool) error {
+	cli.StartEars = func(ctx context.Context, c coreapi.Client, sid string, o cli.EarsOptions,
+		status func(cmdID, text string, s coreapi.Status), paused func() bool) error {
 		e := &ears.Ears{Config: earsConfig(o), Client: c, SessionID: sid, Status: status, Paused: paused, Names: o.Names}
 		if o.Report != nil {
 			e.Report = func(r ears.Report) { o.Report(r.String(), r) }

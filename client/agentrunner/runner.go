@@ -9,17 +9,19 @@ import (
 	"os"
 	"path/filepath"
 
+	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
+	"github.com/mrsimpson/agentic-office/client/replicator/control"
+
 	acp "github.com/coder/acp-go-sdk"
 
-	"github.com/mrsimpson/agentic-office/client/core"
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
-	"github.com/mrsimpson/agentic-office/hub/session/api/events"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/events"
 )
 
 // Options configure one runner: one agent key in one session.
 type Options struct {
 	// Config is the configuration of the agent (its key, the hub, the runtime directory).
-	Config core.Config
+	Config coreapi.Config
 	// Session is the session to take part in.
 	Session string
 	// Role is the role of the agent in the meeting, in plain words. It may be empty.
@@ -39,6 +41,10 @@ type Options struct {
 	Version string
 	// Stderr receives the log of the runner and the stderr of the harness. Nil: os.Stderr.
 	Stderr io.Writer
+	// Dial dials the office hub (if-client-core).
+	Dial coreapi.Dial
+	// NewReplicator creates the replicator of this process (if-replication).
+	NewReplicator control.New
 }
 
 // Run keeps the agent in the session until the session ends, the agent leaves, the harness
@@ -75,7 +81,7 @@ func Run(ctx context.Context, o Options) error {
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	m, err := joinMeeting(ctx, cfg, o.Session, logf)
+	m, err := joinMeeting(ctx, o, cfg, logf)
 	if err != nil {
 		return err
 	}
@@ -90,8 +96,8 @@ func Run(ctx context.Context, o Options) error {
 		logf("harness stopped")
 	}()
 	office := acp.McpServerStdio{Name: "office", Command: o.Office, Args: []string{"mcp", "--session", o.Session},
-		Env: []acp.EnvVariable{absEnv(core.EnvHub, cfg.Hub), absEnv(core.EnvCACert, cfg.CACert),
-			absEnv(core.EnvKey, cfg.KeyFile), absEnv(core.EnvRuntimeDir, cfg.RuntimeDir)}}
+		Env: []acp.EnvVariable{absEnv(coreapi.EnvHub, cfg.Hub), absEnv(coreapi.EnvCACert, cfg.CACert),
+			absEnv(coreapi.EnvKey, cfg.KeyFile), absEnv(coreapi.EnvRuntimeDir, cfg.RuntimeDir)}}
 	if err := h.open(ctx, o.Cwd, office, o.Version); err != nil {
 		return err
 	}
@@ -107,7 +113,7 @@ func Run(ctx context.Context, o Options) error {
 
 // absConfig makes the file paths of cfg absolute, because the MCP server runs in another
 // working directory.
-func absConfig(cfg core.Config) (core.Config, error) {
+func absConfig(cfg coreapi.Config) (coreapi.Config, error) {
 	for _, p := range []*string{&cfg.CACert, &cfg.KeyFile, &cfg.RuntimeDir} {
 		if *p == "" {
 			continue
@@ -140,10 +146,10 @@ type runner struct {
 
 // loop sends the first prompt and follows the local log until the run ends.
 func (r *runner) loop(ctx context.Context) error {
-	evs := make(chan *sessionv1.Event)
+	evs := make(chan *sessionstreamv1.Event)
 	ferr := make(chan error, 1)
 	go func() {
-		ferr <- r.m.follow(ctx, func(ev *sessionv1.Event) error {
+		ferr <- r.m.follow(ctx, func(ev *sessionstreamv1.Event) error {
 			select {
 			case evs <- ev:
 				return nil
@@ -208,10 +214,10 @@ func waitTurn[T any](ctx context.Context, busy bool, done <-chan T, exited <-cha
 }
 
 // learn keeps the names and kinds of the participants.
-func (r *runner) learn(ev *sessionv1.Event) {
+func (r *runner) learn(ev *sessionstreamv1.Event) {
 	if j := ev.GetParticipantJoined(); j != nil {
 		kind := "human"
-		if j.GetKind() == sessionv1.ParticipantKind_PARTICIPANT_KIND_AGENT {
+		if j.GetKind() == sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_AGENT {
 			kind = "agent"
 		}
 		name := j.GetDisplayName()

@@ -15,13 +15,15 @@ import (
 	"testing"
 	"time"
 
+	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
+
 	"connectrpc.com/connect/v2"
 
-	"github.com/mrsimpson/agentic-office/client/core/ids"
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	decisionv1 "github.com/mrsimpson/agentic-office/hub/records/decision/api"
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
+	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
@@ -49,7 +51,7 @@ func newKey(t *testing.T) ed25519.PrivateKey {
 // is set, it is called after the first event arrived, while the stream is open.
 func streamErr(t *testing.T, c contracttest.Clients, sid string, first func()) error {
 	t.Helper()
-	st, err := c.Session.Subscribe(ctx10(t), &sessionv1.SubscribeRequest{SessionId: sid})
+	st, err := c.Stream.Subscribe(ctx10(t), &sessionstreamv1.SubscribeRequest{SessionId: sid})
 	if err != nil {
 		return err
 	}
@@ -71,9 +73,9 @@ func streamErr(t *testing.T, c contracttest.Clients, sid string, first func()) e
 	}
 }
 
-func join(t *testing.T, c contracttest.Clients, sid string) *sessionv1.JoinResponse {
+func join(t *testing.T, c contracttest.Clients, sid string) *sessioncommandsv1.JoinResponse {
 	t.Helper()
-	res, err := c.Session.Join(ctx10(t), &sessionv1.JoinRequest{SessionId: sid, CommandId: ids.NewCommandID()})
+	res, err := c.Commands.Join(ctx10(t), &sessioncommandsv1.JoinRequest{SessionId: sid, CommandId: coreapi.NewCommandID()})
 	if err != nil {
 		t.Fatalf("join: %v", err)
 	}
@@ -171,54 +173,54 @@ func TestSessionRejectsCallsWithoutValidToken(t *testing.T) {
 		"unknown token": srv.WithToken(t, "oat_bm90IGEgdG9rZW4"),
 		"empty bearer":  srv.WithToken(t, ""),
 	} {
-		ctx, cmd, s := ctx10(t), ids.NewCommandID, c.Session
+		ctx, cmd, s := ctx10(t), coreapi.NewCommandID, c.Commands
 		calls := map[string]func() error{
 			"join": func() error {
-				_, err := s.Join(ctx, &sessionv1.JoinRequest{SessionId: "s", CommandId: cmd()})
+				_, err := s.Join(ctx, &sessioncommandsv1.JoinRequest{SessionId: "s", CommandId: cmd()})
 				return err
 			},
 			"leave": func() error {
-				_, err := s.Leave(ctx, &sessionv1.LeaveRequest{SessionId: "s", CommandId: cmd(), ParticipantId: "ada"})
+				_, err := s.Leave(ctx, &sessioncommandsv1.LeaveRequest{SessionId: "s", CommandId: cmd(), ParticipantId: "ada"})
 				return err
 			},
 			"utterance": func() error {
-				_, err := s.SubmitUtterance(ctx, &sessionv1.SubmitUtteranceRequest{SessionId: "s", CommandId: cmd(),
-					ParticipantId: "ada", Text: "x", Modality: sessionv1.Modality_MODALITY_TEXT})
+				_, err := s.SubmitUtterance(ctx, &sessioncommandsv1.SubmitUtteranceRequest{SessionId: "s", CommandId: cmd(),
+					ParticipantId: "ada", Text: "x", Modality: sessionstreamv1.Modality_MODALITY_TEXT})
 				return err
 			},
 			"mark off the record": func() error {
-				_, err := s.MarkOffTheRecord(ctx, &sessionv1.MarkOffTheRecordRequest{SessionId: "s", CommandId: cmd(),
+				_, err := s.MarkOffTheRecord(ctx, &sessioncommandsv1.MarkOffTheRecordRequest{SessionId: "s", CommandId: cmd(),
 					ParticipantId: "ada", UtteranceEventId: 1})
 				return err
 			},
 			"signal": func() error {
-				_, err := s.SubmitSignal(ctx, &sessionv1.SubmitSignalRequest{SessionId: "s", CommandId: cmd(), ParticipantId: "ada",
-					Signal: &sessionv1.SubmitSignalRequest_TurnEnd{TurnEnd: &sessionv1.TurnEnd{ParticipantId: "ada"}}})
+				_, err := s.SubmitSignal(ctx, &sessioncommandsv1.SubmitSignalRequest{SessionId: "s", CommandId: cmd(), ParticipantId: "ada",
+					Signal: &sessioncommandsv1.SubmitSignalRequest_TurnEnd{TurnEnd: &sessionstreamv1.TurnEnd{ParticipantId: "ada"}}})
 				return err
 			},
 			"pause": func() error {
-				_, err := s.Pause(ctx, &sessionv1.PauseRequest{SessionId: "s", CommandId: cmd(), ParticipantId: "ada"})
+				_, err := s.Pause(ctx, &sessioncommandsv1.PauseRequest{SessionId: "s", CommandId: cmd(), ParticipantId: "ada"})
 				return err
 			},
 			"resume": func() error {
-				_, err := s.Resume(ctx, &sessionv1.ResumeRequest{SessionId: "s", CommandId: cmd(), ParticipantId: "ada"})
+				_, err := s.Resume(ctx, &sessioncommandsv1.ResumeRequest{SessionId: "s", CommandId: cmd(), ParticipantId: "ada"})
 				return err
 			},
 			"raise hand": func() error {
-				_, err := s.RaiseHand(ctx, &sessionv1.RaiseHandRequest{SessionId: "s", CommandId: cmd(), ParticipantId: "ada"})
+				_, err := s.RaiseHand(ctx, &sessioncommandsv1.RaiseHandRequest{SessionId: "s", CommandId: cmd(), ParticipantId: "ada"})
 				return err
 			},
 			"minutes": func() error {
-				_, err := s.UpdateMinutes(ctx, &sessionv1.UpdateMinutesRequest{SessionId: "s", CommandId: cmd(), ParticipantId: "ada"})
+				_, err := s.UpdateMinutes(ctx, &sessioncommandsv1.UpdateMinutesRequest{SessionId: "s", CommandId: cmd(), ParticipantId: "ada"})
 				return err
 			},
 			"show artifact": func() error {
-				_, err := s.ShowArtifact(ctx, &sessionv1.ShowArtifactRequest{SessionId: "s", CommandId: cmd(),
+				_, err := s.ShowArtifact(ctx, &sessioncommandsv1.ShowArtifactRequest{SessionId: "s", CommandId: cmd(),
 					ParticipantId: "ada", ArtifactId: "slides/1"})
 				return err
 			},
 			"end": func() error {
-				_, err := s.EndSession(ctx, &sessionv1.EndSessionRequest{SessionId: "s", CommandId: cmd(), ParticipantId: "ada"})
+				_, err := s.EndSession(ctx, &sessioncommandsv1.EndSessionRequest{SessionId: "s", CommandId: cmd(), ParticipantId: "ada"})
 				return err
 			},
 			"subscribe": func() error { return streamErr(t, c, "s", nil) },
@@ -239,18 +241,18 @@ func TestSessionRejectsCallsWithoutValidToken(t *testing.T) {
 }
 
 // endAndRead ends a session as actor a and returns its whole log.
-func endAndRead(t *testing.T, a *contracttest.Actor, sid string) []*sessionv1.Event {
+func endAndRead(t *testing.T, a *contracttest.Actor, sid string) []*sessionstreamv1.Event {
 	t.Helper()
-	if _, err := a.Session.EndSession(ctx10(t), &sessionv1.EndSessionRequest{SessionId: sid, CommandId: ids.NewCommandID(),
+	if _, err := a.Commands.EndSession(ctx10(t), &sessioncommandsv1.EndSessionRequest{SessionId: sid, CommandId: coreapi.NewCommandID(),
 		ParticipantId: a.ParticipantID}); err != nil {
 		t.Fatal(err)
 	}
-	st, err := a.Session.Subscribe(ctx10(t), &sessionv1.SubscribeRequest{SessionId: sid})
+	st, err := a.Stream.Subscribe(ctx10(t), &sessionstreamv1.SubscribeRequest{SessionId: sid})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	var log []*sessionv1.Event
+	var log []*sessionstreamv1.Event
 	for {
 		res, err := st.Receive()
 		if errors.Is(err, io.EOF) {
@@ -270,7 +272,7 @@ func TestIdentityAdminRegistersKeys(t *testing.T) {
 	ctx := ctx10(t)
 	key := newKey(t)
 	reg := func(c contracttest.Clients, pid, name string, kind identityv1.ActorKind, k ed25519.PrivateKey) (string, error) {
-		res, err := c.Identity.RegisterKey(ctx, &identityv1.RegisterKeyRequest{CommandId: ids.NewCommandID(),
+		res, err := c.Identity.RegisterKey(ctx, &identityv1.RegisterKeyRequest{CommandId: coreapi.NewCommandID(),
 			ParticipantId: pid, DisplayName: name, Kind: kind, PublicKey: auth.PublicKey(k)})
 		return res.GetKeyId(), err
 	}
@@ -280,7 +282,7 @@ func TestIdentityAdminRegistersKeys(t *testing.T) {
 	wantCode(t, "register by a participant who is not an admin", err, connect.CodePermissionDenied)
 	_, err = reg(srv.Anonymous(t), "eve", "Eve", human, key)
 	wantCode(t, "register without a token", err, connect.CodeUnauthenticated)
-	_, err = bot.Identity.RevokeKey(ctx, &identityv1.RevokeKeyRequest{CommandId: ids.NewCommandID(), KeyId: bot.KeyID})
+	_, err = bot.Identity.RevokeKey(ctx, &identityv1.RevokeKeyRequest{CommandId: coreapi.NewCommandID(), KeyId: bot.KeyID})
 	wantCode(t, "revoke by a participant who is not an admin", err, connect.CodePermissionDenied)
 
 	adminClients := srv.Admin(t).Clients
@@ -290,11 +292,11 @@ func TestIdentityAdminRegistersKeys(t *testing.T) {
 	wantCode(t, "register with a bad participant_id", err, connect.CodeInvalidArgument)
 	_, err = reg(adminClients, "eve", "Eve", identityv1.ActorKind_ACTOR_KIND_UNSPECIFIED, key)
 	wantCode(t, "register a new participant without kind", err, connect.CodeInvalidArgument)
-	_, err = admin.RegisterKey(ctx, &identityv1.RegisterKeyRequest{CommandId: ids.NewCommandID(), ParticipantId: "eve",
+	_, err = admin.RegisterKey(ctx, &identityv1.RegisterKeyRequest{CommandId: coreapi.NewCommandID(), ParticipantId: "eve",
 		DisplayName: "Eve", Kind: human, PublicKey: []byte("short")})
 	wantCode(t, "register a malformed key", err, connect.CodeInvalidArgument)
 
-	req := &identityv1.RegisterKeyRequest{CommandId: ids.NewCommandID(), ParticipantId: "eve", DisplayName: "Eve",
+	req := &identityv1.RegisterKeyRequest{CommandId: coreapi.NewCommandID(), ParticipantId: "eve", DisplayName: "Eve",
 		Kind: human, PublicKey: auth.PublicKey(key)}
 	first, err := admin.RegisterKey(ctx, req)
 	if err != nil {
@@ -323,10 +325,10 @@ func TestIdentityAdminRegistersKeys(t *testing.T) {
 	}
 
 	// Admin keys from the admin file are not revoked through the API.
-	_, err = admin.RevokeKey(ctx, &identityv1.RevokeKeyRequest{CommandId: ids.NewCommandID(),
+	_, err = admin.RevokeKey(ctx, &identityv1.RevokeKeyRequest{CommandId: coreapi.NewCommandID(),
 		KeyId: auth.KeyID(auth.PublicKey(srv.AdminKey))})
 	wantCode(t, "revoke an admin key", err, connect.CodeFailedPrecondition)
-	_, err = admin.RevokeKey(ctx, &identityv1.RevokeKeyRequest{CommandId: ids.NewCommandID(), KeyId: "SHA256:nope"})
+	_, err = admin.RevokeKey(ctx, &identityv1.RevokeKeyRequest{CommandId: coreapi.NewCommandID(), KeyId: "SHA256:nope"})
 	wantCode(t, "revoke an unknown key", err, connect.CodeNotFound)
 }
 
@@ -344,7 +346,7 @@ func TestIdentityRevokedKey(t *testing.T) {
 	fixed := srv.WithToken(t, token)
 
 	// A stream of the laptop is open while the key is revoked.
-	revoke := &identityv1.RevokeKeyRequest{CommandId: ids.NewCommandID(), KeyId: laptop.KeyID}
+	revoke := &identityv1.RevokeKeyRequest{CommandId: coreapi.NewCommandID(), KeyId: laptop.KeyID}
 	streamEnd := streamErr(t, fixed, "s", func() {
 		if _, err := admin.RevokeKey(ctx10(t), revoke); err != nil {
 			t.Fatal(err)
@@ -355,18 +357,18 @@ func TestIdentityRevokedKey(t *testing.T) {
 		t.Fatalf("repeated revoke: %v", err)
 	}
 
-	_, err = fixed.Session.SubmitUtterance(ctx10(t), &sessionv1.SubmitUtteranceRequest{SessionId: "s",
-		CommandId: ids.NewCommandID(), ParticipantId: "ada", Text: "x", Modality: sessionv1.Modality_MODALITY_TEXT})
+	_, err = fixed.Commands.SubmitUtterance(ctx10(t), &sessioncommandsv1.SubmitUtteranceRequest{SessionId: "s",
+		CommandId: coreapi.NewCommandID(), ParticipantId: "ada", Text: "x", Modality: sessionstreamv1.Modality_MODALITY_TEXT})
 	wantCode(t, "token of a revoked key", err, connect.CodeUnauthenticated)
 	_, err = srv.Anonymous(t).Identity.GetChallenge(ctx10(t), &identityv1.GetChallengeRequest{PublicKey: auth.PublicKey(laptop.Key)})
 	wantCode(t, "challenge for a revoked key", err, connect.CodeUnauthenticated)
-	_, err = admin.RegisterKey(ctx10(t), &identityv1.RegisterKeyRequest{CommandId: ids.NewCommandID(), ParticipantId: "ada",
+	_, err = admin.RegisterKey(ctx10(t), &identityv1.RegisterKeyRequest{CommandId: coreapi.NewCommandID(), ParticipantId: "ada",
 		PublicKey: auth.PublicKey(laptop.Key)})
 	wantCode(t, "register a revoked key again", err, connect.CodeFailedPrecondition)
 
 	// The phone of ada still works.
-	if _, err := phone.Session.SubmitUtterance(ctx10(t), &sessionv1.SubmitUtteranceRequest{SessionId: "s",
-		CommandId: ids.NewCommandID(), ParticipantId: "ada", Text: "still here", Modality: sessionv1.Modality_MODALITY_TEXT}); err != nil {
+	if _, err := phone.Commands.SubmitUtterance(ctx10(t), &sessioncommandsv1.SubmitUtteranceRequest{SessionId: "s",
+		CommandId: coreapi.NewCommandID(), ParticipantId: "ada", Text: "still here", Modality: sessionstreamv1.Modality_MODALITY_TEXT}); err != nil {
 		t.Fatalf("other key of the participant: %v", err)
 	}
 }
@@ -383,7 +385,7 @@ func TestIdentityTokenExpires(t *testing.T) {
 		t.Fatal(err)
 	}
 	fixed := srv.WithToken(t, token)
-	link, err := ada.Identity.CreateStageLink(ctx10(t), &identityv1.CreateStageLinkRequest{SessionId: "s", CommandId: ids.NewCommandID()})
+	link, err := ada.Identity.CreateStageLink(ctx10(t), &identityv1.CreateStageLinkRequest{SessionId: "s", CommandId: coreapi.NewCommandID()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -401,14 +403,14 @@ func TestIdentityTokenExpires(t *testing.T) {
 		t.Errorf("streams ended after %v, want about %v", d, ttl)
 	}
 
-	_, err = fixed.Session.RaiseHand(ctx10(t), &sessionv1.RaiseHandRequest{SessionId: "s", CommandId: ids.NewCommandID(), ParticipantId: "ada"})
+	_, err = fixed.Commands.RaiseHand(ctx10(t), &sessioncommandsv1.RaiseHandRequest{SessionId: "s", CommandId: coreapi.NewCommandID(), ParticipantId: "ada"})
 	wantCode(t, "expired token", err, connect.CodeUnauthenticated)
 	wantCode(t, "expired stage link", streamErr(t, stage, "s", nil), connect.CodeUnauthenticated)
 
 	// The token source renews the token before it expires, so the actor keeps working.
 	for range 3 {
-		if _, err := ada.Session.RaiseHand(ctx10(t), &sessionv1.RaiseHandRequest{SessionId: "s",
-			CommandId: ids.NewCommandID(), ParticipantId: "ada"}); err != nil {
+		if _, err := ada.Commands.RaiseHand(ctx10(t), &sessioncommandsv1.RaiseHandRequest{SessionId: "s",
+			CommandId: coreapi.NewCommandID(), ParticipantId: "ada"}); err != nil {
 			t.Fatalf("call with a renewed token: %v", err)
 		}
 		time.Sleep(ttl / 2)
@@ -436,7 +438,7 @@ func TestStageLinkIsReadOnly(t *testing.T) {
 	sid := "team meeting/1"
 	join(t, ada.Clients, sid)
 
-	req := &identityv1.CreateStageLinkRequest{SessionId: sid, CommandId: ids.NewCommandID()}
+	req := &identityv1.CreateStageLinkRequest{SessionId: sid, CommandId: coreapi.NewCommandID()}
 	link, err := ada.Identity.CreateStageLink(ctx, req)
 	if err != nil {
 		t.Fatal(err)
@@ -449,14 +451,14 @@ func TestStageLinkIsReadOnly(t *testing.T) {
 	if err != nil || again.GetUrl() != link.GetUrl() {
 		t.Fatalf("repeated stage link: %v, %v", again, err)
 	}
-	_, err = ada.Identity.CreateStageLink(ctx, &identityv1.CreateStageLinkRequest{CommandId: ids.NewCommandID()})
+	_, err = ada.Identity.CreateStageLink(ctx, &identityv1.CreateStageLinkRequest{CommandId: coreapi.NewCommandID()})
 	wantCode(t, "stage link without session_id", err, connect.CodeInvalidArgument)
 
 	stage := srv.WithToken(t, stageToken(t, link.GetUrl()))
 
 	// It reads the stream of its session.
-	got := make(chan *sessionv1.Event, 1)
-	st, err := stage.Session.Subscribe(ctx, &sessionv1.SubscribeRequest{SessionId: sid})
+	got := make(chan *sessionstreamv1.Event, 1)
+	st, err := stage.Stream.Subscribe(ctx, &sessionstreamv1.SubscribeRequest{SessionId: sid})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -473,13 +475,13 @@ func TestStageLinkIsReadOnly(t *testing.T) {
 	wantCode(t, "stage link for another session", streamErr(t, stage, "other", nil), connect.CodePermissionDenied)
 
 	// It cannot send commands or use other interfaces.
-	cmd := ids.NewCommandID
-	_, err = stage.Session.Join(ctx, &sessionv1.JoinRequest{SessionId: sid, CommandId: cmd()})
+	cmd := coreapi.NewCommandID
+	_, err = stage.Commands.Join(ctx, &sessioncommandsv1.JoinRequest{SessionId: sid, CommandId: cmd()})
 	wantCode(t, "join with a stage link", err, connect.CodePermissionDenied)
-	_, err = stage.Session.SubmitUtterance(ctx, &sessionv1.SubmitUtteranceRequest{SessionId: sid, CommandId: cmd(),
-		ParticipantId: "ada", Text: "x", Modality: sessionv1.Modality_MODALITY_TEXT})
+	_, err = stage.Commands.SubmitUtterance(ctx, &sessioncommandsv1.SubmitUtteranceRequest{SessionId: sid, CommandId: cmd(),
+		ParticipantId: "ada", Text: "x", Modality: sessionstreamv1.Modality_MODALITY_TEXT})
 	wantCode(t, "utterance with a stage link", err, connect.CodePermissionDenied)
-	_, err = stage.Session.EndSession(ctx, &sessionv1.EndSessionRequest{SessionId: sid, CommandId: cmd(), ParticipantId: "ada"})
+	_, err = stage.Commands.EndSession(ctx, &sessioncommandsv1.EndSessionRequest{SessionId: sid, CommandId: cmd(), ParticipantId: "ada"})
 	wantCode(t, "end with a stage link", err, connect.CodePermissionDenied)
 	_, err = stage.Identity.CreateStageLink(ctx, &identityv1.CreateStageLinkRequest{SessionId: sid, CommandId: cmd()})
 	wantCode(t, "stage link with a stage link", err, connect.CodePermissionDenied)
@@ -519,7 +521,7 @@ func TestIdentitySurvivesRestart(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
 	gone := srv.Participant(t, "bot", "Bot", agent)
-	if _, err := srv.Admin(t).Identity.RevokeKey(ctx10(t), &identityv1.RevokeKeyRequest{CommandId: ids.NewCommandID(),
+	if _, err := srv.Admin(t).Identity.RevokeKey(ctx10(t), &identityv1.RevokeKeyRequest{CommandId: coreapi.NewCommandID(),
 		KeyId: gone.KeyID}); err != nil {
 		t.Fatal(err)
 	}
@@ -532,7 +534,7 @@ func TestIdentitySurvivesRestart(t *testing.T) {
 	}
 
 	srv = contracttest.StartHubIn(t, srv.DataDir, srv.AdminKey, nil)
-	_, err = srv.WithToken(t, old).Session.Join(ctx10(t), &sessionv1.JoinRequest{SessionId: "s", CommandId: ids.NewCommandID()})
+	_, err = srv.WithToken(t, old).Commands.Join(ctx10(t), &sessioncommandsv1.JoinRequest{SessionId: "s", CommandId: coreapi.NewCommandID()})
 	wantCode(t, "token from before the restart", err, connect.CodeUnauthenticated)
 	if again := srv.WithKey(t, ada.Key); again.ParticipantID != "ada" {
 		t.Fatalf("ada after the restart: %q", again.ParticipantID)

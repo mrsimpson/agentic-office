@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/mrsimpson/agentic-office/hub/archive/storage"
-	"github.com/mrsimpson/agentic-office/hub/session/api/events"
-	"github.com/mrsimpson/agentic-office/hub/session/api/logfile"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/events"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/logfile"
 )
 
 // Layout of a session in the archive (dec-yaml-git-storage). <name> is ArchiveName(session ID).

@@ -15,7 +15,7 @@ import (
 	decisionv1 "github.com/mrsimpson/agentic-office/hub/records/decision/api"
 	minutesv1 "github.com/mrsimpson/agentic-office/hub/records/minutes/api"
 	notev1 "github.com/mrsimpson/agentic-office/hub/records/note/api"
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
+	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
 	slidesv1 "github.com/mrsimpson/agentic-office/hub/slides/api"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
@@ -28,7 +28,7 @@ func TestServerMountsEveryInterface(t *testing.T) {
 	c := srv.Admin(t)
 	ctx := context.Background()
 
-	if _, err := c.Session.Join(ctx, &sessionv1.JoinRequest{SessionId: "s", CommandId: "c"}); err != nil {
+	if _, err := c.Commands.Join(ctx, &sessioncommandsv1.JoinRequest{SessionId: "s", CommandId: "c"}); err != nil {
 		t.Errorf("session commands: %v", err)
 	}
 	if _, err := c.Identity.CreateStageLink(ctx, &identityv1.CreateStageLinkRequest{SessionId: "s", CommandId: "c"}); err != nil {
@@ -75,7 +75,7 @@ func TestPlainHTTPWithJSON(t *testing.T) {
 	}
 	var e struct{ Code string }
 
-	status, body := post("/office.session.v1.SessionService/Join", "", `{"sessionId":"s","commandId":"c"}`)
+	status, body := post("/office.sessioncommands.v1.SessionCommandsService/Join", "", `{"sessionId":"s","commandId":"c"}`)
 	if err := json.Unmarshal(body, &e); err != nil || status != http.StatusUnauthorized || e.Code != "unauthenticated" {
 		t.Fatalf("join without token: status %d, body %s", status, body)
 	}
@@ -84,7 +84,7 @@ func TestPlainHTTPWithJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	status, body = post("/office.session.v1.SessionService/Join", token, `{"sessionId":"s","commandId":"c"}`)
+	status, body = post("/office.sessioncommands.v1.SessionCommandsService/Join", token, `{"sessionId":"s","commandId":"c"}`)
 	var join struct {
 		ParticipantID string `json:"participantId"`
 		Result        struct {

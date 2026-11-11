@@ -1,5 +1,4 @@
-// Package ids creates client-generated command IDs (dec-idempotent-commands).
-package ids
+package coreapi
 
 import "github.com/google/uuid"
 

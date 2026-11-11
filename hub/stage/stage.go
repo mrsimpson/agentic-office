@@ -16,8 +16,8 @@ import (
 	"connectrpc.com/connect/v2"
 
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
-	sessionv1connect "github.com/mrsimpson/agentic-office/hub/session/api/sessionv1connect"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/sessionstreamv1connect"
 	slidesv1 "github.com/mrsimpson/agentic-office/hub/slides/api"
 )
 
@@ -239,15 +239,15 @@ func (h *Handler) events(w http.ResponseWriter, r *http.Request, sid, token stri
 	}
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
-	client := sessionv1connect.NewSessionServiceClient(connect.NewClient(h.opts.Session, auth.StaticToken(token)))
-	st, err := client.Subscribe(ctx, &sessionv1.SubscribeRequest{SessionId: sid})
+	client := sessionstreamv1connect.NewSessionStreamServiceClient(connect.NewClient(h.opts.Session, auth.StaticToken(token)))
+	st, err := client.Subscribe(ctx, &sessionstreamv1.SubscribeRequest{SessionId: sid})
 	if err != nil {
 		h.streamError(w, err)
 		return
 	}
 	defer st.Close()
 
-	evs := make(chan *sessionv1.Event)
+	evs := make(chan *sessionstreamv1.Event)
 	errc := make(chan error, 1)
 	go func() {
 		for {

@@ -16,11 +16,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mrsimpson/agentic-office/client/core/ids"
+	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
-	"github.com/mrsimpson/agentic-office/hub/session/api/events"
-	"github.com/mrsimpson/agentic-office/hub/session/api/logfile"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/events"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/logfile"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
@@ -154,7 +154,7 @@ func waitUntil(t *testing.T, timeout time.Duration, what string, cond func() boo
 // logLine is one line of a local log.
 type logLine struct {
 	raw string
-	ev  *sessionv1.Event
+	ev  *sessionstreamv1.Event
 }
 
 // readLog reads the complete lines of a local log. Every line must parse and carry the dotted
@@ -194,7 +194,7 @@ func waitLog(t *testing.T, path string, id uint32) []logLine {
 }
 
 // eventOf returns the event of a --json command result.
-func eventOf(t *testing.T, v map[string]any) (string, *sessionv1.Event) {
+func eventOf(t *testing.T, v map[string]any) (string, *sessionstreamv1.Event) {
 	t.Helper()
 	raw, err := json.Marshal(v["event"])
 	if err != nil {
@@ -208,7 +208,7 @@ func eventOf(t *testing.T, v map[string]any) (string, *sessionv1.Event) {
 	return strings.TrimSuffix(string(line), "\n"), ev
 }
 
-func newSession() string { return "s-" + ids.NewCommandID() }
+func newSession() string { return "s-" + coreapi.NewCommandID() }
 
 func TestCLIKeysAndAdmin(t *testing.T) {
 	m := newMachine(t)
@@ -334,7 +334,7 @@ func TestCLICommandsAppearInLog(t *testing.T) {
 	ada.join(sid)
 
 	results := map[uint32]string{}
-	do := func(u *officeUser, wantType string, args ...string) *sessionv1.Event {
+	do := func(u *officeUser, wantType string, args ...string) *sessionstreamv1.Event {
 		t.Helper()
 		line, ev := eventOf(t, u.ok(args...))
 		if ev.GetType() != wantType {

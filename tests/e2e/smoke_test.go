@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
+	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
 
-	"github.com/mrsimpson/agentic-office/client/core/ids"
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
+	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
+	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
@@ -25,7 +25,7 @@ func TestSmoke(t *testing.T) {
 	ada := srv.Participant(t, "ada", "Ada", identityv1.ActorKind_ACTOR_KIND_HUMAN)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if res, err := ada.Session.Join(ctx, &sessionv1.JoinRequest{SessionId: "smoke", CommandId: ids.NewCommandID()}); err != nil ||
+	if res, err := ada.Commands.Join(ctx, &sessioncommandsv1.JoinRequest{SessionId: "smoke", CommandId: coreapi.NewCommandID()}); err != nil ||
 		res.GetParticipantId() != "ada" {
 		t.Fatalf("join: %v, %v", res, err)
 	}

@@ -6,7 +6,7 @@ import (
 	"connectrpc.com/connect/v2"
 
 	"github.com/mrsimpson/agentic-office/hub/identity/tokencheck"
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
 )
 
 // TokenCheck returns the Authorizer that reads the caller from the identity token check
@@ -23,12 +23,12 @@ func TokenCheck() Authorizer {
 	})
 }
 
-func participantKind(k tokencheck.Kind) sessionv1.ParticipantKind {
+func participantKind(k tokencheck.Kind) sessionstreamv1.ParticipantKind {
 	switch k {
 	case tokencheck.KindHuman:
-		return sessionv1.ParticipantKind_PARTICIPANT_KIND_HUMAN
+		return sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_HUMAN
 	case tokencheck.KindAgent:
-		return sessionv1.ParticipantKind_PARTICIPANT_KIND_AGENT
+		return sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_AGENT
 	}
-	return sessionv1.ParticipantKind_PARTICIPANT_KIND_UNSPECIFIED
+	return sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_UNSPECIFIED
 }

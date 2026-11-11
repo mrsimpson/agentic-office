@@ -1,7 +1,7 @@
 // Package events knows the dotted type names of session events (concept-event-log).
 package events
 
-import sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
+import sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
 
 // Event types in dotted form.
 const (
@@ -24,39 +24,39 @@ const (
 )
 
 // TypeOf returns the dotted type that belongs to the payload of ev, or "" if it has none.
-func TypeOf(ev *sessionv1.Event) string {
+func TypeOf(ev *sessionstreamv1.Event) string {
 	switch ev.GetPayload().(type) {
-	case *sessionv1.Event_UtteranceFinal:
+	case *sessionstreamv1.Event_UtteranceFinal:
 		return UtteranceFinal
-	case *sessionv1.Event_UtteranceOffTheRecord:
+	case *sessionstreamv1.Event_UtteranceOffTheRecord:
 		return UtteranceOffTheRecord
-	case *sessionv1.Event_UtteranceCorrected:
+	case *sessionstreamv1.Event_UtteranceCorrected:
 		return UtteranceCorrected
-	case *sessionv1.Event_TurnEnd:
+	case *sessionstreamv1.Event_TurnEnd:
 		return TurnEnd
-	case *sessionv1.Event_SilenceLong:
+	case *sessionstreamv1.Event_SilenceLong:
 		return SilenceLong
-	case *sessionv1.Event_Addressed:
+	case *sessionstreamv1.Event_Addressed:
 		return Addressed
-	case *sessionv1.Event_HandRaised:
+	case *sessionstreamv1.Event_HandRaised:
 		return HandRaised
-	case *sessionv1.Event_MinutesUpdated:
+	case *sessionstreamv1.Event_MinutesUpdated:
 		return MinutesUpdated
-	case *sessionv1.Event_ArtifactShown:
+	case *sessionstreamv1.Event_ArtifactShown:
 		return ArtifactShown
-	case *sessionv1.Event_ParticipantJoined:
+	case *sessionstreamv1.Event_ParticipantJoined:
 		return ParticipantJoined
-	case *sessionv1.Event_ParticipantLeft:
+	case *sessionstreamv1.Event_ParticipantLeft:
 		return ParticipantLeft
-	case *sessionv1.Event_ParticipantPaused:
+	case *sessionstreamv1.Event_ParticipantPaused:
 		return ParticipantPaused
-	case *sessionv1.Event_ParticipantResumed:
+	case *sessionstreamv1.Event_ParticipantResumed:
 		return ParticipantResumed
-	case *sessionv1.Event_SessionEnded:
+	case *sessionstreamv1.Event_SessionEnded:
 		return SessionEnded
-	case *sessionv1.Event_SessionImported:
+	case *sessionstreamv1.Event_SessionImported:
 		return SessionImported
-	case *sessionv1.Event_ImportCompleted:
+	case *sessionstreamv1.Event_ImportCompleted:
 		return ImportCompleted
 	}
 	return ""
