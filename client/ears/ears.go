@@ -460,9 +460,9 @@ func (e *Ears) Run(ctx context.Context) error {
 	return nil
 }
 
-// send submits the utterances and the ends of turns in order. A failed submit is repeated with the same command ID
-// until it works, so a network drop neither loses nor duplicates an utterance
-// (dec-idempotent-commands). Errors that a repeat cannot fix drop the utterance.
+// send submits the utterances and the ends of turns in order. A failed submit is repeated with
+// the same command ID until it works, so a network drop neither loses nor duplicates an
+// utterance or a turn.end (dec-idempotent-commands). Errors that a repeat cannot fix drop it.
 func (e *Ears) send(ctx context.Context, q *queue, report func(Report)) error {
 	// stopped reports the utterances that are lost because the ears stop before they are sent.
 	stopped := func(current int) error {
