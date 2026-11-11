@@ -99,12 +99,30 @@ jobs:
       - name: Build whisper.cpp
         if: steps.whisper.outputs.cache-hit != 'true'
         run: make whisper WHISPER_NATIVE=OFF
+      # The Protobuf tools pull many modules that are not in go.sum. A cache keeps them from the
+      # network; on a miss, a failed download is tried again.
+      - name: Protobuf tools from cache
+        id: prototools
+        uses: actions/cache@v6
+        with:
+          path: ~/protobuf-tools
+          key: protobuf-tools-${{ runner.os }}-${{ runner.arch }}-buf1.57.0-go1.36.12-connect2.0.2
       - name: Install the Protobuf tools
+        if: steps.prototools.outputs.cache-hit != 'true'
         run: |
-          go install github.com/bufbuild/buf/cmd/buf@v1.57.0
-          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12
-          go install connectrpc.com/connect/v2/cmd/protoc-gen-connect-go@v2.0.2
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          mkdir -p ~/protobuf-tools
+          export GOBIN=~/protobuf-tools
+          for tool in github.com/bufbuild/buf/cmd/buf@v1.57.0 \
+                      google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12 \
+                      connectrpc.com/connect/v2/cmd/protoc-gen-connect-go@v2.0.2; do
+            for attempt in 1 2 3; do
+              go install "$tool" && break
+              [ "$attempt" = 3 ] && exit 1
+              echo "retrying $tool in 10 s"; sleep 10
+            done
+          done
+      - name: Protobuf tools on the path
+        run: echo ~/protobuf-tools >> "$GITHUB_PATH"
       - name: Generated code matches the contracts
         run: make check-generated
       - name: Vet and contract tests
