@@ -54,6 +54,10 @@ import (
 // state between windows. On top of that we apply a simple end-of-sentence rule: a sentence
 // ends after EndSilence without speech. This is the same rule the segment API applies offline
 // (min_silence_duration_ms), with the same thresholds.
+//
+// The end of a turn uses the same windows: when TurnSilence has passed since the last speech
+// window and a sentence was cut since the last end of a turn, the segmenter returns a turn
+// marker. The marker goes through the same channel as the sentences, so it stays behind them.
 
 const vadWindow = 512 // samples per Silero window at 16 kHz
 
@@ -105,6 +109,9 @@ type segment struct {
 	endedAt time.Time
 	// speech is the total duration of windows with speech.
 	speech time.Duration
+	// turnEnd marks the end of a turn: the segment has no audio, endedAt is when the turn
+	// silence was over.
+	turnEnd bool
 }
 
 func samplesOf(d time.Duration) int { return int(int64(d) * audio.SampleRate / int64(time.Second)) }
@@ -118,6 +125,9 @@ type segmenter struct {
 	minSpeech  time.Duration // shorter sentences are dropped (clicks, coughs)
 	maxSpeech  time.Duration // longer sentences are cut (Whisper takes at most 30 s)
 	preRoll    time.Duration // audio kept before the first speech window
+	// turnSilence is the silence after the last speech window that ends a turn. It is at least
+	// endSilence.
+	turnSilence time.Duration
 
 	carry      []float32 // samples that do not fill a window yet
 	pre        []float32 // last preRoll of audio while not speaking
@@ -127,6 +137,8 @@ type segmenter struct {
 	speech     time.Duration // speech in the current sentence
 	start      time.Time
 	lastVoiced time.Time
+	// inTurn is true when a sentence was cut since the last end of a turn.
+	inTurn bool
 }
 
 const windowDur = time.Duration(vadWindow) * time.Second / audio.SampleRate
@@ -146,7 +158,12 @@ func (g *segmenter) push(samples []float32, at time.Time) ([]*segment, error) {
 			return out, err
 		}
 		if s := g.window(w, p, end); s != nil {
+			g.inTurn = true
 			out = append(out, s)
+		}
+		if g.inTurn && !g.speaking && end.Sub(g.lastVoiced) >= g.turnSilence {
+			g.inTurn = false
+			out = append(out, &segment{turnEnd: true, speechEnd: g.lastVoiced, endedAt: end})
 		}
 	}
 	g.carry = append(g.carry[:0], g.carry[n:]...)
@@ -208,9 +225,9 @@ func (g *segmenter) flush(at time.Time) *segment {
 	return s
 }
 
-// drop forgets all audio, for example when the participant pauses.
+// drop forgets all audio and the open turn, for example when the participant pauses.
 func (g *segmenter) drop() {
 	g.carry, g.pre, g.buf = g.carry[:0], g.pre[:0], nil
-	g.speaking, g.silent, g.speech = false, 0, 0
+	g.speaking, g.silent, g.speech, g.inTurn = false, 0, 0, false
 	g.vad.reset()
 }

@@ -42,6 +42,9 @@ type Config struct {
 	Threads int
 	// EndSilence is the silence that ends a sentence. Env OFFICE_EARS_END_SILENCE.
 	EndSilence time.Duration
+	// TurnSilence is the silence after the last sentence that ends the participant's turn: the
+	// ears then submit turn.end. It must be at least EndSilence. Env OFFICE_EARS_TURN_SILENCE.
+	TurnSilence time.Duration
 	// VADThreshold is the speech probability from which a window counts as speech.
 	// Env OFFICE_VAD_THRESHOLD.
 	VADThreshold float64
@@ -61,6 +64,7 @@ type Config struct {
 const (
 	DefaultLanguage     = "de"
 	DefaultEndSilence   = 500 * time.Millisecond
+	DefaultTurnSilence  = 1800 * time.Millisecond
 	DefaultVADThreshold = 0.5
 	defaultModelFile    = "ggml-small.bin"
 	defaultVADFile      = "ggml-silero-v6.2.0.bin"
@@ -131,6 +135,21 @@ func (c *Config) Prepare(ctx context.Context, progress func(string)) error {
 			c.EndSilence = DefaultEndSilence
 		}
 	}
+	if c.TurnSilence <= 0 {
+		if v := os.Getenv("OFFICE_EARS_TURN_SILENCE"); v != "" {
+			d, err := time.ParseDuration(v)
+			if err != nil || d <= 0 {
+				return fmt.Errorf("OFFICE_EARS_TURN_SILENCE=%q is not a duration such as 1.8s", v)
+			}
+			c.TurnSilence = d
+		} else {
+			c.TurnSilence = DefaultTurnSilence
+		}
+	}
+	if c.TurnSilence < c.EndSilence {
+		return fmt.Errorf("the turn silence (%v) is shorter than the end silence (%v); a turn ends after a sentence",
+			c.TurnSilence, c.EndSilence)
+	}
 	if c.VADThreshold <= 0 {
 		if v := os.Getenv("OFFICE_VAD_THRESHOLD"); v != "" {
 			f, err := strconv.ParseFloat(v, 64)
@@ -200,9 +219,10 @@ type Ears struct {
 
 // Report is one line of progress or measurement. Times are in milliseconds.
 type Report struct {
-	// Type is listening, vocabulary (Whisper's prompt changed), final, sent, retry (not sent yet,
-	// repeating), dropped (the server rejected it for good), skipped (Whisper failed), unsent
-	// (lost because the ears stopped) or done (the WAV file is over and everything is sent).
+	// Type is listening, vocabulary (Whisper's prompt changed), final, sent, turn-end (the
+	// turn.end after a turn is submitted), retry (not sent yet, repeating), dropped (the server
+	// rejected it for good), skipped (Whisper failed), unsent (lost because the ears stopped) or
+	// done (the WAV file is over and everything is sent).
 	Type      string `json:"type"`
 	CommandID string `json:"commandId,omitempty"`
 	Text      string `json:"text,omitempty"`
@@ -212,7 +232,7 @@ type Report struct {
 	SpeechEnd *time.Time `json:"speechEnd,omitempty"`
 	// TranscribedAt is when Whisper returned the text (transcribed_at of the event).
 	TranscribedAt *time.Time `json:"transcribedAt,omitempty"`
-	// SubmittedAt is when the server confirmed the utterance.
+	// SubmittedAt is when the server confirmed the utterance or the turn.end.
 	SubmittedAt *time.Time `json:"submittedAt,omitempty"`
 
 	AudioMs             int64  `json:"audioMs,omitempty"`
@@ -257,6 +277,8 @@ func (r Report) String() string {
 		return fmt.Sprintf("final after %d ms (whisper %d ms for %d ms of audio)", r.SpeechEndToFinalMs, r.WhisperMs, r.AudioMs)
 	case "sent":
 		return fmt.Sprintf("sent #%d %d ms after the end of speech (attempts %d)", r.EventID, r.SpeechEndToSubmitMs, r.Attempts)
+	case "turn-end":
+		return fmt.Sprintf("turn end #%d sent %d ms after the end of speech (attempts %d)", r.EventID, r.SpeechEndToSubmitMs, r.Attempts)
 	case "retry":
 		return fmt.Sprintf("not sent yet, %d queued, retrying: %s", r.Queued, r.Error)
 	case "dropped":
@@ -264,17 +286,19 @@ func (r Report) String() string {
 	case "skipped":
 		return "skipped a sentence: " + r.Error
 	case "unsent":
-		return fmt.Sprintf("%d sentences were not sent because the ears stopped", r.Queued)
+		return fmt.Sprintf("%d sentences or turn ends were not sent because the ears stopped", r.Queued)
 	case "done":
 		return "the audio has ended; all sentences are sent"
 	}
 	return r.Type
 }
 
+// utterance is an item of the queue: a sentence, or the end of a turn (turnEnd, no text).
 type utterance struct {
 	cmdID, text   string
 	speechEnd     time.Time
 	transcribedAt time.Time
+	turnEnd       bool
 }
 
 // Run captures, transcribes and sends until ctx ends or the audio is over. At the end of a WAV
@@ -301,7 +325,7 @@ func (e *Ears) Run(ctx context.Context) error {
 	}
 	defer vad.close()
 	seg := &segmenter{vad: vad, threshold: float32(e.VADThreshold), negThresh: float32(max(e.VADThreshold-0.15, 0.01)),
-		endSilence: e.EndSilence, minSpeech: 250 * time.Millisecond, maxSpeech: 25 * time.Second, preRoll: 300 * time.Millisecond}
+		endSilence: e.EndSilence, turnSilence: max(e.TurnSilence, e.EndSilence), minSpeech: 250 * time.Millisecond, maxSpeech: 25 * time.Second, preRoll: 300 * time.Millisecond}
 
 	var src audio.Source
 	name := "the microphone"
@@ -357,9 +381,20 @@ func (e *Ears) Run(ctx context.Context) error {
 	go func() {
 		defer wg.Done()
 		prev := ""
+		// spoke is true when a sentence of the current turn is in the queue.
+		spoke := false
 		for s := range segs {
 			if e.Paused() {
-				continue // paused before the sentence was transcribed: never transcribe it
+				spoke = false // the pause ends the turn without turn.end
+				continue      // paused before the sentence was transcribed: never transcribe it
+			}
+			if s.turnEnd {
+				// One turn.end per turn, and only after a sentence that is in the queue.
+				if spoke {
+					spoke = false
+					queue.push(utterance{cmdID: coreapi.NewCommandID(), speechEnd: s.speechEnd, turnEnd: true})
+				}
+				continue
 			}
 			setPrompt(prev)
 			start := time.Now()
@@ -379,6 +414,7 @@ func (e *Ears) Run(ctx context.Context) error {
 				AudioMs: int64(len(s.samples)) * 1000 / audio.SampleRate, WhisperMs: done.Sub(start).Milliseconds(),
 				SpeechEndToFinalMs: done.Sub(s.speechEnd).Milliseconds()})
 			queue.push(u)
+			spoke = true
 		}
 	}()
 
@@ -424,7 +460,7 @@ func (e *Ears) Run(ctx context.Context) error {
 	return nil
 }
 
-// send submits the utterances in order. A failed submit is repeated with the same command ID
+// send submits the utterances and the ends of turns in order. A failed submit is repeated with the same command ID
 // until it works, so a network drop neither loses nor duplicates an utterance
 // (dec-idempotent-commands). Errors that a repeat cannot fix drop the utterance.
 func (e *Ears) send(ctx context.Context, q *queue, report func(Report)) error {
@@ -440,16 +476,23 @@ func (e *Ears) send(ctx context.Context, q *queue, report func(Report)) error {
 		if !ok {
 			return stopped(0)
 		}
+		if u.turnEnd && e.Paused() {
+			continue // no signal while paused; the pause has ended the turn
+		}
 		backoff := 100 * time.Millisecond
 		for attempt := 1; ; attempt++ {
 			actx, cancel := context.WithTimeout(ctx, 10*time.Second)
-			res, err := e.Client.SubmitUtterance(actx, e.SessionID, u.cmdID, u.text, sessionstreamv1.Modality_MODALITY_VOICE, u.transcribedAt)
+			res, err := e.submit(actx, u)
 			cancel()
 			if err == nil {
 				at := time.Now()
-				report(Report{Type: "sent", CommandID: u.cmdID, EventID: res.GetEvent().GetId(), SpeechEnd: &u.speechEnd,
+				r := Report{Type: "sent", CommandID: u.cmdID, EventID: res.GetEvent().GetId(), SpeechEnd: &u.speechEnd,
 					TranscribedAt: &u.transcribedAt, SubmittedAt: &at, SpeechEndToSubmitMs: at.Sub(u.speechEnd).Milliseconds(),
-					Attempts: attempt, Duplicate: res.GetDuplicate()})
+					Attempts: attempt, Duplicate: res.GetDuplicate()}
+				if u.turnEnd {
+					r.Type, r.TranscribedAt = "turn-end", nil
+				}
+				report(r)
 				break
 			}
 			if ctx.Err() != nil {
@@ -470,6 +513,21 @@ func (e *Ears) send(ctx context.Context, q *queue, report func(Report)) error {
 			backoff = min(backoff*2, time.Second)
 		}
 	}
+}
+
+// result is the part of a command result that the ears report.
+type result interface {
+	GetEvent() *sessionstreamv1.Event
+	GetDuplicate() bool
+}
+
+// submit submits one item of the queue under its command ID: an utterance with modality voice,
+// or the turn.end of the participant.
+func (e *Ears) submit(ctx context.Context, u utterance) (result, error) {
+	if u.turnEnd {
+		return e.Client.SubmitTurnEnd(ctx, e.SessionID, u.cmdID, "")
+	}
+	return e.Client.SubmitUtterance(ctx, e.SessionID, u.cmdID, u.text, sessionstreamv1.Modality_MODALITY_VOICE, u.transcribedAt)
 }
 
 // permanent is true for errors that a repeat of the same command cannot fix.

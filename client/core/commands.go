@@ -214,14 +214,28 @@ func (c *hubClient) MarkOffTheRecord(ctx context.Context, sessionID string, utte
 
 // TurnEnd submits a turn.end signal for participantID (empty: the caller).
 func (c *hubClient) TurnEnd(ctx context.Context, sessionID, participantID string) (*sessioncommandsv1.CommandResult, error) {
-	return c.command(ctx, func(pid, id string) (*sessioncommandsv1.CommandResult, error) {
-		if participantID == "" {
-			participantID = pid
-		}
-		r, err := c.commands.SubmitSignal(ctx, &sessioncommandsv1.SubmitSignalRequest{SessionId: sessionID, CommandId: id, ParticipantId: pid,
-			Signal: &sessioncommandsv1.SubmitSignalRequest_TurnEnd{TurnEnd: &sessionstreamv1.TurnEnd{ParticipantId: participantID}}})
-		return r.GetResult(), err
+	return c.SubmitTurnEnd(ctx, sessionID, coreapi.NewCommandID(), participantID)
+}
+
+// SubmitTurnEnd submits a turn.end signal with a given command ID. The ears use it with the ID
+// they created when the turn ended, so a resend after a drop is not stored twice.
+func (c *hubClient) SubmitTurnEnd(ctx context.Context, sessionID, cmdID, participantID string) (*sessioncommandsv1.CommandResult, error) {
+	pid, err := c.ParticipantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if participantID == "" {
+		participantID = pid
+	}
+	req := &sessioncommandsv1.SubmitSignalRequest{SessionId: sessionID, CommandId: cmdID, ParticipantId: pid,
+		Signal: &sessioncommandsv1.SubmitSignalRequest_TurnEnd{TurnEnd: &sessionstreamv1.TurnEnd{ParticipantId: participantID}}}
+	var res *sessioncommandsv1.CommandResult
+	err = retry(ctx, func() error {
+		r, err := c.commands.SubmitSignal(ctx, req)
+		res = r.GetResult()
+		return err
 	})
+	return res, err
 }
 
 // SilenceLong submits a silence.long signal.

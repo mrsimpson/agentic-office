@@ -83,7 +83,7 @@ func main() {
 
 func earsConfig(o cli.EarsOptions) ears.Config {
 	return ears.Config{Mic: o.Mic, WAV: o.WAV, Model: o.Model, Fast: o.Fast, VADModel: o.VADModel, Language: o.Language,
-		Threads: o.Threads, EndSilence: o.EndSilence, Vocabulary: o.Vocabulary, Context: o.Context}
+		Threads: o.Threads, EndSilence: o.EndSilence, TurnSilence: o.TurnSilence, Vocabulary: o.Vocabulary, Context: o.Context}
 }
 
 type nopWriteCloser struct{ io.Writer }
