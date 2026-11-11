@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/mrsimpson/agentic-office/client/core"
@@ -22,9 +23,12 @@ type EarsOptions struct {
 	Mic bool
 	// WAV is a WAV file to play instead of the microphone.
 	WAV string
-	// Model and VADModel are the paths of the Whisper and the VAD model.
+	// Model is a name from the model catalogue or the path of a Whisper model. VADModel is the
+	// path of the VAD model.
 	Model, VADModel string
-	// Language is the spoken language, for example "de".
+	// Fast chooses the fast Whisper model when Model is empty.
+	Fast bool
+	// Language is the spoken language, a code or a name, for example "de" or "german".
 	Language string
 	// Threads is the number of Whisper threads.
 	Threads int
@@ -41,10 +45,44 @@ type EarsOptions struct {
 // check.
 var CheckEars func(ctx context.Context, opts *EarsOptions, progress func(string)) error
 
-// DownloadModels is the hook for "office models download": it downloads the default models of
-// the ears that are missing and reports each step to progress. Nil means the ears are not built
-// in.
-var DownloadModels func(ctx context.Context, progress func(string)) error
+// ModelOptions choose a speech model as join does: a name from the catalogue or a file, else
+// --fast, else the best model for the language.
+type ModelOptions struct {
+	Name, Language string
+	Fast           bool
+}
+
+// DownloadModels is the hook for "office models download": it downloads the chosen speech model
+// and the VAD model if they are missing and reports each step to progress. Nil means the ears are
+// not built in.
+var DownloadModels func(ctx context.Context, o ModelOptions, progress func(string)) error
+
+// ModelList is the result of "office models list".
+type ModelList struct {
+	// Models are the models of the catalogue, as JSON objects with name, file, sizeBytes,
+	// languages, about, downloaded and selected.
+	Models []ModelEntry `json:"models"`
+	// Selected is the speech model that join would use with the same options: a name, or a file.
+	Selected string `json:"selected"`
+	// Language is the Whisper code of the language.
+	Language string `json:"language"`
+	// Note says why another model than the best one for the language is selected.
+	Note string `json:"note,omitempty"`
+}
+
+// ModelEntry is one model of the catalogue.
+type ModelEntry struct {
+	Name       string   `json:"name"`
+	File       string   `json:"file"`
+	SizeBytes  int64    `json:"sizeBytes"`
+	Languages  []string `json:"languages,omitempty"`
+	About      string   `json:"about"`
+	Downloaded bool     `json:"downloaded"`
+	Selected   bool     `json:"selected"`
+}
+
+// ListModels is the hook for "office models list". Nil means the ears are not built in.
+var ListModels func(o ModelOptions) (ModelList, error)
 
 // StartEars is the hook for the ears (client/ears). It runs until ctx ends or the audio is over.
 // It submits final utterances with c.SubmitUtterance under a command ID it creates, and reports
@@ -59,15 +97,17 @@ func cmdJoin(e *env, fs *flag.FlagSet) func([]string) error {
 	mic := fs.Bool("mic", false, "transcribe the microphone and show the gateway view")
 	wav := fs.String("wav", "", "like --mic, but play a WAV file in real time")
 	var eo EarsOptions
-	fs.StringVar(&eo.Model, "model", "", "Whisper model for --mic/--wav (env OFFICE_WHISPER_MODEL)")
+	fs.StringVar(&eo.Model, "model", "", "Whisper model for --mic/--wav: a name of \"office models list\" or a file (env OFFICE_WHISPER_MODEL)")
+	fs.BoolVar(&eo.Fast, "fast", false, "use the fast Whisper model small instead of the best one for the language")
 	fs.StringVar(&eo.VADModel, "vad-model", "", "Silero VAD model for --mic/--wav (env OFFICE_VAD_MODEL)")
-	fs.StringVar(&eo.Language, "language", "", "spoken language for --mic/--wav (env OFFICE_WHISPER_LANGUAGE, default de)")
+	fs.StringVar(&eo.Language, "language", "", "spoken language for --mic/--wav, a code or a name such as de, german, en, english "+
+		"(env OFFICE_WHISPER_LANGUAGE, default de)")
 	fs.IntVar(&eo.Threads, "threads", 0, "Whisper threads for --mic/--wav (env OFFICE_WHISPER_THREADS)")
 	fs.DurationVar(&eo.EndSilence, "end-silence", 0, "silence that ends a sentence (env OFFICE_EARS_END_SILENCE, default 500ms)")
 	return func(args []string) error {
 		if len(args) != 1 {
 			return usagef("usage: office meeting join <session> [--name N] [--foreground] [--mic | --wav FILE] " +
-				"[--model F] [--vad-model F] [--language L] [--threads N] [--end-silence D]")
+				"[--language L] [--fast] [--model NAME|FILE] [--vad-model F] [--threads N] [--end-silence D]")
 		}
 		sid := args[0]
 		ears := *mic || *wav != ""
@@ -230,13 +270,66 @@ func cmdView(e *env, fs *flag.FlagSet) func([]string) error {
 // cmdModelsDownload downloads the models of the ears ahead of time, for example before the first
 // meeting or while building an image. join --mic and --wav also do it when a model is missing.
 func cmdModelsDownload(e *env, fs *flag.FlagSet) func([]string) error {
+	var o ModelOptions
+	modelFlags(fs, &o)
 	return func(args []string) error {
-		if len(args) != 0 {
-			return usagef("usage: office models download")
+		if len(args) > 1 {
+			return usagef("usage: office models download [--language L] [--fast] [<name>]")
+		}
+		if len(args) == 1 {
+			o.Name = args[0]
 		}
 		if DownloadModels == nil {
 			return errEarsNotImplemented
 		}
-		return DownloadModels(e.ctx, e.progress)
+		return DownloadModels(e.ctx, o, e.progress)
 	}
+}
+
+// cmdModelsList shows the model catalogue, what is downloaded, and which speech model join would
+// use with the same options.
+func cmdModelsList(e *env, fs *flag.FlagSet) func([]string) error {
+	var o ModelOptions
+	modelFlags(fs, &o)
+	fs.StringVar(&o.Name, "model", "", "a name or a file, as for join (env OFFICE_WHISPER_MODEL)")
+	return func(args []string) error {
+		if err := noArgs(args); err != nil {
+			return err
+		}
+		if ListModels == nil {
+			return errEarsNotImplemented
+		}
+		l, err := ListModels(o)
+		if err != nil {
+			return err
+		}
+		if e.json {
+			e.printJSON(l)
+			return nil
+		}
+		for _, m := range l.Models {
+			mark, have := " ", "not downloaded"
+			if m.Selected {
+				mark = "*"
+			}
+			if m.Downloaded {
+				have = "downloaded"
+			}
+			langs := "all languages"
+			if len(m.Languages) > 0 {
+				langs = strings.Join(m.Languages, ", ")
+			}
+			fmt.Fprintf(e.stdout, "%s %-22s %5d MB  %-14s  %-14s  %s\n", mark, m.Name, (m.SizeBytes+500_000)/1_000_000, langs, have, m.About)
+		}
+		fmt.Fprintf(e.stdout, "selected for language %s: %s\n", l.Language, l.Selected)
+		if l.Note != "" {
+			fmt.Fprintln(e.stdout, l.Note)
+		}
+		return nil
+	}
+}
+
+func modelFlags(fs *flag.FlagSet, o *ModelOptions) {
+	fs.StringVar(&o.Language, "language", "", "spoken language, a code or a name (env OFFICE_WHISPER_LANGUAGE, default de)")
+	fs.BoolVar(&o.Fast, "fast", false, "the fast model small instead of the best one for the language")
 }

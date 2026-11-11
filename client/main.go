@@ -32,7 +32,23 @@ func main() {
 		cfg := earsConfig(*o)
 		return cfg.Prepare(ctx, progress)
 	}
-	cli.DownloadModels = ears.DownloadModels
+	cli.DownloadModels = func(ctx context.Context, o cli.ModelOptions, progress func(string)) error {
+		return ears.DownloadModels(ctx, o.Name, o.Language, o.Fast, progress)
+	}
+	cli.ListModels = func(o cli.ModelOptions) (cli.ModelList, error) {
+		ms, c, err := ears.Catalogue(o.Name, o.Language, o.Fast)
+		if err != nil {
+			return cli.ModelList{}, err
+		}
+		l := cli.ModelList{Selected: c.Name, Language: c.Language, Note: c.Note}
+		if l.Selected == "" {
+			l.Selected = c.Path
+		}
+		for _, m := range ms {
+			l.Models = append(l.Models, cli.ModelEntry(m))
+		}
+		return l, nil
+	}
 	cli.StartEars = func(ctx context.Context, c *core.Client, sid string, o cli.EarsOptions,
 		status func(cmdID, text string, s core.Status), paused func() bool) error {
 		e := &ears.Ears{Config: earsConfig(o), Client: c, SessionID: sid, Status: status, Paused: paused}
@@ -45,7 +61,7 @@ func main() {
 }
 
 func earsConfig(o cli.EarsOptions) ears.Config {
-	return ears.Config{Mic: o.Mic, WAV: o.WAV, Model: o.Model, VADModel: o.VADModel, Language: o.Language,
+	return ears.Config{Mic: o.Mic, WAV: o.WAV, Model: o.Model, Fast: o.Fast, VADModel: o.VADModel, Language: o.Language,
 		Threads: o.Threads, EndSilence: o.EndSilence}
 }
 

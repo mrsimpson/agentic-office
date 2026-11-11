@@ -847,25 +847,39 @@ addresses: qg-usability, con-no-intelligence
 :::
 ```
 
-## The client downloads its speech models on first use
+## The client chooses its speech model by language and speed and downloads it on first use
 
-**Context:** The ears need a Whisper model and a voice activity model, about 490 MB together.
-The client is now published as a ready binary, so a participant has no build step that could
-fetch them. **Decision:** When the ears start and a default model is missing, the client downloads
-it once from the public source of whisper.cpp, or from a mirror that the participant configures.
-It checks every file against a checksum that is pinned in the client and keeps only a matching
-file. A separate command downloads the models ahead of time. A model that the participant chose
-is never downloaded. **Consequences:** The first join with the microphone needs the network and
-takes longer; later joins are offline as before. Only the model files come in; no audio, text or
-identity goes out (`qg-confidentiality`). A changed or damaged file at the source stops the
-download instead of changing the transcription. A new model version needs a new client.
-**Rejected:** models inside the binary (a download of half a gigabyte for agents that never
-listen); a download without a checksum (the client would load whatever the source serves).
+**Context:** The ears need a Whisper model and a voice activity model. The client is published as
+a ready binary, so a participant has no build step that could fetch them. One model does not fit
+every meeting: a large model transcribes names and terms better, a model fine-tuned for one
+language is better still for that language, but both are too slow for live use without a GPU. A
+small model is fast on every computer, but makes more mistakes. **Decision:** The client knows a
+catalogue of speech models by name: a small multilingual model, a large multilingual model and a
+large model fine-tuned for German. The participant names the spoken language. The client takes the
+best model for that language: the German model for German, the large multilingual model for every
+other language. The participant can ask for the fast model instead. When the build of the client
+has no GPU support, the client takes the fast model by itself and says so. A participant can still
+name any model of the catalogue or a model file. When the ears start and the chosen model of the
+catalogue is missing, the client downloads it once from its public source, or from a mirror that
+the participant configures. It checks every file against a checksum that is pinned in the client
+and keeps only a matching file. Separate commands list the catalogue with what is downloaded and
+which model would be used, and download models ahead of time. A model file that the participant
+chose is never downloaded. **Consequences:** The first join with the microphone needs the network
+and takes longer; a large model is about 1.6 GB. Later joins are offline as before. Only the
+model files come in; no audio, text or identity goes out (`qg-confidentiality`). A changed or
+damaged file at the source stops the download instead of changing the transcription. A new model
+or a new version needs a new client. The client decides about the GPU from its build, not from
+the hardware; a participant with an own build can override it. OPEN: whether the large models are
+fast enough for live use on the GPUs of participant laptops (minimum hardware, chapter 7).
+**Rejected:** models inside the binary (gigabytes for agents that never listen); a download
+without a checksum (the client would load whatever the source serves); one fixed model for
+everyone (worse for German, or too slow without a GPU); detecting the GPU from the hardware (the
+binary can only use what it was built with).
 
 ```arc42
 :::decision
 id: dec-model-download
-title: The client downloads its speech models on first use
+title: The client chooses its speech model by language and speed and downloads it on first use
 status: proposed
 date: 2026-11-10
 addresses: qg-usability, qg-confidentiality

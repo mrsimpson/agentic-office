@@ -237,6 +237,8 @@ type earsReport struct {
 	Attempts            int        `json:"attempts"`
 	Duplicate           bool       `json:"duplicate"`
 	Error               string     `json:"error"`
+	Model               string     `json:"model"`
+	Language            string     `json:"language"`
 	seen                time.Time
 }
 
