@@ -27,3 +27,66 @@ func (r *runner) firstPrompt() string {
 	b.WriteString("\nIf your role asks you to do something at the start of the meeting, do it now. Otherwise end your turn.")
 	return b.String()
 }
+
+// writeBatch writes the utterances of a batch, one per line, and the notices of sentences that
+// went off the record.
+func (r *runner) writeBatch(b *strings.Builder, bt batch) {
+	if len(bt.utterances) == 0 {
+		b.WriteString("Nobody said anything new.\n")
+	}
+	for _, u := range bt.utterances {
+		p := r.who(u.pid)
+		fmt.Fprintf(b, "[%d] %s (%s): %s\n", u.id, p.name, p.kind, strings.Join(strings.Fields(u.text), " "))
+	}
+	if len(bt.offNotices) > 0 {
+		ids := make([]string, len(bt.offNotices))
+		for i, id := range bt.offNotices {
+			ids[i] = fmt.Sprintf("[%d]", id)
+		}
+		fmt.Fprintf(b, "\nThe speaker marked these sentences off the record afterwards: %s. Do not use or repeat them, and keep them out of minutes, decisions, notes and tasks.\n",
+			strings.Join(ids, ", "))
+	}
+}
+
+// defaultTopicTask is the task at the end of a block of topics when the user gave none.
+const defaultTopicTask = "If your role asks for it, update the minutes and record the decisions and tasks of that block now."
+
+// wakePrompt is the prompt that wakes the agent (dec-wake-check-per-utterance). It says whether
+// the speaker has ended their turn and what the decision model found: whom the speaker addressed
+// and whether a block of topics has ended.
+func (r *runner) wakePrompt(bt batch) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "New in the meeting %q since my last message (event ID, speaker, human or agent, text):\n\n", r.o.Session)
+	r.writeBatch(&b, bt)
+	if bt.turnBy != "" {
+		p := r.who(bt.turnBy)
+		fmt.Fprintf(&b, "\nThe turn of %s (%s) has ended.\n", p.name, p.kind)
+	} else if len(bt.utterances) > 0 {
+		b.WriteString("\nThe speaker may still be speaking. Do not interrupt: raise your hand or write instead, unless the speaker asked you to answer now.\n")
+	}
+	if bt.topicClosed {
+		task := strings.TrimSpace(r.o.TopicTask)
+		if task == "" {
+			task = defaultTopicTask
+		}
+		fmt.Fprintf(&b, "\nA block of topics has ended. %s\n", task)
+	}
+	if bt.addressed != "" {
+		fmt.Fprintf(&b, "\nA decision model thinks that the speaker addressed: %s.\n", bt.addressed)
+	}
+	b.WriteString("\nDecide yourself whether someone addressed you or whether your role asks you to contribute now. If not, do nothing and end your turn. To speak, call utterance_say.")
+	return b.String()
+}
+
+// finalPrompt is the last prompt after session.ended.
+func (r *runner) finalPrompt(bt batch) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "The meeting %q has ended.\n\n", r.o.Session)
+	if !bt.empty() {
+		b.WriteString("New since my last message:\n\n")
+		r.writeBatch(&b, bt)
+		b.WriteString("\n")
+	}
+	b.WriteString("If your role has work for the end of the meeting, for example the minutes, decisions or tasks, do it now. Do not speak in the meeting any more: a new utterance would open the session again. Then end your turn. This is my last message; I stop after it.")
+	return b.String()
+}

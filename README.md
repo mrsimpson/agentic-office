@@ -161,6 +161,7 @@ client/                   bb-participant-client: wiring of the client (binary of
     decision/             if-decision-model: request, answer and JSON schema of a decision model
 tests/                    external actors: may use interfaces only
   acpdouble/              test double of an ACP agent harness (no model)
+  decisiondouble/         test double of a decision model, command kind (no model)
   architecture/           architecture test
   contracttest/           harness for black-box contract tests
   contract/               contract tests, one file per building block
@@ -1203,6 +1204,8 @@ Everything after `--` is the harness command. Flags:
 - `--allow PATTERN` (repeatable): allow tool calls whose title matches the pattern (`*` is any
   text, without regard to case). `--allow '*'` allows every tool. See the permission rule below.
 - `--cwd DIR`: the working directory of the agent's session (default: the current directory).
+- `--decide-cmd CMD` or `--decide-url URL --decide-model M`: a decision model that you bring
+  (see below). `--decide-timeout D` (default `10s`) and `--topic-task TEXT` go with it.
 - The common flags and `OFFICE_*` variables of the CLI (key, hub, certificate, runtime directory).
 
 **What the runner does:**
@@ -1219,12 +1222,111 @@ Everything after `--` is the harness command. Flags:
 4. It sends a first prompt: the session, the agent's participant ID, its role, how the meeting
    works (speak with `utterance_say`; the reply in the chat reaches nobody; respect sentences
    off the record) and the path of the local log.
-5. It stops after `session.ended`, after the agent's own `participant.left`, on SIGINT or
-   SIGTERM, or when the harness stops. It closes the harness's stdin, then sends SIGTERM and at
-   last SIGKILL to the process group. A harness that stops by itself is an error (exit 1).
+5. After each utterance of another participant, it checks whether to wake the agent
+   (`dec-wake-check-per-utterance`): it asks the decision model, if you brought one. Without a
+   decision model, it wakes the agent at each change of speaker (`turn.end` of another
+   participant) and says so at start: it does not notice a new topic within a monologue. Details
+   below.
+6. After `session.ended`, it sends a last prompt and then stops. It also stops after the agent's
+   own `participant.left`, on SIGINT or SIGTERM, or when the harness stops. It closes the
+   harness's stdin, then sends SIGTERM and at last SIGKILL to the process group. A harness that
+   stops by itself is an error (exit 1).
 
-The runner logs to stderr (`office agent: …`): the ACP session, each tool call, each permission
-decision and the agent's reply text, which is not spoken.
+The runner logs to stderr (`office agent: …`): the ACP session, each decision of the decision
+model, each wake-up, each tool call, each permission decision and the agent's reply text, which
+is not spoken.
+
+**What the agent gets** (`dec-agent-runner-delivery`). The runner reads the local log from the
+agent's join on. It keeps the utterances of others that the agent has not got yet:
+
+- When it wakes the agent, it sends all of them, oldest first, one per line:
+  `[<event ID>] <name> (<human|agent>): <text>`. Then it says whose turn has ended, or that the
+  speaker may still be speaking (the agent should then raise its hand or write instead of
+  interrupting). With a decision model, it adds whom the speaker addressed and, when a block of
+  topics has ended, the task for that (`--topic-task`, default: update the minutes and record
+  the decisions and tasks of the block, if the role asks for it).
+- It never sends the agent's own utterances, its own `turn.end`, or placeholders of sentences off
+  the record. A sentence that goes off the record before it was sent is never sent. For a sent
+  one, the runner wakes the agent as soon as it is free, names the event ID and says that it is
+  off the record.
+- One prompt runs at a time. While the agent works, what comes waits and goes out together in
+  one prompt when the agent ends its turn. A `turn.end` without new utterances wakes nobody.
+- After `session.ended`, the last prompt carries what is left and asks the agent to finish the
+  work of its role (for example the minutes, decisions or tasks) without speaking, because a new
+  utterance would open the session again (`dec-session-end-milestone`). The runner does not
+  leave the session.
+
+Example:
+
+```
+New in the meeting "weekly" since my last message (event ID, speaker, human or agent, text):
+
+[41] Ada (human): We start with the budget.
+[42] Ada (human): Bot, what did we decide last week?
+
+The speaker may still be speaking. Do not interrupt: raise your hand or write instead, unless the speaker asked you to answer now.
+
+A decision model thinks that the speaker addressed: bot.
+
+Decide yourself whether someone addressed you or whether your role asks you to contribute now.
+If not, do nothing and end your turn. To speak, call utterance_say.
+```
+
+**A decision model you bring** (`dec-byo-decision-model`, `if-decision-model`). Waking a
+harness with a large model costs time and money. A small, fast model decides after each
+utterance whether the agent should act. The office ships no model.
+
+```sh
+# a command: reads the request as JSON on stdin, writes the answer as JSON on stdout
+office agent run --session weekly --role-file role.md --decide-cmd "python3 decide.py" -- opencode acp
+# an OpenAI-compatible endpoint with structured output, for example Ollama or llama.cpp
+OFFICE_DECIDE_KEY=... office agent run --session weekly --role-file role.md \
+  --decide-url http://127.0.0.1:11434/v1 --decide-model <model> -- opencode acp
+```
+
+- `--decide-cmd CMD`: a shell command (`sh -c`), run once per check.
+- `--decide-url URL --decide-model M`: the runner posts to `URL/chat/completions` with a system
+  message, the request as the user message, `temperature` 0 and `response_format` of type
+  `json_schema` (strict). The answer is the content of the first choice. `OFFICE_DECIDE_KEY`, if
+  set, goes as a bearer token; it is never logged.
+- `--decide-timeout D` (default `10s`): after this time without an answer, the runner wakes the
+  agent.
+
+When the runner checks:
+
+- after each utterance of another participant, and once more when that participant ends the
+  turn (`turn_ended` is then true);
+- one check at a time. Utterances that come while a check runs wait; the next check gets all
+  utterances that the agent has not got yet as `new`. An answer about utterances that the agent
+  got meanwhile is dropped;
+- also while the agent works. A wake-up then waits until the agent is free.
+
+It wakes the agent when the answer has `act` or `topic_closed`, and when the model fails, does
+not answer in time or answers something that is not the contract (the log says why).
+Utterances that did not wake the agent stay and go out with the next wake-up.
+
+The request (snake_case JSON, `client/agentrunner/decision`):
+
+```json
+{"session": "weekly",
+ "agent": {"participant_id": "bot", "name": "Bot", "kind": "agent"},
+ "role": "You keep the minutes.",
+ "participants": [{"participant_id": "ada", "name": "Ada", "kind": "human"}, …],
+ "context": [{"event_id": 38, "participant_id": "bot", "name": "Bot", "kind": "agent", "text": "…"}, …],
+ "new": [{"event_id": 41, "participant_id": "ada", "name": "Ada", "kind": "human", "text": "We start with the budget."},
+         {"event_id": 42, "participant_id": "ada", "name": "Ada", "kind": "human", "text": "Bot, what did we decide last week?"}],
+ "turn_ended": false}
+```
+
+`new` are the utterances of others that the agent has not got yet; the last one is the one just
+said. `context` are up to 20 earlier utterances, the agent's own included. Sentences off the
+record are never in a request. The answer:
+
+```json
+{"act": true, "addressed": "bot", "topic_closed": false, "reason": "Ada asked Bot by name"}
+```
+
+`act` and `topic_closed` must be there; `addressed` and `reason` may be empty.
 
 **The permission rule.** The runner offers the harness no file system and no terminal of its
 own. When the harness asks for permission to use a tool (`session/request_permission`), the
@@ -1271,9 +1373,18 @@ through its interfaces:
   `tests/acpdouble` as the harness (`contracttest.ACPDouble` builds it). The double speaks raw
   ACP JSON-RPC without a library, starts the MCP server that the runner hands it, records every
   step in a file and follows instructions in the prompt text (`please say "…"`, `please run
-  "…"`, `please wait 2s`). The tests check the ACP steps, the MCP server and its key, the
-  permission rule and `--allow`, the role file, usage errors, a harness that stops, and that the
-  harness stops with the runner. No real harness and no model run in the tests.
+  "…"`, `please wait 2s`, `please hold` until a release file exists). The tests check the ACP
+  steps, the MCP server and its key, the permission rule and `--allow`, the role file, usage
+  errors, a harness that stops, that the harness stops with the runner, and the last prompt.
+  `agentrunner_wake_test.go` checks the wake-up without a decision model (at `turn.end`), queueing
+  while the agent works, and sentences off the record. `agentrunner_decision_test.go` uses the
+  decision model double `tests/decisiondouble` (`contracttest.DecisionDouble`; it judges the last
+  new utterance by fixed rules and records each request) and a fake OpenAI-compatible endpoint: a
+  check per utterance, a wake-up in the middle of a monologue, no wake-up, `topic_closed`,
+  queueing while a check runs, and the fallback on error, time-out and a bad answer. The tests
+  wait for records and log lines of the runner, never for a time. `tests/e2e/agentrunner_test.go`
+  combines both doubles with a real hub and a human. No real harness and no model run in the
+  tests.
 - `tests/contract/cli_test.go` and `replicator_test.go` run the real `office` binary and check
   its output and the local log it leaves, including kills of the replicator and torn lines.
 - `tests/e2e/ears_test.go` runs the ears with the German test WAV (`tests/e2e/testdata/`): the

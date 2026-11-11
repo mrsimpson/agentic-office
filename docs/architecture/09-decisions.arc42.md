@@ -84,9 +84,10 @@ agent. A decision model that the user brings makes the check (`dec-byo-decision-
 says the agent should act, the runner sends the agent what others said since its last delivery,
 as one prompt. Each utterance says who spoke and whether that participant is a human or an
 agent. The agent decides by itself how to act: answer, raise its hand, or update the minutes
-silently. OPEN: what the runner does without a decision model. A check per utterance would then
-wake the agent at every utterance. Until this is decided, the runner wakes it at each change of
-speaker instead. **Consequences:** People talk to the agent in plain words, and the agent can
+silently. Without a decision model, a check per utterance would wake the agent at every
+utterance. So the runner then wakes the agent at each change of speaker instead, and says at
+start that it does not notice a new topic within a monologue (`dec-agent-runner-delivery`).
+**Consequences:** People talk to the agent in plain words, and the agent can
 follow topics within a long monologue. The check runs for every utterance, so the decision model
 must be fast and cheap. An agent may act while someone still speaks; it should not interrupt
 speech, but raise its hand or write. **Rejected:** a wake-up only at each change of speaker (it
@@ -112,10 +113,20 @@ log may grow. **Decision:**
   and the same local log.
 - It delivers utterances in the order of the log, from the cursor of its last delivery. It leaves
   out the agent's own utterances and sentences off the record. A sentence that goes off the record
-  before it was delivered is never delivered; for a delivered one, the next prompt tells the
-  agent that it is off the record.
-- One prompt runs at a time. While the agent works, the runner queues further turns and sends
-  them together in one prompt afterwards. A turn without new utterances of others wakes nobody.
+  before it was delivered is never delivered. For a delivered one, the runner wakes the agent as
+  soon as it is free and tells it that the sentence is off the record.
+- With a decision model, the runner checks after each utterance of another participant, and
+  once more when that participant ends the turn. One check runs at a time. Utterances that come
+  while a check runs wait; the next check judges all utterances that the agent has not got yet,
+  together. An answer about utterances that the agent got meanwhile counts no more. The runner
+  also checks while the agent works.
+- Without a decision model, the runner wakes the agent at each change of speaker (`turn.end` of
+  another participant). It says at start that it does not notice a new topic within a monologue
+  without a decision model.
+- When the runner wakes the agent, it sends all utterances of others since its last delivery as
+  one prompt. One prompt runs at a time. While the agent works, the runner queues what comes
+  and sends it together in one prompt afterwards. A change of speaker without new utterances of
+  others wakes nobody.
 - After `session.ended`, the runner sends what is left and a last prompt with the task of the
   role for the end, then stops the harness. It does not leave the session, because a session
   command would open it again (`dec-session-end-milestone`).
@@ -126,10 +137,13 @@ log may grow. **Decision:**
   a new runner for the same agent delivers what was said since that join.
 
 **Consequences:** Nothing is lost and nothing is sent twice within one ACP session. The agent
-gets fewer, larger prompts when it is slow. The permission rule keeps an unattended agent from
-running other tools unless the user allows them. **Rejected:** cancelling a running prompt when a
-new turn comes (the agent would lose its work); one prompt per turn while busy (the agent would
-lag behind more and more).
+gets fewer, larger prompts when it is slow. A slow decision model sees several utterances in one
+check instead of falling behind. The permission rule keeps an unattended agent from running
+other tools unless the user allows them. **Rejected:** cancelling a running prompt when a new
+turn comes (the agent would lose its work); one prompt per turn while busy (the agent would lag
+behind more and more); one check per utterance in parallel (answers could come out of order and
+the model would be asked more often than it can answer); waking the agent at every utterance
+without a decision model (too many wake-ups).
 
 ```arc42
 :::decision
@@ -154,8 +168,9 @@ or a command that reads the request as JSON and writes the answer as JSON. After
 the runner asks it and gets `act`, `addressed`, `topic_closed` and `reason`. It wakes the agent
 when `act` is true. When `topic_closed` is true, it wakes the agent with the task of the role for
 the end of a topic, for example to update the minutes or to record decisions. Without a decision
-model, the runner wakes the agent at each change of speaker (OPEN, see
-`dec-wake-check-per-utterance`). If the model fails or does not answer in time, the runner wakes the agent and logs why.
+model, the runner wakes the agent at each change of speaker and says at start that it does not
+notice a new topic within a monologue (`dec-agent-runner-delivery`). If the model fails or does
+not answer in time, the runner wakes the agent and logs why.
 **Consequences:** The office ships no model and stays free of a model vendor. A wrong answer of
 the model can keep the agent silent when it was addressed; the fallback covers only errors and
 time-outs. Utterances that did not wake the agent stay queued and reach it with the next prompt,
