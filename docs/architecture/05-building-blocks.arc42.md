@@ -707,8 +707,10 @@ requires: if-session-commands, if-session-stream, if-session-import, if-auth-api
 
 #### Client core API
 
-The in-process interface of the client core for the adapters: configuration, authenticated
-clients of the office hub, command IDs and the commands of a participant.
+The in-process interface of the client core for the adapters: configuration, an authenticated
+client of the office hub with the commands of a participant, command IDs, and the shapes of input
+and output that the CLI and the MCP server share. The wiring of the participant client hands the
+client core to the adapters, so they know only this contract.
 
 ```arc42
 :::interface
