@@ -83,6 +83,20 @@ A skipped job counts as passed. A manual run of the workflow runs every job. The
 pinned whisper.cpp commit (`WHISPER_REF` in the Makefile) and caches it and the models. The
 performance tests do not run in the CI.
 
+The workflow "Architecture review" (`.github/workflows/architecture-review.yml`) shows on every
+pull request whether it changes the architecture. Its job "Architecture diff" runs
+`arc42 diff origin/main...HEAD` and writes the result as one comment on the pull request; later
+pushes update the same comment. When the architecture changed, the job also builds a review site
+with the changes marked (`arc42 build --diff`):
+
+- on GitHub Pages at `https://<owner>.github.io/<repo>/pr-<number>/`, from the branch `gh-pages`.
+  This needs Pages to deploy from the branch `gh-pages`, folder `/` (repository settings). The
+  folder is removed when the pull request closes;
+- as one HTML file in a workflow artifact, which works without Pages.
+
+Consistency findings of the diff appear in the comment but do not fail the job; the job
+Architecture validates the model. Pull requests from forks get the job summary only.
+
 Run the hub by hand:
 
 ```sh
