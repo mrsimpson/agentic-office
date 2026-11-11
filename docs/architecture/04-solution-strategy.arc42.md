@@ -1,6 +1,6 @@
 # Solution Strategy
 
-The application is state, tools and senses, but not a brain. Agents and humans take part as
+The hub is state and tools, the client adds senses, and neither is the brain. Agents and humans take part as
 participants of the same kind. They read what happens from a locally replicated file and act
 through CLI or MCP tools. Speech is transcribed at the edge. The office is present in the meeting
 through a shared stage, not through an integration into the meeting tool.
@@ -22,9 +22,18 @@ addresses: qg-confidentiality, qg-performance, qg-resumability, qg-usability
 
 ## Bring your own agent
 
-The agent makes every judgement about content. The application stores, calculates, renders,
-transcribes and checks against rules. So any agent can connect, and the application stays
-deterministic and testable (see `dec-headless-byoa`).
+The agent makes every judgement about content. The hub stores, calculates, renders and checks
+against rules. So any agent can connect, and the hub stays deterministic and testable (see
+`dec-headless-byoa`). The client may contain models on the participant's side, for example the
+speech model of the ears or a decision model that the user brings (`dec-models-in-client`).
+
+## Keep the agent in the meeting
+
+Agents work in turns (`con-turn-based-agents`). The agent runner of the client follows the
+local log for an agent and starts the agent's next turn when the speaker changes. It talks to
+the agent harness over the Agent Client Protocol and hands it the office tools (see
+`dec-agent-runner-acp`, `dec-wake-on-turn-end`). The agent itself decides whether it is
+addressed.
 
 ## Read from the file, write through tools
 

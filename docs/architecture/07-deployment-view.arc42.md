@@ -25,6 +25,7 @@ architecture-beta
     service bb-cli(server)[office CLI] in dn-participant-laptop
     service bb-replicator(disk)[Log replicator] in dn-participant-laptop
     service bb-mcp(server)[MCP server] in dn-agent-runtime
+    service bb-agent-runner(server)[Agent runner] in dn-agent-runtime
     service bb-session-service(server)[Meeting session] in dn-office-hub
     service bb-records(database)[Records] in dn-office-hub
     service bb-tasks(database)[Tasks] in dn-office-hub
@@ -70,7 +71,9 @@ hosts: bb-cli, bb-client-core, bb-replicator, bb-ears
 
 The computer or container in which the agent runs, for example Claude Code on a laptop or in a
 cloud session. It runs the MCP server, the CLI and the log replicator in the same file system as
-the agent.
+the agent. With the agent runner, the runner starts the agent harness as its child process on this
+node, and the harness starts the MCP server. A decision model that the user brings runs wherever
+the user puts it: as a command on this node, or behind an endpoint that the node can reach.
 
 ```arc42
 :::deployment-node
@@ -78,7 +81,7 @@ id: dn-agent-runtime
 title: Agent runtime
 type: container
 parent: env-mvp
-hosts: bb-mcp, bb-cli, bb-client-core, bb-replicator
+hosts: bb-mcp, bb-cli, bb-client-core, bb-replicator, bb-agent-runner
 :::
 ```
 

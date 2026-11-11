@@ -56,6 +56,36 @@ mitigation: Events after a cursor, polled by the agent (dec-events-from-cursor)
 :::
 ```
 
+## The agent harnesses and ACP change fast
+
+The Agent Client Protocol is young, and the harnesses implement it in different ways and versions.
+Claude Code needs an adapter that is a separate package. Harnesses name tools differently in their
+permission requests, so a rule that allows only the office tools can miss or block a tool. The
+office cannot test real harnesses in its CI, because they need a model and a key.
+
+```arc42
+:::risk
+id: risk-harness-drift
+title: Agent harnesses and ACP change and differ
+severity: medium
+mitigation: The runner uses only the stable core of ACP (initialize, one session with MCP servers, prompt, cancel, permission requests) and tests it against a test double; the user guide names the tested harness commands; the permission rule is configurable (dec-agent-runner-delivery)
+:::
+```
+
+## Waking the agent costs time and money
+
+Woken at every change of speaker, a harness with a large model spends tokens on turns that do not
+concern it, and it may lag behind a fast meeting.
+
+```arc42
+:::risk
+id: risk-agent-wakeups
+title: Waking the agent at every change of speaker is slow and costly
+severity: medium
+mitigation: Queued turns go out together in one prompt (dec-agent-runner-delivery); a decision model that the user brings wakes the agent only when it should act (dec-byo-decision-model)
+:::
+```
+
 ## Loudspeakers instead of a headset
 
 If someone uses loudspeakers, other people's voices end up in their transcript, and sentences

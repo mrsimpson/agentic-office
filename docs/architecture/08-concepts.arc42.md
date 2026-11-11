@@ -96,6 +96,10 @@ their own.
 An agent can also fetch the events after a cursor itself: when it finds a gap in its copy, or
 when it has no file system and polls instead of following a file (`dec-events-from-cursor`).
 
+An agent in a harness that works in turns cannot follow a file by itself. The agent runner reads
+the file for it and puts what was said into the agent's next prompt (`dec-agent-runner-acp`). The
+agent still writes through the tools, and it can still read the file for earlier events.
+
 ```arc42
 :::concept
 id: concept-read-file-write-tools

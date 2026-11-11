@@ -512,7 +512,9 @@ path: hub/identity/tokencheck
 ## Participant client
 
 Runs locally on every participant's computer and is the same for humans and agents. It contains
-the CLI, the MCP server, the log replicator and, optionally, the ears.
+the CLI, the MCP server, the log replicator, the agent runner and, optionally, the ears. Unlike the
+hub, the client may contain models (`dec-models-in-client`): the speech model of the ears, and a
+decision model that the user brings for the agent runner.
 
 ```arc42
 :::building-block
@@ -533,19 +535,22 @@ id: bb-participant-client-whitebox
 view: building-block
 notation: mermaid
 roots: bb-participant-client
-aliases: bb_participant_client=bb-participant-client, bb_cli=bb-cli, bb_client_core=bb-client-core, bb_ears=bb-ears, bb_mcp=bb-mcp, bb_replicator=bb-replicator
+aliases: bb_participant_client=bb-participant-client, bb_agent_runner=bb-agent-runner, bb_cli=bb-cli, bb_client_core=bb-client-core, bb_ears=bb-ears, bb_mcp=bb-mcp, bb_replicator=bb-replicator
 :::
 ```
 
 ```mermaid
 flowchart LR
     subgraph bb_participant_client [Participant client]
+        bb_agent_runner[Agent runner]
         bb_cli[office CLI]
         bb_client_core[Client core]
         bb_ears[Ears]
         bb_mcp[MCP server]
         bb_replicator[Log replicator]
     end
+    bb_agent_runner -->|if-client-core| bb_client_core
+    bb_agent_runner -->|if-replication| bb_replicator
     bb_cli -->|if-client-core| bb_client_core
     bb_cli -->|if-replication| bb_replicator
     bb_ears -->|if-client-core| bb_client_core
@@ -619,6 +624,60 @@ path: client/ears
 :::
 ```
 
+### Agent Client Protocol (client side)
+
+The participant client is the client of the Agent Client Protocol (ACP) for an agent harness,
+for example Claude Code through its ACP adapter, opencode or Kiro. The agent runner starts the
+harness as a child process and talks JSON-RPC with it over its standard input and output. The
+contract is the published protocol; the client takes the client side and the harness the agent
+side (`dec-agent-runner-acp`):
+
+- The runner opens one ACP session per meeting and hands it the office tools as an MCP server
+  that runs with the key of the agent.
+- It sends prompts: a first one with the role and the meeting, then what was said.
+- It answers the requests of the harness for permission to use a tool by a rule of the user
+  (`dec-agent-runner-delivery`). It offers no access to its file system or terminal.
+- It ends the harness when the runner ends.
+
+```arc42
+:::interface
+id: if-acp-client
+title: Agent Client Protocol (client side)
+provider: bb-participant-client
+x-realized-by: bb-agent-runner
+protocol: ACP, JSON-RPC over stdio (agentclientprotocol.com)
+path: client/agentrunner
+:::
+```
+
+### Decision model
+
+The contract for a decision model that the user brings (`dec-byo-decision-model`). At each change
+of speaker, the agent runner sends a request: the session, the agent and its role, the
+participants, the recent context and the new utterances, and who ended the turn. The model
+answers with structured output:
+
+- `act`: whether the agent should act now;
+- `addressed`: the participant whom the speaker addressed, or empty;
+- `topic_closed`: whether a block of topics has ended;
+- `reason`: a short reason, for the log of the runner.
+
+The model is reached in one of two ways: an OpenAI-compatible chat endpoint with structured
+output by JSON schema, or a command that reads the request as JSON on its standard input and
+writes the answer as JSON on its standard output. The contract owns the request, the answer and
+its JSON schema.
+
+```arc42
+:::interface
+id: if-decision-model
+title: Decision model
+provider: bb-participant-client
+x-realized-by: bb-agent-runner
+protocol: OpenAI-compatible chat completions with JSON schema, or JSON on stdin and stdout of a command
+path: client/agentrunner/decision
+:::
+```
+
 ### Client core
 
 The shared core of the CLI, the MCP server and the ears ("one core, two adapters",
@@ -657,7 +716,8 @@ path: client/core
 ### office CLI
 
 The main access for humans and for agents with a shell. `office meeting join <session> [--mic]`
-starts the replication and prints the log path. With `--mic`, the terminal shows the user's own
+starts the replication and prints the log path. `office agent run` starts the agent runner for
+an agent harness. With `--mic`, the terminal shows the user's own
 utterances with their status (partial → final → sent / off the record). Keys let the user pause and
 mark a sentence off the record. `office session import <file>` imports a conversation from a
 file in the import format of the client (`dec-import-format`). Other commands cover slides, the
@@ -690,6 +750,43 @@ parent: bb-participant-client
 requires: if-client-core, if-replication, if-session-commands, if-slides-api, if-auth-api
 implements: concept-read-file-write-tools
 path: client/mcp
+:::
+```
+
+### Agent runner
+
+Keeps an agent in the meeting (`dec-agent-runner-acp`). Agents work in turns
+(`con-turn-based-agents`): after a turn they wait for a human. The runner does not wait. For one
+session and one agent key, it:
+
+- joins the session as the agent and runs the log replicator in its own process, so it follows
+  the local log of the agent;
+- starts the agent harness, opens one ACP session and hands it the office tools as an MCP server
+  with the key of the agent;
+- sends a first prompt with the role of the agent and the meeting;
+- at each change of speaker, sends what others said since its last delivery, with who said it
+  and whether that participant is a human or an agent (`dec-wake-on-turn-end`). It leaves out
+  the agent's own utterances and sentences off the record. While the agent works, it queues the
+  turns and sends them together afterwards, so nothing is lost and nothing is sent twice
+  (`dec-agent-runner-delivery`);
+- optionally asks a decision model first and wakes the agent only when the model says so, or
+  when a block of topics has ended (`dec-byo-decision-model`); if the model fails or is slow, it
+  wakes the agent;
+- after the session ends, sends a last prompt and stops the harness.
+
+The runner never speaks for the agent and judges nothing itself: the agent decides whether it is
+addressed and acts through the office tools. Whatever the harness writes as a reply is only
+logged.
+
+```arc42
+:::building-block
+id: bb-agent-runner
+title: Agent runner
+technology: Go / Agent Client Protocol
+parent: bb-participant-client
+requires: if-client-core, if-replication, if-session-commands
+implements: concept-read-file-write-tools, concept-participant-model
+path: client/agentrunner
 :::
 ```
 

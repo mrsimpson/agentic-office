@@ -2,8 +2,8 @@
 
 ## 1.1 Requirements Overview
 
-Agentic Office is a **headless office**. It helps a company with administrative work, but it is
-not "intelligent" itself. It keeps the team's state (decisions, minutes, notes, tasks, artifacts). It
+Agentic Office is a **headless office**. It helps a company with administrative work, but its
+hub is not "intelligent" itself. It keeps the team's state (decisions, minutes, notes, tasks, artifacts). It
 offers deterministic tools (render slides, check business plans by calculation). And it opens
 senses into the real world, starting with audio from meetings. The agent brings the thinking
 ("bring your own agent").
@@ -16,6 +16,7 @@ one difference: humans can also switch on a microphone. Their speech is then tra
 | Join a meeting | A human or an agent joins a session and gets a local log file that is replicated continuously |
 | Capture speech | Local Whisper transcribes only the device owner (headset) and sends text, never audio |
 | Take minutes and raise a hand | An agent keeps the minutes, raises its hand on the stage and shows artifacts |
+| Keep an agent in the meeting | The agent runner wakes an agent when the speaker changes, so people can address it in plain words |
 | Show the stage | A web view of the hub is shared by screen share in any meeting tool |
 | Create artifacts | Slides, plan checks, decisions and notes through CLI or MCP, without streaming |
 | Track tasks | Create tasks in a meeting, assign them and change their status through CLI or MCP; for now they are drafts in the hub |

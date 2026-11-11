@@ -412,3 +412,66 @@ sequenceDiagram
     actor_agent->>bb_session: end the session
     bb_session->>bb_records: store the minutes
 ```
+
+## The agent runner wakes an agent at a change of speaker
+
+An agent takes part through the agent runner (`dec-agent-runner-acp`). The runner joined the
+session with the key of the agent and follows its local log. It started the harness, opened one
+ACP session with the office tools and sent a first prompt with the role.
+
+A human asks a question and stops talking. Their client submits `turn.end`. The runner reads it
+from the local log. It collects what others said since its last delivery, leaves out the agent's
+own utterances and sentences off the record, and sends it as one prompt
+(`dec-wake-on-turn-end`). With a decision model, the runner asks it first and sends the prompt
+only if the model says the agent should act, or if a block of topics has ended
+(`dec-byo-decision-model`). The agent reads the prompt, decides that it is addressed and answers
+with `utterance_say` through the MCP server. The answer reaches every local log, also that of the
+runner, which leaves it out of the next prompt. If the agent is still busy when the next
+`turn.end` comes, the runner queues it and sends the queued turns together afterwards
+(`dec-agent-runner-delivery`). When the session ends, the runner sends a last prompt and stops
+the harness.
+
+```arc42
+:::runtime-scenario
+id: rs-agent-runner-turn
+title: The agent runner wakes an agent at a change of speaker
+trigger: turn.end of another participant in the local log of the agent
+involves: bb-agent-runner, bb-client-core, bb-replicator, bb-mcp, bb-cli, bb-session-service, bb-participant-client, bb-office-hub
+:::
+```
+
+```arc42
+:::diagram
+id: seq-agent-runner-turn
+notation: mermaid-sequence
+scenario: rs-agent-runner-turn
+aliases: actor_human=actor-human, actor_agent=actor-agent, actor_decision_model=actor-decision-model, bb_cli=bb-cli, bb_session=bb-session-service, bb_replicator=bb-replicator, bb_agent_runner=bb-agent-runner, bb_mcp=bb-mcp
+:::
+```
+
+```mermaid
+sequenceDiagram
+    participant actor_human as Human
+    participant bb_cli as office CLI
+    participant bb_session as Meeting session
+    participant bb_replicator as Log replicator
+    participant bb_agent_runner as Agent runner
+    participant actor_decision_model as Decision model
+    participant actor_agent as Agent harness
+    participant bb_mcp as MCP server
+    actor_human->>bb_cli: speaks or types a question
+    bb_cli->>bb_session: utterance.submit, then turn.end
+    bb_session-->>bb_replicator: utterance.final, turn.end
+    bb_replicator->>bb_replicator: append lines to the local log of the agent
+    bb_agent_runner->>bb_replicator: read new lines
+    opt a decision model is configured
+        bb_agent_runner->>actor_decision_model: new utterances, context, role
+        actor_decision_model-->>bb_agent_runner: act, addressed, topic_closed, reason
+    end
+    bb_agent_runner->>actor_agent: session/prompt (who said what)
+    actor_agent->>bb_mcp: utterance_say (answer)
+    bb_mcp->>bb_session: utterance.submit (as the agent)
+    actor_agent-->>bb_agent_runner: end of turn
+    bb_session-->>bb_replicator: utterance.final of the agent
+    Note over bb_agent_runner: leaves out the agent's own utterance
+```
