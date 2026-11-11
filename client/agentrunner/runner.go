@@ -13,7 +13,6 @@ import (
 
 	"github.com/mrsimpson/agentic-office/client/core"
 	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
-	"github.com/mrsimpson/agentic-office/hub/session/api/events"
 )
 
 // Options configure one runner: one agent key in one session.
@@ -136,9 +135,18 @@ type runner struct {
 	self  string // participant ID of the agent
 	start uint32 // the join event of the agent; what came before is history
 	names map[string]participant
+	d     delivery
 }
 
-// loop sends the first prompt and follows the local log until the run ends.
+// result is the end of one piece of work: a prompt.
+type result struct {
+	stop  acp.StopReason
+	err   error
+	final bool // the last prompt after session.ended
+}
+
+// loop sends the first prompt and follows the local log until the run ends. At most one prompt
+// runs at a time (dec-agent-runner-delivery).
 func (r *runner) loop(ctx context.Context) error {
 	evs := make(chan *sessionv1.Event)
 	ferr := make(chan error, 1)
@@ -153,16 +161,9 @@ func (r *runner) loop(ctx context.Context) error {
 		})
 	}()
 
-	type turn struct {
-		stop acp.StopReason
-		err  error
-	}
-	done := make(chan turn, 1)
+	done := make(chan result, 1)
 	busy := true
-	go func() {
-		stop, err := r.h.prompt(ctx, r.firstPrompt())
-		done <- turn{stop, err}
-	}()
+	r.send(ctx, done, r.firstPrompt(), false)
 	for {
 		select {
 		case <-ctx.Done():
@@ -174,37 +175,50 @@ func (r *runner) loop(ctx context.Context) error {
 				err = ctx.Err()
 			}
 			return fmt.Errorf("follow the local log: %w", err)
-		case t := <-done:
+		case res := <-done:
 			busy = false
-			if t.err != nil {
-				return fmt.Errorf("prompt: %w", t.err)
+			if res.err != nil {
+				return fmt.Errorf("prompt: %w", res.err)
 			}
-			r.logf("the agent ended its turn (%s)", t.stop)
+			r.logf("the agent ended its turn (%s)", res.stop)
+			if res.final {
+				return nil
+			}
 		case ev := <-evs:
 			r.learn(ev)
-			switch {
-			case ev.GetType() == events.SessionEnded:
-				r.logf("the session ended")
-				return waitTurn(ctx, busy, done, r.h.done)
-			case ev.GetType() == events.ParticipantLeft && ev.GetParticipantLeft().GetParticipantId() == r.self && ev.GetId() > r.start:
-				r.logf("the agent left the session")
-				return waitTurn(ctx, busy, done, r.h.done)
+			if ev.GetId() > r.start {
+				r.d.apply(ev, r.self)
 			}
+		}
+		if busy {
+			continue
+		}
+		switch {
+		case r.d.left:
+			r.logf("the agent left the session")
+			return nil
+		case r.d.ended:
+			r.logf("the session ended; sending the last prompt")
+			busy = true
+			r.send(ctx, done, r.finalPrompt(r.d.takeAll()), true)
+		case r.d.due():
+			b := r.d.take()
+			if b.empty() {
+				continue
+			}
+			busy = true
+			r.logf("sending %d utterances (events %d to %d)", len(b.utterances), b.first(), b.turnEnd)
+			r.send(ctx, done, r.turnPrompt(b), false)
 		}
 	}
 }
 
-// waitTurn waits for a running turn to end before the runner stops.
-func waitTurn[T any](ctx context.Context, busy bool, done <-chan T, exited <-chan struct{}) error {
-	if !busy {
-		return nil
-	}
-	select {
-	case <-done:
-	case <-exited:
-	case <-ctx.Done():
-	}
-	return nil
+// send runs one prompt in the background and reports its end on done.
+func (r *runner) send(ctx context.Context, done chan<- result, text string, final bool) {
+	go func() {
+		stop, err := r.h.prompt(ctx, text)
+		done <- result{stop: stop, err: err, final: final}
+	}()
 }
 
 // learn keeps the names and kinds of the participants.
@@ -220,4 +234,12 @@ func (r *runner) learn(ev *sessionv1.Event) {
 		}
 		r.names[j.GetParticipantId()] = participant{name: name, kind: kind}
 	}
+}
+
+// who returns the name and kind of a participant.
+func (r *runner) who(pid string) participant {
+	if p, ok := r.names[pid]; ok {
+		return p
+	}
+	return participant{name: pid, kind: "participant"}
 }

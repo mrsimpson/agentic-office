@@ -18,6 +18,12 @@
 //     no terminal. It opens one ACP session with one MCP server, "office": this office binary
 //     with "mcp --session S" and the OFFICE_* variables of the agent as absolute values.
 //   - It sends a first prompt with the role, the meeting and the path of the local log.
+//   - It reads the local log from the agent's join on and keeps the state of the deliveries
+//     (delivery): the pending utterances of others, the last turn.end of another participant
+//     and notices of delivered sentences that went off the record. At a turn.end it sends the
+//     pending utterances before it as one prompt (dec-wake-on-turn-end). One prompt runs at a
+//     time; turns that come while the agent works go out together afterwards. After
+//     session.ended it sends a last prompt with what is left, and stops when that turn ends.
 //   - It answers permission requests by a permissionRule: by default the office tools only, and
 //     never a tool of kind execute, edit, delete or move; with patterns of the user, exactly the
 //     tools whose title matches. The title and kind come from the request, else from the

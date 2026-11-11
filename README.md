@@ -1113,12 +1113,48 @@ Everything after `--` is the harness command. Flags:
 4. It sends a first prompt: the session, the agent's participant ID, its role, how the meeting
    works (speak with `utterance_say`; the reply in the chat reaches nobody; respect sentences
    off the record) and the path of the local log.
-5. It stops after `session.ended`, after the agent's own `participant.left`, on SIGINT or
-   SIGTERM, or when the harness stops. It closes the harness's stdin, then sends SIGTERM and at
+5. At each change of speaker (`turn.end` of another participant), it sends what was said since
+   its last delivery as one prompt (`dec-wake-on-turn-end`, details below).
+6. After `session.ended`, it sends a last prompt and then stops. It also stops after the agent's
+   own `participant.left`, on SIGINT or SIGTERM, or when the harness stops. It closes the harness's stdin, then sends SIGTERM and at
    last SIGKILL to the process group. A harness that stops by itself is an error (exit 1).
 
-The runner logs to stderr (`office agent: …`): the ACP session, each tool call, each permission
-decision and the agent's reply text, which is not spoken.
+The runner logs to stderr (`office agent: …`): the ACP session, each delivery, each tool call,
+each permission decision and the agent's reply text, which is not spoken.
+
+**What the agent gets** (`dec-agent-runner-delivery`). The runner reads the local log from the
+agent's join on (the event of the join; a restarted runner with the same key starts at the same
+join, so a new ACP session gets what was said since then). It keeps the utterances of the
+others that the agent has not got yet:
+
+- At `turn.end` of another participant, it sends the pending utterances before that `turn.end`,
+  oldest first, one per line: `[<event ID>] <name> (<human|agent>): <text>`, and then whose turn
+  ended. An utterance after the last `turn.end` waits for the next one.
+- It never sends the agent's own utterances, its own `turn.end`, or placeholders of sentences off
+  the record. A sentence that goes off the record before it was sent is never sent. For a sent
+  one, the next prompt names its event ID and says that it is off the record.
+- One prompt runs at a time. While the agent works, further turns wait and go out together in
+  one prompt when the agent ends its turn. A `turn.end` without new utterances (and without
+  notices) wakes nobody.
+- After `session.ended`, the last prompt carries what is left and asks the agent to finish the
+  work of its role (for example the minutes, decisions or tasks) without speaking, because a new
+  utterance would open the session again (`dec-session-end-milestone`). The runner does not
+  leave the session.
+
+Each prompt tells the agent to decide by itself whether someone addressed it, and to do nothing
+if not. Example:
+
+```
+New in the meeting "weekly" since my last message (event ID, speaker, human or agent, text):
+
+[41] Ada (human): Bot, what did we decide on the budget?
+[43] Carl (agent): I have the numbers.
+
+The turn of Carl (agent) has ended.
+
+Decide yourself whether someone addressed you or whether your role asks you to contribute now.
+If not, do nothing and end your turn. To speak, call utterance_say.
+```
 
 **The permission rule.** The runner offers the harness no file system and no terminal of its
 own. When the harness asks for permission to use a tool (`session/request_permission`), the
@@ -1165,9 +1201,15 @@ through its interfaces:
   `tests/acpdouble` as the harness (`contracttest.ACPDouble` builds it). The double speaks raw
   ACP JSON-RPC without a library, starts the MCP server that the runner hands it, records every
   step in a file and follows instructions in the prompt text (`please say "…"`, `please run
-  "…"`, `please wait 2s`). The tests check the ACP steps, the MCP server and its key, the
-  permission rule and `--allow`, the role file, usage errors, a harness that stops, and that the
-  harness stops with the runner. No real harness and no model run in the tests.
+  "…"`, `please wait 2s`, `please hold` until a release file exists). The tests check the ACP
+  steps, the MCP server and its key, the permission rule and `--allow`, the role file, usage
+  errors, a harness that stops, and that the harness stops with the runner. For the deliveries
+  they check the order, who spoke and their kind, that own utterances and earlier ones are not
+  sent again, that a turn without utterances wakes nobody, that turns are queued while the
+  agent is busy and sent together, sentences off the record before and after delivery, and the
+  last prompt after `session.ended`. `tests/e2e/agentrunner_test.go`: a human asks the agent in
+  plain words and reads its answer in their own log. No real harness and no model run in the
+  tests.
 - `tests/contract/cli_test.go` and `replicator_test.go` run the real `office` binary and check
   its output and the local log it leaves, including kills of the replicator and torn lines.
 - `tests/e2e/ears_test.go` runs the ears with the German test WAV (`tests/e2e/testdata/`): the
