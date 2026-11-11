@@ -1,0 +1,312 @@
+# Shows on every pull request whether it changes the architecture (docs/architecture).
+#
+# The job "Architecture diff" compares the pull request with the merge base of its target branch
+# (`arc42 diff <base>...HEAD`). It writes the result as one comment on the pull request and
+# updates that comment on every later push (the comment carries a hidden marker). When the
+# architecture changed, it also builds a review site with the differences marked
+# (`arc42 build --diff`):
+#   - on the branch gh-pages, in the folder pr-<number>/; GitHub Pages serves it once Pages
+#     deploys from that branch (Settings > Pages > Deploy from a branch > gh-pages, /);
+#   - as one HTML file in a workflow artifact that opens in the browser, which works without Pages.
+# The job "Remove the review site" deletes the folder pr-<number>/ when the pull request closes.
+#
+# The job runs on every pull request, not only when docs/architecture changes: the diff also
+# lists code that changed under an element whose architecture did not change.
+#
+# Consistency findings of the diff (for example prose changed without its block) are reported,
+# not failed. `make arch` in the CI validates the model, and a finding can only be accepted
+# per commit (ARC42_CONSISTENT), which does not fit a check. Only an error of the arc42 CLI or
+# of Git fails the job.
+#
+# A pull request from a fork gets a read-only token: it gets the job summary only.
+name: Architecture review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: architecture-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  ARC42: npx -y @doctc/arc42@0.38.0 --dir docs/architecture
+  SITE_DIR: pr-${{ github.event.pull_request.number }}
+  # Pull requests from forks cannot push to gh-pages or write comments.
+  SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+
+jobs:
+  diff:
+    name: Architecture diff
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+      pages: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The merge base with the target branch must be available.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Compare the architecture with the target branch
+        id: diff
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set +e
+          $ARC42 diff "origin/$BASE_REF...HEAD" --format json > "$RUNNER_TEMP/diff.json" 2> "$RUNNER_TEMP/diff.err"
+          status=$?
+          set -e
+          # Exit 1 with a JSON result means consistency findings: they go into the report.
+          # Anything else is an error of the CLI or of Git.
+          if ! jq -e .architecture "$RUNNER_TEMP/diff.json" > /dev/null 2>&1; then
+            echo "::error::arc42 diff failed (exit $status)"
+            cat "$RUNNER_TEMP/diff.err" "$RUNNER_TEMP/diff.json"
+            exit 1
+          fi
+          changed=$(jq '[.architecture | .elements, .diagrams, .edges, .proseSections | length] | add > 0' "$RUNNER_TEMP/diff.json")
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+          echo "arc42 diff exit $status, architecture changed: $changed"
+
+      # The site needs its URL path. Without Pages, the default path of a project site is used.
+      - name: Find the GitHub Pages site
+        id: pages
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          if url=$(gh api "repos/$REPO/pages" --jq .html_url 2> /dev/null); then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            url="https://${REPO%%/*}.github.io/${REPO#*/}/"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+          url="${url%/}/$SITE_DIR/"
+          path="/${url#https://*/}"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "path=$path" >> "$GITHUB_OUTPUT"
+          echo "Pages site: $url (path $path)"
+
+      - name: Build the review site
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          SITE_PATH: ${{ steps.pages.outputs.path }}
+          PAGE: architecture-review-pr-${{ github.event.pull_request.number }}.html
+        run: |
+          $ARC42 build --out "$RUNNER_TEMP/site" --diff "origin/$BASE_REF...HEAD" --base "$SITE_PATH"
+          $ARC42 build --out "$RUNNER_TEMP/single" --diff "origin/$BASE_REF...HEAD" --single-file
+          mkdir -p "$RUNNER_TEMP/page"
+          mv "$RUNNER_TEMP/single/index.html" "$RUNNER_TEMP/page/$PAGE"
+
+      # One HTML file, not zipped: the link opens it in the browser.
+      - name: Upload the review page
+        id: artifact
+        if: steps.diff.outputs.changed == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ runner.temp }}/page/architecture-review-pr-${{ github.event.pull_request.number }}.html
+          archive: false
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish the review site on gh-pages
+        if: steps.diff.outputs.changed == 'true' && env.SAME_REPO == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          MESSAGE: Review site of pull request ${{ github.event.pull_request.number }} (${{ github.event.pull_request.head.sha }})
+        run: |
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
+          work="$RUNNER_TEMP/gh-pages"
+          # Other pull requests push to the same branch: on a rejected push, start again.
+          for attempt in 1 2 3 4 5; do
+            rm -rf "$work"
+            if git ls-remote --exit-code --heads "$remote" gh-pages > /dev/null; then
+              git clone --quiet --depth 1 --branch gh-pages "$remote" "$work"
+            else
+              git init --quiet --initial-branch gh-pages "$work"
+              git -C "$work" remote add origin "$remote"
+            fi
+            rm -rf "${work:?}/$SITE_DIR"
+            cp -R "$RUNNER_TEMP/site" "$work/$SITE_DIR"
+            # Serve the files as they are, without Jekyll.
+            touch "$work/.nojekyll"
+            git -C "$work" add -A
+            if git -C "$work" diff --cached --quiet; then
+              echo "The review site did not change."
+              exit 0
+            fi
+            git -C "$work" -c user.name="github-actions[bot]" \
+              -c user.email="41898299+github-actions[bot]@users.noreply.github.com" \
+              commit --quiet -m "$MESSAGE"
+            if git -C "$work" push --quiet origin gh-pages; then
+              exit 0
+            fi
+            echo "Push rejected, attempt $attempt; trying again."
+            sleep $((attempt * 5))
+          done
+          echo "::error::Could not push the review site to gh-pages."
+          exit 1
+
+      - name: Report in the job summary and on the pull request
+        uses: actions/github-script@v9
+        env:
+          DIFF: ${{ runner.temp }}/diff.json
+          CHANGED: ${{ steps.diff.outputs.changed }}
+          PAGES_ENABLED: ${{ steps.pages.outputs.enabled }}
+          SITE_URL: ${{ steps.pages.outputs.url }}
+          PAGE_URL: ${{ steps.artifact.outputs.artifact-url }}
+          BASE_REF: ${{ github.base_ref }}
+        with:
+          script: |
+            const fs = require("node:fs");
+            const marker = "<!-- arc42-architecture-diff -->";
+            const diff = JSON.parse(fs.readFileSync(process.env.DIFF, "utf8"));
+            const changed = process.env.CHANGED === "true";
+            const { owner, repo } = context.repo;
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const base = `\`${process.env.BASE_REF}\` at ${diff.base.commit.slice(0, 7)}`;
+            const code = (text) => `\`${String(text).replaceAll("`", "'")}\``;
+            const text = (v) => (Array.isArray(v) ? v.join(", ") : typeof v === "string" ? v : JSON.stringify(v));
+            // Short values are shown; long ones (diagram sources, text) only as changed.
+            const attribute = (a) => {
+              const [before, after] = [a.before, a.after].map((v) => (v === undefined ? "none" : text(v)));
+              const short = (v) => v.length <= 60 && !v.includes("\n");
+              return short(before) && short(after) ? `${a.name}: ${code(before)} → ${code(after)}` : `${a.name} changed`;
+            };
+            // Long lists are cut; the review site and the job log have everything.
+            const limit = (items, max) =>
+              items.length > max ? [...items.slice(0, max), `- … and ${items.length - max} more`] : items;
+            const where = (f) => code(f.line > 0 ? `${f.file}:${f.line}` : f.file);
+
+            const { architecture: arch, groups, findings } = diff;
+            const lines = [marker, "### Architecture diff", ""];
+            if (changed) {
+              const sum = (key) => arch.documents.reduce((total, d) => total + d[key], 0);
+              lines.push(`This pull request **changes the architecture** (compared with ${base}).`, "");
+              if (process.env.PAGES_ENABLED === "true" && process.env.SAME_REPO === "true") {
+                lines.push(`**[Open the review site](${process.env.SITE_URL})**: the chapters with the changes marked. Pages may need a minute to show a new push.`, "");
+              } else {
+                lines.push("GitHub Pages is not enabled, so the review site is not online.", "");
+              }
+              lines.push(`**[Open the review page](${process.env.PAGE_URL})**: the same site as one HTML file (workflow artifact, kept 30 days).`, "");
+              lines.push(
+                "| Added | Modified | Removed | Consistency findings | Code changed, architecture untouched |",
+                "|---:|---:|---:|---:|---:|",
+                `| ${sum("added")} | ${sum("modified")} | ${sum("removed")} | ${groups.warnings.length} | ${groups.untouched.length} |`,
+                "",
+                "#### What changed",
+                "",
+              );
+              const changes = [
+                ...arch.elements.map((e) => {
+                  const status = e.status === "unchanged" ? "prose changed" : e.status;
+                  const attrs = e.attributes.map(attribute).join("; ");
+                  return `- ${code(e.id)} (${e.kind}): ${status}${attrs ? `; ${attrs}` : ""}`;
+                }),
+                ...arch.diagrams.map((d) => `- ${code(d.id)} (diagram): ${d.status}`),
+                ...arch.proseSections.map((s) => `- section “${s.section.headingPath.join(" › ") || s.section.file}”: ${s.status}`),
+                ...arch.edges.map((c) => `- relation ${code(c.edge.from)} ${c.edge.relation} ${code(c.edge.to)}: ${c.status}`),
+              ];
+              lines.push(...limit(changes, 60), "");
+            } else {
+              lines.push(`This pull request does **not change the architecture** (compared with ${base}).`, "");
+            }
+            if (groups.warnings.length > 0) {
+              lines.push(
+                "#### Consistency findings",
+                "",
+                "Check that the prose and the model still say the same. These findings do not fail the check; the job Architecture validates the model.",
+                "",
+                ...limit(groups.warnings.map((f) => `- ${f.message} (${where(f)})`), 30),
+                "",
+              );
+            }
+            if (groups.untouched.length > 0) {
+              lines.push(
+                "#### Code changed, architecture untouched",
+                "",
+                "Do these elements still describe the code?",
+                "",
+                ...limit(groups.untouched.map((c) => `- ${code(c.elementId)}: ${c.files.slice(0, 5).map(code).join(", ")}${c.files.length > 5 ? ` and ${c.files.length - 5} more files` : ""}`), 30),
+                "",
+              );
+            }
+            if (groups.uncovered.length > 0) {
+              lines.push(
+                "#### Changed paths that no building block covers",
+                "",
+                ...limit(groups.uncovered.map((p) => `- ${code(typeof p === "string" ? p : p.file ?? JSON.stringify(p))}`), 20),
+                "",
+              );
+            }
+            lines.push(`[Workflow run](${runUrl}) · arc42 CLI \`diff\` and \`build --diff\``, "");
+            const body = lines.join("\n");
+            await core.summary.addRaw(body).write();
+            core.info(`${findings.length} findings, architecture changed: ${changed}`);
+
+            if (process.env.SAME_REPO !== "true") {
+              core.notice("Pull request from a fork: see the job summary for the architecture diff.");
+              return;
+            }
+            const issue_number = context.payload.pull_request.number;
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number, per_page: 100 });
+            const existing = comments.find((c) => c.user?.type === "Bot" && c.body?.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else if (changed || groups.warnings.length > 0 || groups.untouched.length > 0) {
+              // Without anything to review, no new comment; an existing one is updated above.
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+
+  remove-site:
+    name: Remove the review site
+    if: github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Delete the folder of the pull request on gh-pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          MESSAGE: Remove the review site of pull request ${{ github.event.pull_request.number }}
+        run: |
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
+          work="$RUNNER_TEMP/gh-pages"
+          if ! git ls-remote --exit-code --heads "$remote" gh-pages > /dev/null; then
+            echo "No branch gh-pages: nothing to remove."
+            exit 0
+          fi
+          for attempt in 1 2 3 4 5; do
+            rm -rf "$work"
+            git clone --quiet --depth 1 --branch gh-pages "$remote" "$work"
+            if [ ! -e "$work/$SITE_DIR" ]; then
+              echo "No folder $SITE_DIR: nothing to remove."
+              exit 0
+            fi
+            git -C "$work" rm -r --quiet "$SITE_DIR"
+            git -C "$work" -c user.name="github-actions[bot]" \
+              -c user.email="41898299+github-actions[bot]@users.noreply.github.com" \
+              commit --quiet -m "$MESSAGE"
+            if git -C "$work" push --quiet origin gh-pages; then
+              exit 0
+            fi
+            echo "Push rejected, attempt $attempt; trying again."
+            sleep $((attempt * 5))
+          done
+          echo "::error::Could not remove the review site from gh-pages."
+          exit 1
