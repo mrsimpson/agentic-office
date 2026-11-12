@@ -449,9 +449,9 @@ the agent anyway.
 **Without a decision model**, the runner wakes the agent at each change of speaker: when someone
 else ends their turn. It says at start that it does not notice a new topic within a monologue.
 
-> At the moment, the client does not end a turn by itself after a pause
-> ([issue #92](https://github.com/mrsimpson/agentic-office/issues/92)). Without a decision
-> model, end your turn yourself when you want the agents to hear you: `office signal turn-end`.
+When you speak, the ears end your turn after a short silence: 1.8 seconds by default. Change it
+with `office meeting join --turn-silence 2.5s`. Text that you type with `office say` does not end
+your turn: run `office signal turn-end` when you are done.
 
 ### Bring a decision model
 
@@ -632,7 +632,7 @@ scripts/try-local.sh tail bot                        # what the agent reads; sto
 | The model download fails | Check your network, or download the models elsewhere and set `OFFICE_MODEL_URL` to a mirror. |
 | `SIGILL: illegal instruction` | A client built on another computer uses CPU features yours lacks. Use the pre-built client, or build with `WHISPER_NATIVE=OFF`. |
 | `office: the harness stopped …` or `ACP session/new: …` | The harness ended or refused the session. Run its command alone (for example `opencode acp`) and read its error. Often it needs a login first: log in with the harness itself. |
-| The agent never speaks | Read the runner's terminal. Does it wake the agent (`waking the agent with …`)? Without a decision model, end your turn with `office signal turn-end` ([issue #92](https://github.com/mrsimpson/agentic-office/issues/92)). Does the runner reject tools that the agent needs (`permission rejected`)? Allow them with `--allow`. |
+| The agent never speaks | Read the runner's terminal. Does it wake the agent (`waking the agent with …`)? Without a decision model, it wakes the agent only when your turn ends: pause for a moment, or run `office signal turn-end` after typed text. Does the runner reject tools that the agent needs (`permission rejected`)? Allow them with `--allow`. |
 | `decision model failed (…); waking the agent` | The runner woke the agent anyway. Check `--decide-url` (it ends in `/v1`), `--decide-model` and `OFFICE_DECIDE_KEY`, and that the server supports structured output with a JSON schema. A slow model needs a larger `--decide-timeout`. |
 | `the trial is running already` | Run `scripts/try-local.sh down`, then `up` again. |
 | `Apple's container needs a DNS domain` | Do the one-time setup in [Try everything on one computer](#5-try-everything-on-one-computer). |
