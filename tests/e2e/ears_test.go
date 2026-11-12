@@ -614,7 +614,8 @@ func TestEarsNetworkDrop(t *testing.T) {
 
 // TestEarsPause: Ada pauses after her first sentence, speaks the second one while paused and
 // resumes before the third. The second sentence is never transcribed; the log has
-// participant.paused and participant.resumed, and no utterance of Ada between them.
+// participant.paused and participant.resumed, and no utterance of Ada between them. The pause
+// ends her first turn without turn.end; only the turn of the third sentence ends.
 func TestEarsPause(t *testing.T) {
 	slow(t)
 	models := earsModels(t)
@@ -627,12 +628,17 @@ func TestEarsPause(t *testing.T) {
 	// transcription plus the start of the model on a slow host (about 5 s on a 2-core CPU);
 	// e2e tests never fail on timing (dec-performance-tests).
 	const gap = 15 * time.Second
+	// The turn silence is longer than the time to the key press, so the first turn can end only
+	// after the pause, and it is shorter than the silence after the third sentence.
+	const turnSilence = 16 * time.Second
 	wav := filepath.Join(t.TempDir(), "pause.wav")
-	join(s[0].rate, gap, s[0], s[1], s[2]).writeWAV(t, wav)
+	audio := join(s[0].rate, gap, s[0], s[1])
+	audio.samples = append(audio.samples, join(s[0].rate, turnSilence+4*time.Second, s[2]).samples...)
+	audio.writeWAV(t, wav)
 	// The second sentence starts at s0+gap and ends at s0+gap+s1.
 	s2End := s[0].duration() + gap + s[1].duration()
 
-	e := m.startEars(ada, "--wav", wav)
+	e := m.startEars(ada, "--wav", wav, "--turn-silence", turnSilence.String())
 	start := e.wait("listening", 1, 30*time.Second)[0].seen
 	e.wait("sent", 1, 30*time.Second)
 	e.key("p")
@@ -646,23 +652,19 @@ func TestEarsPause(t *testing.T) {
 	e.wait("done", 1, 60*time.Second)
 	got, _ := bot.waitUtterances(t, "ada", 2, 10*time.Second)
 	checkUtterances(t, got, e.ofType("final"), []int{0, 2})
+	// The WAV ends with a silence longer than the turn silence: the turn of the third sentence ends.
+	bot.waitTurnEnds(t, "ada", 1, 10*time.Second)
 	e.quit()
 
+	// The pause ends the first turn without turn.end. Without that, its turn silence would be
+	// over shortly after the resume, and a turn.end would come before the third sentence.
 	evs, _ := bot.events()
-	var order []string
-	for _, ev := range evs {
-		switch ev.GetType() {
-		case events.ParticipantPaused, events.ParticipantResumed:
-			order = append(order, ev.GetType())
-		case events.UtteranceFinal:
-			order = append(order, fmt.Sprintf("utterance %d", sentenceOf(ev.GetUtteranceFinal().GetText())+1))
-		}
+	o := order(evs, "ada")
+	want := []string{"utterance 1", events.ParticipantPaused, events.ParticipantResumed, "utterance 3", events.TurnEnd}
+	if !slices.Equal(o, want) {
+		t.Fatalf("log order %v, want %v", o, want)
 	}
-	want := []string{"utterance 1", events.ParticipantPaused, events.ParticipantResumed, "utterance 3"}
-	if !slices.Equal(order, want) {
-		t.Fatalf("log order %v, want %v", order, want)
-	}
-	t.Logf("pause: log order %v", order)
+	t.Logf("pause: log order %v", o)
 }
 
 // TestEarsMicMockRecorder: --mic reads the microphone through a recorder program. There is no
@@ -690,6 +692,89 @@ func TestEarsMicMockRecorder(t *testing.T) {
 	}
 	sort.Slice(ws, func(i, j int) bool { return ws[i] < ws[j] })
 	t.Logf("mic (mock recorder): 3 sentences; whisper ms %v", ws)
+}
+
+// order returns, in the order of a log, the utterances of participant as "utterance N" (N is the
+// test sentence), the turn.end events of participant, and participant.paused and resumed.
+func order(evs []*sessionstreamv1.Event, participant string) []string {
+	var out []string
+	for _, ev := range evs {
+		switch ev.GetType() {
+		case events.ParticipantPaused, events.ParticipantResumed:
+			out = append(out, ev.GetType())
+		case events.UtteranceFinal:
+			if ev.GetUtteranceFinal().GetParticipantId() == participant {
+				out = append(out, fmt.Sprintf("utterance %d", sentenceOf(ev.GetUtteranceFinal().GetText())+1))
+			}
+		case events.TurnEnd:
+			if ev.GetTurnEnd().GetParticipantId() == participant {
+				out = append(out, events.TurnEnd)
+			}
+		}
+	}
+	return out
+}
+
+// waitTurnEnds waits until the log has n turn.end events of participant.
+func (w *logWatch) waitTurnEnds(t *testing.T, participant string, n int, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for {
+		evs, _ := w.events()
+		if c := strings.Count(strings.Join(order(evs, participant), ","), events.TurnEnd); c >= n {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timeout: want %d turn.end of %s in %s, have %v", n, participant, w.path, order(evs, participant))
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// TestEarsTurnEnd: Ada speaks the first two test sentences 1.2 s apart, then waits 3 s, speaks
+// the third sentence and waits 3 s again. With the default turn silence (1.8 s), these are two
+// turns. The ears submit one turn.end of Ada after each turn, behind its sentences, under the
+// command IDs of their turn-end reports. The short pause inside the first turn ends no turn.
+func TestEarsTurnEnd(t *testing.T) {
+	slow(t)
+	models := earsModels(t)
+	m := newMeeting(t)
+	ada := append(m.user("ada", "human", m.srv.URL), models...)
+	bot := m.joinBot()
+
+	s := readPCM(t, testWAV).sentences()
+	if len(s) != 3 {
+		t.Fatalf("test WAV: want 3 sentences, found %d", len(s))
+	}
+	first := join(s[0].rate, 1200*time.Millisecond, s[0])
+	rest := join(s[0].rate, 3*time.Second, s[1], s[2])
+	wav := filepath.Join(t.TempDir(), "turns.wav")
+	pcm{rate: s[0].rate, samples: append(first.samples, rest.samples...)}.writeWAV(t, wav)
+
+	e := m.startEars(ada, "--wav", wav)
+	e.wait("done", 1, 5*time.Minute)
+	bot.waitTurnEnds(t, "ada", 2, 10*time.Second)
+	got, _ := bot.waitUtterances(t, "ada", 3, 10*time.Second)
+	checkUtterances(t, got, e.ofType("final"), []int{0, 1, 2})
+	e.quit()
+
+	evs, _ := bot.events()
+	o := order(evs, "ada")
+	want := []string{"utterance 1", "utterance 2", events.TurnEnd, "utterance 3", events.TurnEnd}
+	if !slices.Equal(o, want) {
+		t.Fatalf("log order %v, want %v", o, want)
+	}
+	reports := e.ofType("turn-end")
+	var ids []string
+	for _, ev := range evs {
+		if ev.GetType() == events.TurnEnd {
+			ids = append(ids, ev.GetCommandId())
+		}
+	}
+	if len(reports) != 2 || reports[0].CommandID != ids[0] || reports[1].CommandID != ids[1] {
+		t.Fatalf("turn-end reports %+v do not match the command IDs %v of the log", reports, ids)
+	}
+	t.Logf("turn end: log order %v", o)
 }
 
 func killPID(pid int) { _ = syscall.Kill(pid, syscall.SIGKILL) }

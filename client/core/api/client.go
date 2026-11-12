@@ -79,7 +79,10 @@ type Client interface {
 	// MarkOffTheRecordLast marks off the record the newest own sentence that is not off the
 	// record yet, or fails with ErrNothingOffTheRecord. It reads the local log.
 	MarkOffTheRecordLast(ctx context.Context, sessionID string) (*sessioncommandsv1.CommandResult, error)
+	// TurnEnd submits a turn.end signal for participantID (empty: the caller).
 	TurnEnd(ctx context.Context, sessionID, participantID string) (*sessioncommandsv1.CommandResult, error)
+	// SubmitTurnEnd is TurnEnd with a command ID that the caller created.
+	SubmitTurnEnd(ctx context.Context, sessionID, cmdID, participantID string) (*sessioncommandsv1.CommandResult, error)
 	SilenceLong(ctx context.Context, sessionID string, d time.Duration) (*sessioncommandsv1.CommandResult, error)
 	Addressed(ctx context.Context, sessionID, participantID string, utteranceEventID uint32) (*sessioncommandsv1.CommandResult, error)
 	Pause(ctx context.Context, sessionID string) (*sessioncommandsv1.CommandResult, error)

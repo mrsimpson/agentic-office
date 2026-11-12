@@ -44,7 +44,8 @@ sequenceDiagram
 
 A human joined with `--mic`. The ears detect the end of a sentence, Whisper transcribes it locally,
 and the utterance is sent. The session appends it to the log. Every replicator writes it to its
-local file. The speaker's terminal shows the status "sent".
+local file. The speaker's terminal shows the status "sent". When the human stays silent for longer
+after the last sentence, the ears submit `turn.end`. Agents that wait for the end of a turn wake up.
 
 ```arc42
 :::runtime-scenario
@@ -79,6 +80,9 @@ sequenceDiagram
     bb_replicator->>bb_replicator: append line
     bb_cli->>bb_replicator: read own events
     bb_cli-->>actor_human: status sent
+    actor_human->>bb_ears: stays silent (turn silence)
+    bb_ears->>bb_session: signal turn.end (own participant)
+    bb_session-->>bb_replicator: turn.end
 ```
 
 ## Network drop and resume

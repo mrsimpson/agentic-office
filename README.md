@@ -943,8 +943,13 @@ to the hub; the audio never leaves your computer (`concept-edge-transcription`).
 
 - Each sentence ends after a short silence (default 500 ms). Whisper then transcribes it, and the
   view shows it as `final`. It becomes `sent` when it is in your local log.
+- When you stay silent for longer after your last sentence (default 1.8 s), the ears end your
+  turn: they submit `turn.end` for you, after the sentences of the turn. Agents that wait for the
+  end of a turn wake up then. There is one `turn.end` per turn; the next one comes only after you
+  have spoken again. Typed text (`office say`) does not end a turn; use `office signal turn-end`.
 - `p` pauses: the microphone is closed and nothing is transcribed until you press `p` again.
-  What you said just before the pause and is not final yet is dropped.
+  What you said just before the pause and is not final yet is dropped. A pause also ends your
+  turn without `turn.end`, and the ears send no `turn.end` while you are paused.
 - When the network drops, the ears keep transcribing and keep the sentences in a queue (in
   memory). They send them in order when the network is back. Sentences that are still queued when
   you quit are lost; the ears say how many.
@@ -995,6 +1000,7 @@ and the VAD model with the scripts of whisper.cpp.
 | | `OFFICE_WHISPER_GPU` | `1` for the macOS build on Apple silicon, else `0` |
 | `--threads` | `OFFICE_WHISPER_THREADS` | half of the CPUs, at most 16 |
 | `--end-silence` | `OFFICE_EARS_END_SILENCE` | `500ms` |
+| `--turn-silence` | `OFFICE_EARS_TURN_SILENCE` | `1.8s` (at least the end silence) |
 | | `OFFICE_VAD_THRESHOLD` | `0.5` (speech probability of the VAD) |
 | `--vocabulary` | | `.office/vocabulary.txt` in the current directory, if it is there |
 | `--context` | | off |
@@ -1069,7 +1075,7 @@ program with `OFFICE_MIC_COMMAND`, which is run with `sh -c`, for example
 
 **What the ears report.** On stderr, the ears print one line per step: `listening`, `vocabulary`, `final`
 (with the Whisper time), `sent` (with the time from the end of speech to the confirmed submit),
-`retry` while the network is down, `dropped`, `unsent` and `done` (end of a WAV file). With
+`turn-end` (the `turn.end` of a turn is submitted), `retry` while the network is down, `dropped`, `unsent` and `done` (end of a WAV file). With
 `--json`, each is a JSON object `{"ears":{"type":"sent","commandId":…,"speechEndToSubmitMs":…}}`
 (see `Report` in `client/ears`). Stdout keeps the changes of the view.
 
@@ -1390,7 +1396,8 @@ through its interfaces:
 - `tests/e2e/ears_test.go` runs the ears with the German test WAV (`tests/e2e/testdata/`): the
   sentences reach another participant's local log in order; a network drop (a proxy from
   `contracttest.StartProxy` is cut and restored) loses and duplicates nothing; a pause
-  transcribes nothing; `--mic` with a mock recorder. It also checks that no raw audio leaves the
+  transcribes nothing and ends the turn without `turn.end`; a longer silence after a turn gives
+  one `turn.end` of the speaker behind its sentences; `--mic` with a mock recorder. It also checks that no raw audio leaves the
   device: `contracttest.StartDecryptingProxy` ends TLS with the hub's own test certificate and
   records the plaintext. Every recorded byte must decode as a known RPC request
   (`contracttest.DecodeRequests`) with no unknown fields and no long field except the

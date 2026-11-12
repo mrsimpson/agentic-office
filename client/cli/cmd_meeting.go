@@ -38,6 +38,8 @@ type EarsOptions struct {
 	Threads int
 	// EndSilence is the silence that ends a sentence.
 	EndSilence time.Duration
+	// TurnSilence is the silence after the last sentence that ends the turn (turn.end).
+	TurnSilence time.Duration
 	// Vocabulary is a file with terms for Whisper's prompt. Empty means .office/vocabulary.txt
 	// in the current directory, if it is there.
 	Vocabulary string
@@ -98,8 +100,9 @@ var ListModels func(o ModelOptions) (ModelList, error)
 
 // StartEars is the hook for the ears (client/ears). It runs until ctx ends or the audio is over.
 // It submits final utterances with c.SubmitUtterance under a command ID it creates, and reports
-// the local status of each utterance (partial, final) to status before it sends it. It must not
-// transcribe while paused() is true. Nil means the ears are not built in.
+// the local status of each utterance (partial, final) to status before it sends it. After the
+// turn silence it submits turn.end with c.SubmitTurnEnd. It must not transcribe or signal while
+// paused() is true. Nil means the ears are not built in.
 var StartEars func(ctx context.Context, c coreapi.Client, sessionID string, opts EarsOptions,
 	status func(cmdID, text string, s coreapi.Status), paused func() bool) error
 
@@ -116,13 +119,15 @@ func cmdJoin(e *env, fs *flag.FlagSet) func([]string) error {
 		"(env OFFICE_WHISPER_LANGUAGE, default de)")
 	fs.IntVar(&eo.Threads, "threads", 0, "Whisper threads for --mic/--wav (env OFFICE_WHISPER_THREADS)")
 	fs.DurationVar(&eo.EndSilence, "end-silence", 0, "silence that ends a sentence (env OFFICE_EARS_END_SILENCE, default 500ms)")
+	fs.DurationVar(&eo.TurnSilence, "turn-silence", 0, "silence after the last sentence that ends your turn and sends turn.end "+
+		"(env OFFICE_EARS_TURN_SILENCE, default 1.8s)")
 	fs.StringVar(&eo.Vocabulary, "vocabulary", "", "file with terms for Whisper, one per line (default .office/vocabulary.txt, if it is there)")
 	fs.BoolVar(&eo.Context, "context", false, "give Whisper the previous sentence as context")
 	return func(args []string) error {
 		if len(args) != 1 {
 			return usagef("usage: office meeting join <session> [--name N] [--foreground] [--mic | --wav FILE] " +
 				"[--language L] [--fast] [--model NAME|FILE] [--vocabulary FILE] [--context] [--vad-model F] [--threads N] " +
-				"[--end-silence D]")
+				"[--end-silence D] [--turn-silence D]")
 		}
 		sid := args[0]
 		ears := *mic || *wav != ""

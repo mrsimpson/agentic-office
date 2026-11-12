@@ -16,9 +16,17 @@
 //     and put the utterance in an ordered, in-memory queue. One sender submits the queue in
 //     order. After a network drop it repeats the same command ID, so nothing is lost or stored
 //     twice (dec-idempotent-commands). Raw audio is never put in the queue.
+//   - Turn: after TurnSilence (default 1.8 s) without speech after the last sentence, the ears
+//     put a turn.end of their participant in the same queue, behind the sentences of the turn.
+//     The sender submits it with SubmitTurnEnd under its own command ID. There is one turn.end
+//     per turn: the next one comes only after a new sentence. A turn with no text (Whisper heard
+//     nothing) has no turn.end. The ears do not send silence.long: that is a silence of the whole
+//     session, and the ears hear only their own participant.
 //   - Pause: while Paused() is true, the microphone recorder is stopped (a WAV file plays on, but
 //     its frames are dropped), audio that was heard before the pause is forgotten, and no
-//     sentence is transcribed.
+//     sentence is transcribed. A pause also ends the open turn without a turn.end, and no
+//     turn.end is submitted while paused. Each stage and a ticker count the pauses, because a
+//     source drops its frames while paused: the VAD may see no frame of a pause at all.
 //
 // Vocabulary: before each sentence, Whisper gets a prompt with the terms of the vocabulary file
 // and the names of the participants (vocabulary.go). ExtractVocabulary builds such a file from

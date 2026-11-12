@@ -68,6 +68,11 @@ Event levels (guide values, configurable per participant):
 | `hand.raised`, `minutes.updated`, `artifact.shown` | Actions of participants |
 | `participant.joined/left/paused`, `session.ended` | Life cycle |
 
+The ears of a speaker submit `turn.end` for their own participant when the silence after the last
+sentence reaches the turn level. They hear only their own participant, so they cannot tell a
+silence of the whole session. OPEN: which part submits `silence.long`; today only the CLI and the
+MCP server do, on request.
+
 Partials are not written to the log (`dec-no-partials-in-log`).
 
 **Checking a log:** the events of a session are the leaves of a Merkle tree (`dec-merkle-log`).
