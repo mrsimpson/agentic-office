@@ -1,0 +1,206 @@
+// Events of the session log (concept-event-log).
+//
+// Every event has an ID that grows by one inside a session and starts at 1, and a type in dotted
+// form. The type is always set to the name of the payload, for example "utterance.final", so that
+// lines of the local log can be filtered with grep and jq. Existing events never change:
+// corrections and off-the-record marks are new events that point to the original.
+syntax = "proto3";
+
+package office.sessionstream.v1;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/mrsimpson/agentic-office/hub/session/streamapi;sessionstreamv1";
+
+message Event {
+  // id is the position in the session log. It is 32 bits wide so that its canonical JSON form is
+  // a number, not a string.
+  uint32 id = 1;
+  string session_id = 2;
+  // type is the dotted event name, for example "utterance.final".
+  string type = 3;
+  // time is when the server appended the event.
+  google.protobuf.Timestamp time = 4;
+  // command_id is the client-generated ID of the command that created the event. Empty for
+  // events the server creates on its own.
+  string command_id = 5;
+  // actor_participant_id is the participant whose command created the event.
+  string actor_participant_id = 6;
+  // leaf_hash is set only on a placeholder: an utterance.final that is off the record
+  // (utterance_final.off_the_record is true). It is the leaf hash of the original event in the
+  // Merkle tree of the session log (dec-merkle-log). A verifier uses it instead of hashing the
+  // placeholder, so a copy with placeholders still verifies. It is empty in the log itself and in
+  // every other event. See package merkle for the leaf of an event.
+  bytes leaf_hash = 7;
+
+  oneof payload {
+    // Utterances
+    UtteranceFinal utterance_final = 10; // "utterance.final"
+    UtteranceOffTheRecord utterance_off_the_record = 11; // "utterance.off_the_record"
+    UtteranceCorrected utterance_corrected = 12; // "utterance.corrected"
+    // Signals
+    TurnEnd turn_end = 20; // "turn.end"
+    SilenceLong silence_long = 21; // "silence.long"
+    Addressed addressed = 22; // "addressed"
+    // Actions
+    HandRaised hand_raised = 30; // "hand.raised"
+    MinutesUpdated minutes_updated = 31; // "minutes.updated"
+    ArtifactShown artifact_shown = 32; // "artifact.shown"
+    // Life cycle
+    ParticipantJoined participant_joined = 40; // "participant.joined"
+    ParticipantLeft participant_left = 41; // "participant.left"
+    ParticipantPaused participant_paused = 42; // "participant.paused"
+    ParticipantResumed participant_resumed = 43; // "participant.resumed"
+    SessionEnded session_ended = 44; // "session.ended"
+    // Import of a conversation (dec-session-import, if-session-import)
+    SessionImported session_imported = 50; // "session.imported"
+    ImportCompleted import_completed = 51; // "import.completed"
+  }
+}
+
+message UtteranceFinal {
+  string participant_id = 1;
+  string text = 2;
+  Modality modality = 3;
+  // transcribed_at is when the speaker's ears had the final text. Empty for typed text.
+  google.protobuf.Timestamp transcribed_at = 4;
+  // off_the_record is true if the speaker marked the utterance off the record
+  // (utterance.off_the_record). The event is then a placeholder: it keeps its ID, but text and
+  // transcribed_at are empty (dec-off-the-record).
+  bool off_the_record = 5;
+  // original_time is when the utterance was made in the original conversation. It is set only
+  // for an imported utterance whose import gave a time (dec-session-import). The hub does not
+  // check it.
+  google.protobuf.Timestamp original_time = 6;
+}
+
+message UtteranceOffTheRecord {
+  // utterance_event_id is the ID of the utterance.final event that is off the record.
+  uint32 utterance_event_id = 1;
+}
+
+message UtteranceCorrected {
+  uint32 utterance_event_id = 1;
+  string text = 2;
+}
+
+message TurnEnd {
+  // participant_id is the participant whose turn ended.
+  string participant_id = 1;
+}
+
+message SilenceLong {
+  google.protobuf.Duration duration = 1;
+}
+
+message Addressed {
+  // participant_id is the participant whose name was mentioned.
+  string participant_id = 1;
+  // utterance_event_id is the utterance that mentioned the name.
+  uint32 utterance_event_id = 2;
+}
+
+message HandRaised {
+  string participant_id = 1;
+  string topic = 2;
+}
+
+message MinutesUpdated {
+  // text is the full current version of the running minutes.
+  string text = 1;
+}
+
+message ArtifactShown {
+  // artifact_id is for example "slides/42".
+  string artifact_id = 1;
+}
+
+message ParticipantJoined {
+  string participant_id = 1;
+  string display_name = 2;
+  ParticipantKind kind = 3;
+  // captured is true if the participant's speech is transcribed (joined with a microphone).
+  bool captured = 4;
+  // imported is true for a speaker of an imported conversation (dec-session-import). Such a
+  // participant is not registered and has no key: the hub took its name and kind from the import
+  // and cannot check them. Its participant_id starts with "imported:", which no registered
+  // participant ID can.
+  bool imported = 5;
+}
+
+message ParticipantLeft {
+  string participant_id = 1;
+}
+
+message ParticipantPaused {
+  string participant_id = 1;
+}
+
+message ParticipantResumed {
+  string participant_id = 1;
+}
+
+message SessionEnded {
+  // tree_head is the signed tree head of the log before this event: its size is the ID of
+  // session.ended minus one (dec-merkle-log). Get the head that includes session.ended with
+  // GetTreeHead.
+  SignedTreeHead tree_head = 1;
+}
+
+// SessionImported is the first event of an imported session (dec-session-import, if-session-import).
+// It marks the session as imported: the hub did not see the conversation happen. The events up to
+// import.completed come from the import; actor_participant_id of each of them is the participant
+// who imported the conversation. A signed tree head over an imported log proves who imported it
+// and that it has not changed since, not that the speakers said what it says.
+message SessionImported {
+  // source says where the conversation comes from, for example "Zoom meeting 2026-11-06" or a URL.
+  string source = 1;
+  // title is the title of the conversation. It may be empty.
+  string title = 2;
+}
+
+// ImportCompleted ends the import of a conversation. After it, the session takes session
+// commands like any other session.
+message ImportCompleted {
+  // utterances is the number of imported utterances.
+  uint32 utterances = 1;
+}
+
+// SignedTreeHead is the head of the Merkle tree over the events of a session (dec-merkle-log), in
+// the style of RFC 9162 (Certificate Transparency). The leaves are the events 1 to tree_size, in
+// order of their IDs. The hub signs it with its own Ed25519 key. Package merkle has the exact bytes
+// of a leaf and of the signed message, and the code to verify a head and its proofs.
+message SignedTreeHead {
+  string session_id = 1;
+  // schema is the schema of the session (dec-session-schema): the version of the session contract
+  // the session was started with, for example "office.sessionstream.v1/1". A session keeps its schema
+  // for its whole life. A hub with another schema does not continue the session, and a verifier
+  // checks the session only with its own schema. The Go constant is Schema in this package.
+  string schema = 6;
+  // tree_size is the number of events in the tree. The last event in the tree has this ID.
+  uint32 tree_size = 2;
+  // root_hash is the SHA-256 root hash of the tree (32 bytes).
+  bytes root_hash = 3;
+  // signature is the Ed25519 signature of the hub over schema, session_id, tree_size and
+  // root_hash.
+  bytes signature = 4;
+  // public_key is the Ed25519 public key that made the signature (32 bytes). It only says which
+  // key signed: a verifier must check it against the hub key it trusts (GetHubKey).
+  bytes public_key = 5;
+}
+
+// ParticipantKind tells humans and agents apart (concept-participant-model).
+enum ParticipantKind {
+  PARTICIPANT_KIND_UNSPECIFIED = 0;
+  PARTICIPANT_KIND_HUMAN = 1;
+  PARTICIPANT_KIND_AGENT = 2;
+}
+
+// Modality is the channel of an utterance. Human speech is voice; typed remarks and agent
+// contributions are text.
+enum Modality {
+  MODALITY_UNSPECIFIED = 0;
+  MODALITY_VOICE = 1;
+  MODALITY_TEXT = 2;
+}

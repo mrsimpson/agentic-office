@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
-	"github.com/mrsimpson/agentic-office/hub/session/api/logfile"
-	"github.com/mrsimpson/agentic-office/hub/session/api/merkle"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/logfile"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/merkle"
 )
 
 // ArchiveDir returns the default Git repository of the archive of the hub.
@@ -49,8 +49,8 @@ type ArchivedSession struct {
 	Commit string
 	Files  []string // all files the commit changed
 	Log    []byte
-	Events []*sessionv1.Event
-	Head   *sessionv1.SignedTreeHead
+	Events []*sessionstreamv1.Event
+	Head   *sessionstreamv1.SignedTreeHead
 }
 
 // SessionCommits returns the commits that changed the log of a session, oldest first. It returns

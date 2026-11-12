@@ -9,10 +9,11 @@ import (
 	"testing"
 	"time"
 
+	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
+
 	"connectrpc.com/connect/v2"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/mrsimpson/agentic-office/client/core/ids"
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 	taskv1 "github.com/mrsimpson/agentic-office/hub/tasks/api"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
@@ -22,7 +23,7 @@ import (
 func createTask(t *testing.T, a *contracttest.Actor, req *taskv1.CreateTaskRequest) *taskv1.Task {
 	t.Helper()
 	if req.CommandId == "" {
-		req.CommandId = ids.NewCommandID()
+		req.CommandId = coreapi.NewCommandID()
 	}
 	req.AuthorParticipantId = a.ParticipantID
 	res, err := a.Task.CreateTask(ctx10(t), req)
@@ -39,7 +40,7 @@ func createTask(t *testing.T, a *contracttest.Actor, req *taskv1.CreateTaskReque
 func updateTask(t *testing.T, a *contracttest.Actor, req *taskv1.UpdateTaskRequest) *taskv1.UpdateTaskResponse {
 	t.Helper()
 	if req.CommandId == "" {
-		req.CommandId = ids.NewCommandID()
+		req.CommandId = coreapi.NewCommandID()
 	}
 	req.ParticipantId = a.ParticipantID
 	res, err := a.Task.UpdateTask(ctx10(t), req)
@@ -282,7 +283,7 @@ func TestTasksIdempotent(t *testing.T) {
 	ada := srv.Participant(t, "ada", "Ada", human)
 	bot := srv.Participant(t, "bot", "Bot", agent)
 
-	creq := &taskv1.CreateTaskRequest{CommandId: ids.NewCommandID(), Title: "Plan", Description: "d", AssigneeParticipantId: "bot",
+	creq := &taskv1.CreateTaskRequest{CommandId: coreapi.NewCommandID(), Title: "Plan", Description: "d", AssigneeParticipantId: "bot",
 		SessionId: "s1", AuthorParticipantId: "ada"}
 	first, err := ada.Task.CreateTask(ctx10(t), creq)
 	if err != nil {
@@ -318,7 +319,7 @@ func TestTasksIdempotent(t *testing.T) {
 	wantCode(t, "create by another author", err, connect.CodeAlreadyExists)
 
 	ref := first.GetTask().GetRef()
-	ureq := &taskv1.UpdateTaskRequest{CommandId: ids.NewCommandID(), Ref: ref, ParticipantId: "bot", Status: ptr(done)}
+	ureq := &taskv1.UpdateTaskRequest{CommandId: coreapi.NewCommandID(), Ref: ref, ParticipantId: "bot", Status: ptr(done)}
 	u1, err := bot.Task.UpdateTask(ctx10(t), ureq)
 	if err != nil || u1.GetDuplicate() || u1.GetTask().GetRevision() != 2 {
 		t.Fatalf("update: %v, %v", u1, err)
@@ -358,10 +359,10 @@ func TestTasksErrors(t *testing.T) {
 	ada := srv.Participant(t, "ada", "Ada", human)
 	tk := createTask(t, ada, &taskv1.CreateTaskRequest{Title: "Plan"})
 	okC := func() *taskv1.CreateTaskRequest {
-		return &taskv1.CreateTaskRequest{CommandId: ids.NewCommandID(), Title: "x", AuthorParticipantId: "ada"}
+		return &taskv1.CreateTaskRequest{CommandId: coreapi.NewCommandID(), Title: "x", AuthorParticipantId: "ada"}
 	}
 	okU := func() *taskv1.UpdateTaskRequest {
-		return &taskv1.UpdateTaskRequest{CommandId: ids.NewCommandID(), Ref: tk.GetRef(), ParticipantId: "ada", Title: ptr("y")}
+		return &taskv1.UpdateTaskRequest{CommandId: coreapi.NewCommandID(), Ref: tk.GetRef(), ParticipantId: "ada", Title: ptr("y")}
 	}
 	for name, change := range map[string]func(*taskv1.CreateTaskRequest){
 		"no command_id":  func(r *taskv1.CreateTaskRequest) { r.CommandId = "" },
@@ -415,7 +416,7 @@ func TestTasksErrors(t *testing.T) {
 	_, err = ada.Task.UpdateTask(ctx10(t), u)
 	wantCode(t, "update as another participant", err, connect.CodePermissionDenied)
 
-	link, err := ada.Identity.CreateStageLink(ctx10(t), &identityv1.CreateStageLinkRequest{SessionId: "s1", CommandId: ids.NewCommandID()})
+	link, err := ada.Identity.CreateStageLink(ctx10(t), &identityv1.CreateStageLinkRequest{SessionId: "s1", CommandId: coreapi.NewCommandID()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -450,7 +451,7 @@ func TestTasksSurviveRestart(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
 	t1 := createTask(t, ada, &taskv1.CreateTaskRequest{Title: "123", Description: "Line one\n\n  indented: yes # not a comment\n"})
-	ureq := &taskv1.UpdateTaskRequest{CommandId: ids.NewCommandID(), Ref: t1.GetRef(), Status: ptr(inProgress)}
+	ureq := &taskv1.UpdateTaskRequest{CommandId: coreapi.NewCommandID(), Ref: t1.GetRef(), Status: ptr(inProgress)}
 	u1 := updateTask(t, ada, ureq).GetTask()
 	t2 := createTask(t, ada, &taskv1.CreateTaskRequest{Title: "Second", AssigneeParticipantId: "ada", SessionId: "s1"})
 	if code, err := srv.Stop(5 * time.Second); err != nil || code != 0 {

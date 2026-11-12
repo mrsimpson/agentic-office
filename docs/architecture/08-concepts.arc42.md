@@ -209,10 +209,14 @@ The building block view (chapter 5) is the map of the code, and a test enforces 
 
 - **One path per building block.** A building block is a black box with one responsibility. Its
   path is where its code lives. A child lies under the path of its parent.
-- **An interface belongs to its provider.** Its path lies inside the path of the provider. The
-  types of an interface are part of the interface: every provider defines its own types, even if
+- **An interface belongs to its provider.** Its path lies inside the path of the provider, but
+  is never the path of the provider itself: an interface is its own package. The types of an
+  interface are part of the interface: every provider defines its own types, even if
   another interface has a similar one (for example the kind of a participant, of an actor and of
   the author of a decision). Consumers map between them.
+- **No shared paths.** No two elements of the model share a path: every building block and every
+  interface has its own. So the test can tell whether a consumer uses a contract or reaches into
+  the building block behind it.
 - **No shared package.** There is no common or core package that everyone may use. Code that
   several building blocks need is either an interface of one of them, or a missing building block,
   or acceptable duplication. Cross-cutting concepts (this chapter) are rules, not places.
@@ -230,8 +234,9 @@ The building block view (chapter 5) is the map of the code, and a test enforces 
   interfaces.
 - **Tests are external actors.** They may use interfaces only and never reach into a building
   block.
-- **Interfaces for actors only** (CLI, MCP, stage view, audio input) also have a path: the place
-  where their contract is defined. Building blocks do not use them.
+- **Interfaces for actors only** (CLI, MCP, stage view, audio input) also have their own path:
+  the place where their contract is defined, for example the commands of the CLI or the tools of
+  the MCP server. Building blocks do not use them.
 
 ```arc42
 :::concept

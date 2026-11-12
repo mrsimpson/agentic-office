@@ -9,17 +9,21 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/mrsimpson/agentic-office/client/agentrunner/acpclient"
+
+	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
+	"github.com/mrsimpson/agentic-office/client/replicator/control"
+
 	acp "github.com/coder/acp-go-sdk"
 
-	"github.com/mrsimpson/agentic-office/client/core"
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
-	"github.com/mrsimpson/agentic-office/hub/session/api/events"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/events"
 )
 
 // Options configure one runner: one agent key in one session.
 type Options struct {
 	// Config is the configuration of the agent (its key, the hub, the runtime directory).
-	Config core.Config
+	Config coreapi.Config
 	// Session is the session to take part in.
 	Session string
 	// Role is the role of the agent in the meeting, in plain words. It may be empty.
@@ -39,6 +43,10 @@ type Options struct {
 	Version string
 	// Stderr receives the log of the runner and the stderr of the harness. Nil: os.Stderr.
 	Stderr io.Writer
+	// Dial dials the office hub (if-client-core).
+	Dial coreapi.Dial
+	// NewReplicator creates the replicator of this process (if-replication).
+	NewReplicator control.New
 }
 
 // Run keeps the agent in the session until the session ends, the agent leaves, the harness
@@ -75,24 +83,24 @@ func Run(ctx context.Context, o Options) error {
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	m, err := joinMeeting(ctx, cfg, o.Session, logf)
+	m, err := joinMeeting(ctx, o, cfg, logf)
 	if err != nil {
 		return err
 	}
 	logf("joined %s as %s; local log %s", o.Session, m.joined.ParticipantID, m.joined.Paths.Log)
 
-	h, err := startHarness(o.Harness, o.Stderr, logf, permissionRule{globs: o.Allow})
+	h, err := acpclient.Start(o.Harness, o.Stderr, logf, acpclient.Rule{Globs: o.Allow})
 	if err != nil {
 		return err
 	}
 	defer func() {
-		h.stop()
+		h.Stop()
 		logf("harness stopped")
 	}()
 	office := acp.McpServerStdio{Name: "office", Command: o.Office, Args: []string{"mcp", "--session", o.Session},
-		Env: []acp.EnvVariable{absEnv(core.EnvHub, cfg.Hub), absEnv(core.EnvCACert, cfg.CACert),
-			absEnv(core.EnvKey, cfg.KeyFile), absEnv(core.EnvRuntimeDir, cfg.RuntimeDir)}}
-	if err := h.open(ctx, o.Cwd, office, o.Version); err != nil {
+		Env: []acp.EnvVariable{absEnv(coreapi.EnvHub, cfg.Hub), absEnv(coreapi.EnvCACert, cfg.CACert),
+			absEnv(coreapi.EnvKey, cfg.KeyFile), absEnv(coreapi.EnvRuntimeDir, cfg.RuntimeDir)}}
+	if err := h.Open(ctx, o.Cwd, office, o.Version); err != nil {
 		return err
 	}
 
@@ -107,7 +115,7 @@ func Run(ctx context.Context, o Options) error {
 
 // absConfig makes the file paths of cfg absolute, because the MCP server runs in another
 // working directory.
-func absConfig(cfg core.Config) (core.Config, error) {
+func absConfig(cfg coreapi.Config) (coreapi.Config, error) {
 	for _, p := range []*string{&cfg.CACert, &cfg.KeyFile, &cfg.RuntimeDir} {
 		if *p == "" {
 			continue
@@ -131,7 +139,7 @@ type participant struct {
 type runner struct {
 	o     Options
 	m     *meeting
-	h     *harness
+	h     *acpclient.Harness
 	logf  func(string, ...any)
 	self  string // participant ID of the agent
 	start uint32 // the join event of the agent; what came before is history
@@ -140,10 +148,10 @@ type runner struct {
 
 // loop sends the first prompt and follows the local log until the run ends.
 func (r *runner) loop(ctx context.Context) error {
-	evs := make(chan *sessionv1.Event)
+	evs := make(chan *sessionstreamv1.Event)
 	ferr := make(chan error, 1)
 	go func() {
-		ferr <- r.m.follow(ctx, func(ev *sessionv1.Event) error {
+		ferr <- r.m.follow(ctx, func(ev *sessionstreamv1.Event) error {
 			select {
 			case evs <- ev:
 				return nil
@@ -160,15 +168,15 @@ func (r *runner) loop(ctx context.Context) error {
 	done := make(chan turn, 1)
 	busy := true
 	go func() {
-		stop, err := r.h.prompt(ctx, r.firstPrompt())
+		stop, err := r.h.Prompt(ctx, r.firstPrompt())
 		done <- turn{stop, err}
 	}()
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-r.h.done:
-			return r.h.exitError()
+		case <-r.h.Done():
+			return r.h.ExitError()
 		case err := <-ferr:
 			if err == nil {
 				err = ctx.Err()
@@ -185,10 +193,10 @@ func (r *runner) loop(ctx context.Context) error {
 			switch {
 			case ev.GetType() == events.SessionEnded:
 				r.logf("the session ended")
-				return waitTurn(ctx, busy, done, r.h.done)
+				return waitTurn(ctx, busy, done, r.h.Done())
 			case ev.GetType() == events.ParticipantLeft && ev.GetParticipantLeft().GetParticipantId() == r.self && ev.GetId() > r.start:
 				r.logf("the agent left the session")
-				return waitTurn(ctx, busy, done, r.h.done)
+				return waitTurn(ctx, busy, done, r.h.Done())
 			}
 		}
 	}
@@ -208,10 +216,10 @@ func waitTurn[T any](ctx context.Context, busy bool, done <-chan T, exited <-cha
 }
 
 // learn keeps the names and kinds of the participants.
-func (r *runner) learn(ev *sessionv1.Event) {
+func (r *runner) learn(ev *sessionstreamv1.Event) {
 	if j := ev.GetParticipantJoined(); j != nil {
 		kind := "human"
-		if j.GetKind() == sessionv1.ParticipantKind_PARTICIPANT_KIND_AGENT {
+		if j.GetKind() == sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_AGENT {
 			kind = "agent"
 		}
 		name := j.GetDisplayName()
@@ -221,3 +229,9 @@ func (r *runner) learn(ev *sessionv1.Event) {
 		r.names[j.GetParticipantId()] = participant{name: name, kind: kind}
 	}
 }
+
+// absEnv returns the environment entry name=value.
+func absEnv(name, value string) acp.EnvVariable { return acp.EnvVariable{Name: name, Value: value} }
+
+// lookupOffice returns the path of the running office binary, for the MCP server.
+func lookupOffice() (string, error) { return os.Executable() }

@@ -15,11 +15,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mrsimpson/agentic-office/client/core/ids"
+	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 	decisionv1 "github.com/mrsimpson/agentic-office/hub/records/decision/api"
 	notev1 "github.com/mrsimpson/agentic-office/hub/records/note/api"
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
+	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
@@ -108,17 +109,17 @@ func TestQualityArchiveNoBackpressure(t *testing.T) {
 		"-archive-interval", "500ms")
 	ada := srv.Participant(t, "ada", "Ada", identityv1.ActorKind_ACTOR_KIND_HUMAN)
 	bot := srv.Participant(t, "bot", "Bot", identityv1.ActorKind_ACTOR_KIND_AGENT)
-	sid := "archive-" + ids.NewCommandID()
+	sid := "archive-" + coreapi.NewCommandID()
 	ctx, cancel := context.WithTimeout(context.Background(), duration+2*time.Minute)
 	defer cancel()
-	if _, err := ada.Session.Join(ctx, &sessionv1.JoinRequest{SessionId: sid, CommandId: ids.NewCommandID()}); err != nil {
+	if _, err := ada.Commands.Join(ctx, &sessioncommandsv1.JoinRequest{SessionId: sid, CommandId: coreapi.NewCommandID()}); err != nil {
 		t.Fatal(err)
 	}
 
 	// The bot follows the stream and notes when each event arrives.
 	var mu sync.Mutex
 	arrived := map[uint32]time.Time{}
-	stream, err := bot.Session.Subscribe(ctx, &sessionv1.SubscribeRequest{SessionId: sid})
+	stream, err := bot.Stream.Subscribe(ctx, &sessionstreamv1.SubscribeRequest{SessionId: sid})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,9 +147,9 @@ func TestQualityArchiveNoBackpressure(t *testing.T) {
 	start := time.Now()
 	for i := 0; time.Since(start) < duration; i++ {
 		t0 := time.Now()
-		res, err := ada.Session.SubmitUtterance(ctx, &sessionv1.SubmitUtteranceRequest{SessionId: sid,
-			CommandId: ids.NewCommandID(), ParticipantId: "ada", Text: fmt.Sprintf("Sentence %d.", i),
-			Modality: sessionv1.Modality_MODALITY_TEXT})
+		res, err := ada.Commands.SubmitUtterance(ctx, &sessioncommandsv1.SubmitUtteranceRequest{SessionId: sid,
+			CommandId: coreapi.NewCommandID(), ParticipantId: "ada", Text: fmt.Sprintf("Sentence %d.", i),
+			Modality: sessionstreamv1.Modality_MODALITY_TEXT})
 		if err != nil {
 			t.Fatalf("utterance %d: %v", i, err)
 		}
@@ -157,7 +158,7 @@ func TestQualityArchiveNoBackpressure(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	spoken := time.Since(start)
-	if _, err := ada.Session.EndSession(ctx, &sessionv1.EndSessionRequest{SessionId: sid, CommandId: ids.NewCommandID(),
+	if _, err := ada.Commands.EndSession(ctx, &sessioncommandsv1.EndSessionRequest{SessionId: sid, CommandId: coreapi.NewCommandID(),
 		ParticipantId: "ada"}); err != nil {
 		t.Fatal(err)
 	}
@@ -177,14 +178,14 @@ func TestQualityArchiveNoBackpressure(t *testing.T) {
 	// The last write has the whole session.
 	repo := srv.ArchiveDir()
 	last := contracttest.WaitArchived(t, repo, sid, 4*slowCommit, (*contracttest.ArchivedSession).Ended)
-	evs, err := ada.Session.GetEvents(ctx, &sessionv1.GetEventsRequest{SessionId: sid, Limit: 1000})
+	evs, err := ada.Stream.GetEvents(ctx, &sessionstreamv1.GetEventsRequest{SessionId: sid, Limit: 1000})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(last.Events) != len(evs.GetEvents()) {
 		t.Fatalf("archive has %d events, the session %d", len(last.Events), len(evs.GetEvents()))
 	}
-	keyRes, err := ada.Session.GetHubKey(ctx, &sessionv1.GetHubKeyRequest{})
+	keyRes, err := ada.Commands.GetHubKey(ctx, &sessioncommandsv1.GetHubKeyRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -251,10 +252,10 @@ func TestArchiveRecordsBeforeSessionWrites(t *testing.T) {
 	srv := contracttest.StartHub(t, []string{"PATH=" + gitDir + string(os.PathListSeparator) + os.Getenv("PATH")},
 		"-archive-interval", "100ms")
 	ada := srv.Participant(t, "ada", "Ada", identityv1.ActorKind_ACTOR_KIND_HUMAN)
-	sid := "records-first-" + ids.NewCommandID()
+	sid := "records-first-" + coreapi.NewCommandID()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	if _, err := ada.Session.Join(ctx, &sessionv1.JoinRequest{SessionId: sid, CommandId: ids.NewCommandID()}); err != nil {
+	if _, err := ada.Commands.Join(ctx, &sessioncommandsv1.JoinRequest{SessionId: sid, CommandId: coreapi.NewCommandID()}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -263,9 +264,9 @@ func TestArchiveRecordsBeforeSessionWrites(t *testing.T) {
 	spoke := make(chan error, 1)
 	go func() {
 		for i := 0; speak.Err() == nil; i++ {
-			if _, err := ada.Session.SubmitUtterance(ctx, &sessionv1.SubmitUtteranceRequest{SessionId: sid,
-				CommandId: ids.NewCommandID(), ParticipantId: "ada", Text: fmt.Sprintf("Sentence %d.", i),
-				Modality: sessionv1.Modality_MODALITY_TEXT}); err != nil {
+			if _, err := ada.Commands.SubmitUtterance(ctx, &sessioncommandsv1.SubmitUtteranceRequest{SessionId: sid,
+				CommandId: coreapi.NewCommandID(), ParticipantId: "ada", Text: fmt.Sprintf("Sentence %d.", i),
+				Modality: sessionstreamv1.Modality_MODALITY_TEXT}); err != nil {
 				spoke <- fmt.Errorf("utterance %d: %w", i, err)
 				return
 			}
@@ -295,13 +296,13 @@ func TestArchiveRecordsBeforeSessionWrites(t *testing.T) {
 	for r := range rounds {
 		waitCommitRunning(t, commitLog, true)
 		decided := record(fmt.Sprintf("decision %d", r+1), func() error {
-			_, err := ada.Decision.RecordDecision(ctx, &decisionv1.RecordDecisionRequest{CommandId: ids.NewCommandID(),
+			_, err := ada.Decision.RecordDecision(ctx, &decisionv1.RecordDecisionRequest{CommandId: coreapi.NewCommandID(),
 				Text: fmt.Sprintf("Decision %d.", r+1), AuthorParticipantId: "ada", SessionId: sid})
 			return err
 		})
 		waitCommitRunning(t, commitLog, false)
 		noted := record(fmt.Sprintf("note %d", r+1), func() error {
-			_, err := ada.Note.AddNote(ctx, &notev1.AddNoteRequest{CommandId: ids.NewCommandID(),
+			_, err := ada.Note.AddNote(ctx, &notev1.AddNoteRequest{CommandId: coreapi.NewCommandID(),
 				Text: fmt.Sprintf("Note %d.", r+1), AuthorParticipantId: "ada", SessionId: sid})
 			return err
 		})
@@ -315,7 +316,7 @@ func TestArchiveRecordsBeforeSessionWrites(t *testing.T) {
 	if err := <-spoke; err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ada.Session.EndSession(ctx, &sessionv1.EndSessionRequest{SessionId: sid, CommandId: ids.NewCommandID(),
+	if _, err := ada.Commands.EndSession(ctx, &sessioncommandsv1.EndSessionRequest{SessionId: sid, CommandId: coreapi.NewCommandID(),
 		ParticipantId: "ada"}); err != nil {
 		t.Fatal(err)
 	}
@@ -323,7 +324,7 @@ func TestArchiveRecordsBeforeSessionWrites(t *testing.T) {
 	// Session writes still happen: the last write has the whole session.
 	repo := srv.ArchiveDir()
 	last := contracttest.WaitArchived(t, repo, sid, 10*recordCommit, (*contracttest.ArchivedSession).Ended)
-	evs, err := ada.Session.GetEvents(ctx, &sessionv1.GetEventsRequest{SessionId: sid, Limit: 1000})
+	evs, err := ada.Stream.GetEvents(ctx, &sessionstreamv1.GetEventsRequest{SessionId: sid, Limit: 1000})
 	if err != nil {
 		t.Fatal(err)
 	}

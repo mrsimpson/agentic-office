@@ -5,25 +5,23 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/mrsimpson/agentic-office/client/replicator/control"
+	"github.com/mrsimpson/agentic-office/client/replicator/locallog"
 	"io"
 	"math/rand/v2"
 	"os"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
 	"connectrpc.com/connect/v2"
 
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
-	"github.com/mrsimpson/agentic-office/hub/session/api/events"
-	"github.com/mrsimpson/agentic-office/hub/session/api/logfile"
-	"github.com/mrsimpson/agentic-office/hub/session/api/merkle"
-	sessionv1connect "github.com/mrsimpson/agentic-office/hub/session/api/sessionv1connect"
+	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/events"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/logfile"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/merkle"
 )
-
-// ErrRunning means that another replicator holds the lock of the file.
-var ErrRunning = errors.New("a replicator is already running for this file")
 
 // Reconnect backoff after a drop. The wait starts at MinBackoff and doubles up to MaxBackoff.
 // MaxBackoff bounds how long the local log lags behind after the network is back
@@ -33,66 +31,36 @@ const (
 	MaxBackoff = time.Second
 )
 
-// Reason tells why Run stopped.
-type Reason string
-
-const (
-	// Ended: the replicator wrote session.ended.
-	Ended Reason = "session.ended"
-	// Left: the replicator wrote participant.left of its own participant.
-	Left Reason = "participant.left"
-	// Canceled: the context ended.
-	Canceled Reason = "canceled"
-)
-
-// Replicator copies the session stream of one session into one local file.
-type Replicator struct {
-	// Session is a session client with a valid token source (auth.Bearer).
-	Session sessionv1connect.SessionServiceClient
-	// SessionID is the session to copy.
-	SessionID string
-	// ParticipantID is the participant the file belongs to. The replicator stops after it
-	// has written that participant's participant.left. Empty: stop only on session.ended.
-	ParticipantID string
-	// Path is the local session log.
-	Path string
-	// TreeHeadPath is the file with the latest signed tree head over the local log
-	// (dec-restore-from-peers). Empty means Path with the extension replaced by
-	// ".tree-head.yaml".
-	TreeHeadPath string
-	// Logf receives status messages. Nil means no messages.
-	Logf func(format string, args ...any)
-	// OnWrite is called after every written line. Optional.
-	OnWrite func(*sessionv1.Event)
-	// MaxBackoff overrides the package MaxBackoff when it is greater than zero.
-	MaxBackoff time.Duration
+// replicator copies the session stream of one session into one local file. It implements
+// control.Replicator.
+type replicator struct {
+	control.Options
 
 	f      *os.File
 	cursor uint32
 	ended  bool
 	// head is the latest signed tree head of the hub over the local log, or nil.
-	head *sessionv1.SignedTreeHead
+	head *sessionstreamv1.SignedTreeHead
 	// behind is set when the hub did not know the cursor: the hub lost events. Before the next
 	// subscribe the replicator offers its copy and checks that the hub's log still matches.
 	behind bool
 }
 
-// ErrFork means that the log of the hub and the local log differ: the local copy can no longer
-// be continued.
-var ErrFork = errors.New("the local log and the log of the hub differ")
+// New returns a replicator for the options (control.New).
+func New(o control.Options) control.Replicator { return &replicator{Options: o} }
 
 // treeHeadPath returns the file of the tree head.
-func (r *Replicator) treeHeadPath() string {
+func (r *replicator) treeHeadPath() string {
 	if r.TreeHeadPath != "" {
 		return r.TreeHeadPath
 	}
-	return strings.TrimSuffix(r.Path, filepath.Ext(r.Path)) + ".tree-head.yaml"
+	return locallog.TreeHeadPath(r.Path)
 }
 
 // Open opens or creates the file (mode 0600, directory 0700) and takes an exclusive lock on it.
 // It cuts an incomplete last line (a crash during a write) and reads the cursor from the last
 // complete line. It fails with ErrRunning if another replicator has the lock.
-func (r *Replicator) Open() error {
+func (r *replicator) Open() error {
 	if r.Logf == nil {
 		r.Logf = func(string, ...any) {}
 	}
@@ -106,7 +74,7 @@ func (r *Replicator) Open() error {
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		f.Close()
 		if errors.Is(err, syscall.EWOULDBLOCK) {
-			return ErrRunning
+			return control.ErrRunning
 		}
 		return fmt.Errorf("lock %s: %w", r.Path, err)
 	}
@@ -120,7 +88,7 @@ func (r *Replicator) Open() error {
 }
 
 // loadHead reads the stored tree head. A head that does not fit the local log is ignored.
-func (r *Replicator) loadHead() {
+func (r *replicator) loadHead() {
 	data, err := os.ReadFile(r.treeHeadPath())
 	if err != nil {
 		return
@@ -135,7 +103,7 @@ func (r *Replicator) loadHead() {
 
 // writeHead stores the tree head next to the log: a new file that replaces the old one, so the
 // file always holds a whole head.
-func (r *Replicator) writeHead(h *sessionv1.SignedTreeHead) error {
+func (r *replicator) writeHead(h *sessionstreamv1.SignedTreeHead) error {
 	data, err := logfile.MarshalTreeHead(h)
 	if err != nil {
 		return err
@@ -152,7 +120,7 @@ func (r *Replicator) writeHead(h *sessionv1.SignedTreeHead) error {
 	return nil
 }
 
-func (r *Replicator) load(f *os.File) error {
+func (r *replicator) load(f *os.File) error {
 	if err := f.Chmod(0o600); err != nil {
 		return err
 	}
@@ -183,10 +151,10 @@ func (r *Replicator) load(f *os.File) error {
 }
 
 // Cursor returns the ID of the last event in the file.
-func (r *Replicator) Cursor() uint32 { return r.cursor }
+func (r *replicator) Cursor() uint32 { return r.cursor }
 
 // Close releases the file and its lock.
-func (r *Replicator) Close() error {
+func (r *replicator) Close() error {
 	if r.f == nil {
 		return nil
 	}
@@ -201,7 +169,7 @@ func fatal(err error) bool {
 	case connect.CodeInvalidArgument, connect.CodePermissionDenied, connect.CodeFailedPrecondition:
 		return true
 	}
-	return errors.Is(err, ErrFork)
+	return errors.Is(err, control.ErrFork)
 }
 
 // Run follows the stream until it has written session.ended or the participant's own
@@ -214,12 +182,12 @@ func fatal(err error) bool {
 // hub up to the cursor has the root hash of the local log.
 //
 // Run returns an error only for a problem a reconnect cannot solve, for example a local log
-// that differs from the log of the hub (ErrFork), or a copy the hub rejects. Run closes the file
+// that differs from the log of the hub (control.ErrFork), or a copy the hub rejects. Run closes the file
 // when it returns.
-func (r *Replicator) Run(ctx context.Context) (Reason, error) {
+func (r *replicator) Run(ctx context.Context) (control.Reason, error) {
 	defer r.Close()
 	if r.ended {
-		return Ended, nil
+		return control.Ended, nil
 	}
 	maxBackoff := MaxBackoff
 	if r.MaxBackoff > 0 {
@@ -228,7 +196,7 @@ func (r *Replicator) Run(ctx context.Context) (Reason, error) {
 	backoff := min(MinBackoff, maxBackoff)
 	for {
 		var got bool
-		var reason Reason
+		var reason control.Reason
 		var err error
 		if r.behind {
 			err = r.restore(ctx)
@@ -245,7 +213,7 @@ func (r *Replicator) Run(ctx context.Context) (Reason, error) {
 			return reason, nil
 		}
 		if ctx.Err() != nil {
-			return Canceled, nil
+			return control.Canceled, nil
 		}
 		if fatal(err) {
 			return "", fmt.Errorf("session stream: %w", err)
@@ -261,15 +229,15 @@ func (r *Replicator) Run(ctx context.Context) (Reason, error) {
 		r.Logf("replicator: stream lost (%v), reconnect from cursor %d in %v", err, r.cursor, wait)
 		select {
 		case <-ctx.Done():
-			return Canceled, nil
+			return control.Canceled, nil
 		case <-time.After(wait):
 		}
 		backoff = min(backoff*2, maxBackoff)
 	}
 }
 
-func (r *Replicator) follow(ctx context.Context) (got bool, reason Reason, err error) {
-	stream, err := r.Session.Subscribe(ctx, &sessionv1.SubscribeRequest{SessionId: r.SessionID, AfterEventId: r.cursor})
+func (r *replicator) follow(ctx context.Context) (got bool, reason control.Reason, err error) {
+	stream, err := r.Stream.Subscribe(ctx, &sessionstreamv1.SubscribeRequest{SessionId: r.SessionID, AfterEventId: r.cursor})
 	if err != nil {
 		return false, "", err
 	}
@@ -300,16 +268,16 @@ func (r *Replicator) follow(ctx context.Context) (got bool, reason Reason, err e
 		}
 		switch {
 		case ev.GetType() == events.SessionEnded:
-			return got, Ended, nil
+			return got, control.Ended, nil
 		case r.ParticipantID != "" && ev.GetType() == events.ParticipantLeft &&
 			ev.GetParticipantLeft().GetParticipantId() == r.ParticipantID:
-			return got, Left, nil
+			return got, control.Left, nil
 		}
 	}
 }
 
 // write appends one line with a single write call, so a crash leaves at most one torn line.
-func (r *Replicator) write(ev *sessionv1.Event) error {
+func (r *replicator) write(ev *sessionstreamv1.Event) error {
 	line, err := logfile.MarshalLine(ev)
 	if err != nil {
 		return err
@@ -324,20 +292,6 @@ func (r *Replicator) write(ev *sessionv1.Event) error {
 	return nil
 }
 
-// Running reports whether a replicator holds the lock of the file at path.
-func Running(path string) bool {
-	f, err := os.Open(path)
-	if err != nil {
-		return false
-	}
-	defer f.Close()
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		return errors.Is(err, syscall.EWOULDBLOCK)
-	}
-	_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
-	return false
-}
-
 // errBehind means that the hub has fewer events than the local log and the local copy cannot fill
 // them in (yet). The replicator retries: another peer may fill them in.
 var errBehind = errors.New("the hub has fewer events than the local log")
@@ -345,8 +299,8 @@ var errBehind = errors.New("the hub has fewer events than the local log")
 // restore runs while the hub is behind the local log. It offers the events the hub misses, if
 // the stored tree head covers them, and then checks that the log of the hub up to the cursor is
 // the local log. It returns nil when the replicator can follow the stream again.
-func (r *Replicator) restore(ctx context.Context) error {
-	res, err := r.Session.GetTreeHead(ctx, &sessionv1.GetTreeHeadRequest{SessionId: r.SessionID})
+func (r *replicator) restore(ctx context.Context) error {
+	res, err := r.Commands.GetTreeHead(ctx, &sessioncommandsv1.GetTreeHeadRequest{SessionId: r.SessionID})
 	if err != nil {
 		return err
 	}
@@ -362,7 +316,7 @@ func (r *Replicator) restore(ctx context.Context) error {
 			return err
 		}
 		size := r.head.GetTreeSize()
-		offer, err := r.Session.OfferLog(ctx, &sessionv1.OfferLogRequest{SessionId: r.SessionID, AfterEventId: n,
+		offer, err := r.Commands.OfferLog(ctx, &sessioncommandsv1.OfferLogRequest{SessionId: r.SessionID, AfterEventId: n,
 			Events: evs[n:size], TreeHead: r.head})
 		if err != nil {
 			return fmt.Errorf("offer the local copy: %w", err)
@@ -374,7 +328,7 @@ func (r *Replicator) restore(ctx context.Context) error {
 		}
 	}
 	// The hub has the cursor again. Its log up to the cursor must be the local log.
-	res, err = r.Session.GetTreeHead(ctx, &sessionv1.GetTreeHeadRequest{SessionId: r.SessionID, TreeSize: r.cursor})
+	res, err = r.Commands.GetTreeHead(ctx, &sessioncommandsv1.GetTreeHeadRequest{SessionId: r.SessionID, TreeSize: r.cursor})
 	if err != nil {
 		return err
 	}
@@ -387,7 +341,7 @@ func (r *Replicator) restore(ctx context.Context) error {
 		return err
 	}
 	if !bytes.Equal(merkle.RootHash(leaves), res.GetTreeHead().GetRootHash()) {
-		return fmt.Errorf("%w: the root hashes over the events 1 to %d differ", ErrFork, r.cursor)
+		return fmt.Errorf("%w: the root hashes over the events 1 to %d differ", control.ErrFork, r.cursor)
 	}
 	r.behind = false
 	r.Logf("replicator: the hub has the local log again; following from cursor %d", r.cursor)
@@ -395,7 +349,7 @@ func (r *Replicator) restore(ctx context.Context) error {
 }
 
 // localEvents reads the whole local log.
-func (r *Replicator) localEvents() ([]*sessionv1.Event, error) {
+func (r *replicator) localEvents() ([]*sessionstreamv1.Event, error) {
 	data, err := os.ReadFile(r.Path)
 	if err != nil {
 		return nil, err

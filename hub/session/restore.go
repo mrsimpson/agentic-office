@@ -14,9 +14,10 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/mrsimpson/agentic-office/hub/archive/storage"
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
-	"github.com/mrsimpson/agentic-office/hub/session/api/logfile"
-	"github.com/mrsimpson/agentic-office/hub/session/api/merkle"
+	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/logfile"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/merkle"
 )
 
 // ArchiveStateFile is the path of the state of the session logs in the archive (YAML). complete
@@ -67,10 +68,10 @@ func (st *state) root() []byte {
 
 // signedHead returns the signed tree head of the current log of a session. The caller holds
 // st.mu. The head is computed once per size.
-func (s *Service) signedHead(sid string, st *state) *sessionv1.SignedTreeHead {
+func (s *Service) signedHead(sid string, st *state) *sessionstreamv1.SignedTreeHead {
 	if st.head == nil {
 		n, root := uint64(len(st.leaves)), st.root()
-		st.head = &sessionv1.SignedTreeHead{SessionId: sid, Schema: st.schema, TreeSize: uint32(n), RootHash: root,
+		st.head = &sessionstreamv1.SignedTreeHead{SessionId: sid, Schema: st.schema, TreeSize: uint32(n), RootHash: root,
 			Signature: ed25519.Sign(s.key, merkle.TreeHeadMessage(st.schema, sid, n, root)),
 			PublicKey: s.key.Public().(ed25519.PublicKey)}
 	}
@@ -79,7 +80,7 @@ func (s *Service) signedHead(sid string, st *state) *sessionv1.SignedTreeHead {
 
 // currentHead returns the signed head of the log of a session if the log still has n events,
 // else nil.
-func (s *Service) currentHead(sid string, n int) *sessionv1.SignedTreeHead {
+func (s *Service) currentHead(sid string, n int) *sessionstreamv1.SignedTreeHead {
 	st, err := s.lock(sid)
 	if err != nil {
 		return nil
@@ -170,13 +171,13 @@ func (s *Service) restore(ctx context.Context) error {
 		sid, st, err := s.restoreOne(name, f.log, f.head)
 		if err != nil {
 			s.logf("restore: session %q: %v; it takes no commands until a peer offers its copy", sid, err)
-			st := newState(sessionv1.Schema)
+			st := newState(sessionstreamv1.Schema)
 			st.loaded, st.restoring, st.broken = true, true, err.Error()
 			s.sessions[sid] = st
 			broken++
 			continue
 		}
-		if st.schema != sessionv1.Schema {
+		if st.schema != sessionstreamv1.Schema {
 			// Readable, but this hub does not continue it (dec-session-schema): no wait for peers.
 			s.logf("restore: session %q: %s", sid, schemaMismatch(st.schema))
 			other++
@@ -242,9 +243,9 @@ func (s *Service) restoreOne(name string, logData, headData []byte) (string, *st
 // verifies with merkle.VerifyEvents. A log of another schema is checked with the signature of its
 // head and the leaves this hub computes: the hub serves it only if its leaves give the signed root
 // hash, so every head and proof the hub signs for it later is right.
-func (s *Service) verifyStored(evs []*sessionv1.Event, head *sessionv1.SignedTreeHead) error {
+func (s *Service) verifyStored(evs []*sessionstreamv1.Event, head *sessionstreamv1.SignedTreeHead) error {
 	key := s.key.Public().(ed25519.PublicKey)
-	if head.GetSchema() == sessionv1.Schema {
+	if head.GetSchema() == sessionstreamv1.Schema {
 		return merkle.VerifyEvents(evs, head, key)
 	}
 	if err := merkle.VerifyTreeHeadSignature(head, key); err != nil {
@@ -259,13 +260,13 @@ func (s *Service) verifyStored(evs []*sessionv1.Event, head *sessionv1.SignedTre
 	}
 	if !bytes.Equal(merkle.RootHash(leaves), head.GetRootHash()) {
 		return fmt.Errorf("the log has schema %q and does not give the root hash of its tree head "+
-			"with the encoding of schema %q", head.GetSchema(), sessionv1.Schema)
+			"with the encoding of schema %q", head.GetSchema(), sessionstreamv1.Schema)
 	}
 	return nil
 }
 
 // OfferLog takes the missing events of a session from the copy of a peer
-// (dec-restore-from-peers). See the contract in session.proto.
+// (dec-restore-from-peers). See the contract in commands.proto.
 //
 // The copy must prove itself with a tree head signed by the hub key: the hub signs a head with
 // every batch of the session stream, so a peer holds a head over its whole copy, also over the
@@ -274,7 +275,7 @@ func (s *Service) verifyStored(evs []*sessionv1.Event, head *sessionv1.SignedTre
 // head, and that its own log and the copy are consistent (a consistency proof between its
 // current head and the head of the copy). Only then it appends the events it misses, with their
 // IDs. A copy that is not longer is a no-op.
-func (s *Service) OfferLog(ctx context.Context, req *sessionv1.OfferLogRequest) (*sessionv1.OfferLogResponse, error) {
+func (s *Service) OfferLog(ctx context.Context, req *sessioncommandsv1.OfferLogRequest) (*sessioncommandsv1.OfferLogResponse, error) {
 	sid := req.GetSessionId()
 	if sid == "" {
 		return nil, invalid("session_id is required")
@@ -297,9 +298,9 @@ func (s *Service) OfferLog(ctx context.Context, req *sessionv1.OfferLogRequest) 
 		return nil, invalid("tree_head: " + err.Error())
 	}
 	// A copy of another schema does not continue a session of this hub (dec-session-schema).
-	if head.GetSchema() != sessionv1.Schema {
+	if head.GetSchema() != sessionstreamv1.Schema {
 		return nil, precondition("the copy has schema \"" + head.GetSchema() + "\"; this hub has schema \"" +
-			sessionv1.Schema + "\" and does not continue a session of another schema")
+			sessionstreamv1.Schema + "\" and does not continue a session of another schema")
 	}
 	m, after := int(head.GetTreeSize()), int(req.GetAfterEventId())
 	if after > m {
@@ -355,7 +356,7 @@ func (s *Service) OfferLog(ctx context.Context, req *sessionv1.OfferLogRequest) 
 		}
 	}
 	if m <= n {
-		return &sessionv1.OfferLogResponse{TreeHead: s.signedHead(sid, st)}, nil
+		return &sessioncommandsv1.OfferLogResponse{TreeHead: s.signedHead(sid, st)}, nil
 	}
 	for _, ev := range req.GetEvents()[n-after:] {
 		stored, err := s.store.Append(sid, ev)
@@ -369,5 +370,5 @@ func (s *Service) OfferLog(ctx context.Context, req *sessionv1.OfferLogRequest) 
 	}
 	st.restoring, st.broken = false, ""
 	s.logf("restore: session %q: %s filled in the events %d to %d", sid, caller.ParticipantID, n+1, m)
-	return &sessionv1.OfferLogResponse{Accepted: true, TreeHead: s.signedHead(sid, st)}, nil
+	return &sessioncommandsv1.OfferLogResponse{Accepted: true, TreeHead: s.signedHead(sid, st)}, nil
 }

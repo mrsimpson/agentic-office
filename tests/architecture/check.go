@@ -6,6 +6,9 @@
 //
 //   - Every building block has exactly one path. The path of a child lies under the path of its
 //     parent. Every interface has a path inside the path of its provider.
+//   - No two elements share a path: every building block and every interface has its own. So
+//     the code of an interface is its own package, and a consumer that imports it uses the
+//     contract, not the inside of the provider.
 //   - An interface that crosses the boundary of a parent building block belongs to that parent (its
 //     black box). The attribute x-realized-by names the direct child that realizes it. The path of
 //     the interface then lies inside the path of that child, and only that child may use the
@@ -173,7 +176,7 @@ func (v Violation) String() string { return v.Rule + ": " + v.Msg }
 type owner struct {
 	actor  bool
 	block  string   // the building block; for a package of an interface its realizer or provider
-	ifaces []string // set if the package lies in the path of interfaces; several may share a path
+	ifaces []string // set if the package lies in the path of an interface
 }
 
 // Check checks the packages in root against the model.
@@ -228,6 +231,29 @@ func Check(root string, m *Model, pkgs []Package) []Violation {
 			add("model", "interface %s: path %s is not inside the path %s of %s, which realizes it",
 				i.ID, i.Path, real.Path, real.ID)
 		}
+	}
+
+	// Shared paths: every building block and every interface has its own path.
+	byPath := map[string][]string{}
+	for _, es := range []map[string]*Element{m.Blocks, m.Interfaces} {
+		for _, e := range es {
+			if e.Path != "" && !strings.Contains(e.Path, ",") {
+				byPath[e.Path] = append(byPath[e.Path], e.ID)
+			}
+		}
+	}
+	var shared []string
+	for p, ids := range byPath {
+		if len(ids) > 1 {
+			shared = append(shared, p)
+		}
+	}
+	sort.Strings(shared)
+	for _, p := range shared {
+		ids := byPath[p]
+		sort.Strings(ids)
+		add("model", "path %s is shared by %s: give every building block and every interface its own path "+
+			"(an interface is its own package inside the path of its provider)", p, strings.Join(ids, " and "))
 	}
 
 	// Ownership: the deepest matching path wins; an interface wins over a building block with the

@@ -24,14 +24,13 @@ import (
 	_ "github.com/mrsimpson/agentic-office/hub/records/decision/api"
 	_ "github.com/mrsimpson/agentic-office/hub/records/minutes/api"
 	_ "github.com/mrsimpson/agentic-office/hub/records/note/api"
-	_ "github.com/mrsimpson/agentic-office/hub/session/api"
 	_ "github.com/mrsimpson/agentic-office/hub/slides/api"
 )
 
 // Request is one RPC request that a client sent, decoded from the plaintext that a decrypting
 // Proxy recorded.
 type Request struct {
-	// Path is the HTTP path, for example /office.session.v1.SessionService/SubmitUtterance.
+	// Path is the HTTP path, for example /office.sessioncommands.v1.SessionCommandsService/SubmitUtterance.
 	Path        string
 	ContentType string
 	// Body is the request body as sent (after removing HTTP framing).
@@ -230,7 +229,7 @@ func inputType(path string) (protoreflect.MessageDescriptor, error) {
 
 // Field is one populated scalar field of a decoded message.
 type Field struct {
-	// Name is the full name of the field, for example office.session.v1.SubmitUtteranceRequest.text.
+	// Name is the full name of the field, for example office.sessioncommands.v1.SubmitUtteranceRequest.text.
 	Name string
 	// Kind is the protobuf kind (string, bytes, int64, …).
 	Kind protoreflect.Kind

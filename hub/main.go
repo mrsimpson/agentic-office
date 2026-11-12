@@ -43,6 +43,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mrsimpson/agentic-office/hub/stage/web"
+
 	"connectrpc.com/connect/v2"
 	"connectrpc.com/connect/v2/connecthttp"
 	"connectrpc.com/connect/v2/connectinprocess"
@@ -56,8 +58,9 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/records/minutes/api/minutesv1connect"
 	"github.com/mrsimpson/agentic-office/hub/records/note/api/notev1connect"
 	"github.com/mrsimpson/agentic-office/hub/session"
-	"github.com/mrsimpson/agentic-office/hub/session/api/sessionv1connect"
+	"github.com/mrsimpson/agentic-office/hub/session/commandsapi/sessioncommandsv1connect"
 	"github.com/mrsimpson/agentic-office/hub/session/importapi/sessionimportv1connect"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/sessionstreamv1connect"
 	"github.com/mrsimpson/agentic-office/hub/slides"
 	"github.com/mrsimpson/agentic-office/hub/slides/api/slidesv1connect"
 	"github.com/mrsimpson/agentic-office/hub/stage"
@@ -162,7 +165,7 @@ func main() {
 	}
 	ids, err := identity.New(identity.Options{TokenTTL: *tokenTTL, StageLinkTTL: *stageTTL, PublicURL: *publicURL,
 		StateFile: filepath.Join(*dataDir, "identity.json"), Admins: admins,
-		StageProcedures: []string{sessionv1connect.SessionServiceSubscribeProcedure}})
+		StageProcedures: []string{sessionstreamv1connect.SessionStreamServiceSubscribeProcedure}})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -203,7 +206,8 @@ func main() {
 	go func() { sessions.RunArchive(archCtx); close(archDone) }()
 
 	cs := connect.NewServer(ids.Interceptor())
-	sessionv1connect.RegisterSessionServiceHandler(cs, sessions)
+	sessioncommandsv1connect.RegisterSessionCommandsServiceHandler(cs, sessions)
+	sessionstreamv1connect.RegisterSessionStreamServiceHandler(cs, sessions)
 	sessionimportv1connect.RegisterSessionImportServiceHandler(cs, sessions)
 	identityv1connect.RegisterIdentityServiceHandler(cs, ids)
 	decisionv1connect.RegisterDecisionServiceHandler(cs, recs)
@@ -214,7 +218,7 @@ func main() {
 	mux := http.NewServeMux()
 	connecthttp.Mount(mux, cs)
 	// The stage subscribes in-process through the token check, with the token of the link.
-	mux.Handle(stage.PathPrefix, stage.New(stage.Options{
+	mux.Handle(web.PathPrefix, stage.New(stage.Options{
 		Session: connectinprocess.New(cs),
 		StageSession: func(token string) (string, error) {
 			c, err := ids.CheckToken(token)

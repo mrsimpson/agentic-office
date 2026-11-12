@@ -27,6 +27,19 @@ path: alpha/api
 :::
 ```
 
+### Alpha twin interface
+
+A second interface on the path of the alpha interface.
+
+```arc42
+:::interface
+id: if-alpha-twin
+title: Alpha twin interface
+provider: bb-alpha
+path: alpha/api
+:::
+```
+
 ## Beta
 
 Beta requires alpha but uses its inside instead.
@@ -42,7 +55,7 @@ requires: if-alpha
 
 ### Beta interface
 
-Its path lies outside its provider.
+Its path lies outside its provider, on the path of gamma.
 
 ```arc42
 :::interface
@@ -105,7 +118,7 @@ x-realized-by: bb-one
 
 ### Bad interface
 
-Names a realizer that is not a child of omega.
+Names a realizer that is not a child of omega. It shares the path of omega.
 
 ```arc42
 :::interface

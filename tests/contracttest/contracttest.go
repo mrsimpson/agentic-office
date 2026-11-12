@@ -31,18 +31,20 @@ import (
 	"testing"
 	"time"
 
+	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
+
 	"connectrpc.com/connect/v2"
 	"connectrpc.com/connect/v2/connecthttp"
 
-	"github.com/mrsimpson/agentic-office/client/core/ids"
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	identityv1connect "github.com/mrsimpson/agentic-office/hub/identity/api/identityv1connect"
 	decisionv1connect "github.com/mrsimpson/agentic-office/hub/records/decision/api/decisionv1connect"
 	minutesv1connect "github.com/mrsimpson/agentic-office/hub/records/minutes/api/minutesv1connect"
 	notev1connect "github.com/mrsimpson/agentic-office/hub/records/note/api/notev1connect"
-	sessionv1connect "github.com/mrsimpson/agentic-office/hub/session/api/sessionv1connect"
+	"github.com/mrsimpson/agentic-office/hub/session/commandsapi/sessioncommandsv1connect"
 	sessionimportv1connect "github.com/mrsimpson/agentic-office/hub/session/importapi/sessionimportv1connect"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/sessionstreamv1connect"
 	"github.com/mrsimpson/agentic-office/hub/slides/api/slidesv1connect"
 	taskv1connect "github.com/mrsimpson/agentic-office/hub/tasks/api/taskv1connect"
 )
@@ -326,7 +328,7 @@ func (s *Hub) RegisterKey(t testing.TB, participantID, displayName string, kind 
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	res, err := s.Admin(t).Identity.RegisterKey(ctx, &identityv1.RegisterKeyRequest{CommandId: ids.NewCommandID(),
+	res, err := s.Admin(t).Identity.RegisterKey(ctx, &identityv1.RegisterKeyRequest{CommandId: coreapi.NewCommandID(),
 		ParticipantId: participantID, DisplayName: displayName, Kind: kind, PublicKey: auth.PublicKey(key)})
 	if err != nil {
 		t.Fatalf("register key of %s: %v", participantID, err)
@@ -349,7 +351,8 @@ func (s *Hub) Participant(t testing.TB, participantID, displayName string, kind 
 
 // Clients holds a Connect client for every office interface.
 type Clients struct {
-	Session  sessionv1connect.SessionServiceClient
+	Commands sessioncommandsv1connect.SessionCommandsServiceClient
+	Stream   sessionstreamv1connect.SessionStreamServiceClient
 	Import   sessionimportv1connect.SessionImportServiceClient
 	Identity identityv1connect.IdentityServiceClient
 	Decision decisionv1connect.DecisionServiceClient
@@ -367,7 +370,8 @@ func NewClients(baseURL string, hc *http.Client, interceptors ...connect.ClientI
 	}
 	c := connect.NewClient(connecthttp.NewTransport(hc, baseURL), interceptors...)
 	return Clients{
-		Session:  sessionv1connect.NewSessionServiceClient(c),
+		Commands: sessioncommandsv1connect.NewSessionCommandsServiceClient(c),
+		Stream:   sessionstreamv1connect.NewSessionStreamServiceClient(c),
 		Import:   sessionimportv1connect.NewSessionImportServiceClient(c),
 		Identity: identityv1connect.NewIdentityServiceClient(c),
 		Decision: decisionv1connect.NewDecisionServiceClient(c),
@@ -379,7 +383,7 @@ func NewClients(baseURL string, hc *http.Client, interceptors ...connect.ClientI
 }
 
 // StartFake serves a fake in this process, for blocks whose test needs another block.
-// register adds the fake handlers, for example sessionv1connect.RegisterSessionServiceHandler.
+// register adds the fake handlers, for example sessioncommandsv1connect.RegisterSessionCommandsServiceHandler.
 func StartFake(t testing.TB, register func(*connect.Server)) string {
 	t.Helper()
 	cs := connect.NewServer()

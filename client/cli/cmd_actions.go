@@ -11,12 +11,12 @@ import (
 	"strings"
 	"time"
 
+	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
+
 	"google.golang.org/protobuf/proto"
 
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
+	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
 	slidesv1 "github.com/mrsimpson/agentic-office/hub/slides/api"
-
-	"github.com/mrsimpson/agentic-office/client/core"
 )
 
 func cmdSay(e *env, fs *flag.FlagSet) func([]string) error {
@@ -25,7 +25,7 @@ func cmdSay(e *env, fs *flag.FlagSet) func([]string) error {
 		if strings.TrimSpace(text) == "" {
 			return usagef("usage: office say <text>")
 		}
-		return e.sessionCommand(func(c *core.Client, sid string) (*sessionv1.CommandResult, error) {
+		return e.sessionCommand(func(c coreapi.Client, sid string) (*sessioncommandsv1.CommandResult, error) {
 			return c.Say(e.ctx, sid, text)
 		})
 	}
@@ -45,7 +45,7 @@ func cmdOffTheRecord(e *env, fs *flag.FlagSet) func([]string) error {
 		if *last == (len(args) == 1) || len(args) > 1 {
 			return usagef("usage: office utterance off-the-record <event-id> | --last")
 		}
-		return e.sessionCommand(func(c *core.Client, sid string) (*sessionv1.CommandResult, error) {
+		return e.sessionCommand(func(c coreapi.Client, sid string) (*sessioncommandsv1.CommandResult, error) {
 			if *last {
 				return c.MarkOffTheRecordLast(e.ctx, sid)
 			}
@@ -64,7 +64,7 @@ func cmdTurnEnd(e *env, fs *flag.FlagSet) func([]string) error {
 		if err := noArgs(args); err != nil {
 			return err
 		}
-		return e.sessionCommand(func(c *core.Client, sid string) (*sessionv1.CommandResult, error) {
+		return e.sessionCommand(func(c coreapi.Client, sid string) (*sessioncommandsv1.CommandResult, error) {
 			return c.TurnEnd(e.ctx, sid, *who)
 		})
 	}
@@ -79,7 +79,7 @@ func cmdSilenceLong(e *env, fs *flag.FlagSet) func([]string) error {
 		if *d <= 0 {
 			return usagef("--duration is required")
 		}
-		return e.sessionCommand(func(c *core.Client, sid string) (*sessionv1.CommandResult, error) {
+		return e.sessionCommand(func(c coreapi.Client, sid string) (*sessioncommandsv1.CommandResult, error) {
 			return c.SilenceLong(e.ctx, sid, *d)
 		})
 	}
@@ -95,7 +95,7 @@ func cmdAddressed(e *env, fs *flag.FlagSet) func([]string) error {
 		if *who == "" || *utt == 0 {
 			return usagef("--participant and --utterance are required")
 		}
-		return e.sessionCommand(func(c *core.Client, sid string) (*sessionv1.CommandResult, error) {
+		return e.sessionCommand(func(c coreapi.Client, sid string) (*sessioncommandsv1.CommandResult, error) {
 			return c.Addressed(e.ctx, sid, *who, uint32(*utt))
 		})
 	}
@@ -107,7 +107,7 @@ func cmdRaiseHand(e *env, fs *flag.FlagSet) func([]string) error {
 		if err := noArgs(args); err != nil {
 			return err
 		}
-		return e.sessionCommand(func(c *core.Client, sid string) (*sessionv1.CommandResult, error) {
+		return e.sessionCommand(func(c coreapi.Client, sid string) (*sessioncommandsv1.CommandResult, error) {
 			return c.RaiseHand(e.ctx, sid, *topic)
 		})
 	}
@@ -138,7 +138,7 @@ func cmdMinutes(e *env, fs *flag.FlagSet) func([]string) error {
 		if strings.TrimSpace(text) == "" {
 			return usagef("usage: office minutes update <text> | --file F")
 		}
-		return e.sessionCommand(func(c *core.Client, sid string) (*sessionv1.CommandResult, error) {
+		return e.sessionCommand(func(c coreapi.Client, sid string) (*sessioncommandsv1.CommandResult, error) {
 			return c.UpdateMinutes(e.ctx, sid, text)
 		})
 	}
@@ -149,7 +149,7 @@ func cmdStageShow(e *env, fs *flag.FlagSet) func([]string) error {
 		if len(args) != 1 {
 			return usagef("usage: office stage show <artifact-id>")
 		}
-		return e.sessionCommand(func(c *core.Client, sid string) (*sessionv1.CommandResult, error) {
+		return e.sessionCommand(func(c coreapi.Client, sid string) (*sessioncommandsv1.CommandResult, error) {
 			return c.ShowArtifact(e.ctx, sid, args[0])
 		})
 	}
@@ -181,10 +181,10 @@ func cmdStageLink(e *env, fs *flag.FlagSet) func([]string) error {
 	}
 }
 
-// parseDeck reads a deck file (see core.ParseDeck).
+// parseDeck reads a deck file (see coreapi.ParseDeck).
 func parseDeck(path string, b []byte) (*slidesv1.RenderDeckRequest, error) {
-	req, err := core.ParseDeck(path, b)
-	if errors.Is(err, core.ErrBadInput) {
+	req, err := coreapi.ParseDeck(path, b)
+	if errors.Is(err, coreapi.ErrBadInput) {
 		return nil, usagef("%v", err)
 	}
 	return req, err
@@ -244,7 +244,7 @@ func cmdSlidesGet(e *env, fs *flag.FlagSet) func([]string) error {
 				e.printJSON(map[string]any{"id": a.GetId(), "mediaType": a.GetMediaType(), "file": *out})
 			}
 		case e.json:
-			e.printJSON(map[string]any{"deck": core.MessageJSON(a)})
+			e.printJSON(map[string]any{"deck": coreapi.MessageJSON(a)})
 		default:
 			_, err = e.stdout.Write(a.GetContent())
 			return err
@@ -254,7 +254,7 @@ func cmdSlidesGet(e *env, fs *flag.FlagSet) func([]string) error {
 }
 
 // recordJSON returns a record (a decision, minutes or a note) in the JSON form of its contract.
-func recordJSON(m proto.Message) json.RawMessage { return core.MessageJSON(m) }
+func recordJSON(m proto.Message) json.RawMessage { return coreapi.MessageJSON(m) }
 
 // oneLine returns a text on one line, for the text output of lists.
 func oneLine(s string) string { return strings.ReplaceAll(strings.TrimSpace(s), "\n", " ") }
@@ -473,13 +473,13 @@ func cmdEvents(e *env, fs *flag.FlagSet) func([]string) error {
 		if e.json {
 			out := make([]any, len(evs))
 			for i, ev := range evs {
-				out[i] = core.EventJSON(ev)
+				out[i] = coreapi.EventJSON(ev)
 			}
 			e.printJSON(map[string]any{"events": out, "more": more})
 			return nil
 		}
 		for _, ev := range evs {
-			fmt.Fprintln(e.stdout, string(core.EventJSON(ev)))
+			fmt.Fprintln(e.stdout, string(coreapi.EventJSON(ev)))
 		}
 		if more {
 			fmt.Fprintln(e.stderr, "more events: read again with --after", evs[len(evs)-1].GetId())

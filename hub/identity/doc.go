@@ -19,7 +19,7 @@
 //     key may call RegisterKey and RevokeKey. The file is read at start; see LoadAdmins. Keys of
 //     the admin file cannot be revoked through the API: remove them from the file and restart.
 //   - Stage links: any participant can create a read-only link for one session. Its token allows
-//     only SessionService/Subscribe for that session, until it expires (-stage-link-ttl).
+//     only SessionStreamService/Subscribe for that session, until it expires (-stage-link-ttl).
 //   - Registered participants and keys are stored in a JSON file (Options.StateFile) if one is
 //     set. Tokens, challenges and the command IDs of admin commands are not stored.
 //

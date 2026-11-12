@@ -8,14 +8,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mrsimpson/agentic-office/hub/stage/web"
+
 	"connectrpc.com/connect/v2"
 
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
 )
-
-// Regions of the page. Each region is an element with this ID. The event stream sends a region
-// again only when its HTML changed.
-var regions = []string{"status", "origin", "participants", "hands", "artifact", "minutes", "utterances"}
 
 // recentUtterances is how many utterances the stage shows.
 const recentUtterances = 8
@@ -111,25 +109,25 @@ func (v *view) lowerHand(id string) {
 }
 
 // apply updates the view with one event. decks loads a shown deck.
-func (v *view) apply(ctx context.Context, ev *sessionv1.Event, decks Slides) {
+func (v *view) apply(ctx context.Context, ev *sessionstreamv1.Event, decks Slides) {
 	switch p := ev.GetPayload().(type) {
-	case *sessionv1.Event_ParticipantJoined:
+	case *sessionstreamv1.Event_ParticipantJoined:
 		j := p.ParticipantJoined
 		pt := v.participant(j.GetParticipantId())
 		if j.GetDisplayName() != "" {
 			pt.Name = j.GetDisplayName()
 		}
-		pt.Agent = j.GetKind() == sessionv1.ParticipantKind_PARTICIPANT_KIND_AGENT
+		pt.Agent = j.GetKind() == sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_AGENT
 		pt.imported = j.GetImported()
 		pt.captured, pt.paused, pt.left = j.GetCaptured(), false, false
-	case *sessionv1.Event_ParticipantLeft:
+	case *sessionstreamv1.Event_ParticipantLeft:
 		v.participant(p.ParticipantLeft.GetParticipantId()).left = true
 		v.lowerHand(p.ParticipantLeft.GetParticipantId())
-	case *sessionv1.Event_ParticipantPaused:
+	case *sessionstreamv1.Event_ParticipantPaused:
 		v.participant(p.ParticipantPaused.GetParticipantId()).paused = true
-	case *sessionv1.Event_ParticipantResumed:
+	case *sessionstreamv1.Event_ParticipantResumed:
 		v.participant(p.ParticipantResumed.GetParticipantId()).paused = false
-	case *sessionv1.Event_UtteranceFinal:
+	case *sessionstreamv1.Event_UtteranceFinal:
 		u := &utteranceView{EventID: ev.GetId(), Speaker: v.participant(p.UtteranceFinal.GetParticipantId()),
 			Text: p.UtteranceFinal.GetText(), offTheRecord: p.UtteranceFinal.GetOffTheRecord()}
 		if t := p.UtteranceFinal.GetOriginalTime(); t != nil {
@@ -139,30 +137,30 @@ func (v *view) apply(ctx context.Context, ev *sessionv1.Event, decks Slides) {
 		v.byEvent[ev.GetId()] = u
 		// A raised hand is lowered when its participant speaks: they had the floor.
 		v.lowerHand(u.Speaker.ID)
-	case *sessionv1.Event_UtteranceOffTheRecord:
+	case *sessionstreamv1.Event_UtteranceOffTheRecord:
 		if u := v.byEvent[p.UtteranceOffTheRecord.GetUtteranceEventId()]; u != nil {
 			u.offTheRecord = true
 		}
-	case *sessionv1.Event_UtteranceCorrected:
+	case *sessionstreamv1.Event_UtteranceCorrected:
 		if u := v.byEvent[p.UtteranceCorrected.GetUtteranceEventId()]; u != nil {
 			u.Text, u.Corrected = p.UtteranceCorrected.GetText(), true
 		}
-	case *sessionv1.Event_HandRaised:
+	case *sessionstreamv1.Event_HandRaised:
 		pt := v.participant(p.HandRaised.GetParticipantId())
 		v.lowerHand(pt.ID)
 		v.hands = append(v.hands, handView{Participant: pt, Topic: p.HandRaised.GetTopic()})
-	case *sessionv1.Event_MinutesUpdated:
+	case *sessionstreamv1.Event_MinutesUpdated:
 		v.minutes = p.MinutesUpdated.GetText()
-	case *sessionv1.Event_ArtifactShown:
+	case *sessionstreamv1.Event_ArtifactShown:
 		v.artifact = loadArtifact(ctx, p.ArtifactShown.GetArtifactId(), decks)
-	case *sessionv1.Event_SessionImported:
+	case *sessionstreamv1.Event_SessionImported:
 		v.imported = &importView{Source: p.SessionImported.GetSource(), Title: p.SessionImported.GetTitle(),
 			By: ev.GetActorParticipantId()}
-	case *sessionv1.Event_ImportCompleted:
+	case *sessionstreamv1.Event_ImportCompleted:
 		if v.imported != nil {
 			v.imported.Complete = true
 		}
-	case *sessionv1.Event_SessionEnded:
+	case *sessionstreamv1.Event_SessionEnded:
 		v.ended = true
 		v.hands = nil
 	}
@@ -252,7 +250,7 @@ func (v *view) Utterances() []*utteranceView {
 // render returns the inner HTML of a region.
 func (v *view) render(region string) string {
 	var b bytes.Buffer
-	if err := templates.ExecuteTemplate(&b, region, v); err != nil {
+	if err := web.RegionTemplates.ExecuteTemplate(&b, region, v); err != nil {
 		return template.HTMLEscapeString("render " + region + ": " + err.Error())
 	}
 	return strings.TrimSpace(b.String())
@@ -261,39 +259,8 @@ func (v *view) render(region string) string {
 // renderAll returns the inner HTML of every region.
 func (v *view) renderAll() map[string]template.HTML {
 	out := map[string]template.HTML{}
-	for _, r := range regions {
+	for _, r := range web.Regions {
 		out[r] = template.HTML(v.render(r)) // rendered by html/template above
 	}
 	return out
 }
-
-var templates = template.Must(template.New("stage").Parse(`
-{{define "status"}}<span data-status="{{.Status}}">{{.StatusText}}</span>{{end}}
-
-{{define "origin"}}{{with .Imported}}<p class="imported" data-imported="{{if .Complete}}complete{{else}}importing{{end}}">Imported from <span class="source">{{.Source}}</span>{{if .Title}}: <span class="title">{{.Title}}</span>{{end}}, by {{.By}}.{{if not .Complete}} The import is not complete yet.{{end}}
-The office did not see this conversation happen. The hub's signature proves who imported it, not who said what.</p>{{end}}{{end}}
-
-{{define "name"}}<span class="name">{{.Name}}</span>{{if .Agent}} <span class="badge agent" data-kind="agent">agent</span>{{end}}{{end}}
-
-{{define "participants"}}<h2>Participants</h2>
-{{if .Participants}}<ul class="participants">
-{{range .Participants}}<li data-participant="{{.ID}}" data-kind="{{if .Agent}}agent{{else}}human{{end}}" data-capture="{{.Status}}">{{template "name" .}} <span class="capture {{.Status}}">{{.StatusText}}</span></li>
-{{end}}</ul>{{else}}<p class="empty">Nobody has joined yet.</p>{{end}}{{end}}
-
-{{define "hands"}}<h2>Raised hands</h2>
-{{if .Hands}}<ol class="hands">
-{{range .Hands}}<li data-participant="{{.Participant.ID}}">✋ {{template "name" .Participant}}{{if .Topic}}: <span class="topic">{{.Topic}}</span>{{end}}</li>
-{{end}}</ol>{{else}}<p class="empty">No raised hands.</p>{{end}}{{end}}
-
-{{define "artifact"}}{{with .Artifact}}{{if .Content}}<iframe title="{{.ID}}" data-artifact="{{.ID}}" sandbox="" referrerpolicy="no-referrer" srcdoc="{{.Content}}"></iframe>
-{{else if .ID}}<p class="note" data-artifact="{{.ID}}">{{.Note}}</p>
-{{else}}<p class="empty">Nothing is shown.</p>{{end}}{{end}}{{end}}
-
-{{define "minutes"}}<h2>Minutes</h2>
-{{if .Minutes}}<div class="minutes-text">{{.Minutes}}</div>{{else}}<p class="empty">No minutes yet.</p>{{end}}{{end}}
-
-{{define "utterances"}}<h2>Recent contributions</h2>
-{{if .Utterances}}<ol class="utterances">
-{{range .Utterances}}<li data-utterance="{{.EventID}}" data-participant="{{.Speaker.ID}}">{{template "name" .Speaker}}: {{if not .OriginalTime.IsZero}}<time datetime="{{.OriginalTime.Format "2006-01-02T15:04:05Z07:00"}}">{{.OriginalTime.Format "2006-01-02 15:04"}} UTC</time> {{end}}<span class="text">{{.Text}}</span>{{if .Corrected}} <span class="corrected">(corrected)</span>{{end}}</li>
-{{end}}</ol>{{else}}<p class="empty">Nothing said yet.</p>{{end}}{{end}}
-`))

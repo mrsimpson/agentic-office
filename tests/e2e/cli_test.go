@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
-	"github.com/mrsimpson/agentic-office/hub/session/api/events"
-	"github.com/mrsimpson/agentic-office/hub/session/api/logfile"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/events"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/logfile"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
@@ -61,9 +61,9 @@ func TestTwoCLIParticipants(t *testing.T) {
 	adaLog, adaRep := join(ada)
 	botLog, botRep := join(bot)
 
-	read := func(path string) []*sessionv1.Event {
+	read := func(path string) []*sessionstreamv1.Event {
 		b, _ := os.ReadFile(path)
-		var out []*sessionv1.Event
+		var out []*sessionstreamv1.Event
 		for _, l := range strings.SplitAfter(string(b), "\n") {
 			if ev, err := logfile.UnmarshalLine([]byte(l)); strings.HasSuffix(l, "\n") && err == nil {
 				out = append(out, ev)
@@ -71,7 +71,7 @@ func TestTwoCLIParticipants(t *testing.T) {
 		}
 		return out
 	}
-	waitFor := func(path, what string, match func(*sessionv1.Event) bool) *sessionv1.Event {
+	waitFor := func(path, what string, match func(*sessionstreamv1.Event) bool) *sessionstreamv1.Event {
 		t.Helper()
 		deadline := time.Now().Add(10 * time.Second)
 		for time.Now().Before(deadline) {
@@ -89,7 +89,7 @@ func TestTwoCLIParticipants(t *testing.T) {
 	office(ada, "say", "Bot, can you show the budget?")
 	office(ada, "signal", "turn-end")
 	// The agent follows its log and wakes up on turn.end.
-	turn := waitFor(botLog, "turn.end", func(ev *sessionv1.Event) bool { return ev.GetType() == events.TurnEnd })
+	turn := waitFor(botLog, "turn.end", func(ev *sessionstreamv1.Event) bool { return ev.GetType() == events.TurnEnd })
 	if turn.GetTurnEnd().GetParticipantId() != "ada" {
 		t.Fatalf("turn.end of %q", turn.GetTurnEnd().GetParticipantId())
 	}
@@ -102,11 +102,11 @@ func TestTwoCLIParticipants(t *testing.T) {
 	office(bot, "hand", "raise", "--topic", "budget")
 	office(bot, "stage", "show", deckID)
 	office(bot, "minutes", "update", "Ada asked for the budget. Bot showed slides/1.")
-	waitFor(adaLog, "hand.raised of bot", func(ev *sessionv1.Event) bool {
+	waitFor(adaLog, "hand.raised of bot", func(ev *sessionstreamv1.Event) bool {
 		return ev.GetType() == events.HandRaised && ev.GetHandRaised().GetParticipantId() == "bot"
 	})
 	// Ada reads the shown ID from her log and loads the slides.
-	shown := waitFor(adaLog, "artifact.shown", func(ev *sessionv1.Event) bool { return ev.GetType() == events.ArtifactShown })
+	shown := waitFor(adaLog, "artifact.shown", func(ev *sessionstreamv1.Event) bool { return ev.GetType() == events.ArtifactShown })
 	if shown.GetArtifactShown().GetArtifactId() != "slides/1" {
 		t.Fatalf("shown artifact %q, want slides/1", shown.GetArtifactShown().GetArtifactId())
 	}

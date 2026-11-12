@@ -2,7 +2,7 @@ package contract
 
 // Contract tests of the Merkle tree over the session log (dec-merkle-log) through
 // if-session-commands. They start the real office-hub and check its tree heads and proofs with the
-// verification code of the interface (hub/session/api/merkle), and parts of it by hand.
+// verification code of the interface (hub/session/streamapi/merkle), and parts of it by hand.
 
 import (
 	"bytes"
@@ -13,27 +13,29 @@ import (
 	"testing"
 	"time"
 
+	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
+
 	"connectrpc.com/connect/v2"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/mrsimpson/agentic-office/client/core/ids"
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
-	"github.com/mrsimpson/agentic-office/hub/session/api/merkle"
+	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/merkle"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
-func (m *meeting) events() []*sessionv1.Event {
+func (m *meeting) events() []*sessionstreamv1.Event {
 	m.t.Helper()
-	res, err := m.reader.Session.GetEvents(m.ctx(), &sessionv1.GetEventsRequest{SessionId: m.sid, Limit: 1000})
+	res, err := m.reader.Stream.GetEvents(m.ctx(), &sessionstreamv1.GetEventsRequest{SessionId: m.sid, Limit: 1000})
 	if err != nil {
 		m.t.Fatal(err)
 	}
 	return res.GetEvents()
 }
 
-func (m *meeting) head(size uint32) *sessionv1.SignedTreeHead {
+func (m *meeting) head(size uint32) *sessionstreamv1.SignedTreeHead {
 	m.t.Helper()
-	res, err := m.reader.Session.GetTreeHead(m.ctx(), &sessionv1.GetTreeHeadRequest{SessionId: m.sid, TreeSize: size})
+	res, err := m.reader.Commands.GetTreeHead(m.ctx(), &sessioncommandsv1.GetTreeHeadRequest{SessionId: m.sid, TreeSize: size})
 	if err != nil {
 		m.t.Fatalf("tree head of size %d: %v", size, err)
 	}
@@ -41,12 +43,12 @@ func (m *meeting) head(size uint32) *sessionv1.SignedTreeHead {
 }
 
 func hubKey(t *testing.T, s interface {
-	GetHubKey(context.Context, *sessionv1.GetHubKeyRequest) (*sessionv1.GetHubKeyResponse, error)
+	GetHubKey(context.Context, *sessioncommandsv1.GetHubKeyRequest) (*sessioncommandsv1.GetHubKeyResponse, error)
 }) ed25519.PublicKey {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	res, err := s.GetHubKey(ctx, &sessionv1.GetHubKeyRequest{})
+	res, err := s.GetHubKey(ctx, &sessioncommandsv1.GetHubKeyRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,14 +77,14 @@ func sha(parts ...[]byte) []byte {
 // signature verifies with the key of the hub.
 func TestMerkleTreeHeadOfKnownLog(t *testing.T) {
 	m := newMeeting(t)
-	ada := m.join("Ada", sessionv1.ParticipantKind_PARTICIPANT_KIND_HUMAN)
+	ada := m.join("Ada", sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_HUMAN)
 	m.say(ada, "First.")
 	m.say(ada, "Second.")
 	evs := m.events()
 	if len(evs) != 3 {
 		t.Fatalf("got %d events", len(evs))
 	}
-	key := hubKey(t, m.reader.Session)
+	key := hubKey(t, m.reader.Commands)
 
 	head := m.head(0)
 	if head.GetSessionId() != m.sid || head.GetTreeSize() != 3 || !bytes.Equal(head.GetPublicKey(), key) {
@@ -116,10 +118,10 @@ func TestMerkleTreeHeadOfKnownLog(t *testing.T) {
 	}
 
 	// Forged heads fail.
-	forged := proto.Clone(head).(*sessionv1.SignedTreeHead)
+	forged := proto.Clone(head).(*sessionstreamv1.SignedTreeHead)
 	forged.TreeSize = 2
 	wantVerifyError(t, "head with another size", merkle.VerifyTreeHead(forged, key))
-	forged = proto.Clone(head).(*sessionv1.SignedTreeHead)
+	forged = proto.Clone(head).(*sessionstreamv1.SignedTreeHead)
 	forged.SessionId = "other"
 	wantVerifyError(t, "head with another session", merkle.VerifyTreeHead(forged, key))
 	other, _, _ := ed25519.GenerateKey(nil)
@@ -127,13 +129,13 @@ func TestMerkleTreeHeadOfKnownLog(t *testing.T) {
 	wantVerifyError(t, "copy with a missing event", merkle.VerifyEvents(evs[:2], head, key))
 
 	// A changed event fails.
-	changed := proto.Clone(evs[1]).(*sessionv1.Event)
+	changed := proto.Clone(evs[1]).(*sessionstreamv1.Event)
 	changed.GetUtteranceFinal().Text = "Frist."
 	wantVerifyError(t, "copy with a changed event",
-		merkle.VerifyEvents([]*sessionv1.Event{evs[0], changed, evs[2]}, head, key))
+		merkle.VerifyEvents([]*sessionstreamv1.Event{evs[0], changed, evs[2]}, head, key))
 
 	// An empty session has a head of size 0.
-	empty, err := m.reader.Session.GetTreeHead(m.ctx(), &sessionv1.GetTreeHeadRequest{SessionId: "s-" + ids.NewCommandID()})
+	empty, err := m.reader.Commands.GetTreeHead(m.ctx(), &sessioncommandsv1.GetTreeHeadRequest{SessionId: "s-" + coreapi.NewCommandID()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,18 +148,18 @@ func TestMerkleTreeHeadOfKnownLog(t *testing.T) {
 // head fails.
 func TestMerkleConsistencyProof(t *testing.T) {
 	m := newMeeting(t)
-	ada := m.join("Ada", sessionv1.ParticipantKind_PARTICIPANT_KIND_HUMAN)
+	ada := m.join("Ada", sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_HUMAN)
 	for i := 0; i < 6; i++ {
 		m.say(ada, "Sentence.")
 	}
-	key := hubKey(t, m.reader.Session)
+	key := hubKey(t, m.reader.Commands)
 	last := m.head(0)
 	if last.GetTreeSize() != 7 {
 		t.Fatalf("tree size %d", last.GetTreeSize())
 	}
 	for first := uint32(1); first <= 7; first++ {
 		older := m.head(first)
-		res, err := m.reader.Session.GetConsistencyProof(m.ctx(), &sessionv1.GetConsistencyProofRequest{
+		res, err := m.reader.Commands.GetConsistencyProof(m.ctx(), &sessioncommandsv1.GetConsistencyProofRequest{
 			SessionId: m.sid, FirstSize: first})
 		if err != nil {
 			t.Fatal(err)
@@ -172,7 +174,7 @@ func TestMerkleConsistencyProof(t *testing.T) {
 			continue
 		}
 		for i := range res.GetHashes() {
-			forged := proto.Clone(res).(*sessionv1.GetConsistencyProofResponse)
+			forged := proto.Clone(res).(*sessioncommandsv1.GetConsistencyProofResponse)
 			forged.Hashes[i][0] ^= 1
 			wantVerifyError(t, "forged consistency proof", merkle.VerifyTreeHeadConsistency(older, last, forged.GetHashes(), key))
 		}
@@ -184,7 +186,7 @@ func TestMerkleConsistencyProof(t *testing.T) {
 	}
 
 	// Between two older sizes.
-	res, err := m.reader.Session.GetConsistencyProof(m.ctx(), &sessionv1.GetConsistencyProofRequest{
+	res, err := m.reader.Commands.GetConsistencyProof(m.ctx(), &sessioncommandsv1.GetConsistencyProofRequest{
 		SessionId: m.sid, FirstSize: 3, SecondSize: 5})
 	if err != nil {
 		t.Fatal(err)
@@ -195,31 +197,31 @@ func TestMerkleConsistencyProof(t *testing.T) {
 	wantVerifyError(t, "proof for other sizes", merkle.VerifyTreeHeadConsistency(m.head(2), m.head(5), res.GetHashes(), key))
 
 	ctx := m.ctx()
-	_, err = m.reader.Session.GetConsistencyProof(ctx, &sessionv1.GetConsistencyProofRequest{SessionId: m.sid, SecondSize: 5})
+	_, err = m.reader.Commands.GetConsistencyProof(ctx, &sessioncommandsv1.GetConsistencyProofRequest{SessionId: m.sid, SecondSize: 5})
 	wantCode(t, "first_size 0", err, connect.CodeInvalidArgument)
-	_, err = m.reader.Session.GetConsistencyProof(ctx, &sessionv1.GetConsistencyProofRequest{SessionId: m.sid, FirstSize: 6, SecondSize: 5})
+	_, err = m.reader.Commands.GetConsistencyProof(ctx, &sessioncommandsv1.GetConsistencyProofRequest{SessionId: m.sid, FirstSize: 6, SecondSize: 5})
 	wantCode(t, "first_size greater than second_size", err, connect.CodeInvalidArgument)
-	_, err = m.reader.Session.GetConsistencyProof(ctx, &sessionv1.GetConsistencyProofRequest{SessionId: m.sid, FirstSize: 1, SecondSize: 8})
+	_, err = m.reader.Commands.GetConsistencyProof(ctx, &sessioncommandsv1.GetConsistencyProofRequest{SessionId: m.sid, FirstSize: 1, SecondSize: 8})
 	wantCode(t, "second_size beyond the log", err, connect.CodeOutOfRange)
-	_, err = m.reader.Session.GetTreeHead(ctx, &sessionv1.GetTreeHeadRequest{SessionId: m.sid, TreeSize: 8})
+	_, err = m.reader.Commands.GetTreeHead(ctx, &sessioncommandsv1.GetTreeHeadRequest{SessionId: m.sid, TreeSize: 8})
 	wantCode(t, "tree_size beyond the log", err, connect.CodeOutOfRange)
-	_, err = m.srv.Anonymous(t).Session.GetTreeHead(ctx, &sessionv1.GetTreeHeadRequest{SessionId: m.sid})
+	_, err = m.srv.Anonymous(t).Commands.GetTreeHead(ctx, &sessioncommandsv1.GetTreeHeadRequest{SessionId: m.sid})
 	wantCode(t, "tree head without a token", err, connect.CodeUnauthenticated)
 }
 
 // An inclusion proof shows that one event is in the tree; a changed event or a wrong ID fails.
 func TestMerkleInclusionProof(t *testing.T) {
 	m := newMeeting(t)
-	ada := m.join("Ada", sessionv1.ParticipantKind_PARTICIPANT_KIND_HUMAN)
+	ada := m.join("Ada", sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_HUMAN)
 	for i := 0; i < 4; i++ {
 		m.say(ada, "Sentence.")
 	}
-	key := hubKey(t, m.reader.Session)
+	key := hubKey(t, m.reader.Commands)
 	evs := m.events()
 	for _, size := range []uint32{0, 3} {
 		head := m.head(size)
 		for _, ev := range evs[:head.GetTreeSize()] {
-			res, err := m.reader.Session.GetInclusionProof(m.ctx(), &sessionv1.GetInclusionProofRequest{
+			res, err := m.reader.Commands.GetInclusionProof(m.ctx(), &sessioncommandsv1.GetInclusionProofRequest{
 				SessionId: m.sid, EventId: ev.GetId(), TreeSize: size})
 			if err != nil {
 				t.Fatal(err)
@@ -230,19 +232,19 @@ func TestMerkleInclusionProof(t *testing.T) {
 			if err := merkle.VerifyEventInclusion(ev, res.GetHashes(), head, key); err != nil {
 				t.Fatalf("event %d in tree of %d: %v", ev.GetId(), head.GetTreeSize(), err)
 			}
-			changed := proto.Clone(ev).(*sessionv1.Event)
+			changed := proto.Clone(ev).(*sessionstreamv1.Event)
 			changed.ActorParticipantId = "mallory"
 			wantVerifyError(t, "changed event", merkle.VerifyEventInclusion(changed, res.GetHashes(), head, key))
-			moved := proto.Clone(ev).(*sessionv1.Event)
+			moved := proto.Clone(ev).(*sessionstreamv1.Event)
 			moved.Id = ev.GetId()%head.GetTreeSize() + 1
 			if moved.Id != ev.GetId() {
 				wantVerifyError(t, "event with another ID", merkle.VerifyEventInclusion(moved, res.GetHashes(), head, key))
 			}
 		}
 	}
-	_, err := m.reader.Session.GetInclusionProof(m.ctx(), &sessionv1.GetInclusionProofRequest{SessionId: m.sid, EventId: 4, TreeSize: 3})
+	_, err := m.reader.Commands.GetInclusionProof(m.ctx(), &sessioncommandsv1.GetInclusionProofRequest{SessionId: m.sid, EventId: 4, TreeSize: 3})
 	wantCode(t, "event beyond the tree size", err, connect.CodeOutOfRange)
-	_, err = m.reader.Session.GetInclusionProof(m.ctx(), &sessionv1.GetInclusionProofRequest{SessionId: m.sid})
+	_, err = m.reader.Commands.GetInclusionProof(m.ctx(), &sessioncommandsv1.GetInclusionProofRequest{SessionId: m.sid})
 	wantCode(t, "event_id 0", err, connect.CodeInvalidArgument)
 }
 
@@ -250,15 +252,15 @@ func TestMerkleInclusionProof(t *testing.T) {
 // original copy. A placeholder cannot carry another leaf hash, and no other event can claim one.
 func TestMerklePlaceholderStillVerifies(t *testing.T) {
 	m := newMeeting(t)
-	ada := m.join("Ada", sessionv1.ParticipantKind_PARTICIPANT_KIND_HUMAN)
+	ada := m.join("Ada", sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_HUMAN)
 	m.say(ada, "Public sentence.")
 	secret := m.say(ada, "The budget is ten million.")
 	original := m.read(0, 3)
-	if _, err := m.s(ada).MarkOffTheRecord(m.ctx(), &sessionv1.MarkOffTheRecordRequest{SessionId: m.sid,
-		CommandId: ids.NewCommandID(), ParticipantId: ada, UtteranceEventId: secret.GetId()}); err != nil {
+	if _, err := m.s(ada).MarkOffTheRecord(m.ctx(), &sessioncommandsv1.MarkOffTheRecordRequest{SessionId: m.sid,
+		CommandId: coreapi.NewCommandID(), ParticipantId: ada, UtteranceEventId: secret.GetId()}); err != nil {
 		t.Fatal(err)
 	}
-	key := hubKey(t, m.reader.Session)
+	key := hubKey(t, m.reader.Commands)
 	head := m.head(0)
 	copyWith := m.events()
 	ph := copyWith[secret.GetId()-1]
@@ -268,11 +270,11 @@ func TestMerklePlaceholderStillVerifies(t *testing.T) {
 	if err := merkle.VerifyEvents(copyWith, head, key); err != nil {
 		t.Fatalf("copy with a placeholder: %v", err)
 	}
-	full := append(append([]*sessionv1.Event{}, original...), copyWith[3])
+	full := append(append([]*sessionstreamv1.Event{}, original...), copyWith[3])
 	if err := merkle.VerifyEvents(full, head, key); err != nil {
 		t.Fatalf("copy with the original: %v", err)
 	}
-	res, err := m.reader.Session.GetInclusionProof(m.ctx(), &sessionv1.GetInclusionProofRequest{SessionId: m.sid, EventId: secret.GetId()})
+	res, err := m.reader.Commands.GetInclusionProof(m.ctx(), &sessioncommandsv1.GetInclusionProofRequest{SessionId: m.sid, EventId: secret.GetId()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,33 +282,33 @@ func TestMerklePlaceholderStillVerifies(t *testing.T) {
 		t.Fatalf("inclusion of the placeholder: %v", err)
 	}
 
-	forged := proto.Clone(ph).(*sessionv1.Event)
+	forged := proto.Clone(ph).(*sessionstreamv1.Event)
 	forged.LeafHash[0] ^= 1
 	wantVerifyError(t, "placeholder with another leaf hash",
-		merkle.VerifyEvents([]*sessionv1.Event{copyWith[0], copyWith[1], forged, copyWith[3]}, head, key))
-	claim := proto.Clone(copyWith[1]).(*sessionv1.Event)
+		merkle.VerifyEvents([]*sessionstreamv1.Event{copyWith[0], copyWith[1], forged, copyWith[3]}, head, key))
+	claim := proto.Clone(copyWith[1]).(*sessionstreamv1.Event)
 	claim.LeafHash = ph.GetLeafHash()
 	wantVerifyError(t, "event that is not a placeholder with a leaf hash",
-		merkle.VerifyEvents([]*sessionv1.Event{copyWith[0], claim, ph, copyWith[3]}, head, key))
+		merkle.VerifyEvents([]*sessionstreamv1.Event{copyWith[0], claim, ph, copyWith[3]}, head, key))
 	// Hiding a sentence that is not off the record: the placeholder needs the original leaf hash,
 	// so a placeholder with the hash of another event fails.
-	hidden := proto.Clone(copyWith[1]).(*sessionv1.Event)
+	hidden := proto.Clone(copyWith[1]).(*sessionstreamv1.Event)
 	f := hidden.GetUtteranceFinal()
 	f.Text, f.OffTheRecord = "", true
 	hidden.LeafHash = ph.GetLeafHash()
 	wantVerifyError(t, "placeholder with the leaf hash of another event",
-		merkle.VerifyEvents([]*sessionv1.Event{copyWith[0], hidden, ph, copyWith[3]}, head, key))
+		merkle.VerifyEvents([]*sessionstreamv1.Event{copyWith[0], hidden, ph, copyWith[3]}, head, key))
 }
 
 // session.ended carries the signed tree head of the log before it. The signature verifies with
 // the key of the hub, also after a restart of the hub: the key stays the same.
 func TestMerkleSessionEndedAndRestart(t *testing.T) {
 	m := newMeeting(t)
-	ada := m.join("Ada", sessionv1.ParticipantKind_PARTICIPANT_KIND_HUMAN)
+	ada := m.join("Ada", sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_HUMAN)
 	m.say(ada, "Done.")
 	ended := m.end(ada)
 	log := m.readAll(0)
-	key := hubKey(t, m.reader.Session)
+	key := hubKey(t, m.reader.Commands)
 	head := ended.GetSessionEnded().GetTreeHead()
 	if head.GetTreeSize() != ended.GetId()-1 {
 		t.Fatalf("tree head in session.ended: %v", head)
@@ -322,11 +324,11 @@ func TestMerkleSessionEndedAndRestart(t *testing.T) {
 	m.srv.Kill()
 	srv := contracttest.StartHubIn(t, m.srv.DataDir, m.srv.AdminKey, nil)
 	reader := srv.WithKey(t, m.reader.Key)
-	after := hubKey(t, reader.Session)
+	after := hubKey(t, reader.Commands)
 	if !bytes.Equal(after, key) {
 		t.Fatalf("hub key changed after a restart: %x, was %x", after, key)
 	}
-	for _, h := range []*sessionv1.SignedTreeHead{head, final} {
+	for _, h := range []*sessionstreamv1.SignedTreeHead{head, final} {
 		if err := merkle.VerifyEvents(log[:h.GetTreeSize()], h, after); err != nil {
 			t.Fatalf("head of size %d after a restart: %v", h.GetTreeSize(), err)
 		}

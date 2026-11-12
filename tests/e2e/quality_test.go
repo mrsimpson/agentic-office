@@ -32,9 +32,9 @@ import (
 	"testing"
 	"time"
 
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
-	"github.com/mrsimpson/agentic-office/hub/session/api/events"
-	"github.com/mrsimpson/agentic-office/hub/session/api/logfile"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/events"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/logfile"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
@@ -112,7 +112,7 @@ func speechWAV(t *testing.T, d time.Duration) (string, []int, time.Duration) {
 // same command IDs in the same order, each once, as voice with transcribed_at. It returns how
 // many texts miss the key words of their test sentence (a recognition error, not a lost
 // utterance).
-func checkSent(t *testing.T, got []*sessionv1.Event, finals []earsReport, want []int) int {
+func checkSent(t *testing.T, got []*sessionstreamv1.Event, finals []earsReport, want []int) int {
 	t.Helper()
 	if len(got) != len(want) || len(finals) != len(want) {
 		t.Fatalf("want %d utterances, got %d in the log and %d final in the ears", len(want), len(got), len(finals))
@@ -126,7 +126,7 @@ func checkSent(t *testing.T, got []*sessionv1.Event, finals []earsReport, want [
 			t.Fatalf("utterance %d: command ID %s twice", i, ev.GetCommandId())
 		case ev.GetCommandId() != finals[i].CommandID:
 			t.Fatalf("utterance %d: command ID %s, the ears made %s (order differs)", i, ev.GetCommandId(), finals[i].CommandID)
-		case u.GetModality() != sessionv1.Modality_MODALITY_VOICE || u.GetTranscribedAt() == nil:
+		case u.GetModality() != sessionstreamv1.Modality_MODALITY_VOICE || u.GetTranscribedAt() == nil:
 			t.Fatalf("utterance %d: modality %v, transcribed_at %v", i, u.GetModality(), u.GetTranscribedAt())
 		}
 		if sentenceOf(u.GetText()) != want[i] {
@@ -372,7 +372,7 @@ func TestQualitySpeech(t *testing.T) {
 					unknownTotal += unknown
 					for _, f := range fields {
 						switch {
-						case f.Name == "office.session.v1.SubmitUtteranceRequest.text":
+						case f.Name == "office.sessioncommands.v1.SubmitUtteranceRequest.text":
 							if !transcripts[f.Value] {
 								t.Errorf("submitted text %q is not a transcript of the ears", f.Value)
 							}
@@ -386,7 +386,7 @@ func TestQualitySpeech(t *testing.T) {
 		if unknownTotal > 0 {
 			t.Errorf("%d bytes of unknown fields in the requests", unknownTotal)
 		}
-		if n := calls["/office.session.v1.SessionService/SubmitUtterance"]; n != len(finals) {
+		if n := calls["/office.sessioncommands.v1.SessionCommandsService/SubmitUtterance"]; n != len(finals) {
 			t.Errorf("want %d SubmitUtterance requests, got %v", len(finals), calls)
 		}
 		pcm16k := int64(audioLen.Seconds() * 16000 * 2)

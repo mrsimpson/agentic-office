@@ -41,6 +41,8 @@ import (
 	"sync"
 	"time"
 	"unsafe"
+
+	"github.com/mrsimpson/agentic-office/client/ears/audio"
 )
 
 // Voice activity detection.
@@ -105,7 +107,7 @@ type segment struct {
 	speech time.Duration
 }
 
-func samplesOf(d time.Duration) int { return int(int64(d) * SampleRate / int64(time.Second)) }
+func samplesOf(d time.Duration) int { return int(int64(d) * audio.SampleRate / int64(time.Second)) }
 
 // segmenter cuts a stream of samples into sentences.
 type segmenter struct {
@@ -127,7 +129,7 @@ type segmenter struct {
 	lastVoiced time.Time
 }
 
-const windowDur = time.Duration(vadWindow) * time.Second / SampleRate
+const windowDur = time.Duration(vadWindow) * time.Second / audio.SampleRate
 
 // push adds samples whose last sample was captured at "at". It returns the sentences that
 // ended.
@@ -138,7 +140,7 @@ func (g *segmenter) push(samples []float32, at time.Time) ([]*segment, error) {
 	for i := 0; i < n; i += vadWindow {
 		w := g.carry[i : i+vadWindow]
 		// The end time of this window: at, minus the samples that come after it.
-		end := at.Add(-time.Duration(len(g.carry)-i-vadWindow) * time.Second / SampleRate)
+		end := at.Add(-time.Duration(len(g.carry)-i-vadWindow) * time.Second / audio.SampleRate)
 		p, err := g.vad.prob(w)
 		if err != nil {
 			return out, err
@@ -177,7 +179,7 @@ func (g *segmenter) window(w []float32, p float32, end time.Time) *segment {
 	default:
 		// Between both thresholds: neither speech nor silence (as in Silero's own rule).
 	}
-	cut := time.Duration(len(g.buf)) * time.Second / SampleRate
+	cut := time.Duration(len(g.buf)) * time.Second / audio.SampleRate
 	if g.silent < g.endSilence && cut < g.maxSpeech {
 		return nil
 	}

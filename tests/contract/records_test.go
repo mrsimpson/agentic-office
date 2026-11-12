@@ -11,22 +11,23 @@ import (
 	"testing"
 	"time"
 
+	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
+
 	"connectrpc.com/connect/v2"
 	"go.yaml.in/yaml/v3"
 
-	"github.com/mrsimpson/agentic-office/client/core/ids"
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 	decisionv1 "github.com/mrsimpson/agentic-office/hub/records/decision/api"
 	minutesv1 "github.com/mrsimpson/agentic-office/hub/records/minutes/api"
 	notev1 "github.com/mrsimpson/agentic-office/hub/records/note/api"
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
+	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
 // recordDecision records a decision as a and fails the test on an error.
 func recordDecision(t *testing.T, a *contracttest.Actor, text, sessionID string) *decisionv1.Decision {
 	t.Helper()
-	res, err := a.Decision.RecordDecision(ctx10(t), &decisionv1.RecordDecisionRequest{CommandId: ids.NewCommandID(),
+	res, err := a.Decision.RecordDecision(ctx10(t), &decisionv1.RecordDecisionRequest{CommandId: coreapi.NewCommandID(),
 		Text: text, AuthorParticipantId: a.ParticipantID, SessionId: sessionID})
 	if err != nil {
 		t.Fatalf("record %q as %s: %v", text, a.ParticipantID, err)
@@ -40,7 +41,7 @@ func recordDecision(t *testing.T, a *contracttest.Actor, text, sessionID string)
 // addNote adds a note as a and fails the test on an error.
 func addNote(t *testing.T, a *contracttest.Actor, text, sessionID string) *notev1.Note {
 	t.Helper()
-	res, err := a.Note.AddNote(ctx10(t), &notev1.AddNoteRequest{CommandId: ids.NewCommandID(),
+	res, err := a.Note.AddNote(ctx10(t), &notev1.AddNoteRequest{CommandId: coreapi.NewCommandID(),
 		Text: text, AuthorParticipantId: a.ParticipantID, SessionId: sessionID})
 	if err != nil {
 		t.Fatalf("add %q as %s: %v", text, a.ParticipantID, err)
@@ -243,7 +244,7 @@ func TestRecordsIdempotent(t *testing.T) {
 	ada := srv.Participant(t, "ada", "Ada", human)
 	bot := srv.Participant(t, "bot", "Bot", agent)
 
-	dreq := &decisionv1.RecordDecisionRequest{CommandId: ids.NewCommandID(), Text: "We ship.", AuthorParticipantId: "ada", SessionId: "s1"}
+	dreq := &decisionv1.RecordDecisionRequest{CommandId: coreapi.NewCommandID(), Text: "We ship.", AuthorParticipantId: "ada", SessionId: "s1"}
 	first, err := ada.Decision.RecordDecision(ctx10(t), dreq)
 	if err != nil {
 		t.Fatal(err)
@@ -298,10 +299,10 @@ func TestRecordsErrors(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
 	okD := func() *decisionv1.RecordDecisionRequest {
-		return &decisionv1.RecordDecisionRequest{CommandId: ids.NewCommandID(), Text: "x", AuthorParticipantId: "ada"}
+		return &decisionv1.RecordDecisionRequest{CommandId: coreapi.NewCommandID(), Text: "x", AuthorParticipantId: "ada"}
 	}
 	okN := func() *notev1.AddNoteRequest {
-		return &notev1.AddNoteRequest{CommandId: ids.NewCommandID(), Text: "x", AuthorParticipantId: "ada"}
+		return &notev1.AddNoteRequest{CommandId: coreapi.NewCommandID(), Text: "x", AuthorParticipantId: "ada"}
 	}
 	for name, change := range map[string]func(*decisionv1.RecordDecisionRequest){
 		"no command_id": func(r *decisionv1.RecordDecisionRequest) { r.CommandId = "" },
@@ -332,7 +333,7 @@ func TestRecordsErrors(t *testing.T) {
 	_, err = ada.Note.AddNote(ctx10(t), n)
 	wantCode(t, "note of another author", err, connect.CodePermissionDenied)
 
-	link, err := ada.Identity.CreateStageLink(ctx10(t), &identityv1.CreateStageLinkRequest{SessionId: "s1", CommandId: ids.NewCommandID()})
+	link, err := ada.Identity.CreateStageLink(ctx10(t), &identityv1.CreateStageLinkRequest{SessionId: "s1", CommandId: coreapi.NewCommandID()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,15 +376,15 @@ func TestRecordsSurviveRestart(t *testing.T) {
 	d1 := recordDecision(t, ada, "We ship.", "s1")
 	d2 := recordDecision(t, bot, "Line one\nline two\n\n  indented: yes # not a comment\n", "")
 	n1 := addNote(t, bot, "123", "")
-	sid := "s-" + ids.NewCommandID()
-	if _, err := bot.Session.Join(ctx10(t), &sessionv1.JoinRequest{SessionId: sid, CommandId: ids.NewCommandID()}); err != nil {
+	sid := "s-" + coreapi.NewCommandID()
+	if _, err := bot.Commands.Join(ctx10(t), &sessioncommandsv1.JoinRequest{SessionId: sid, CommandId: coreapi.NewCommandID()}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := bot.Session.UpdateMinutes(ctx10(t), &sessionv1.UpdateMinutesRequest{SessionId: sid, CommandId: ids.NewCommandID(),
+	if _, err := bot.Commands.UpdateMinutes(ctx10(t), &sessioncommandsv1.UpdateMinutesRequest{SessionId: sid, CommandId: coreapi.NewCommandID(),
 		ParticipantId: "bot", Text: "## Minutes\n- We ship."}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := bot.Session.EndSession(ctx10(t), &sessionv1.EndSessionRequest{SessionId: sid, CommandId: ids.NewCommandID(),
+	if _, err := bot.Commands.EndSession(ctx10(t), &sessioncommandsv1.EndSessionRequest{SessionId: sid, CommandId: coreapi.NewCommandID(),
 		ParticipantId: "bot"}); err != nil {
 		t.Fatal(err)
 	}
@@ -433,20 +434,20 @@ func TestSessionEndStoresMinutes(t *testing.T) {
 	scribe := srv.Participant(t, "scribe", "Scribe", agent)
 	join := func(a *contracttest.Actor, sid string) {
 		t.Helper()
-		if _, err := a.Session.Join(ctx10(t), &sessionv1.JoinRequest{SessionId: sid, CommandId: ids.NewCommandID()}); err != nil {
+		if _, err := a.Commands.Join(ctx10(t), &sessioncommandsv1.JoinRequest{SessionId: sid, CommandId: coreapi.NewCommandID()}); err != nil {
 			t.Fatalf("join %s: %v", a.ParticipantID, err)
 		}
 	}
 	update := func(a *contracttest.Actor, sid, text string) {
 		t.Helper()
-		if _, err := a.Session.UpdateMinutes(ctx10(t), &sessionv1.UpdateMinutesRequest{SessionId: sid,
-			CommandId: ids.NewCommandID(), ParticipantId: a.ParticipantID, Text: text}); err != nil {
+		if _, err := a.Commands.UpdateMinutes(ctx10(t), &sessioncommandsv1.UpdateMinutesRequest{SessionId: sid,
+			CommandId: coreapi.NewCommandID(), ParticipantId: a.ParticipantID, Text: text}); err != nil {
 			t.Fatalf("minutes of %s: %v", a.ParticipantID, err)
 		}
 	}
-	end := func(a *contracttest.Actor, sid, cid string) *sessionv1.CommandResult {
+	end := func(a *contracttest.Actor, sid, cid string) *sessioncommandsv1.CommandResult {
 		t.Helper()
-		res, err := a.Session.EndSession(ctx10(t), &sessionv1.EndSessionRequest{SessionId: sid, CommandId: cid,
+		res, err := a.Commands.EndSession(ctx10(t), &sessioncommandsv1.EndSessionRequest{SessionId: sid, CommandId: cid,
 			ParticipantId: a.ParticipantID})
 		if err != nil {
 			t.Fatalf("end %s: %v", sid, err)
@@ -454,7 +455,7 @@ func TestSessionEndStoresMinutes(t *testing.T) {
 		return res.GetResult()
 	}
 
-	sid := "s-" + ids.NewCommandID()
+	sid := "s-" + coreapi.NewCommandID()
 	join(ada, sid)
 	join(scribe, sid)
 	update(scribe, sid, "Draft")
@@ -464,7 +465,7 @@ func TestSessionEndStoresMinutes(t *testing.T) {
 	wantCode(t, "minutes before the end", err, connect.CodeNotFound)
 
 	before := time.Now().Add(-time.Second)
-	endCmd := ids.NewCommandID()
+	endCmd := coreapi.NewCommandID()
 	ended := end(ada, sid, endCmd)
 	// The minutes are there as soon as EndSession returns, in the interface and in the archive.
 	res, err := scribe.Minutes.GetMinutes(ctx10(t), &minutesv1.GetMinutesRequest{SessionId: sid})
@@ -491,7 +492,7 @@ func TestSessionEndStoresMinutes(t *testing.T) {
 	if again := end(ada, sid, endCmd); !again.GetDuplicate() || again.GetEvent().GetId() != ended.GetEvent().GetId() {
 		t.Fatalf("repeated end: %v", again)
 	}
-	_, err = scribe.Session.EndSession(ctx10(t), &sessionv1.EndSessionRequest{SessionId: sid, CommandId: ids.NewCommandID(),
+	_, err = scribe.Commands.EndSession(ctx10(t), &sessioncommandsv1.EndSessionRequest{SessionId: sid, CommandId: coreapi.NewCommandID(),
 		ParticipantId: "scribe"})
 	wantCode(t, "end an ended session", err, connect.CodeFailedPrecondition)
 	wantIDs(t, "minutes after repeats", listMinutes(t, ada, &minutesv1.ListMinutesRequest{}), 1)
@@ -500,20 +501,20 @@ func TestSessionEndStoresMinutes(t *testing.T) {
 	}
 
 	// A session without minutes stores nothing.
-	quiet := "s-" + ids.NewCommandID()
+	quiet := "s-" + coreapi.NewCommandID()
 	join(ada, quiet)
-	end(ada, quiet, ids.NewCommandID())
+	end(ada, quiet, coreapi.NewCommandID())
 	// A session whose last minutes are blank stores nothing.
-	cleared := "s-" + ids.NewCommandID()
+	cleared := "s-" + coreapi.NewCommandID()
 	join(scribe, cleared)
 	update(scribe, cleared, "Something")
 	update(scribe, cleared, "  ")
-	end(scribe, cleared, ids.NewCommandID())
+	end(scribe, cleared, coreapi.NewCommandID())
 	// A human minute taker is recorded as human.
-	human1 := "s-" + ids.NewCommandID()
+	human1 := "s-" + coreapi.NewCommandID()
 	join(ada, human1)
 	update(ada, human1, "Ada's minutes")
-	end(ada, human1, ids.NewCommandID())
+	end(ada, human1, coreapi.NewCommandID())
 
 	all := listMinutes(t, ada, &minutesv1.ListMinutesRequest{})
 	wantIDs(t, "minutes of all sessions", all, 1, 2)
@@ -534,15 +535,15 @@ func TestSessionEndStoresMinutesAfterRestart(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
 	ctx := ctx10(t)
-	if _, err := ada.Session.Join(ctx, &sessionv1.JoinRequest{SessionId: "standup", CommandId: ids.NewCommandID()}); err != nil {
+	if _, err := ada.Commands.Join(ctx, &sessioncommandsv1.JoinRequest{SessionId: "standup", CommandId: coreapi.NewCommandID()}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ada.Session.UpdateMinutes(ctx, &sessionv1.UpdateMinutesRequest{SessionId: "standup",
-		CommandId: ids.NewCommandID(), ParticipantId: "ada", Text: "Monday"}); err != nil {
+	if _, err := ada.Commands.UpdateMinutes(ctx, &sessioncommandsv1.UpdateMinutesRequest{SessionId: "standup",
+		CommandId: coreapi.NewCommandID(), ParticipantId: "ada", Text: "Monday"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ada.Session.EndSession(ctx, &sessionv1.EndSessionRequest{SessionId: "standup",
-		CommandId: ids.NewCommandID(), ParticipantId: "ada"}); err != nil {
+	if _, err := ada.Commands.EndSession(ctx, &sessioncommandsv1.EndSessionRequest{SessionId: "standup",
+		CommandId: coreapi.NewCommandID(), ParticipantId: "ada"}); err != nil {
 		t.Fatal(err)
 	}
 	if code, err := srv.Stop(5 * time.Second); err != nil || code != 0 {
@@ -550,7 +551,7 @@ func TestSessionEndStoresMinutesAfterRestart(t *testing.T) {
 	}
 	srv = contracttest.StartHubIn(t, srv.DataDir, srv.AdminKey, nil)
 	ada = srv.WithKey(t, ada.Key)
-	_, err := ada.Session.Join(ctx10(t), &sessionv1.JoinRequest{SessionId: "standup", CommandId: ids.NewCommandID()})
+	_, err := ada.Commands.Join(ctx10(t), &sessioncommandsv1.JoinRequest{SessionId: "standup", CommandId: coreapi.NewCommandID()})
 	wantCode(t, "join an ended session after the restart", err, connect.CodeFailedPrecondition)
 	got := listMinutes(t, ada, &minutesv1.ListMinutesRequest{SessionId: "standup"})
 	if len(got) != 1 || got[0].GetText() != "Monday" {

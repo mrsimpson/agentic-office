@@ -36,7 +36,7 @@
 package sessionimportv1
 
 import (
-	api "github.com/mrsimpson/agentic-office/hub/session/api"
+	streamapi "github.com/mrsimpson/agentic-office/hub/session/streamapi"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -215,7 +215,7 @@ type ImportedParticipant struct {
 	// display_name is required.
 	DisplayName string `protobuf:"bytes,2,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
 	// kind is required: human or agent.
-	Kind          api.ParticipantKind `protobuf:"varint,3,opt,name=kind,proto3,enum=office.session.v1.ParticipantKind" json:"kind,omitempty"`
+	Kind          streamapi.ParticipantKind `protobuf:"varint,3,opt,name=kind,proto3,enum=office.sessionstream.v1.ParticipantKind" json:"kind,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -264,11 +264,11 @@ func (x *ImportedParticipant) GetDisplayName() string {
 	return ""
 }
 
-func (x *ImportedParticipant) GetKind() api.ParticipantKind {
+func (x *ImportedParticipant) GetKind() streamapi.ParticipantKind {
 	if x != nil {
 		return x.Kind
 	}
-	return api.ParticipantKind(0)
+	return streamapi.ParticipantKind(0)
 }
 
 type ImportedUtterance struct {
@@ -278,7 +278,7 @@ type ImportedUtterance struct {
 	// text is required.
 	Text string `protobuf:"bytes,2,opt,name=text,proto3" json:"text,omitempty"`
 	// modality is required: voice for speech, text for written messages.
-	Modality api.Modality `protobuf:"varint,3,opt,name=modality,proto3,enum=office.session.v1.Modality" json:"modality,omitempty"`
+	Modality streamapi.Modality `protobuf:"varint,3,opt,name=modality,proto3,enum=office.sessionstream.v1.Modality" json:"modality,omitempty"`
 	// time is when the utterance was made in the original conversation. Optional; the hub does not
 	// check it.
 	Time          *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=time,proto3" json:"time,omitempty"`
@@ -330,11 +330,11 @@ func (x *ImportedUtterance) GetText() string {
 	return ""
 }
 
-func (x *ImportedUtterance) GetModality() api.Modality {
+func (x *ImportedUtterance) GetModality() streamapi.Modality {
 	if x != nil {
 		return x.Modality
 	}
-	return api.Modality(0)
+	return streamapi.Modality(0)
 }
 
 func (x *ImportedUtterance) GetTime() *timestamppb.Timestamp {
@@ -354,7 +354,7 @@ type ImportConversationResponse struct {
 	// complete is true if the import is complete.
 	Complete bool `protobuf:"varint,4,opt,name=complete,proto3" json:"complete,omitempty"`
 	// tree_head is a tree head signed by the hub over the events 1 to last_event_id.
-	TreeHead      *api.SignedTreeHead `protobuf:"bytes,5,opt,name=tree_head,json=treeHead,proto3" json:"tree_head,omitempty"`
+	TreeHead      *streamapi.SignedTreeHead `protobuf:"bytes,5,opt,name=tree_head,json=treeHead,proto3" json:"tree_head,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -417,7 +417,7 @@ func (x *ImportConversationResponse) GetComplete() bool {
 	return false
 }
 
-func (x *ImportConversationResponse) GetTreeHead() *api.SignedTreeHead {
+func (x *ImportConversationResponse) GetTreeHead() *streamapi.SignedTreeHead {
 	if x != nil {
 		return x.TreeHead
 	}
@@ -428,7 +428,7 @@ var File_office_sessionimport_v1_import_proto protoreflect.FileDescriptor
 
 const file_office_sessionimport_v1_import_proto_rawDesc = "" +
 	"\n" +
-	"$office/sessionimport/v1/import.proto\x12\x17office.sessionimport.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1eoffice/session/v1/events.proto\"\x85\x03\n" +
+	"$office/sessionimport/v1/import.proto\x12\x17office.sessionimport.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a$office/sessionstream/v1/events.proto\"\x85\x03\n" +
 	"\x19ImportConversationRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x1d\n" +
@@ -443,22 +443,22 @@ const file_office_sessionimport_v1_import_proto_rawDesc = "" +
 	"\bcomplete\x18\a \x01(\bR\bcomplete\"<\n" +
 	"\fConversation\x12\x16\n" +
 	"\x06source\x18\x01 \x01(\tR\x06source\x12\x14\n" +
-	"\x05title\x18\x02 \x01(\tR\x05title\"\x82\x01\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\"\x88\x01\n" +
 	"\x13ImportedParticipant\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12!\n" +
-	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x126\n" +
-	"\x04kind\x18\x03 \x01(\x0e2\".office.session.v1.ParticipantKindR\x04kind\"\xaa\x01\n" +
+	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12<\n" +
+	"\x04kind\x18\x03 \x01(\x0e2(.office.sessionstream.v1.ParticipantKindR\x04kind\"\xb0\x01\n" +
 	"\x11ImportedUtterance\x12\x18\n" +
 	"\aspeaker\x18\x01 \x01(\tR\aspeaker\x12\x12\n" +
-	"\x04text\x18\x02 \x01(\tR\x04text\x127\n" +
-	"\bmodality\x18\x03 \x01(\x0e2\x1b.office.session.v1.ModalityR\bmodality\x12.\n" +
-	"\x04time\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\"\xe0\x01\n" +
+	"\x04text\x18\x02 \x01(\tR\x04text\x12=\n" +
+	"\bmodality\x18\x03 \x01(\x0e2!.office.sessionstream.v1.ModalityR\bmodality\x12.\n" +
+	"\x04time\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\"\xe6\x01\n" +
 	"\x1aImportConversationResponse\x12$\n" +
 	"\x0efirst_event_id\x18\x01 \x01(\rR\ffirstEventId\x12\"\n" +
 	"\rlast_event_id\x18\x02 \x01(\rR\vlastEventId\x12\x1c\n" +
 	"\tduplicate\x18\x03 \x01(\bR\tduplicate\x12\x1a\n" +
-	"\bcomplete\x18\x04 \x01(\bR\bcomplete\x12>\n" +
-	"\ttree_head\x18\x05 \x01(\v2!.office.session.v1.SignedTreeHeadR\btreeHead2\x95\x01\n" +
+	"\bcomplete\x18\x04 \x01(\bR\bcomplete\x12D\n" +
+	"\ttree_head\x18\x05 \x01(\v2'.office.sessionstream.v1.SignedTreeHeadR\btreeHead2\x95\x01\n" +
 	"\x14SessionImportService\x12}\n" +
 	"\x12ImportConversation\x122.office.sessionimport.v1.ImportConversationRequest\x1a3.office.sessionimport.v1.ImportConversationResponseBKZIgithub.com/mrsimpson/agentic-office/hub/session/importapi;sessionimportv1b\x06proto3"
 
@@ -481,19 +481,19 @@ var file_office_sessionimport_v1_import_proto_goTypes = []any{
 	(*ImportedParticipant)(nil),        // 2: office.sessionimport.v1.ImportedParticipant
 	(*ImportedUtterance)(nil),          // 3: office.sessionimport.v1.ImportedUtterance
 	(*ImportConversationResponse)(nil), // 4: office.sessionimport.v1.ImportConversationResponse
-	(api.ParticipantKind)(0),           // 5: office.session.v1.ParticipantKind
-	(api.Modality)(0),                  // 6: office.session.v1.Modality
+	(streamapi.ParticipantKind)(0),     // 5: office.sessionstream.v1.ParticipantKind
+	(streamapi.Modality)(0),            // 6: office.sessionstream.v1.Modality
 	(*timestamppb.Timestamp)(nil),      // 7: google.protobuf.Timestamp
-	(*api.SignedTreeHead)(nil),         // 8: office.session.v1.SignedTreeHead
+	(*streamapi.SignedTreeHead)(nil),   // 8: office.sessionstream.v1.SignedTreeHead
 }
 var file_office_sessionimport_v1_import_proto_depIdxs = []int32{
 	1, // 0: office.sessionimport.v1.ImportConversationRequest.conversation:type_name -> office.sessionimport.v1.Conversation
 	2, // 1: office.sessionimport.v1.ImportConversationRequest.participants:type_name -> office.sessionimport.v1.ImportedParticipant
 	3, // 2: office.sessionimport.v1.ImportConversationRequest.utterances:type_name -> office.sessionimport.v1.ImportedUtterance
-	5, // 3: office.sessionimport.v1.ImportedParticipant.kind:type_name -> office.session.v1.ParticipantKind
-	6, // 4: office.sessionimport.v1.ImportedUtterance.modality:type_name -> office.session.v1.Modality
+	5, // 3: office.sessionimport.v1.ImportedParticipant.kind:type_name -> office.sessionstream.v1.ParticipantKind
+	6, // 4: office.sessionimport.v1.ImportedUtterance.modality:type_name -> office.sessionstream.v1.Modality
 	7, // 5: office.sessionimport.v1.ImportedUtterance.time:type_name -> google.protobuf.Timestamp
-	8, // 6: office.sessionimport.v1.ImportConversationResponse.tree_head:type_name -> office.session.v1.SignedTreeHead
+	8, // 6: office.sessionimport.v1.ImportConversationResponse.tree_head:type_name -> office.sessionstream.v1.SignedTreeHead
 	0, // 7: office.sessionimport.v1.SessionImportService.ImportConversation:input_type -> office.sessionimport.v1.ImportConversationRequest
 	4, // 8: office.sessionimport.v1.SessionImportService.ImportConversation:output_type -> office.sessionimport.v1.ImportConversationResponse
 	8, // [8:9] is the sub-list for method output_type

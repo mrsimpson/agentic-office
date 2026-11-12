@@ -16,9 +16,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
-	"github.com/mrsimpson/agentic-office/hub/session/api/events"
-	"github.com/mrsimpson/agentic-office/hub/session/api/logfile"
+	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/events"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/logfile"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
@@ -141,7 +141,7 @@ func TestImportedConversationToRecords(t *testing.T) {
 
 	// The archive holds the ended session, marked as imported and covered by its tree head.
 	a := contracttest.WaitArchived(t, srv.ArchiveDir(), "planning", 20*time.Second, (*contracttest.ArchivedSession).Ended)
-	keyRes, err := srv.Admin(t).Session.GetHubKey(ctx, &sessionv1.GetHubKeyRequest{})
+	keyRes, err := srv.Admin(t).Commands.GetHubKey(ctx, &sessioncommandsv1.GetHubKeyRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}

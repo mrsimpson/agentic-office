@@ -11,9 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mrsimpson/agentic-office/client/core/ids"
+	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
+	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
@@ -22,17 +23,17 @@ import (
 // tree head signed by the hub, which verifies.
 func TestArchiveSessionAfterEnd(t *testing.T) {
 	m := newMeetingArgs(t, "-archive-interval", "1h")
-	ada := m.join("Ada", sessionv1.ParticipantKind_PARTICIPANT_KIND_HUMAN)
+	ada := m.join("Ada", sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_HUMAN)
 	m.say(ada, "Public.")
 	secret := m.say(ada, "Secret.")
-	if _, err := m.s(ada).MarkOffTheRecord(m.ctx(), &sessionv1.MarkOffTheRecordRequest{SessionId: m.sid,
-		CommandId: ids.NewCommandID(), ParticipantId: ada, UtteranceEventId: secret.GetId()}); err != nil {
+	if _, err := m.s(ada).MarkOffTheRecord(m.ctx(), &sessioncommandsv1.MarkOffTheRecordRequest{SessionId: m.sid,
+		CommandId: coreapi.NewCommandID(), ParticipantId: ada, UtteranceEventId: secret.GetId()}); err != nil {
 		t.Fatal(err)
 	}
 	m.end(ada)
 	repo := m.srv.ArchiveDir()
 	a := contracttest.WaitArchived(t, repo, m.sid, 10*time.Second, (*contracttest.ArchivedSession).Ended)
-	a.Verify(t, m.sid, hubKey(t, m.reader.Session))
+	a.Verify(t, m.sid, hubKey(t, m.reader.Commands))
 
 	// One write: the interval is long, so only session.ended caused a commit.
 	if c := contracttest.SessionCommits(t, repo, m.sid); len(c) != 1 {
@@ -67,7 +68,7 @@ func TestArchiveSessionAfterEnd(t *testing.T) {
 // as it was then and a tree head over exactly that log; each log extends the one before.
 func TestArchiveWritesAtInterval(t *testing.T) {
 	m := newMeetingArgs(t, "-archive-interval", "200ms")
-	ada := m.join("Ada", sessionv1.ParticipantKind_PARTICIPANT_KIND_HUMAN)
+	ada := m.join("Ada", sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_HUMAN)
 	m.say(ada, "One.")
 	repo := m.srv.ArchiveDir()
 	contracttest.WaitArchived(t, repo, m.sid, 10*time.Second, func(a *contracttest.ArchivedSession) bool {
@@ -81,7 +82,7 @@ func TestArchiveWritesAtInterval(t *testing.T) {
 	m.end(ada)
 	contracttest.WaitArchived(t, repo, m.sid, 10*time.Second, (*contracttest.ArchivedSession).Ended)
 
-	key := hubKey(t, m.reader.Session)
+	key := hubKey(t, m.reader.Commands)
 	commits := contracttest.SessionCommits(t, repo, m.sid)
 	if len(commits) < 3 {
 		t.Fatalf("want at least 3 writes of the running session, got %d", len(commits))
@@ -110,11 +111,11 @@ func TestArchiveOnStopAndUnsafeName(t *testing.T) {
 	ada := srv.Participant(t, "ada", "Ada", identityv1.ActorKind_ACTOR_KIND_HUMAN)
 	sid := "team/weekly 1"
 	m := &meeting{t: t, srv: srv, sid: sid, actors: map[string]*contracttest.Actor{"ada": ada}, reader: ada}
-	if _, err := ada.Session.Join(m.ctx(), &sessionv1.JoinRequest{SessionId: sid, CommandId: ids.NewCommandID()}); err != nil {
+	if _, err := ada.Commands.Join(m.ctx(), &sessioncommandsv1.JoinRequest{SessionId: sid, CommandId: coreapi.NewCommandID()}); err != nil {
 		t.Fatal(err)
 	}
 	m.say("ada", "Before the stop.")
-	key := hubKey(t, ada.Session)
+	key := hubKey(t, ada.Commands)
 	if c := contracttest.SessionCommits(t, repo, sid); len(c) != 0 {
 		t.Fatalf("written before the interval: %v", c)
 	}

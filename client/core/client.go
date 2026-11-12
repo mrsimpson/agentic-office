@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 
+	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
+
 	"connectrpc.com/connect/v2"
 	"connectrpc.com/connect/v2/connecthttp"
 
@@ -17,38 +19,40 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/records/decision/api/decisionv1connect"
 	"github.com/mrsimpson/agentic-office/hub/records/minutes/api/minutesv1connect"
 	"github.com/mrsimpson/agentic-office/hub/records/note/api/notev1connect"
-	"github.com/mrsimpson/agentic-office/hub/session/api/sessionv1connect"
+	"github.com/mrsimpson/agentic-office/hub/session/commandsapi/sessioncommandsv1connect"
 	"github.com/mrsimpson/agentic-office/hub/session/importapi/sessionimportv1connect"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/sessionstreamv1connect"
 	"github.com/mrsimpson/agentic-office/hub/slides/api/slidesv1connect"
 	"github.com/mrsimpson/agentic-office/hub/tasks/api/taskv1connect"
 )
 
-// Client is an authenticated client of the office hub for one actor (one key).
-type Client struct {
-	Config
-	Key    ed25519.PrivateKey
-	Tokens *auth.TokenSource
+// hubClient is the client of the office hub for one actor (one key). It implements
+// Client.
+type hubClient struct {
+	cfg    coreapi.Config
+	key    ed25519.PrivateKey
+	tokens *auth.TokenSource
 
-	Session sessionv1connect.SessionServiceClient
-	// SessionImport imports conversations (if-session-import); see Import.
-	SessionImport sessionimportv1connect.SessionImportServiceClient
-	Identity      identityv1connect.IdentityServiceClient
-	Decision      decisionv1connect.DecisionServiceClient
-	Minutes       minutesv1connect.MinutesServiceClient
-	Note          notev1connect.NoteServiceClient
-	Task          taskv1connect.TaskServiceClient
-	Slides        slidesv1connect.SlidesServiceClient
+	commands sessioncommandsv1connect.SessionCommandsServiceClient
+	stream   sessionstreamv1connect.SessionStreamServiceClient
+	// sessionImport imports conversations (if-session-import); see Import.
+	sessionImport sessionimportv1connect.SessionImportServiceClient
+	identity      identityv1connect.IdentityServiceClient
+	decision      decisionv1connect.DecisionServiceClient
+	minutes       minutesv1connect.MinutesServiceClient
+	note          notev1connect.NoteServiceClient
+	task          taskv1connect.TaskServiceClient
+	slides        slidesv1connect.SlidesServiceClient
 }
 
-// ErrNoKey means that the key file does not exist.
-var ErrNoKey = errors.New("no key file")
+var _ coreapi.Dial = Dial
 
-// Dial reads the key of cfg and returns a client. It does not connect yet; the first call
-// authenticates (rs-authenticate).
-func Dial(cfg Config) (*Client, error) {
+// Dial reads the key of cfg and returns a client (Dial). It does not connect yet; the
+// first call authenticates (rs-authenticate).
+func Dial(cfg coreapi.Config) (coreapi.Client, error) {
 	key, err := auth.ReadKey(cfg.KeyFile)
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil, fmt.Errorf("%w %s: create one with \"office key create\" and let an admin register it", ErrNoKey, cfg.KeyFile)
+		return nil, fmt.Errorf("%w %s: create one with \"office key create\" and let an admin register it", coreapi.ErrNoKey, cfg.KeyFile)
 	}
 	if err != nil {
 		return nil, err
@@ -61,36 +65,47 @@ func Dial(cfg Config) (*Client, error) {
 	// The identity client inside the token source must not use Bearer itself.
 	ts := auth.NewTokenSource(identityv1connect.NewIdentityServiceClient(newConnect(hc, base)), key)
 	cc := newConnect(hc, base, auth.Bearer(ts))
-	return &Client{Config: cfg, Key: key, Tokens: ts,
-		Session:       sessionv1connect.NewSessionServiceClient(cc),
-		SessionImport: sessionimportv1connect.NewSessionImportServiceClient(cc),
-		Identity:      identityv1connect.NewIdentityServiceClient(cc),
-		Decision:      decisionv1connect.NewDecisionServiceClient(cc),
-		Minutes:       minutesv1connect.NewMinutesServiceClient(cc),
-		Note:          notev1connect.NewNoteServiceClient(cc),
-		Task:          taskv1connect.NewTaskServiceClient(cc),
-		Slides:        slidesv1connect.NewSlidesServiceClient(cc),
+	return &hubClient{cfg: cfg, key: key, tokens: ts,
+		commands:      sessioncommandsv1connect.NewSessionCommandsServiceClient(cc),
+		stream:        sessionstreamv1connect.NewSessionStreamServiceClient(cc),
+		sessionImport: sessionimportv1connect.NewSessionImportServiceClient(cc),
+		identity:      identityv1connect.NewIdentityServiceClient(cc),
+		decision:      decisionv1connect.NewDecisionServiceClient(cc),
+		minutes:       minutesv1connect.NewMinutesServiceClient(cc),
+		note:          notev1connect.NewNoteServiceClient(cc),
+		task:          taskv1connect.NewTaskServiceClient(cc),
+		slides:        slidesv1connect.NewSlidesServiceClient(cc),
 	}, nil
 }
+
+func (c *hubClient) Config() coreapi.Config { return c.cfg }
+
+func (c *hubClient) KeyID() string { return auth.KeyID(auth.PublicKey(c.key)) }
+
+func (c *hubClient) Commands() sessioncommandsv1connect.SessionCommandsServiceClient {
+	return c.commands
+}
+
+func (c *hubClient) Stream() sessionstreamv1connect.SessionStreamServiceClient { return c.stream }
 
 func newConnect(hc *http.Client, base string, ic ...connect.ClientInterceptor) *connect.Client {
 	return connect.NewClient(connecthttp.NewTransport(hc, base), ic...)
 }
 
 // ParticipantID authenticates if needed and returns the participant of the key.
-func (c *Client) ParticipantID(ctx context.Context) (string, error) {
+func (c *hubClient) ParticipantID(ctx context.Context) (string, error) {
 	var pid string
-	err := Retry(ctx, func() (err error) {
-		pid, err = c.Tokens.ParticipantID(ctx)
+	err := retry(ctx, func() (err error) {
+		pid, err = c.tokens.ParticipantID(ctx)
 		return err
 	})
 	return pid, err
 }
 
-// Retry runs f and runs it once more if it failed with "unauthenticated" (the token was
+// retry runs f and runs it once more if it failed with "unauthenticated" (the token was
 // dropped, for example after a restart of the server). Commands are idempotent, so this is
 // safe as long as f reuses its command ID.
-func Retry(ctx context.Context, f func() error) error {
+func retry(ctx context.Context, f func() error) error {
 	err := f()
 	if connect.CodeOf(err) == connect.CodeUnauthenticated && ctx.Err() == nil {
 		err = f()

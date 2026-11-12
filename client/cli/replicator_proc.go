@@ -14,8 +14,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mrsimpson/agentic-office/client/core"
-	"github.com/mrsimpson/agentic-office/client/replicator"
+	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
+	"github.com/mrsimpson/agentic-office/client/replicator/control"
 )
 
 // How join runs the replicator:
@@ -39,7 +39,7 @@ type replicatorProc struct {
 func (r *replicatorProc) wait(ctx context.Context) error {
 	if r.cmd == nil {
 		// Not our child: poll until the lock is gone.
-		for replicator.Running(r.log) {
+		for control.Running(r.log) {
 			select {
 			case <-ctx.Done():
 				return nil
@@ -68,9 +68,9 @@ func (r *replicatorProc) stop() {
 
 // startReplicator makes sure a replicator runs for j. With foreground it is a child that stops
 // when this process ends.
-func startReplicator(e *env, j *core.Joined, foreground bool) (*replicatorProc, error) {
+func startReplicator(e *env, j *coreapi.Joined, foreground bool) (*replicatorProc, error) {
 	p := j.Paths
-	if replicator.Running(p.Log) {
+	if control.Running(p.Log) {
 		return &replicatorProc{pid: readPID(p.PID), log: p.Log}, nil
 	}
 	exe, err := os.Executable()
@@ -184,10 +184,11 @@ func cmdReplicatorRun(e *env, fs *flag.FlagSet) func([]string) error {
 			ready("error " + err.Error())
 			return err
 		}
-		r := &replicator.Replicator{Session: c.Session, SessionID: e.session, ParticipantID: *pid, Path: *path,
-			Logf: func(f string, a ...any) { lg.Printf(strings.TrimPrefix(f, "replicator: "), a...) }}
+		r := NewReplicator(control.Options{Commands: c.Commands(), Stream: c.Stream(), SessionID: e.session,
+			ParticipantID: *pid, Path: *path,
+			Logf: func(f string, a ...any) { lg.Printf(strings.TrimPrefix(f, "replicator: "), a...) }})
 		if err := r.Open(); err != nil {
-			if errors.Is(err, replicator.ErrRunning) {
+			if errors.Is(err, control.ErrRunning) {
 				ready("running")
 				return nil
 			}

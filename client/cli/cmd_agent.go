@@ -8,12 +8,12 @@ import (
 	"os"
 	"strings"
 
-	"github.com/mrsimpson/agentic-office/client/core"
+	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
 )
 
 // AgentOptions are what the agent runner (bb-agent-runner) needs from the CLI.
 type AgentOptions struct {
-	Config  core.Config
+	Config  coreapi.Config
 	Session string
 	Role    string
 	Harness []string // the harness command and its arguments

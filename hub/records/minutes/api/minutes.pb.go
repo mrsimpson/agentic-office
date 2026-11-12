@@ -2,7 +2,7 @@
 // (dec-records-per-type). The hub stores the minutes in the archive.
 //
 // While a session runs, its participants write the running minutes through the session commands
-// (minutes.update in session.proto). When the session ends, the hub stores the last version as
+// (minutes.update in commands.proto). When the session ends, the hub stores the last version as
 // the minutes of the session (rs-session-ends). This interface reads the stored minutes. Clients
 // do not write minutes here.
 //

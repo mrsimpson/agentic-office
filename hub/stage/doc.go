@@ -1,12 +1,8 @@
 // Package stage is the building block Stage (bb-stage in docs/architecture/05-building-blocks.arc42.md).
 //
-// It renders one web page per session from the session stream and provides if-stage-web. The
-// page is shown in a meeting by screen share (dec-stage-screenshare).
-//
-// Addresses:
-//
-//	GET /stage/<escaped session>?token=<token>         the page
-//	GET /stage/<escaped session>/events?token=<token>  server-sent events for the page
+// It renders one web page per session from the session stream. It realizes if-stage-web, whose
+// contract is package web: the addresses, the page, its regions and the event stream. The page is
+// shown in a meeting by screen share (dec-stage-screenshare).
 //
 // How it works:
 //

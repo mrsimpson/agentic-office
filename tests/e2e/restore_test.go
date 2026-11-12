@@ -16,10 +16,11 @@ import (
 
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
-	sessionv1 "github.com/mrsimpson/agentic-office/hub/session/api"
-	"github.com/mrsimpson/agentic-office/hub/session/api/events"
-	"github.com/mrsimpson/agentic-office/hub/session/api/logfile"
-	"github.com/mrsimpson/agentic-office/hub/session/api/merkle"
+	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/events"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/logfile"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/merkle"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
@@ -70,7 +71,7 @@ func TestHubRestartRestoresFromArchiveAndPeers(t *testing.T) {
 	}
 	adaLog, adaRep := join(ada)
 	botLog, botRep := join(bot)
-	read := func(path string) []*sessionv1.Event {
+	read := func(path string) []*sessionstreamv1.Event {
 		b, _ := os.ReadFile(path)
 		evs, err := logfile.UnmarshalLines(b[:bytes.LastIndexByte(b, '\n')+1])
 		if err != nil {
@@ -123,13 +124,13 @@ func TestHubRestartRestoresFromArchiveAndPeers(t *testing.T) {
 	reader := srv.Participant(t, "reader", "Reader", identityv1.ActorKind_ACTOR_KIND_AGENT)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	key, err := reader.Session.GetHubKey(ctx, &sessionv1.GetHubKeyRequest{})
+	key, err := reader.Commands.GetHubKey(ctx, &sessioncommandsv1.GetHubKeyRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// The hub restored 4 events from the archive; a replicator fills in 5 to 7.
 	srv.WaitStderr(t, regexpFilledIn, 20*time.Second)
-	head, err := reader.Session.GetTreeHead(ctx, &sessionv1.GetTreeHeadRequest{SessionId: sid})
+	head, err := reader.Commands.GetTreeHead(ctx, &sessioncommandsv1.GetTreeHeadRequest{SessionId: sid})
 	if err != nil || head.GetTreeHead().GetTreeSize() != 7 {
 		t.Fatalf("hub after the fill-in: %v, %v", head, err)
 	}
@@ -154,7 +155,7 @@ func TestHubRestartRestoresFromArchiveAndPeers(t *testing.T) {
 		t.Fatalf("the two local logs differ:\n%s\n---\n%s", ab, bb)
 	}
 	local := read(adaLog)
-	res, err := reader.Session.GetEvents(ctx, &sessionv1.GetEventsRequest{SessionId: sid, Limit: 1000})
+	res, err := reader.Stream.GetEvents(ctx, &sessionstreamv1.GetEventsRequest{SessionId: sid, Limit: 1000})
 	if err != nil {
 		t.Fatal(err)
 	}

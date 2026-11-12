@@ -1,0 +1,270 @@
+// Session commands (if-session-commands): the synchronous calls of a participant in a meeting
+// session, the checks of a session log, and the offer of a copy after the hub lost events.
+//
+// Every command carries a command_id that the client creates: unique and sortable by time, for
+// example a UUIDv7 (dec-idempotent-commands). If the same command_id arrives again, the server
+// returns the stored event, sets duplicate to true and creates no new event. Each successful
+// command creates exactly one event.
+//
+// The events and the signed tree heads are the types of the session stream (if-session-stream,
+// office.sessionstream.v1): the stream owns the event log.
+//
+// Every call needs an access token (see identity.proto). The participant ID in a session is the
+// participant of the token. Every participant_id in a request must be that participant, or the
+// call fails with permission_denied. A stage link token cannot call these commands.
+syntax = "proto3";
+
+package office.sessioncommands.v1;
+
+import "google/protobuf/timestamp.proto";
+import "office/sessionstream/v1/events.proto";
+
+option go_package = "github.com/mrsimpson/agentic-office/hub/session/commandsapi;sessioncommandsv1";
+
+service SessionCommandsService {
+  // Join adds the participant of the token to a session. A participant joins once: a repeated
+  // join, with the same or a new command_id, returns the first join with duplicate set, as long
+  // as the participant has not left.
+  rpc Join(JoinRequest) returns (JoinResponse);
+  rpc Leave(LeaveRequest) returns (LeaveResponse);
+  // SubmitUtterance appends an utterance.final event.
+  rpc SubmitUtterance(SubmitUtteranceRequest) returns (SubmitUtteranceResponse);
+  rpc MarkOffTheRecord(MarkOffTheRecordRequest) returns (MarkOffTheRecordResponse);
+  // SubmitSignal appends a turn.end, silence.long or addressed event.
+  rpc SubmitSignal(SubmitSignalRequest) returns (SubmitSignalResponse);
+  rpc Pause(PauseRequest) returns (PauseResponse);
+  rpc Resume(ResumeRequest) returns (ResumeResponse);
+  rpc RaiseHand(RaiseHandRequest) returns (RaiseHandResponse);
+  rpc UpdateMinutes(UpdateMinutesRequest) returns (UpdateMinutesResponse);
+  rpc ShowArtifact(ShowArtifactRequest) returns (ShowArtifactResponse);
+  rpc EndSession(EndSessionRequest) returns (EndSessionResponse);
+
+  // GetTreeHead returns the signed tree head of the session log (dec-merkle-log): for the current
+  // log, or for its first tree_size events.
+  rpc GetTreeHead(GetTreeHeadRequest) returns (GetTreeHeadResponse);
+  // GetConsistencyProof returns the proof that the log of second_size events extends the log of
+  // first_size events (RFC 9162, section 2.1.4).
+  rpc GetConsistencyProof(GetConsistencyProofRequest) returns (GetConsistencyProofResponse);
+  // GetInclusionProof returns the proof that one event is in the tree of tree_size events
+  // (RFC 9162, section 2.1.3).
+  rpc GetInclusionProof(GetInclusionProofRequest) returns (GetInclusionProofResponse);
+  // GetHubKey returns the public key with which the hub signs tree heads. The key stays the same
+  // across restarts of the hub.
+  rpc GetHubKey(GetHubKeyRequest) returns (GetHubKeyResponse);
+
+  // OfferLog offers the copy of a session log that a peer holds (dec-restore-from-peers). After a
+  // restart, the hub has the log only up to its last write to the archive; a peer with a longer
+  // copy offers the events after the last event of the hub. The hub accepts the copy only if it
+  // proves itself: the tree head of the copy must carry a valid signature of the hub key, the
+  // events must give its root hash, and the log of the hub must be a prefix of it (consistency
+  // proof against the last signed tree head of the hub). The hub then appends the missing events
+  // with their IDs, so all cursors stay valid. A copy that is not longer than the log of the hub
+  // is a no-op, so the first copy that fits wins. A copy that does not verify fails with
+  // invalid_argument; a copy signed by the hub that does not extend its log (a fork) fails with
+  // failed_precondition. OfferLog creates no new event, so it needs no command_id: a repeated
+  // offer is a no-op.
+  rpc OfferLog(OfferLogRequest) returns (OfferLogResponse);
+}
+
+// CommandResult is the result of every session command.
+message CommandResult {
+  office.sessionstream.v1.Event event = 1;
+  // duplicate is true if the command_id was already known and no new event was created.
+  bool duplicate = 2;
+}
+
+message JoinRequest {
+  string session_id = 1;
+  string command_id = 2;
+  // display_name is the name in this session. Empty means the registered name.
+  string display_name = 3;
+  // kind is optional. If set, it must be the registered kind.
+  office.sessionstream.v1.ParticipantKind kind = 4;
+  bool captured = 5;
+}
+
+message JoinResponse {
+  string participant_id = 1;
+  CommandResult result = 2;
+}
+
+message LeaveRequest {
+  string session_id = 1;
+  string command_id = 2;
+  string participant_id = 3;
+}
+
+message LeaveResponse {
+  CommandResult result = 1;
+}
+
+message SubmitUtteranceRequest {
+  string session_id = 1;
+  string command_id = 2;
+  string participant_id = 3;
+  string text = 4;
+  office.sessionstream.v1.Modality modality = 5;
+  google.protobuf.Timestamp transcribed_at = 6;
+}
+
+message SubmitUtteranceResponse {
+  CommandResult result = 1;
+}
+
+message MarkOffTheRecordRequest {
+  string session_id = 1;
+  string command_id = 2;
+  string participant_id = 3;
+  uint32 utterance_event_id = 4;
+}
+
+message MarkOffTheRecordResponse {
+  CommandResult result = 1;
+}
+
+message SubmitSignalRequest {
+  string session_id = 1;
+  string command_id = 2;
+  string participant_id = 3;
+  oneof signal {
+    office.sessionstream.v1.TurnEnd turn_end = 10;
+    office.sessionstream.v1.SilenceLong silence_long = 11;
+    office.sessionstream.v1.Addressed addressed = 12;
+  }
+}
+
+message SubmitSignalResponse {
+  CommandResult result = 1;
+}
+
+message PauseRequest {
+  string session_id = 1;
+  string command_id = 2;
+  string participant_id = 3;
+}
+
+message PauseResponse {
+  CommandResult result = 1;
+}
+
+message ResumeRequest {
+  string session_id = 1;
+  string command_id = 2;
+  string participant_id = 3;
+}
+
+message ResumeResponse {
+  CommandResult result = 1;
+}
+
+message RaiseHandRequest {
+  string session_id = 1;
+  string command_id = 2;
+  string participant_id = 3;
+  string topic = 4;
+}
+
+message RaiseHandResponse {
+  CommandResult result = 1;
+}
+
+message UpdateMinutesRequest {
+  string session_id = 1;
+  string command_id = 2;
+  string participant_id = 3;
+  string text = 4;
+}
+
+message UpdateMinutesResponse {
+  CommandResult result = 1;
+}
+
+message ShowArtifactRequest {
+  string session_id = 1;
+  string command_id = 2;
+  string participant_id = 3;
+  string artifact_id = 4;
+}
+
+message ShowArtifactResponse {
+  CommandResult result = 1;
+}
+
+message EndSessionRequest {
+  string session_id = 1;
+  string command_id = 2;
+  string participant_id = 3;
+}
+
+message EndSessionResponse {
+  CommandResult result = 1;
+}
+
+message GetTreeHeadRequest {
+  string session_id = 1;
+  // tree_size is the size of the tree: the first tree_size events. 0 means the current log.
+  uint32 tree_size = 2;
+}
+
+message GetTreeHeadResponse {
+  office.sessionstream.v1.SignedTreeHead tree_head = 1;
+}
+
+message GetConsistencyProofRequest {
+  string session_id = 1;
+  // first_size is the size of the older tree. It must be at least 1.
+  uint32 first_size = 2;
+  // second_size is the size of the newer tree, at least first_size. 0 means the current log.
+  uint32 second_size = 3;
+}
+
+message GetConsistencyProofResponse {
+  uint32 first_size = 1;
+  uint32 second_size = 2;
+  // hashes are the node hashes of the proof, in the order of RFC 9162. Empty if both sizes are
+  // equal.
+  repeated bytes hashes = 3;
+}
+
+message GetInclusionProofRequest {
+  string session_id = 1;
+  // event_id is the event to prove. Its leaf index is event_id minus one.
+  uint32 event_id = 2;
+  // tree_size is the size of the tree, at least event_id. 0 means the current log.
+  uint32 tree_size = 3;
+}
+
+message GetInclusionProofResponse {
+  uint32 event_id = 1;
+  uint32 tree_size = 2;
+  // hashes are the node hashes of the audit path, from the leaf to the root (RFC 9162).
+  repeated bytes hashes = 3;
+}
+
+message GetHubKeyRequest {}
+
+message GetHubKeyResponse {
+  // public_key is the Ed25519 public key of the hub (32 bytes).
+  bytes public_key = 1;
+}
+
+message OfferLogRequest {
+  string session_id = 1;
+  // after_event_id is the last event before the offered events. It is at most the last event of
+  // the hub; the hub uses its own events up to it. 0 offers the whole log.
+  uint32 after_event_id = 2;
+  // events are the events after_event_id + 1 to tree_head.tree_size, in order, as the peer
+  // received them. A placeholder (an utterance off the record) verifies by its leaf_hash.
+  repeated office.sessionstream.v1.Event events = 3;
+  // tree_head is a tree head signed by the hub over the events 1 to tree_size of the copy, for
+  // example the last one of the session stream.
+  office.sessionstream.v1.SignedTreeHead tree_head = 4;
+}
+
+message OfferLogResponse {
+  // accepted is true if the hub appended events from the copy. It is false for a copy that is
+  // not longer than the log of the hub.
+  bool accepted = 1;
+  // tree_head is the signed tree head of the log of the hub after the offer.
+  office.sessionstream.v1.SignedTreeHead tree_head = 2;
+}

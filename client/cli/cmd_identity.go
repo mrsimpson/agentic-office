@@ -64,7 +64,7 @@ func cmdWhoami(e *env, fs *flag.FlagSet) func([]string) error {
 		if err != nil {
 			return err
 		}
-		id := auth.KeyID(auth.PublicKey(c.Key))
+		id := c.KeyID()
 		if e.json {
 			e.printJSON(map[string]any{"participantId": pid, "keyId": id})
 		} else {
