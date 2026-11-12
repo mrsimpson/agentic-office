@@ -199,10 +199,18 @@ func TestAgentRunnerErrors(t *testing.T) {
 	for _, args := range [][]string{
 		{"agent", "run", "--session", "s1"}, // no harness
 		{"agent", "run", "--", "true"},      // no session
-		{"agent", "run", "--session", "s1", "--role", "a", "--role-file", "b", "--", "true"}, // both roles
-		{"agent", "run", "--session", "s1", "--decide-cmd", "x", "--decide-url", "http://x", "--decide-model", "m", "--", "true"}, // both kinds
-		{"agent", "run", "--session", "s1", "--decide-url", "http://x", "--", "true"},                                         // no model name
-		{"agent", "run", "--session", "s1", "--decide-cmd", "x", "--decide-timeout", "0s", "--", "true"},                      // no time-out
+		{"agent", "run", "--session", "s1", "--role", "a", "--role-file", "b", "--", "true"},                                                                          // both roles
+		{"agent", "run", "--session", "s1", "--wake", "always", "--", "true"},                                                                                         // unknown strategy
+		{"agent", "run", "--session", "s1", "--decide-cmd", "x", "--", "true"},                                                                                        // a model with turn-end
+		{"agent", "run", "--session", "s1", "--decide-timeout", "5s", "--", "true"},                                                                                   // a model flag with turn-end
+		{"agent", "run", "--session", "s1", "--wake", "llm", "--", "true"},                                                                                            // llm without a judge
+		{"agent", "run", "--session", "s1", "--wake", "llm", "--decide-cmd", "x", "--decide-url", "http://x", "--decide-model", "m", "--", "true"},                    // both kinds
+		{"agent", "run", "--session", "s1", "--wake", "llm", "--decide-url", "http://x", "--", "true"},                                                                // no model name
+		{"agent", "run", "--session", "s1", "--wake", "llm", "--decide-cmd", "x", "--decide-threshold", "0.7", "--", "true"},                                          // threshold with llm
+		{"agent", "run", "--session", "s1", "--wake", "llm", "--decide-cmd", "x", "--decide-timeout", "0s", "--", "true"},                                             // no time-out
+		{"agent", "run", "--session", "s1", "--wake", "decision-model", "--decide-cmd", "x", "--", "true"},                                                            // a command
+		{"agent", "run", "--session", "s1", "--wake", "decision-model", "--decide-url", "http://x", "--", "true"},                                                     // no model name
+		{"agent", "run", "--session", "s1", "--wake", "decision-model", "--decide-url", "http://x", "--decide-model", "m", "--decide-threshold", "1.5", "--", "true"}, // threshold above 1
 	} {
 		if _, errOut, code := bot.run(args...); code != 2 {
 			t.Errorf("office %v: want exit 2, got %d: %s", args, code, errOut)

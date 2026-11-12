@@ -73,8 +73,10 @@ hosts: bb-cli, bb-client-core, bb-replicator, bb-ears
 The computer or container in which the agent runs, for example Claude Code on a laptop or in a
 cloud session. It runs the MCP server, the CLI and the log replicator in the same file system as
 the agent. With the agent runner, the runner starts the agent harness as its child process on this
-node, and the harness starts the MCP server. A decision model that the user brings runs wherever
-the user puts it: as a command on this node, or behind an endpoint that the node can reach.
+node, and the harness starts the MCP server. A forwarding judge or a decision model that the
+user
+brings runs wherever the user puts it: as a command on this node, or behind an endpoint that the
+node can reach.
 
 ```arc42
 :::deployment-node

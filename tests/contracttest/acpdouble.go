@@ -31,23 +31,23 @@ func ACPDouble(t testing.TB) string {
 }
 
 var (
-	decisionDoubleOnce sync.Once
-	decisionDoublePath string
-	decisionDoubleErr  string
+	forwardingJudgeDoubleOnce sync.Once
+	forwardingJudgeDoublePath string
+	forwardingJudgeDoubleErr  string
 )
 
-// DecisionDouble builds the test double of a decision model (tests/decisiondouble, the command
-// kind of if-decision-model) once and returns the path of its binary. See the package comment of
-// tests/decisiondouble for its rules.
-func DecisionDouble(t testing.TB) string {
+// ForwardingJudgeDouble builds the test double of a forwarding judge (tests/forwardingjudgedouble,
+// the command kind of if-forwarding-judge) once and returns the path of its binary. See the package
+// comment of tests/forwardingjudgedouble for its rules.
+func ForwardingJudgeDouble(t testing.TB) string {
 	t.Helper()
-	decisionDoubleOnce.Do(func() {
-		decisionDoublePath, decisionDoubleErr = buildTool(t, "decisiondouble")
+	forwardingJudgeDoubleOnce.Do(func() {
+		forwardingJudgeDoublePath, forwardingJudgeDoubleErr = buildTool(t, "forwardingjudgedouble")
 	})
-	if decisionDoubleErr != "" {
-		t.Fatalf("build the decision model test double: %s", decisionDoubleErr)
+	if forwardingJudgeDoubleErr != "" {
+		t.Fatalf("build the forwarding judge test double: %s", forwardingJudgeDoubleErr)
 	}
-	return decisionDoublePath
+	return forwardingJudgeDoublePath
 }
 
 // buildTool builds the program tests/<name> into a temporary directory. It returns the path of
@@ -66,9 +66,9 @@ func buildTool(t testing.TB, name string) (string, string) {
 	return p, ""
 }
 
-// DecisionRequests reads the requests that the decision model test double recorded. A missing
-// file has no requests.
-func DecisionRequests(t testing.TB, path string) []map[string]any {
+// ForwardingJudgeRequests reads the requests that the forwarding judge test double recorded. A
+// missing file has no requests.
+func ForwardingJudgeRequests(t testing.TB, path string) []map[string]any {
 	t.Helper()
 	f, err := os.Open(path)
 	if os.IsNotExist(err) {

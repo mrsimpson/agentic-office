@@ -1,9 +1,9 @@
 package contract
 
-// Contract tests of the agent runner with a decision model (if-decision-model,
-// dec-byo-decision-model, dec-wake-check-per-utterance): the command kind with the test double
-// tests/decisiondouble, and the OpenAI-compatible endpoint with a fake HTTP server. No real model
-// runs. The tests wait for records and log lines, never for time.
+// Contract tests of the agent runner with the wake strategy llm (if-forwarding-judge,
+// dec-byo-decision-model, dec-wake-check-per-utterance, dec-agent-runner-delivery): the command
+// kind with the test double tests/forwardingjudgedouble, and the OpenAI-compatible endpoint with a
+// fake HTTP server. No real model runs. The tests wait for records and log lines, never for time.
 
 import (
 	"encoding/json"
@@ -21,7 +21,7 @@ import (
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
-// decider is the decision model test double with its record and release files.
+// decider is the test double of the forwarding judge with its record and release files.
 type decider struct {
 	cmd, rec, release string
 }
@@ -29,7 +29,7 @@ type decider struct {
 func newDecider(t *testing.T) decider {
 	dir := t.TempDir()
 	d := decider{rec: filepath.Join(dir, "decide.jsonl"), release: filepath.Join(dir, "decide.release")}
-	d.cmd = "DECIDE_RECORD='" + d.rec + "' DECIDE_RELEASE='" + d.release + "' '" + contracttest.DecisionDouble(t) + "'"
+	d.cmd = "DECIDE_RECORD='" + d.rec + "' DECIDE_RELEASE='" + d.release + "' '" + contracttest.ForwardingJudgeDouble(t) + "'"
 	return d
 }
 
@@ -37,8 +37,8 @@ func newDecider(t *testing.T) decider {
 func (d decider) wait(t *testing.T, n int) []map[string]any {
 	t.Helper()
 	var reqs []map[string]any
-	waitUntil(t, 20*time.Second, fmt.Sprintf("%d requests to the decision model", n), func() bool {
-		reqs = contracttest.DecisionRequests(t, d.rec)
+	waitUntil(t, 20*time.Second, fmt.Sprintf("%d requests to the forwarding judge", n), func() bool {
+		reqs = contracttest.ForwardingJudgeRequests(t, d.rec)
 		return len(reqs) >= n
 	})
 	return reqs
@@ -54,16 +54,16 @@ func texts(us any) []string {
 	return out
 }
 
-// TestAgentRunnerDecisionPerUtterance: with a decision model, the runner asks it after each
-// utterance of another participant, also in the middle of a monologue, and once more when the
-// speaker ends the turn. It wakes the agent only on act or topic_closed, with all utterances
-// since the last delivery. The requests follow the contract and never carry the agent's own
-// utterances as new.
-func TestAgentRunnerDecisionPerUtterance(t *testing.T) {
+// TestAgentRunnerForwardingJudgePerUtterance: with a forwarding judge, the runner asks it after
+// each utterance of another participant, also in the middle of a monologue, and once more when the
+// speaker ends the turn. It wakes the agent only on act or topic_closed, with all utterances since
+// the last delivery. The requests follow the contract and never carry the agent's own utterances as
+// new.
+func TestAgentRunnerForwardingJudgePerUtterance(t *testing.T) {
 	d := newDecider(t)
-	mt := newMeetingWithRunner(t, nil, "--decide-cmd", d.cmd,
+	mt := newMeetingWithRunner(t, nil, "--wake", "llm", "--decide-cmd", d.cmd,
 		"--topic-task", "Write the decisions of the block into the minutes.")
-	mt.waitStderr("decision model: command")
+	mt.waitStderr("wake strategy llm: command")
 
 	// A monologue: the first sentence does not concern the agent; the second names it.
 	u1 := mt.say(mt.ada, "We start with the budget.")
@@ -134,7 +134,7 @@ func TestAgentRunnerDecisionPerUtterance(t *testing.T) {
 			t.Errorf("%q is in %d prompts, want 1", s, n)
 		}
 	}
-	for i, r := range contracttest.DecisionRequests(t, d.rec) {
+	for i, r := range contracttest.ForwardingJudgeRequests(t, d.rec) {
 		for _, u := range r["new"].([]any) {
 			if u.(map[string]any)["participant_id"] == "bot" {
 				t.Errorf("request %d carries an utterance of the agent as new: %v", i+1, u)
@@ -143,33 +143,69 @@ func TestAgentRunnerDecisionPerUtterance(t *testing.T) {
 	}
 }
 
-// TestAgentRunnerDecisionFallback: if the decision model fails, is too slow or answers garbage,
-// the runner wakes the agent and logs why.
-func TestAgentRunnerDecisionFallback(t *testing.T) {
+// TestAgentRunnerForwardingJudgeFallback: a failure of the forwarding judge (an error, a time-out
+// or an answer outside the contract) does not wake the agent; the utterances wait for the next
+// change of speaker. After three failures within five minutes, the runner switches to turn-end
+// and logs it once. It does not ask the judge again before the next change of speaker; after it,
+// the first utterance asks the judge again, and the runner switches back when it answers.
+func TestAgentRunnerForwardingJudgeFallback(t *testing.T) {
 	d := newDecider(t)
-	mt := newMeetingWithRunner(t, nil, "--decide-cmd", d.cmd, "--decide-timeout", "2s")
-	for i, c := range []struct{ say, log string }{
-		{"decider fail", "decision model failed (command: exit status 3"},
-		{"decider slow", "decision model failed (no answer within 2s)"},
-		{"decider garbage", "decision model failed (bad answer of the decision model"},
-	} {
-		mt.say(mt.ada, c.say)
-		ps := waitPrompt(t, mt.rec, 2+i)
-		if !strings.Contains(ps[1+i], "Ada (human): "+c.say) {
-			t.Fatalf("prompt %d:\n%s", 2+i, ps[1+i])
-		}
-		waitPromptEnd(t, mt.rec, 2+i)
-		if !strings.Contains(mt.runner.Stderr(), c.log) {
-			t.Fatalf("the runner did not log %q:\n%s", c.log, mt.runner.Stderr())
+	mt := newMeetingWithRunner(t, nil, "--wake", "llm", "--decide-cmd", d.cmd, "--decide-timeout", "2s")
+
+	mt.say(mt.ada, "decider fail")
+	mt.waitStderr("the forwarding judge failed (command: exit status 3")
+	mt.say(mt.ada, "decider garbage")
+	mt.waitStderr("the forwarding judge failed (bad answer of the forwarding judge")
+	if strings.Contains(mt.runner.Stderr(), "waking the agent") {
+		t.Fatalf("a failure woke the agent:\n%s", mt.runner.Stderr())
+	}
+	mt.turnEnd(mt.ada)
+	ps := waitPrompt(t, mt.rec, 2)
+	if !strings.Contains(ps[1], "Ada (human): decider fail") || !strings.Contains(ps[1], "Ada (human): decider garbage") ||
+		!strings.Contains(ps[1], "The turn of Ada (human) has ended.") {
+		t.Fatalf("prompt 2 must carry the utterances that waited:\n%s", ps[1])
+	}
+	waitPromptEnd(t, mt.rec, 2)
+
+	// The third failure in a row: the runner switches to turn-end.
+	mt.say(mt.ada, "decider slow")
+	mt.waitStderr("the forwarding judge failed (no answer within 2s); 3 failures within 5m0s: switching to turn-end, asking the forwarding judge again after the next change of speaker")
+	n := len(contracttest.ForwardingJudgeRequests(t, d.rec))
+	mt.say(mt.ada, "Bot, are you there?")
+	mt.turnEnd(mt.ada)
+	ps = waitPrompt(t, mt.rec, 3)
+	if !strings.Contains(ps[2], "Ada (human): decider slow") || !strings.Contains(ps[2], "Ada (human): Bot, are you there?") {
+		t.Fatalf("prompt 3:\n%s", ps[2])
+	}
+	if strings.Contains(mt.runner.Stderr(), "asking the forwarding judge again\n") || len(contracttest.ForwardingJudgeRequests(t, d.rec)) != n {
+		t.Fatalf("the runner asked the judge again before a change of speaker:\n%s", mt.runner.Stderr())
+	}
+	waitPromptEnd(t, mt.rec, 3)
+
+	// After the change of speaker, the next utterance asks the judge again; it answers.
+	mt.say(mt.ada, `Bot, please say "Back."`)
+	waitUtterance(t, mt.adaLog, "bot", "Back.")
+	mt.waitStderr("asking the forwarding judge again\n")
+	mt.waitStderr("the forwarding judge answers again: switching back from turn-end to llm")
+	ps = waitPrompt(t, mt.rec, 4)
+	if !strings.Contains(ps[3], `Ada (human): Bot, please say "Back."`) || strings.Contains(ps[3], "has ended") {
+		t.Fatalf("prompt 4 must come without a change of speaker:\n%s", ps[3])
+	}
+	if c := strings.Count(mt.runner.Stderr(), "switching to turn-end"); c != 1 {
+		t.Errorf("the switch is logged %d times, want once", c)
+	}
+	for _, s := range []string{"decider fail", "decider garbage", "decider slow", "Bot, are you there?"} {
+		if c := count(ps, s); c != 1 {
+			t.Errorf("%q is in %d prompts, want 1", s, c)
 		}
 	}
 }
 
-// TestAgentRunnerDecisionBusy: while the agent works, the runner goes on checking. Utterances
-// that come meanwhile wait, and all of them go out in one prompt when the agent is free.
-func TestAgentRunnerDecisionBusy(t *testing.T) {
+// TestAgentRunnerForwardingJudgeBusy: while the agent works, the runner goes on checking.
+// Utterances that come meanwhile wait, and all of them go out in one prompt when the agent is free.
+func TestAgentRunnerForwardingJudgeBusy(t *testing.T) {
 	d := newDecider(t)
-	mt := newMeetingWithRunner(t, nil, "--decide-cmd", d.cmd)
+	mt := newMeetingWithRunner(t, nil, "--wake", "llm", "--decide-cmd", d.cmd)
 
 	mt.say(mt.ada, "Bot, please hold.")
 	contracttest.WaitACPRecord(t, mt.rec, 20*time.Second, func(r contracttest.ACPRecord) bool { return r.Kind() == "hold" })
@@ -197,18 +233,18 @@ func TestAgentRunnerDecisionBusy(t *testing.T) {
 	}
 }
 
-// TestAgentRunnerDecisionWhileAsking: utterances that come while the decision model is asked are
-// not lost. At most one check runs; the next check judges all utterances that wait.
-func TestAgentRunnerDecisionWhileAsking(t *testing.T) {
+// TestAgentRunnerForwardingJudgeWhileAsking: utterances that come while the forwarding judge is
+// asked are not lost. At most one check runs; the next check judges all utterances that wait.
+func TestAgentRunnerForwardingJudgeWhileAsking(t *testing.T) {
 	d := newDecider(t)
-	mt := newMeetingWithRunner(t, nil, "--decide-cmd", d.cmd, "--decide-timeout", "60s")
+	mt := newMeetingWithRunner(t, nil, "--wake", "llm", "--decide-cmd", d.cmd, "--decide-timeout", "60s")
 
 	mt.say(mt.ada, "decider hold")
 	d.wait(t, 1)
 	mt.say(mt.ada, "Two.")
 	three := mt.say(mt.ada, `Bot, please say "Three."`)
 	waitLog(t, mt.botLog, three)
-	if n := len(contracttest.DecisionRequests(t, d.rec)); n != 1 {
+	if n := len(contracttest.ForwardingJudgeRequests(t, d.rec)); n != 1 {
 		t.Fatalf("a second check started while the first one ran: %d requests", n)
 	}
 	if err := os.WriteFile(d.release, nil, 0o600); err != nil {
@@ -221,7 +257,7 @@ func TestAgentRunnerDecisionWhileAsking(t *testing.T) {
 			t.Errorf("%q is in %d prompts, want 1:\n%s", s, n, ps[1])
 		}
 	}
-	reqs := contracttest.DecisionRequests(t, d.rec)
+	reqs := contracttest.ForwardingJudgeRequests(t, d.rec)
 	if len(reqs) > 3 {
 		t.Errorf("want at most one check per utterance, got %d", len(reqs))
 	}
@@ -230,10 +266,10 @@ func TestAgentRunnerDecisionWhileAsking(t *testing.T) {
 	}
 }
 
-// TestAgentRunnerDecisionEndpoint: the OpenAI-compatible kind posts a chat completion with a JSON
-// schema for structured output and the key from OFFICE_DECIDE_KEY; an error status wakes the
-// agent.
-func TestAgentRunnerDecisionEndpoint(t *testing.T) {
+// TestAgentRunnerForwardingJudgeEndpoint: the OpenAI-compatible kind posts a chat completion with a
+// JSON schema for structured output and the key from OFFICE_DECIDE_KEY; an error status is logged
+// and the utterance waits for the next change of speaker.
+func TestAgentRunnerForwardingJudgeEndpoint(t *testing.T) {
 	var mu sync.Mutex
 	type call struct {
 		path, auth string
@@ -258,7 +294,7 @@ func TestAgentRunnerDecisionEndpoint(t *testing.T) {
 	defer srv.Close()
 
 	mt := newMeetingWithRunner(t, []string{"OFFICE_DECIDE_KEY=test-key"},
-		"--decide-url", srv.URL+"/v1", "--decide-model", "tiny-model")
+		"--wake", "llm", "--decide-url", srv.URL+"/v1", "--decide-model", "tiny-model")
 	mt.say(mt.ada, "Bot, are you there?")
 	ps := waitPrompt(t, mt.rec, 2)
 	if !strings.Contains(ps[1], "Bot, are you there?") || !strings.Contains(ps[1], "the speaker addressed: bot.") {
@@ -266,9 +302,11 @@ func TestAgentRunnerDecisionEndpoint(t *testing.T) {
 	}
 	waitPromptEnd(t, mt.rec, 2)
 	mt.say(mt.ada, "Still there?")
+	mt.waitStderr("503")
+	mt.turnEnd(mt.ada)
 	ps = waitPrompt(t, mt.rec, 3)
-	if !strings.Contains(ps[2], "Still there?") || !strings.Contains(mt.runner.Stderr(), "503") {
-		t.Fatalf("an error status must wake the agent and be logged:\n%s\n%s", ps[2], mt.runner.Stderr())
+	if !strings.Contains(ps[2], "Still there?") {
+		t.Fatalf("after an error status, the change of speaker must wake the agent:\n%s\n%s", ps[2], mt.runner.Stderr())
 	}
 
 	mu.Lock()

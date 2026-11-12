@@ -83,7 +83,23 @@ lag behind a fast meeting. The check itself also runs for every utterance.
 id: risk-agent-wakeups
 title: Checking and waking the agent per utterance is slow and costly
 severity: medium
-mitigation: A small, fast decision model that the user brings makes the check and wakes the agent only when it should act (dec-byo-decision-model); queued utterances go out together in one prompt (dec-agent-runner-delivery)
+mitigation: A small, fast forwarding judge or decision model that the user brings makes the check and wakes the agent only when it should act (dec-byo-decision-model); a model that fails falls back to the change of speaker instead of waking the agent at every utterance and is asked again at most once per change of speaker, and queued utterances go out together in one prompt (dec-agent-runner-delivery)
+:::
+```
+
+## The API of a decision model changes
+
+The wake strategy `decision-model` uses the System One API. One vendor defines it, and another
+vendor states that its model is compatible. The API is young; a change of the request, the
+answer or the envelope of a platform would make every check fail. The runner was tested only
+against a test double, not against a real endpoint.
+
+```arc42
+:::risk
+id: risk-decision-model-api
+title: The System One API of a decision model changes or differs between vendors
+severity: low
+mitigation: The runner checks every answer against the contract, accepts the bare answer and the envelope of the platform, and falls back to the change of speaker when checks fail (dec-agent-runner-delivery); a real run against Jev and Clef is planned (issue 87)
 :::
 ```
 

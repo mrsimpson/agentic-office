@@ -20,7 +20,7 @@ Contents:
 1. [Get the software](#1-get-the-software): pre-built, or built yourself
 2. [Run a hub](#2-run-a-hub) (operator, once per team)
 3. [Join a meeting](#3-join-a-meeting) (humans)
-4. [Bring in an agent](#4-bring-in-an-agent): with the agent runner, roles and a decision model
+4. [Bring in an agent](#4-bring-in-an-agent): with the agent runner, roles and a model that decides when to wake the agent
 5. [Try everything on one computer](#5-try-everything-on-one-computer)
 6. [Troubleshooting](#6-troubleshooting)
 
@@ -356,7 +356,8 @@ it over the Agent Client Protocol (ACP). The runner:
 2. starts the harness and hands it the office tools for this meeting. You do not add the office
    as an MCP server in the harness;
 3. tells the agent its role and how the meeting works;
-4. after each sentence of someone else, decides whether to wake the agent (see
+4. decides when to wake the agent: at each change of speaker, or after each sentence of someone
+   else with a model that you bring (see
    [When the runner wakes the agent](#when-the-runner-wakes-the-agent)). When it wakes the agent,
    it sends everything the others said since the last time: who spoke, whether a human or an
    agent, and what they said;
@@ -429,11 +430,25 @@ runner also tells it what the other agents said, and that they are agents.
 
 ### When the runner wakes the agent
 
-Waking a harness with a large model costs time and money. So the runner can ask a small, fast
-**decision model** first. You bring this model; the office ships none.
+Waking a harness with a large model costs time and money. So you choose when the runner wakes
+the agent, with `--wake`:
 
-**With a decision model**, the runner asks it after each sentence of someone else. It wakes the
-agent when the model says that:
+| `--wake` | The runner wakes the agent | You need |
+| --- | --- | --- |
+| `turn-end` (the default) | at each change of speaker: when someone else ends their turn | nothing |
+| `llm` | when a **forwarding judge** says so, after each sentence of someone else | a general language model, for example a small one in Ollama, or your own program |
+| `decision-model` | when a **decision model** says so, after each sentence of someone else | a key for a decision model, for example TypeSafe Jev or Cloudflare Clef |
+
+The office ships no model; you bring it. A forwarding judge is the model or program to which the
+runner forwards its question, for example a general language model; it answers with yes or no
+and a reason. A decision model is a small model made for such questions; it answers with
+probabilities.
+
+**With `turn-end`**, the runner says at start that it does not notice a new topic within a
+monologue.
+
+**With `llm` or `decision-model`**, the runner asks the model after each sentence of someone
+else. It wakes the agent when the model says that:
 
 - someone addressed the agent, by name, by its role or by the context;
 - what was said concerns the agent's role, so it should contribute now. This also works in the
@@ -442,12 +457,17 @@ agent when the model says that:
   end of a topic. Set it with `--topic-task`, for example
   `--topic-task "Update the minutes and record the decisions of this block."`.
 
-What did not wake the agent stays and reaches it with the next wake-up, so it misses nothing. If
-the model fails, or does not answer within `--decide-timeout` (default `10s`), the runner wakes
-the agent anyway.
+What did not wake the agent stays and reaches it with the next wake-up, so it misses nothing.
 
-**Without a decision model**, the runner wakes the agent at each change of speaker: when someone
-else ends their turn. It says at start that it does not notice a new topic within a monologue.
+**When the model fails**, the runner falls back to `turn-end`. A failure is an error, no answer
+within `--decide-timeout` (default `10s`), or an answer the runner cannot read.
+
+- After one failure, the runner does not wake the agent. The sentences wait until the speaker
+  ends the turn.
+- After three failures within five minutes, the runner works as with `turn-end` and says so
+  once on its terminal. It then wakes the agent at each change of speaker, and asks the model
+  again once after each change of speaker, at the next sentence. When the model answers again,
+  the runner switches back and says so.
 
 When you speak, the ears end your turn after a short silence: 1.8 seconds by default. Change it
 with `office meeting join --turn-silence 2.5s`. Text that you type with `office say` does not end
@@ -455,8 +475,46 @@ your turn: run `office signal turn-end` when you are done.
 
 ### Bring a decision model
 
-The decision model gets a short request about the meeting and answers with JSON. Connect it in
-one of two ways.
+A decision model answers questions about the meeting with probabilities. The runner speaks its
+API, the System One API, with `--wake decision-model`. Give the full URL of the endpoint with
+`--decide-url`; the runner appends nothing. Give the model with `--decide-model` and the key in
+`OFFICE_DECIDE_KEY`. The runner sends the key as a bearer token and never logs it.
+
+**TypeSafe Jev.** The endpoint is `https://api.typesafe.ai/v1/systemone`; the models are
+`jev-latest` and `jev-1.14.0`. Input costs $0.042 per million tokens; output is free.
+
+```sh
+export OFFICE_DECIDE_KEY=...   # your TypeSafe key
+OFFICE_KEY="$CFG/agents/kiro/key.pem" office agent run --session weekly --role-file decisions.md \
+  --wake decision-model --decide-url https://api.typesafe.ai/v1/systemone --decide-model jev-1.14.0 \
+  -- kiro-cli acp
+```
+
+**Cloudflare Clef (Workers AI).** Cloudflare states that Clef is compatible with the Jev API. The
+endpoint has your account ID in it; the models are `clef` and `clef-flash`. Input to Clef costs
+$0.24 per million tokens.
+
+```sh
+export OFFICE_DECIDE_KEY=...   # a Cloudflare API token for Workers AI
+OFFICE_KEY="$CFG/agents/kiro/key.pem" office agent run --session weekly --role-file decisions.md \
+  --wake decision-model \
+  --decide-url https://api.cloudflare.com/client/v4/accounts/<your account ID>/ai/run/@cf/cloudflare/clef \
+  --decide-model clef -- kiro-cli acp
+```
+
+**OpenRouter** lists Jev too, but its chat endpoint does not take the parameters that
+`--wake llm` needs. Use the System One endpoint with `--wake decision-model` instead.
+
+The runner asks three questions: should the agent act now, has a topic ended, and whom did the
+speaker address (a participant or nobody). A probability at or above `--decide-threshold`
+(default `0.5`) counts as yes. Raise it if the agent wakes too often; lower it if it misses
+questions. The runner prints the probabilities on its terminal, for example
+`act 0.93, topic_closed 0.10, addressed kiro-bot (0.80)`.
+
+### Bring a forwarding judge
+
+The runner forwards a short request about the meeting to the forwarding judge, which answers
+with JSON. Use `--wake llm` and connect it in one of two ways.
 
 **A server with an OpenAI-compatible API.** It must support structured output with a JSON
 schema (`response_format` of type `json_schema`). Give the base URL that ends in `/v1` with
@@ -468,7 +526,7 @@ With [Ollama](https://ollama.com) on your computer:
 ```sh
 ollama pull qwen3:4b
 OFFICE_KEY="$CFG/agents/kiro/key.pem" office agent run --session weekly --role-file decisions.md \
-  --decide-url http://127.0.0.1:11434/v1 --decide-model qwen3:4b -- kiro-cli acp
+  --wake llm --decide-url http://127.0.0.1:11434/v1 --decide-model qwen3:4b -- kiro-cli acp
 ```
 
 With the llama.cpp server, which downloads the model from Hugging Face and serves it under the
@@ -480,7 +538,7 @@ llama-server -hf ggml-org/Qwen3-4B-GGUF --alias decide --port 8080
 
 ```sh
 OFFICE_KEY="$CFG/agents/kiro/key.pem" office agent run --session weekly --role-file decisions.md \
-  --decide-url http://127.0.0.1:8080/v1 --decide-model decide -- kiro-cli acp
+  --wake llm --decide-url http://127.0.0.1:8080/v1 --decide-model decide -- kiro-cli acp
 ```
 
 The models are examples. Any model works that the server can run with structured output; try a
@@ -488,8 +546,8 @@ small one first. If the server needs a key, put it into `OFFICE_DECIDE_KEY`. The
 as a bearer token and never logs it.
 
 **Your own program.** Give a shell command with `--decide-cmd`, for example
-`--decide-cmd "python3 decide.py"`. The runner starts it once per check. It writes a request as
-JSON to the program's standard input:
+`--wake llm --decide-cmd "python3 decide.py"`. The runner starts it once per check. It writes a
+request as JSON to the program's standard input:
 
 ```json
 {"session": "weekly",
@@ -512,8 +570,8 @@ writes the answer as JSON to its standard output:
 `act` (wake the agent now) and `topic_closed` (a topic has ended) must be there. `addressed` and
 `reason` may be empty. [`README.md`](README.md), section "Agent runner", has the details.
 
-**Where the model runs matters.** The decision model gets the text of the meeting, as the agent's
-own model does. A hosted model sends this text to its provider. A local model keeps it on your
+**Where the model runs matters.** A forwarding judge or a decision model gets the text of the
+meeting, as the agent's own model does. A hosted model sends this text to its provider. A local model keeps it on your
 computer. Sentences off the record are never sent.
 
 ### Without the runner: the tools only
@@ -632,8 +690,8 @@ scripts/try-local.sh tail bot                        # what the agent reads; sto
 | The model download fails | Check your network, or download the models elsewhere and set `OFFICE_MODEL_URL` to a mirror. |
 | `SIGILL: illegal instruction` | A client built on another computer uses CPU features yours lacks. Use the pre-built client, or build with `WHISPER_NATIVE=OFF`. |
 | `office: the harness stopped …` or `ACP session/new: …` | The harness ended or refused the session. Run its command alone (for example `opencode acp`) and read its error. Often it needs a login first: log in with the harness itself. |
-| The agent never speaks | Read the runner's terminal. Does it wake the agent (`waking the agent with …`)? Without a decision model, it wakes the agent only when your turn ends: pause for a moment, or run `office signal turn-end` after typed text. Does the runner reject tools that the agent needs (`permission rejected`)? Allow them with `--allow`. |
-| `decision model failed (…); waking the agent` | The runner woke the agent anyway. Check `--decide-url` (it ends in `/v1`), `--decide-model` and `OFFICE_DECIDE_KEY`, and that the server supports structured output with a JSON schema. A slow model needs a larger `--decide-timeout`. |
+| The agent never speaks | Read the runner's terminal. Does it wake the agent (`waking the agent with …`)? With `--wake turn-end` (the default), or after the model failed, it wakes the agent only when your turn ends: pause for a moment, or run `office signal turn-end` after typed text. Does the runner reject tools that the agent needs (`permission rejected`)? Allow them with `--allow`. |
+| `the forwarding judge failed (…)` or `the decision model failed (…)` | The sentences wait for the end of the turn; after three failures the runner switches to `turn-end`. For `--wake llm`, check `--decide-url` (it ends in `/v1`), `--decide-model` and `OFFICE_DECIDE_KEY`, and that the server supports structured output with a JSON schema. For `--wake decision-model`, check the full URL of the endpoint, the model and the key. A slow model needs a larger `--decide-timeout`. |
 | `the trial is running already` | Run `scripts/try-local.sh down`, then `up` again. |
 | `Apple's container needs a DNS domain` | Do the one-time setup in [Try everything on one computer](#5-try-everything-on-one-computer). |
 | Apple's `container` hangs: `container exec`, `logs` or `system stop` do not return, or the port takes connections but answers nothing | Stop the `container` services with launchd, then start them again: `launchctl list \| awk '/com\.apple\.container\./ {print $3}' \| while read s; do launchctl bootout "gui/$(id -u)/$s"; done`, then `container system start`. If that does not help, restart the Mac. |

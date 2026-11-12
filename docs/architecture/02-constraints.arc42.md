@@ -41,7 +41,8 @@ wording.
 The rule applies to the hub only. The participant client runs on the computer of a participant
 and may contain models, generative or not: the ears transcribe with a speech model, a model for
 named-entity recognition finds names in project documents (`dec-ner-model`), and the agent
-runner may ask a decision model that the user brings (`dec-models-in-client`). Speech-to-text
+runner may ask a forwarding judge or a decision model that the user brings
+(`dec-models-in-client`). Speech-to-text
 counts as conversion, not as judgement.
 
 ```arc42

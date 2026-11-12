@@ -158,10 +158,11 @@ client/                   bb-participant-client: wiring of the client (binary of
     audio/                if-audio-in: microphone recorder and WAV input, 20 ms frames at 16 kHz
   agentrunner/            bb-agent-runner: keeps an agent in a meeting over ACP
     acpclient/            if-acp-client: client side of the Agent Client Protocol
-    decision/             if-decision-model: request, answer and JSON schema of a decision model
+    forwardingjudge/      if-forwarding-judge: request, answer and JSON schema of a forwarding judge
+    systemone/            if-decision-model: request, state, questions and answers of the System One API
 tests/                    external actors: may use interfaces only
   acpdouble/              test double of an ACP agent harness (no model)
-  decisiondouble/         test double of a decision model, command kind (no model)
+  forwardingjudgedouble/  test double of a forwarding judge, command kind (no model)
   architecture/           architecture test
   contracttest/           harness for black-box contract tests
   contract/               contract tests, one file per building block
@@ -1210,8 +1211,11 @@ Everything after `--` is the harness command. Flags:
 - `--allow PATTERN` (repeatable): allow tool calls whose title matches the pattern (`*` is any
   text, without regard to case). `--allow '*'` allows every tool. See the permission rule below.
 - `--cwd DIR`: the working directory of the agent's session (default: the current directory).
-- `--decide-cmd CMD` or `--decide-url URL --decide-model M`: a decision model that you bring
-  (see below). `--decide-timeout D` (default `10s`) and `--topic-task TEXT` go with it.
+- `--wake turn-end|llm|decision-model` (default `turn-end`): the wake strategy, that is when the
+  runner wakes the agent (see below).
+- `--decide-cmd`, `--decide-url`, `--decide-model`, `--decide-threshold`, `--decide-timeout`: the
+  model of `--wake llm` or `--wake decision-model` (see below).
+- `--topic-task TEXT`: the task of the role when a model says that a block of topics has ended.
 - The common flags and `OFFICE_*` variables of the CLI (key, hub, certificate, runtime directory).
 
 **What the runner does:**
@@ -1228,18 +1232,19 @@ Everything after `--` is the harness command. Flags:
 4. It sends a first prompt: the session, the agent's participant ID, its role, how the meeting
    works (speak with `utterance_say`; the reply in the chat reaches nobody; respect sentences
    off the record) and the path of the local log.
-5. After each utterance of another participant, it checks whether to wake the agent
-   (`dec-wake-check-per-utterance`): it asks the decision model, if you brought one. Without a
-   decision model, it wakes the agent at each change of speaker (`turn.end` of another
-   participant) and says so at start: it does not notice a new topic within a monologue. Details
-   below.
+5. It wakes the agent by the wake strategy of `--wake` (`dec-agent-runner-delivery`). With
+   `turn-end`, it wakes the agent at each change of speaker (`turn.end` of another participant)
+   and says so at start: it does not notice a new topic within a monologue. With `llm` or
+   `decision-model`, it asks your model after each utterance of another participant
+   (`dec-wake-check-per-utterance`). Details below.
 6. After `session.ended`, it sends a last prompt and then stops. It also stops after the agent's
    own `participant.left`, on SIGINT or SIGTERM, or when the harness stops. It closes the
    harness's stdin, then sends SIGTERM and at last SIGKILL to the process group. A harness that
    stops by itself is an error (exit 1).
 
-The runner logs to stderr (`office agent: …`): the ACP session, each decision of the decision
-model, each wake-up, each tool call, each permission decision and the agent's reply text, which
+The runner logs to stderr (`office agent: …`): the ACP session, the wake strategy, each decision
+of the model with its reason or its probabilities, each failure and switch of the model, each
+wake-up, each tool call, each permission decision and the agent's reply text, which
 is not spoken.
 
 **What the agent gets** (`dec-agent-runner-delivery`). The runner reads the local log from the
@@ -1248,8 +1253,8 @@ agent's join on. It keeps the utterances of others that the agent has not got ye
 - When it wakes the agent, it sends all of them, oldest first, one per line:
   `[<event ID>] <name> (<human|agent>): <text>`. Then it says whose turn has ended, or that the
   speaker may still be speaking (the agent should then raise its hand or write instead of
-  interrupting). With a decision model, it adds whom the speaker addressed and, when a block of
-  topics has ended, the task for that (`--topic-task`, default: update the minutes and record
+  interrupting). With `llm` or `decision-model`, it adds whom the speaker addressed and, when a
+  block of topics has ended, the task for that (`--topic-task`, default: update the minutes and record
   the decisions and tasks of the block, if the role asks for it).
 - It never sends the agent's own utterances, its own `turn.end`, or placeholders of sentences off
   the record. A sentence that goes off the record before it was sent is never sent. For a sent
@@ -1272,33 +1277,55 @@ New in the meeting "weekly" since my last message (event ID, speaker, human or a
 
 The speaker may still be speaking. Do not interrupt: raise your hand or write instead, unless the speaker asked you to answer now.
 
-A decision model thinks that the speaker addressed: bot.
+The model of the runner thinks that the speaker addressed: bot.
 
 Decide yourself whether someone addressed you or whether your role asks you to contribute now.
 If not, do nothing and end your turn. To speak, call utterance_say.
 ```
 
-**A decision model you bring** (`dec-byo-decision-model`, `if-decision-model`). Waking a
-harness with a large model costs time and money. A small, fast model decides after each
-utterance whether the agent should act. The office ships no model.
+**The wake strategy** (`--wake`, `dec-agent-runner-delivery`, `dec-byo-decision-model`).
+Waking a harness with a large model costs time and money. You choose when the runner wakes it:
+
+| `--wake` | When the runner wakes the agent | Flags |
+| --- | --- | --- |
+| `turn-end` (default) | at each change of speaker (`turn.end` of another participant) | none |
+| `llm` | when a **forwarding judge** that you bring says so, after each utterance | `--decide-cmd CMD`, or `--decide-url URL --decide-model M` |
+| `decision-model` | when a **decision model** that you bring says so, after each utterance | `--decide-url URL --decide-model M`, `--decide-threshold P` |
+
+A forwarding judge is a model or program that you bring and to which the runner forwards its
+question, for example a general language model behind an OpenAI-compatible chat endpoint. It
+answers in the JSON contract of the forwarding judge. A decision model is a small model made to
+answer questions about a state with probabilities, through the System One API. The office ships
+no model. All model flags:
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--decide-cmd CMD` | | `llm`: a shell command (`sh -c`), run once per check. It reads the request as JSON on stdin and writes the answer as JSON on stdout. |
+| `--decide-url URL` | | `llm`: the base URL of an OpenAI-compatible API (it ends in `/v1`); the runner appends `/chat/completions`. `decision-model`: the full URL of a System One endpoint; nothing is appended. |
+| `--decide-model M` | | the model name for `--decide-url` |
+| `--decide-threshold P` | `0.5` | `decision-model`: a probability at or above `P` counts as yes |
+| `--decide-timeout D` | `10s` | after this time without an answer, the check has failed |
+
+`OFFICE_DECIDE_KEY`, if set, goes to the endpoint as `Authorization: Bearer <key>`; it is never
+logged. The runner refuses model flags with `--wake turn-end`, and `--decide-threshold` with
+`--wake llm`.
 
 ```sh
-# a command: reads the request as JSON on stdin, writes the answer as JSON on stdout
-office agent run --session weekly --role-file role.md --decide-cmd "python3 decide.py" -- opencode acp
-# an OpenAI-compatible endpoint with structured output, for example Ollama or llama.cpp
-OFFICE_DECIDE_KEY=... office agent run --session weekly --role-file role.md \
+# llm: a command
+office agent run --session weekly --role-file role.md --wake llm --decide-cmd "python3 decide.py" -- opencode acp
+# llm: an OpenAI-compatible endpoint with structured output, for example Ollama or llama.cpp
+office agent run --session weekly --role-file role.md --wake llm \
   --decide-url http://127.0.0.1:11434/v1 --decide-model <model> -- opencode acp
+# decision-model: TypeSafe Jev
+OFFICE_DECIDE_KEY=... office agent run --session weekly --role-file role.md --wake decision-model \
+  --decide-url https://api.typesafe.ai/v1/systemone --decide-model jev-1.14.0 -- opencode acp
+# decision-model: Cloudflare Clef (Workers AI)
+OFFICE_DECIDE_KEY=... office agent run --session weekly --role-file role.md --wake decision-model \
+  --decide-url https://api.cloudflare.com/client/v4/accounts/<account id>/ai/run/@cf/cloudflare/clef \
+  --decide-model clef -- opencode acp
 ```
 
-- `--decide-cmd CMD`: a shell command (`sh -c`), run once per check.
-- `--decide-url URL --decide-model M`: the runner posts to `URL/chat/completions` with a system
-  message, the request as the user message, `temperature` 0 and `response_format` of type
-  `json_schema` (strict). The answer is the content of the first choice. `OFFICE_DECIDE_KEY`, if
-  set, goes as a bearer token; it is never logged.
-- `--decide-timeout D` (default `10s`): after this time without an answer, the runner wakes the
-  agent.
-
-When the runner checks:
+When the runner checks (`llm` and `decision-model`):
 
 - after each utterance of another participant, and once more when that participant ends the
   turn (`turn_ended` is then true);
@@ -1307,11 +1334,27 @@ When the runner checks:
   got meanwhile is dropped;
 - also while the agent works. A wake-up then waits until the agent is free.
 
-It wakes the agent when the answer has `act` or `topic_closed`, and when the model fails, does
-not answer in time or answers something that is not the contract (the log says why).
-Utterances that did not wake the agent stay and go out with the next wake-up.
+It wakes the agent when the answer says `act` or `topic_closed`. Utterances that did not wake the
+agent stay and go out with the next wake-up.
 
-The request (snake_case JSON, `client/agentrunner/decision`):
+**When the model fails** (graceful fallback). A check fails on an error, on a time-out
+(`--decide-timeout`) or on an answer outside the contract; the log says why.
+
+- One failure does not wake the agent. The utterances wait for the next change of speaker, as
+  with `turn-end`. If the speaker has ended the turn already, the runner wakes the agent now.
+  The next check that works judges all waiting utterances.
+- After three failures within five minutes, with no answer between them, the runner switches to
+  `turn-end` and logs it once (`… 3 failures within 5m0s: switching to turn-end …`). It then
+  wakes the agent at each change of speaker. It asks the model again at most once per change of
+  speaker: at the first utterance after it. When the model answers, it switches back and logs it
+  (`… answers again: switching back from turn-end to …`). There is no timer and no flag for
+  this.
+- No utterance is lost and none is sent twice.
+
+**The forwarding judge** (`--wake llm`, `if-forwarding-judge`,
+`client/agentrunner/forwardingjudge`). With `--decide-url`, the runner posts to `URL/chat/completions` with a system message, the request as
+the user message, `temperature` 0 and `response_format` of type `json_schema` (strict). The
+answer is the content of the first choice. The request (snake_case JSON):
 
 ```json
 {"session": "weekly",
@@ -1333,6 +1376,43 @@ record are never in a request. The answer:
 ```
 
 `act` and `topic_closed` must be there; `addressed` and `reason` may be empty.
+
+**The decision model** (`--wake decision-model`, `if-decision-model`,
+`client/agentrunner/systemone`). The runner speaks the System One API: TypeSafe Jev
+(`https://api.typesafe.ai/v1/systemone`, models `jev-latest` and `jev-1.14.0`) and Cloudflare
+Clef (`https://api.cloudflare.com/client/v4/accounts/<account id>/ai/run/@cf/cloudflare/clef`,
+models `clef` and `clef-flash`; Cloudflare states that it is compatible with the Jev API). The
+runner posts the model, the state of the meeting (the same facts as the request of the
+forwarding judge; `context` is called `earlier`) and three questions:
+
+```json
+{"model": "jev-1.14.0",
+ "state": {"session": "weekly", "agent": {…}, "role": "…", "participants": […], "earlier": […], "new": […], "turn_ended": false},
+ "questions": {
+   "act": {"type": "noul", "instructions": "… Yes if a speaker addressed the agent …"},
+   "topic_closed": {"type": "noul", "instructions": "Yes if the participants closed a topic …"},
+   "addressed": {"type": "choice", "instructions": "Whom did the speaker of the last new utterance address?",
+                 "criteria": {"ada": "Ada", "bot": "Bot", "nobody": "no one in particular"}}}}
+```
+
+The answer:
+
+```json
+{"model": "jev-1.14.0",
+ "answers": {"act": {"type": "noul", "noul": 0.93},
+             "topic_closed": {"type": "noul", "noul": 0.1},
+             "addressed": {"type": "choice", "choice": "bot", "confidence": 0.8, "probabilities": {"ada": 0.1, "bot": 0.8, "nobody": 0.1}}},
+ "usage": {…}}
+```
+
+A `noul` at or above `--decide-threshold` counts as yes. Every question must have an answer of
+its type: a `noul` between 0 and 1, a `choice` that is one of the criteria. The answer may also
+come wrapped as `{"result": {…}, "success": true}`, as the Cloudflare REST API sends it. There is
+no reason; the runner logs the probabilities:
+
+```
+office agent: decision up to event 42: wake (act true, addressed "bot", topic closed false): act 0.93, topic_closed 0.10, addressed bot (0.80); ada 0.10, bot 0.80, nobody 0.10
+```
 
 **The permission rule.** The runner offers the harness no file system and no terminal of its
 own. When the harness asks for permission to use a tool (`session/request_permission`), the
@@ -1382,12 +1462,15 @@ through its interfaces:
   "…"`, `please wait 2s`, `please hold` until a release file exists). The tests check the ACP
   steps, the MCP server and its key, the permission rule and `--allow`, the role file, usage
   errors, a harness that stops, that the harness stops with the runner, and the last prompt.
-  `agentrunner_wake_test.go` checks the wake-up without a decision model (at `turn.end`), queueing
-  while the agent works, and sentences off the record. `agentrunner_decision_test.go` uses the
-  decision model double `tests/decisiondouble` (`contracttest.DecisionDouble`; it judges the last
-  new utterance by fixed rules and records each request) and a fake OpenAI-compatible endpoint: a
-  check per utterance, a wake-up in the middle of a monologue, no wake-up, `topic_closed`,
-  queueing while a check runs, and the fallback on error, time-out and a bad answer. The tests
+  `agentrunner_wake_test.go` checks the wake strategy `turn-end` (a wake-up at `turn.end`),
+  queueing while the agent works, and sentences off the record. `agentrunner_forwardingjudge_test.go`
+  checks `--wake llm` with the forwarding judge double `tests/forwardingjudgedouble`
+  (`contracttest.ForwardingJudgeDouble`; it judges the last new utterance by fixed rules and records each
+  request) and a fake OpenAI-compatible endpoint: a check per utterance, a wake-up in the middle
+  of a monologue, no wake-up, `topic_closed`, queueing while a check runs, and the fallback on
+  error, time-out and a bad answer. `agentrunner_systemone_test.go` checks `--wake
+  decision-model` with a fake System One endpoint: the request, the threshold, `addressed`,
+  `topic_closed`, bare and wrapped answers, the key, and the switch to `turn-end` and back. The tests
   wait for records and log lines of the runner, never for a time. `tests/e2e/agentrunner_test.go`
   combines both doubles with a real hub and a human. No real harness and no model run in the
   tests.
