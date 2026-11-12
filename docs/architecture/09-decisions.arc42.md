@@ -1077,8 +1077,9 @@ its ID. Only slide decks work; the types so far were illustrations (`dec-records
 identity. Two kinds of file are artifacts: text (Markdown) and data (YAML). The hub refuses
 other files. The file names its schema inside itself (in the front matter of a Markdown file, in
 a key of a YAML file), and the hub ships the schemas. A schema decides how the hub checks the
-artifact and how the stage renders it. A Markdown file without a schema is shown as plain text.
-Something that lives in another system, such as a task, is a small YAML artifact that holds the
+artifact and how the stage renders it. Every type keeps its own interface, which creates and
+changes its artifacts (`dec-records-per-type`). The text document is a type too: a Markdown file
+without a schema, shown as plain text. Something that lives in another system, such as a task, is a small YAML artifact that holds the
 URL of the real thing; the hub resolves it through an API later. Every participant may create and
 change artifacts. A change always applies to the head of the repository; there are no branches or
 proposals. A change names the version that its author read, and the hub refuses it when the
@@ -1088,13 +1089,13 @@ log carries the discussion. The archive stores every change of an artifact in on
 for off the record applies when an artifact is created, not when it is shown. **Consequences:**
 The stage chooses its renderer by the schema and no longer by a fixed prefix. The session log
 needs events for created, changed and focused artifacts. Decisions, minutes, notes, slides and
-tasks become schemas, and a command such as the deterministic rendering of slides becomes a
-generator that writes an artifact. The stage and the admin UI share one design for the artifact
-area. **Rejected:** schemas defined by the tenant (out of scope for now); one artifact in focus
+tasks keep their interfaces and each has a schema; what they share is the path, the schema
+reference, the commit per change, the version check and the focus. The stage and the admin UI
+share one design for the artifact area. **Rejected:** schemas defined by the tenant (out of scope for now); one artifact in focus
 per participant (it breaks the shared screen); branches and proposals for changes (later, as a
-schema, if needed); files of any type (the stage cannot show them). OPEN: which schemas the hub
-ships first (proposal: text, slides, minutes); whether this replaces the interfaces of
-`dec-records-per-type` for decisions, minutes, notes and slides (#114); the exact events.
+schema, if needed); files of any type (the stage cannot show them); one general write interface for all types (an agent should know what it writes). OPEN: which types the hub
+ships first (proposal: text document, slides, minutes); how the stage reads any artifact to render
+it (#114); the exact events.
 
 ```arc42
 :::decision
