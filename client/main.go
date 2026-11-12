@@ -34,8 +34,8 @@ func main() {
 		return agentrunner.Run(ctx, agentrunner.Options{Config: o.Config, Session: o.Session, Role: o.Role,
 			Harness: o.Harness, Allow: o.Allow, Cwd: o.Cwd, Office: o.Office, Version: o.Version, Stderr: o.Stderr,
 			Dial: core.Dial, NewReplicator: replicator.New, TopicTask: o.TopicTask,
-			Decision: agentrunner.DecisionModel{Command: o.DecideCommand, URL: o.DecideURL, Model: o.DecideModel,
-				APIKey: o.DecideKey, Timeout: o.DecideTimeout}})
+			Wake: agentrunner.Wake{Strategy: o.Wake, Command: o.DecideCommand, URL: o.DecideURL, Model: o.DecideModel,
+				APIKey: o.DecideKey, Threshold: o.DecideThreshold, Timeout: o.DecideTimeout, Retry: o.DecideRetry}})
 	}
 	cli.CheckEars = func(ctx context.Context, o *cli.EarsOptions, progress func(string)) error {
 		cfg := earsConfig(*o)

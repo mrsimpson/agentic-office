@@ -18,8 +18,8 @@ import (
 
 // TestAgentThroughRunner: a human talks to an agent in plain words, without a keyword and
 // without ending the turn. The agent runs in a harness (the ACP test double) that the agent
-// runner drives. A decision model (its test double) says after each utterance whether the agent
-// should act; it wakes the agent in the middle of the monologue. The agent answers through the
+// runner drives with the wake strategy llm. An LLM judge (its test double) says after each
+// utterance whether the agent should act; it wakes the agent in the middle of the monologue. The agent answers through the
 // office MCP server, and the human reads the answer in their own log. When the human ends the
 // meeting, the agent gets a last prompt and the runner stops.
 func TestAgentThroughRunner(t *testing.T) {
@@ -59,7 +59,7 @@ func TestAgentThroughRunner(t *testing.T) {
 
 	rec := filepath.Join(t.TempDir(), "acp.jsonl")
 	runner := contracttest.Start(t, "office", append(bot, "ACP_DOUBLE_RECORD="+rec), "agent", "run", "--session", sid,
-		"--role", "You keep the minutes and answer questions.", "--decide-cmd", contracttest.DecisionDouble(t),
+		"--role", "You keep the minutes and answer questions.", "--wake", "llm", "--decide-cmd", contracttest.DecisionDouble(t),
 		"--", contracttest.ACPDouble(t))
 	contracttest.WaitACPRecord(t, rec, 20*time.Second, func(r contracttest.ACPRecord) bool { return r.Kind() == "prompt_end" })
 

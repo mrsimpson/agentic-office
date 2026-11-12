@@ -1,8 +1,9 @@
-// Package decision is the contract of a decision model (if-decision-model in
-// docs/architecture/05-building-blocks.arc42.md, dec-byo-decision-model).
+// Package decision is the contract of an LLM judge (if-llm-judge in
+// docs/architecture/05-building-blocks.arc42.md, dec-byo-decision-model): a general language model
+// that the user brings and that the agent runner asks whether to wake the agent (--wake llm).
 //
-// The user brings the model. After each utterance of another participant, the agent runner sends
-// a Request and expects an Answer. The model is reached in one of two ways:
+// After each utterance of another participant, the runner sends a Request and expects an Answer.
+// The LLM judge is reached in one of two ways:
 //
 //   - a command: it reads one Request as JSON on stdin and writes one Answer as JSON on stdout,
 //     then exits;
@@ -37,7 +38,7 @@ type Utterance struct {
 	Text string `json:"text"`
 }
 
-// Request is what the runner asks the decision model after an utterance.
+// Request is what the runner asks the LLM judge after an utterance.
 type Request struct {
 	// Session is the ID of the session.
 	Session string `json:"session"`
@@ -57,7 +58,7 @@ type Request struct {
 	TurnEnded bool `json:"turn_ended"`
 }
 
-// Answer is the structured output of the decision model.
+// Answer is the structured output of the LLM judge.
 type Answer struct {
 	// Act is true if the agent should act now.
 	Act bool `json:"act"`
@@ -83,7 +84,7 @@ const AnswerSchema = `{
 }`
 
 // ErrBadAnswer means that an answer does not follow the contract.
-var ErrBadAnswer = errors.New("bad answer of the decision model")
+var ErrBadAnswer = errors.New("bad answer of the LLM judge")
 
 // ParseAnswer reads an Answer. The fields act and topic_closed must be there and be booleans;
 // addressed and reason may be missing.

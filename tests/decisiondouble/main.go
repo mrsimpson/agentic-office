@@ -1,5 +1,5 @@
-// Command decisiondouble is a test double of a decision model of the command kind
-// (if-decision-model). It reads one request as JSON on stdin and writes one answer as JSON on
+// Command decisiondouble is a test double of an LLM judge of the command kind (if-llm-judge,
+// --wake llm). It reads one request as JSON on stdin and writes one answer as JSON on
 // stdout. It calls no model. It follows fixed rules on the last new utterance, the one that the
 // runner checks:
 //

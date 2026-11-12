@@ -1,8 +1,8 @@
 package contract
 
 // Contract tests of what the agent runner delivers to the agent, and when
-// (dec-wake-check-per-utterance, dec-agent-runner-delivery). This file covers the runner without
-// a decision model: it wakes the agent at each change of speaker. The harness is the ACP test
+// (dec-wake-check-per-utterance, dec-agent-runner-delivery). This file covers the wake strategy
+// turn-end, the default: the runner wakes the agent at each change of speaker. The harness is the ACP test
 // double from tests/acpdouble. The tests wait for records and log lines, never for time.
 
 import (
@@ -109,7 +109,7 @@ func count(prompts []string, s string) int {
 	return n
 }
 
-// TestAgentRunnerTurns: without a decision model, the runner says so at start and wakes the
+// TestAgentRunnerTurns: with the wake strategy turn-end, the runner says so at start and wakes the
 // agent at each change of speaker, not at each utterance. The agent gets what others said since
 // the last delivery, in order, with who spoke and their kind; never its own utterances; nothing
 // twice. A turn without new utterances wakes nobody.

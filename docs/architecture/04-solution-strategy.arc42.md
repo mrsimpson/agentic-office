@@ -25,7 +25,8 @@ addresses: qg-confidentiality, qg-performance, qg-resumability, qg-usability
 The agent makes every judgement about content. The hub stores, calculates, renders and checks
 against rules. So any agent can connect, and the hub stays deterministic and testable (see
 `dec-headless-byoa`). The client may contain models on the participant's side, for example the
-speech model of the ears or a decision model that the user brings (`dec-models-in-client`).
+speech model of the ears or an LLM judge or a decision model that the user brings
+(`dec-models-in-client`).
 
 ## Keep the agent in the meeting
 

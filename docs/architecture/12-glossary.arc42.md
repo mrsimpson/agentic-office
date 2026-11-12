@@ -234,14 +234,41 @@ definition: An open JSON-RPC protocol over standard input and output between a c
 
 ## Decision model
 
-A model that the user brings for the agent runner (`dec-byo-decision-model`). It is not the agent:
-it only decides whether the agent should be woken.
+A small model that the user brings for the agent runner (`dec-byo-decision-model`), for example
+TypeSafe Jev or Cloudflare Clef. It is not the agent: it only answers questions about the
+meeting, and the runner decides with its answers whether to wake the agent.
 
 ```arc42
 :::glossary-term
 id: term-decision-model
 title: Decision model
-definition: A model that the user brings and that tells the agent runner after each utterance whether the agent should act and whether a block of topics has ended
+definition: A small model, made to answer questions about a state with probabilities through the System One API, that the user brings; it tells the agent runner after each utterance how likely the agent should act and a block of topics has ended, and whom the speaker addressed
+:::
+```
+
+## LLM judge
+
+A general language model that the user brings for the agent runner (`dec-byo-decision-model`).
+It is not the agent: it only decides whether the agent should be woken.
+
+```arc42
+:::glossary-term
+id: term-llm-judge
+title: LLM judge
+definition: A general language model that the user brings, behind an OpenAI-compatible chat endpoint or a command; it tells the agent runner after each utterance whether the agent should act, whom the speaker addressed and whether a block of topics has ended, with a short reason
+:::
+```
+
+## Wake strategy
+
+How the agent runner decides when to wake the agent (`dec-agent-runner-delivery`). The user
+chooses one at the start of the runner.
+
+```arc42
+:::glossary-term
+id: term-wake-strategy
+title: Wake strategy
+definition: The rule by which the agent runner wakes the agent; turn-end wakes it at each change of speaker, llm asks an LLM judge and decision-model asks a decision model after each utterance; the last two fall back to turn-end when the model fails
 :::
 ```
 

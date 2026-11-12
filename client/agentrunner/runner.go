@@ -8,9 +8,9 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/mrsimpson/agentic-office/client/agentrunner/acpclient"
-	"github.com/mrsimpson/agentic-office/client/agentrunner/decision"
 
 	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
 	"github.com/mrsimpson/agentic-office/client/replicator/control"
@@ -41,9 +41,9 @@ type Options struct {
 	Office string
 	// Version is reported to the harness.
 	Version string
-	// Decision is the decision model that the user brings. The zero value: wake the agent at
-	// each change of speaker (dec-byo-decision-model).
-	Decision DecisionModel
+	// Wake chooses the wake strategy and its model (dec-agent-runner-delivery,
+	// dec-byo-decision-model). The zero value: wake the agent at each change of speaker.
+	Wake Wake
 	// TopicTask is the task of the role when a block of topics has ended. Empty: a default task.
 	TopicTask string
 	// Stderr receives the log of the runner and the stderr of the harness. Nil: os.Stderr.
@@ -85,6 +85,10 @@ func Run(ctx context.Context, o Options) error {
 			return err
 		}
 	}
+	wake, err := newWakeStrategy(o.Wake, logf)
+	if err != nil {
+		return err
+	}
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -109,12 +113,8 @@ func Run(ctx context.Context, o Options) error {
 		return err
 	}
 
-	if o.Decision.configured() {
-		logf("decision model: %s; it is asked after each utterance of another participant", o.Decision)
-	} else {
-		logf("no decision model: the agent is woken at each change of speaker (turn.end); without a decision model (--decide-cmd or --decide-url), a new topic within a monologue is not detected")
-	}
-	r := &runner{o: o, m: m, h: h, logf: logf, self: m.joined.ParticipantID,
+	logf("%s", wake)
+	r := &runner{o: o, wake: wake, m: m, h: h, logf: logf, self: m.joined.ParticipantID,
 		start: m.joined.Result.GetEvent().GetId(), names: map[string]participant{}}
 	err = r.loop(ctx)
 	if errors.Is(err, context.Canceled) && ctx.Err() != nil {
@@ -148,6 +148,7 @@ type participant struct {
 // runner is the state of one run.
 type runner struct {
 	o     Options
+	wake  wakeStrategy
 	m     *meeting
 	h     *acpclient.Harness
 	logf  func(string, ...any)
@@ -155,7 +156,8 @@ type runner struct {
 	start uint32 // the join event of the agent; what came before is history
 	names map[string]participant
 	d     delivery
-	// The check of the decision model (dec-wake-check-per-utterance). At most one runs at a time.
+	// The check of the model of the wake strategy (dec-wake-check-per-utterance). At most one
+	// runs at a time.
 	checkDue bool // an utterance or a turn.end waits for a check
 	checking bool // a check runs
 	waiting  int  // how many waiting utterances the log named last while the agent was busy
@@ -168,15 +170,15 @@ type turn struct {
 	final bool // the last prompt after session.ended
 }
 
-// check is the end of one check of the decision model.
+// check is the end of one check of the model.
 type check struct {
-	answer decision.Answer
-	err    error
-	last   uint32 // the event ID of the last utterance that the check judged
+	verdict verdict
+	err     error
+	last    uint32 // the event ID of the last utterance that the check judged
 }
 
 // loop sends the first prompt and follows the local log until the run ends. At most one prompt
-// and at most one check of the decision model run at a time (dec-agent-runner-delivery).
+// and at most one check of the model run at a time (dec-agent-runner-delivery).
 func (r *runner) loop(ctx context.Context) error {
 	evs := make(chan *sessionstreamv1.Event)
 	ferr := make(chan error, 1)
@@ -258,26 +260,31 @@ func (r *runner) loop(ctx context.Context) error {
 	}
 }
 
-// take applies one event of the log after the agent's join.
+// take applies one event of the log after the agent's join. The wake strategy says what an
+// utterance or a turn.end of another participant asks of the runner.
 func (r *runner) take(ev *sessionstreamv1.Event) {
 	switch r.d.apply(ev, r.self) {
 	case triggerUtterance:
-		if r.o.Decision.configured() {
-			r.checkDue = true
-		}
+		r.follow(r.wake.utterance(time.Now()))
 	case triggerTurnEnd:
-		if r.o.Decision.configured() {
-			r.checkDue = true
-		} else {
-			r.d.wake = true
-		}
+		r.follow(r.wake.turnEnd(time.Now()))
 	case triggerNotice:
 		// The agent got a sentence that is now off the record. It must know that soon.
 		r.d.wake = true
 	}
 }
 
-// startCheck starts a check of the decision model if one is due and none runs. The check judges
+// follow does what the wake strategy asks.
+func (r *runner) follow(s step) {
+	switch s {
+	case stepWake:
+		r.d.wake = true
+	case stepCheck:
+		r.checkDue = true
+	}
+}
+
+// startCheck starts a check of the model if one is due and none runs. The check judges
 // all pending utterances; utterances that come while it runs wait for the next check, which
 // then judges them all together (dec-agent-runner-delivery).
 func (r *runner) startCheck(ctx context.Context, checked chan<- check) {
@@ -288,32 +295,35 @@ func (r *runner) startCheck(ctx context.Context, checked chan<- check) {
 	last := req.New[len(req.New)-1].EventID
 	r.checkDue, r.checking = false, true
 	go func() {
-		a, err := r.o.Decision.ask(ctx, req)
-		checked <- check{answer: a, err: err, last: last}
+		v, err := r.wake.ask(ctx, req)
+		checked <- check{verdict: v, err: err, last: last}
 	}()
 }
 
-// judge takes the answer of a check. An answer about utterances that the agent got meanwhile
-// is dropped. A failed check wakes the agent (dec-byo-decision-model).
+// judge takes the end of a check. The wake strategy learns of it in any case, so that it
+// counts failures. An answer about utterances that the agent got meanwhile counts no more.
 func (r *runner) judge(c check) {
+	s := r.wake.answered(time.Now(), c.verdict, c.err, r.d.turnBy != "")
 	if !r.d.pendingUpTo(c.last) {
 		return
 	}
-	a := c.answer
+	v := c.verdict
 	switch {
 	case c.err != nil:
-		r.logf("decision model failed (%v); waking the agent", c.err)
-		r.d.wake = true
-	case a.Act || a.TopicClosed:
+		if s == stepWake {
+			r.logf("the turn has ended meanwhile; waking the agent")
+			r.d.wake = true
+		}
+	case s == stepWake:
 		r.logf("decision up to event %d: wake (act %t, addressed %q, topic closed %t): %s",
-			c.last, a.Act, a.Addressed, a.TopicClosed, oneLine(a.Reason, 200))
+			c.last, v.act, v.addressed, v.topicClosed, v.note)
 		r.d.wake = true
-		r.d.topicClosed = r.d.topicClosed || a.TopicClosed
-		if a.Addressed != "" {
-			r.d.addressed = a.Addressed
+		r.d.topicClosed = r.d.topicClosed || v.topicClosed
+		if v.addressed != "" {
+			r.d.addressed = v.addressed
 		}
 	default:
-		r.logf("decision up to event %d: do not wake (addressed %q): %s", c.last, a.Addressed, oneLine(a.Reason, 200))
+		r.logf("decision up to event %d: do not wake (addressed %q): %s", c.last, v.addressed, v.note)
 	}
 }
 

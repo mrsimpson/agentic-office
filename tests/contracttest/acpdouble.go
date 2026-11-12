@@ -36,8 +36,8 @@ var (
 	decisionDoubleErr  string
 )
 
-// DecisionDouble builds the test double of a decision model (tests/decisiondouble, the command
-// kind of if-decision-model) once and returns the path of its binary. See the package comment of
+// DecisionDouble builds the test double of an LLM judge (tests/decisiondouble, the command
+// kind of if-llm-judge) once and returns the path of its binary. See the package comment of
 // tests/decisiondouble for its rules.
 func DecisionDouble(t testing.TB) string {
 	t.Helper()
@@ -45,7 +45,7 @@ func DecisionDouble(t testing.TB) string {
 		decisionDoublePath, decisionDoubleErr = buildTool(t, "decisiondouble")
 	})
 	if decisionDoubleErr != "" {
-		t.Fatalf("build the decision model test double: %s", decisionDoubleErr)
+		t.Fatalf("build the LLM judge test double: %s", decisionDoubleErr)
 	}
 	return decisionDoublePath
 }
@@ -66,7 +66,7 @@ func buildTool(t testing.TB, name string) (string, string) {
 	return p, ""
 }
 
-// DecisionRequests reads the requests that the decision model test double recorded. A missing
+// DecisionRequests reads the requests that the LLM judge test double recorded. A missing
 // file has no requests.
 func DecisionRequests(t testing.TB, path string) []map[string]any {
 	t.Helper()

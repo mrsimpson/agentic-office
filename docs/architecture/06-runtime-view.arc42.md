@@ -423,19 +423,22 @@ An agent takes part through the agent runner (`dec-agent-runner-acp`). The runne
 session with the key of the agent and follows its local log. It started the harness, opened one
 ACP session with the office tools and sent a first prompt with the role.
 
-A human talks. Each sentence reaches the local log as `utterance.final`. After each utterance,
-the runner checks whether to wake the agent (`dec-wake-check-per-utterance`): it asks the
-decision model whether the agent should act now, for example because the speaker addressed it,
-started a new topic within a monologue or talks about something that concerns the role of the
-agent (`dec-byo-decision-model`). If so, the runner collects what others said since its last
+A human talks. Each sentence reaches the local log as `utterance.final`. The wake strategy that
+the user chose decides when to wake the agent (`dec-agent-runner-delivery`). With `llm` or
+`decision-model`, the runner checks after each utterance (`dec-wake-check-per-utterance`): it
+asks the LLM judge or the decision model whether the agent should act now, for example because
+the speaker addressed it, started a new topic within a monologue or talks about something that
+concerns the role of the agent (`dec-byo-decision-model`). If so, the runner collects what others said since its last
 delivery, leaves out the agent's own utterances and sentences off the record, and sends it as one
 prompt. The agent decides how to act: it answers with `utterance_say` when the speaker asked it,
 raises its hand instead of interrupting, or updates the minutes silently. Its actions reach every
 local log, also that of the runner, which leaves them out of the next prompt. If the agent is
-still busy, the runner queues what comes and sends it together afterwards. If the decision model
-is still busy with a check, the next check judges all new utterances together
-(`dec-agent-runner-delivery`). Without a decision model, the runner wakes the agent only when the
-speaker ends the turn. When the session ends, the runner sends a last prompt with what is left
+still busy, the runner queues what comes and sends it together afterwards. If the model is
+still busy with a check, the next check judges all new utterances together
+(`dec-agent-runner-delivery`). If a check fails, the utterances wait until the speaker ends the
+turn; after three failures in a row, the runner works as `turn-end` until the model answers
+again. With `turn-end`, the runner wakes the agent only when the speaker ends the turn. When the
+session ends, the runner sends a last prompt with what is left
 and stops the harness.
 
 ```arc42
@@ -452,7 +455,7 @@ involves: bb-agent-runner, bb-client-core, bb-replicator, bb-mcp, bb-cli, bb-ses
 id: seq-agent-runner-turn
 notation: mermaid-sequence
 scenario: rs-agent-runner-turn
-aliases: actor_human=actor-human, actor_agent=actor-agent, actor_decision_model=actor-decision-model, bb_cli=bb-cli, bb_session=bb-session-service, bb_replicator=bb-replicator, bb_agent_runner=bb-agent-runner, bb_mcp=bb-mcp
+aliases: actor_human=actor-human, actor_agent=actor-agent, actor_llm_judge=actor-llm-judge, actor_decision_model=actor-decision-model, bb_cli=bb-cli, bb_session=bb-session-service, bb_replicator=bb-replicator, bb_agent_runner=bb-agent-runner, bb_mcp=bb-mcp
 :::
 ```
 
@@ -463,6 +466,7 @@ sequenceDiagram
     participant bb_session as Meeting session
     participant bb_replicator as Log replicator
     participant bb_agent_runner as Agent runner
+    participant actor_llm_judge as LLM judge
     participant actor_decision_model as Decision model
     participant actor_agent as Agent harness
     participant bb_mcp as MCP server
@@ -471,8 +475,15 @@ sequenceDiagram
     bb_session-->>bb_replicator: utterance.final
     bb_replicator->>bb_replicator: append lines to the local log of the agent
     bb_agent_runner->>bb_replicator: read new lines
-    bb_agent_runner->>actor_decision_model: new utterance, context, role
-    actor_decision_model-->>bb_agent_runner: act, addressed, topic_closed, reason
+    alt wake strategy llm
+        bb_agent_runner->>actor_llm_judge: new utterances, context, role
+        actor_llm_judge-->>bb_agent_runner: act, addressed, topic_closed, reason
+    else wake strategy decision-model
+        bb_agent_runner->>actor_decision_model: state of the meeting, questions
+        actor_decision_model-->>bb_agent_runner: probabilities of act and topic_closed, addressed
+    else wake strategy turn-end, or the model failed
+        Note over bb_agent_runner: waits for the turn.end of the speaker
+    end
     bb_agent_runner->>actor_agent: session/prompt (who said what)
     actor_agent->>bb_mcp: utterance_say (answer)
     bb_mcp->>bb_session: utterance.submit (as the agent)

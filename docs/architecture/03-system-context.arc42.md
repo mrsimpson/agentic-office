@@ -3,7 +3,7 @@
 The system has two parts: the **office hub** and the **participant client** (CLI, MCP server,
 log replicator, agent runner and, optionally, the ears). The actors see both only as black boxes with their
 interfaces. Outside the system are the participants themselves
-(humans and agents), the meeting tool and, optionally, a decision model that a user brings. The meeting tool only carries the shared stage.
+(humans and agents), the meeting tool and, optionally, an LLM judge or a decision model that a user brings. The meeting tool only carries the shared stage.
 
 ## Context diagram
 
@@ -12,7 +12,7 @@ interfaces. Outside the system are the participants themselves
 id: context-overview
 view: context
 notation: mermaid
-aliases: actor_agent=actor-agent, actor_decision_model=actor-decision-model, actor_human=actor-human, actor_meeting_tool=actor-meeting-tool, bb_office_hub=bb-office-hub, bb_participant_client=bb-participant-client
+aliases: actor_agent=actor-agent, actor_decision_model=actor-decision-model, actor_llm_judge=actor-llm-judge, actor_human=actor-human, actor_meeting_tool=actor-meeting-tool, bb_office_hub=bb-office-hub, bb_participant_client=bb-participant-client
 :::
 ```
 
@@ -20,6 +20,7 @@ aliases: actor_agent=actor-agent, actor_decision_model=actor-decision-model, act
 flowchart LR
     actor_agent([Agent])
     actor_decision_model([Decision model])
+    actor_llm_judge([LLM judge])
     actor_human([Human participant])
     actor_meeting_tool([Meeting tool])
     subgraph office [Agentic Office]
@@ -31,6 +32,7 @@ flowchart LR
     actor_agent -->|if-local-log| bb_participant_client
     actor_agent -->|if-acp-client| bb_participant_client
     actor_decision_model -->|if-decision-model| bb_participant_client
+    actor_llm_judge -->|if-llm-judge| bb_participant_client
     actor_human -->|if-cli| bb_participant_client
     actor_human -->|if-audio-in| bb_participant_client
     actor_human -->|if-local-log| bb_participant_client
@@ -79,18 +81,37 @@ requires: if-mcp, if-cli, if-local-log, if-acp-client
 
 ## Decision model
 
-A model that a user brings and configures for the agent runner (`dec-byo-decision-model`), for
-example a small local model behind an OpenAI-compatible endpoint, or a program. After each
-utterance of another participant, the runner asks it whether the agent should act now, whom the
-speaker addressed and whether a block of topics has ended. The office ships no such model.
+A small model made to answer questions about a state with probabilities, which a user brings
+and configures for the agent runner (`dec-byo-decision-model`), for example TypeSafe Jev or
+Cloudflare Clef behind the System One API. With the wake strategy `decision-model`, the runner
+asks it after each utterance of another participant how likely the agent should act now and a
+block of topics has ended, and whom the speaker addressed. The office ships no such model.
 
 ```arc42
 :::actor
 id: actor-decision-model
 title: Decision model
 type: system
-description: Optional, brought by the user; answers after each utterance whether the agent should act and whether a topic has ended
+description: Optional, brought by the user; answers after each utterance with probabilities whether the agent should act and whether a topic has ended, and whom the speaker addressed
 requires: if-decision-model
+:::
+```
+
+## LLM judge
+
+A general language model that a user brings and configures for the agent runner
+(`dec-byo-decision-model`), for example a small local model behind an OpenAI-compatible endpoint,
+or a program. With the wake strategy `llm`, the runner asks it after each utterance of another
+participant whether the agent should act now, whom the speaker addressed and whether a block of
+topics has ended. The office ships no such model.
+
+```arc42
+:::actor
+id: actor-llm-judge
+title: LLM judge
+type: system
+description: Optional, brought by the user; answers after each utterance whether the agent should act and whether a topic has ended, with a reason
+requires: if-llm-judge
 :::
 ```
 

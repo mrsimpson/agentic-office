@@ -28,7 +28,8 @@ client runs on the computer of a participant, and the ears already use a speech 
 keep an agent in a meeting at a sensible cost, the client may want to ask a small model whether
 the agent should act. **Decision:** `con-no-intelligence` applies to the hub only. The
 participant client may contain models, generative or not, on the participant's side. The office
-ships no generative model; a user brings one (`dec-byo-decision-model`). **Consequences:** The
+ships no generative model; a user brings an LLM judge or a decision model
+(`dec-byo-decision-model`). **Consequences:** The
 hub stays as it is. A model in the client can only change what the client of that participant
 does, never what the hub stores or how it decides. Tests of the client use test doubles of such
 models and never call a real model. **Rejected:** a model in the hub (no governance); no model in
@@ -80,15 +81,15 @@ addresses: con-turn-based-agents, qg-usability
 notice when a speaker starts a new topic within a monologue, or talks about something that
 concerns the role of the agent. The end of a turn (`turn.end`) comes too late for that.
 **Decision:** After each utterance of another participant, the runner checks whether to wake the
-agent. A decision model that the user brings makes the check (`dec-byo-decision-model`). When it
-says the agent should act, the runner sends the agent what others said since its last delivery,
+agent. An LLM judge or a decision model that the user brings makes the check
+(`dec-byo-decision-model`). When it says the agent should act, the runner sends the agent what others said since its last delivery,
 as one prompt. Each utterance says who spoke and whether that participant is a human or an
 agent. The agent decides by itself how to act: answer, raise its hand, or update the minutes
-silently. Without a decision model, a check per utterance would wake the agent at every
-utterance. So the runner then wakes the agent at each change of speaker instead, and says at
-start that it does not notice a new topic within a monologue (`dec-agent-runner-delivery`).
-**Consequences:** People talk to the agent in plain words, and the agent can
-follow topics within a long monologue. The check runs for every utterance, so the decision model
+silently. Without such a model, a check per utterance would wake the agent at every
+utterance. So the wake strategy `turn-end` wakes the agent at each change of speaker instead, and
+the runner says at start that it does not notice a new topic within a monologue
+(`dec-agent-runner-delivery`). **Consequences:** People talk to the agent in plain words, and the
+agent can follow topics within a long monologue. The check runs for every utterance, so the model
 must be fast and cheap. An agent may act while someone still speaks; it should not interrupt
 speech, but raise its hand or write. **Rejected:** a wake-up only at each change of speaker (it
 misses a new topic within a monologue); a keyword (not natural).
@@ -107,9 +108,17 @@ addresses: con-turn-based-agents, qg-usability
 
 **Context:** The runner must deliver what was said reliably, while the agent may be busy and the
 log may grow. The harness works in turns and does not follow the session by itself, so the runner
-decides when to notify it over ACP. **Decision:** The runner has one notification strategy with
-two variants. With a decision model, the model decides after each utterance whether to wake the
-agent. Without one, the change of speaker wakes it. The rules:
+decides when to notify it over ACP. **Decision:** The runner has one notification strategy. A
+wake strategy, chosen by the user at the start of the runner, decides when to wake the agent:
+
+- `turn-end` (the default): at each change of speaker (`turn.end` of another participant). The
+  runner says at start that it does not notice a new topic within a monologue.
+- `llm`: an LLM judge that the user brings decides after each utterance
+  (`dec-byo-decision-model`).
+- `decision-model`: a decision model that the user brings decides after each utterance
+  (`dec-byo-decision-model`).
+
+Each wake strategy is one exchangeable part of the runner. All other rules hold for all three:
 
 - The runner joins the session with the key of the agent and runs the log replicator in its own
   process. The agent does not need to join; a join through the tools reuses the same participant
@@ -118,14 +127,17 @@ agent. Without one, the change of speaker wakes it. The rules:
   out the agent's own utterances and sentences off the record. A sentence that goes off the record
   before it was delivered is never delivered. For a delivered one, the runner wakes the agent as
   soon as it is free and tells it that the sentence is off the record.
-- With a decision model, the runner checks after each utterance of another participant, and
-  once more when that participant ends the turn. One check runs at a time. Utterances that come
+- With `llm` or `decision-model`, the runner checks after each utterance of another
+  participant, and once more when that participant ends the turn. One check runs at a time. Utterances that come
   while a check runs wait; the next check judges all utterances that the agent has not got yet,
   together. An answer about utterances that the agent got meanwhile counts no more. The runner
   also checks while the agent works.
-- Without a decision model, the runner wakes the agent at each change of speaker (`turn.end` of
-  another participant). It says at start that it does not notice a new topic within a monologue
-  without a decision model.
+- Graceful fallback: with `llm` or `decision-model`, a check that fails (an error, a time-out or
+  an answer outside the contract) does not wake the agent. The utterances wait for the next
+  change of speaker, as with `turn-end`; if that change has come already, the runner wakes the
+  agent now. After three failures in a row, the runner works as `turn-end` and logs this once.
+  It asks the model again after a wait that grows with each failure, and switches back, with a
+  log line, when the model answers.
 - When the runner wakes the agent, it sends all utterances of others since its last delivery as
   one prompt. One prompt runs at a time. While the agent works, the runner queues what comes
   and sends it together in one prompt afterwards. A change of speaker without new utterances of
@@ -140,13 +152,16 @@ agent. Without one, the change of speaker wakes it. The rules:
   a new runner for the same agent delivers what was said since that join.
 
 **Consequences:** Nothing is lost and nothing is sent twice within one ACP session. The agent
-gets fewer, larger prompts when it is slow. A slow decision model sees several utterances in one
-check instead of falling behind. The permission rule keeps an unattended agent from running
+gets fewer, larger prompts when it is slow. A slow model sees several utterances in one
+check instead of falling behind. A model that fails costs at most the wake-ups of `turn-end`, and
+the agent never waits longer than for the next change of speaker. The permission rule keeps an unattended agent from running
 other tools unless the user allows them. **Rejected:** cancelling a running prompt when a new
 turn comes (the agent would lose its work); one prompt per turn while busy (the agent would lag
 behind more and more); one check per utterance in parallel (answers could come out of order and
 the model would be asked more often than it can answer); waking the agent at every utterance
-without a decision model (too many wake-ups).
+without a model (too many wake-ups); waking the agent at every failed check (a broken model would
+wake it at every utterance); branches on "is a model configured" spread through the runner
+instead of one exchangeable wake strategy.
 
 ```arc42
 :::decision
@@ -158,34 +173,48 @@ addresses: qg-resumability, qg-usability, risk-retraction-leak, risk-agent-wakeu
 :::
 ```
 
-## A decision model that the user brings
+## An LLM judge or a decision model that the user brings
 
 **Context:** The runner checks after each utterance whether to wake the agent
 (`dec-wake-check-per-utterance`). Waking a harness with a large model for this costs time and
 money, and it is slow to decide that it is not addressed. A small model can decide this faster
 and cheaper. The hub must stay without intelligence (`con-no-intelligence`), and the office
-should not pick a model for its users. **Decision:** The runner has an interface for a decision
-model that the user brings and configures (`if-decision-model`). It is an OpenAI-compatible chat
-endpoint with structured output by JSON schema (for example llama.cpp, Ollama or a hosted model),
-or a command that reads the request as JSON and writes the answer as JSON. After each utterance,
-the runner asks it and gets `act`, `addressed`, `topic_closed` and `reason`. It wakes the agent
-when `act` is true. When `topic_closed` is true, it wakes the agent with the task of the role for
-the end of a topic, for example to update the minutes or to record decisions. Without a decision
-model, the runner wakes the agent at each change of speaker and says at start that it does not
-notice a new topic within a monologue (`dec-agent-runner-delivery`). If the model fails or does
-not answer in time, the runner wakes the agent and logs why.
-**Consequences:** The office ships no model and stays free of a model vendor. A wrong answer of
-the model can keep the agent silent when it was addressed; the fallback covers only errors and
-time-outs. Utterances that did not wake the agent stay queued and reach it with the next prompt,
-so nothing is lost. **Rejected:** a model built into the office; a fixed vendor API.
+should not pick a model for its users. **Decision:** The user brings one of two kinds of model,
+each with its own interface:
+
+- An LLM judge (`if-llm-judge`, wake strategy `llm`): a general language model that judges by a
+  prompt. It is an OpenAI-compatible chat endpoint with structured output by JSON schema (for
+  example llama.cpp, Ollama or a hosted model), or a command that reads the request as JSON and
+  writes the answer as JSON. It answers `act`, `addressed`, `topic_closed` and `reason`.
+- A decision model (`if-decision-model`, wake strategy `decision-model`): a small model made to
+  answer questions about a state with probabilities, reached through the System One API, for
+  example TypeSafe Jev or Cloudflare Clef. The runner sends the state of the meeting and asks
+  whether the agent should act and whether a block of topics has ended, each as a probability,
+  and whom the speaker addressed, as a choice among the participants and "nobody". A probability
+  at or above a threshold of the user counts as yes. There is no reason, so the runner logs the
+  probabilities.
+
+With either kind, the runner wakes the agent when it should act. When a block of topics has
+ended, it wakes the agent with the task of the role for the end of a topic, for example to update
+the minutes or to record decisions. If the model fails, the runner falls back to the change of
+speaker (`dec-agent-runner-delivery`). Without a model, the wake strategy `turn-end` wakes the
+agent at each change of speaker. **Consequences:** The office ships no model and stays free of a
+model vendor. Two contracts cover general chat models and dedicated decision models; each has its
+own request and answer. A wrong "no" of the model can keep the agent silent when it was
+addressed; the utterances stay queued and reach it with the next prompt, so nothing is lost. The
+System One API comes from one vendor, and another vendor states that it is compatible
+(`risk-decision-model-api`). **Rejected:** a model built into the office; one fixed vendor API;
+one contract for both kinds (a chat model answers with booleans and a reason, a decision model
+with probabilities); reaching a decision model through the chat endpoint of a model router (it
+does not take the structured output that the LLM judge needs).
 
 ```arc42
 :::decision
 id: dec-byo-decision-model
-title: A decision model that the user brings
+title: An LLM judge or a decision model that the user brings
 status: accepted
-date: 2026-11-11
-addresses: con-no-intelligence, qg-performance, qg-usability, risk-agent-wakeups
+date: 2026-11-12
+addresses: con-no-intelligence, qg-performance, qg-usability, risk-agent-wakeups, risk-decision-model-api
 :::
 ```
 

@@ -52,8 +52,8 @@ func (r *runner) writeBatch(b *strings.Builder, bt batch) {
 const defaultTopicTask = "If your role asks for it, update the minutes and record the decisions and tasks of that block now."
 
 // wakePrompt is the prompt that wakes the agent (dec-wake-check-per-utterance). It says whether
-// the speaker has ended their turn and what the decision model found: whom the speaker addressed
-// and whether a block of topics has ended.
+// the speaker has ended their turn and what the model of the wake strategy found: whom the
+// speaker addressed and whether a block of topics has ended.
 func (r *runner) wakePrompt(bt batch) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "New in the meeting %q since my last message (event ID, speaker, human or agent, text):\n\n", r.o.Session)
@@ -72,7 +72,7 @@ func (r *runner) wakePrompt(bt batch) string {
 		fmt.Fprintf(&b, "\nA block of topics has ended. %s\n", task)
 	}
 	if bt.addressed != "" {
-		fmt.Fprintf(&b, "\nA decision model thinks that the speaker addressed: %s.\n", bt.addressed)
+		fmt.Fprintf(&b, "\nThe model of the runner thinks that the speaker addressed: %s.\n", bt.addressed)
 	}
 	b.WriteString("\nDecide yourself whether someone addressed you or whether your role asks you to contribute now. If not, do nothing and end your turn. To speak, call utterance_say.")
 	return b.String()

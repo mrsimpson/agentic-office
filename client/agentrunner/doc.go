@@ -1,7 +1,7 @@
 // Package agentrunner is the building block Agent runner (bb-agent-runner in
 // docs/architecture/05-building-blocks.arc42.md). It realizes the client side of the Agent Client
-// Protocol (if-acp-client, package acpclient) and calls a decision model through
-// if-decision-model (package decision).
+// Protocol (if-acp-client, package acpclient). It calls an LLM judge through if-llm-judge
+// (package decision) or a decision model through if-decision-model (package systemone).
 //
 // The runner keeps an agent in a meeting (dec-agent-runner-acp). Agents in harnesses such as
 // Claude Code, opencode or Kiro work in turns: they finish a turn and wait. The runner follows the
@@ -17,10 +17,14 @@
 //     with one MCP server, "office": this office binary
 //     with "mcp --session S" and the OFFICE_* variables of the agent as absolute values.
 //   - It sends a first prompt with the role, the meeting and the path of the local log.
-//   - It checks after each utterance of another participant whether to wake the agent
-//     (dec-wake-check-per-utterance): it asks the decision model (DecisionModel, the contract
-//     in package decision) and wakes the agent on act or topic_closed, or when the model fails.
-//     Without a decision model, it wakes the agent at each turn.end of another participant.
+//   - A wake strategy decides when to wake the agent (wake.go, dec-agent-runner-delivery). The
+//     user chooses it with --wake; the runner creates it once at start:
+//     turn-end (turnEndWake) wakes the agent at each turn.end of another participant;
+//     llm (llmWake, llm.go) asks an LLM judge after each utterance of another participant;
+//     decision-model (decisionModelWake, decisionmodel.go) asks a decision model of the System
+//     One API after each utterance. The two model strategies wake the agent on act or
+//     topic_closed and share the fallback to turn-end when the model fails
+//     (dec-byo-decision-model).
 //   - When it wakes the agent, it sends all utterances of others since its last delivery in one
 //     prompt (delivery.go). One prompt and one check run at a time; what comes meanwhile waits
 //     and goes out, or is judged, together afterwards (dec-agent-runner-delivery).
