@@ -610,24 +610,47 @@ func (s *Service) UpdateMinutes(ctx context.Context, req *sessioncommandsv1.Upda
 	return &sessioncommandsv1.UpdateMinutesResponse{Result: res}, nil
 }
 
-// ShowArtifact appends artifact.shown. It does not check that the artifact exists: the session is
+// FocusArtifact appends artifact.focused. It does not check that the artifact exists: the session is
 // only the log of what participants did, and the stage handles an unknown ID.
-func (s *Service) ShowArtifact(ctx context.Context, req *sessioncommandsv1.ShowArtifactRequest) (*sessioncommandsv1.ShowArtifactResponse, error) {
+func (s *Service) FocusArtifact(ctx context.Context, req *sessioncommandsv1.FocusArtifactRequest) (*sessioncommandsv1.FocusArtifactResponse, error) {
 	if req.GetArtifactId() == "" {
 		return nil, invalid("artifact_id is required")
 	}
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
-		types: []string{events.ArtifactShown},
+		types: []string{events.ArtifactFocused},
 		build: func(*state, Caller) (*sessionstreamv1.Event, error) {
-			return &sessionstreamv1.Event{Payload: &sessionstreamv1.Event_ArtifactShown{
-				ArtifactShown: &sessionstreamv1.ArtifactShown{ArtifactId: req.GetArtifactId()}}}, nil
+			return &sessionstreamv1.Event{Payload: &sessionstreamv1.Event_ArtifactFocused{
+				ArtifactFocused: &sessionstreamv1.ArtifactFocused{ArtifactId: req.GetArtifactId()}}}, nil
 		},
 	}, false)
 	if err != nil {
 		return nil, err
 	}
-	return &sessioncommandsv1.ShowArtifactResponse{Result: res}, nil
+	return &sessioncommandsv1.FocusArtifactResponse{Result: res}, nil
+}
+
+// NoteArtifact appends artifact.created or artifact.changed for the participant of the access token
+// in ctx (dec-artifacts). The parts of the hub that write artifacts call it in-process after the
+// write, with the context of the caller. The participant must have joined the session. It is
+// idempotent by command_id like every command.
+func (s *Service) NoteArtifact(ctx context.Context, sessionID, participantID, commandID string, created bool, path, version string) error {
+	typ := events.ArtifactChanged
+	if created {
+		typ = events.ArtifactCreated
+	}
+	_, err := s.run(ctx, command{
+		sessionID: sessionID, commandID: commandID, participantID: participantID, types: []string{typ},
+		build: func(*state, Caller) (*sessionstreamv1.Event, error) {
+			if created {
+				return &sessionstreamv1.Event{Payload: &sessionstreamv1.Event_ArtifactCreated{
+					ArtifactCreated: &sessionstreamv1.ArtifactCreated{Path: path, Version: version}}}, nil
+			}
+			return &sessionstreamv1.Event{Payload: &sessionstreamv1.Event_ArtifactChanged{
+				ArtifactChanged: &sessionstreamv1.ArtifactChanged{Path: path, Version: version}}}, nil
+		},
+	}, false)
+	return err
 }
 
 // EndSession stores the confirmed minutes (if-minutes-api) and then appends session.ended

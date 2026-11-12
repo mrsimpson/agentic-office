@@ -37,6 +37,7 @@ import (
 	"connectrpc.com/connect/v2/connecthttp"
 
 	archivev1connect "github.com/mrsimpson/agentic-office/hub/archive/api/archivev1connect"
+	documentv1connect "github.com/mrsimpson/agentic-office/hub/documents/api/documentv1connect"
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	identityv1connect "github.com/mrsimpson/agentic-office/hub/identity/api/identityv1connect"
@@ -362,6 +363,7 @@ type Clients struct {
 	Task     taskv1connect.TaskServiceClient
 	Slides   slidesv1connect.SlidesServiceClient
 	Archive  archivev1connect.ArchiveReadServiceClient
+	Document documentv1connect.DocumentServiceClient
 }
 
 // NewClients returns clients for baseURL that use hc (nil: a new default client) and the
@@ -382,6 +384,7 @@ func NewClients(baseURL string, hc *http.Client, interceptors ...connect.ClientI
 		Task:     taskv1connect.NewTaskServiceClient(c),
 		Slides:   slidesv1connect.NewSlidesServiceClient(c),
 		Archive:  archivev1connect.NewArchiveReadServiceClient(c),
+		Document: documentv1connect.NewDocumentServiceClient(c),
 	}
 }
 

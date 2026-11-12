@@ -1,0 +1,65 @@
+// Documents (if-document-api): create and change text documents. A text document is a Markdown
+// file in the directory "documents" of the repository, without a schema (dec-artifacts). It is
+// one type of artifact; read it through the archive (archive.proto).
+//
+// The path of a document is its identity: "documents/<name>.md", with subdirectories if you
+// like. A change always applies to the head of the repository. It names the version that its
+// author read; when the document has another version by then, the change fails with aborted
+// and the message has the current version. The author reads the document again and tries
+// again. Of two changes with the same base, the first one wins.
+//
+// Every call needs an access token of a participant (see identity.proto). The archive records
+// the participant as the author of the commit. A call may name a session: the hub then appends
+// artifact.created or artifact.changed to the log of that session, and the participant must
+// have joined it. A sentence that is off the record must not go into a document
+// (dec-off-the-record); the hub does not check this.
+syntax = "proto3";
+
+package office.document.v1;
+
+option go_package = "github.com/mrsimpson/agentic-office/hub/documents/api;documentv1";
+
+service DocumentService {
+  // CreateDocument creates a document. It fails with already_exists if the path is taken. It is
+  // idempotent by command_id: a repeated request returns the first result with duplicate set.
+  rpc CreateDocument(CreateDocumentRequest) returns (CreateDocumentResponse);
+  // ChangeDocument replaces the content of a document. It fails with not_found if there is no
+  // such document and with aborted if base_version is not the current version.
+  rpc ChangeDocument(ChangeDocumentRequest) returns (ChangeDocumentResponse);
+}
+
+message CreateDocumentRequest {
+  // path is "documents/<name>.md". Required.
+  string path = 1;
+  // content is the Markdown text, valid UTF-8, at most 1 MiB. Required.
+  string content = 2;
+  // command_id is created by the client. Required.
+  string command_id = 3;
+  // session_id is optional: the session whose log gets artifact.created.
+  string session_id = 4;
+}
+
+message CreateDocumentResponse {
+  DocumentVersion document = 1;
+  bool duplicate = 2;
+}
+
+message ChangeDocumentRequest {
+  string path = 1;
+  string content = 2;
+  string command_id = 3;
+  string session_id = 4;
+  // base_version is the version of the document that the author read. Required.
+  string base_version = 5;
+}
+
+message ChangeDocumentResponse {
+  DocumentVersion document = 1;
+  bool duplicate = 2;
+}
+
+message DocumentVersion {
+  string path = 1;
+  // version identifies the content, the same as in archive.proto.
+  string version = 2;
+}

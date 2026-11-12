@@ -163,8 +163,8 @@ func (v *view) apply(ctx context.Context, ev *sessionstreamv1.Event, decks Slide
 		v.hands = append(v.hands, handView{Participant: pt, Topic: p.HandRaised.GetTopic()})
 	case *sessionstreamv1.Event_MinutesUpdated:
 		v.minutes = p.MinutesUpdated.GetText()
-	case *sessionstreamv1.Event_ArtifactShown:
-		v.artifact = loadArtifact(ctx, p.ArtifactShown.GetArtifactId(), decks)
+	case *sessionstreamv1.Event_ArtifactFocused:
+		v.artifact = loadArtifact(ctx, p.ArtifactFocused.GetArtifactId(), decks)
 	case *sessionstreamv1.Event_SessionImported:
 		v.imported = &importView{Source: p.SessionImported.GetSource(), Title: p.SessionImported.GetTitle(),
 			By: ev.GetActorParticipantId()}

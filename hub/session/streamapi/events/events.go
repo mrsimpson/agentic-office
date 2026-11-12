@@ -13,7 +13,9 @@ const (
 	Addressed             = "addressed"
 	HandRaised            = "hand.raised"
 	MinutesUpdated        = "minutes.updated"
-	ArtifactShown         = "artifact.shown"
+	ArtifactCreated       = "artifact.created"
+	ArtifactChanged       = "artifact.changed"
+	ArtifactFocused       = "artifact.focused"
 	ParticipantJoined     = "participant.joined"
 	ParticipantLeft       = "participant.left"
 	ParticipantPaused     = "participant.paused"
@@ -42,8 +44,12 @@ func TypeOf(ev *sessionstreamv1.Event) string {
 		return HandRaised
 	case *sessionstreamv1.Event_MinutesUpdated:
 		return MinutesUpdated
-	case *sessionstreamv1.Event_ArtifactShown:
-		return ArtifactShown
+	case *sessionstreamv1.Event_ArtifactFocused:
+		return ArtifactFocused
+	case *sessionstreamv1.Event_ArtifactCreated:
+		return ArtifactCreated
+	case *sessionstreamv1.Event_ArtifactChanged:
+		return ArtifactChanged
 	case *sessionstreamv1.Event_ParticipantJoined:
 		return ParticipantJoined
 	case *sessionstreamv1.Event_ParticipantLeft:

@@ -14,6 +14,8 @@ import (
 	"connectrpc.com/connect/v2"
 	"connectrpc.com/connect/v2/connecthttp"
 
+	"github.com/mrsimpson/agentic-office/hub/archive/api/archivev1connect"
+	"github.com/mrsimpson/agentic-office/hub/documents/api/documentv1connect"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/identityv1connect"
 	"github.com/mrsimpson/agentic-office/hub/records/decision/api/decisionv1connect"
@@ -43,6 +45,8 @@ type hubClient struct {
 	note          notev1connect.NoteServiceClient
 	task          taskv1connect.TaskServiceClient
 	slides        slidesv1connect.SlidesServiceClient
+	document      documentv1connect.DocumentServiceClient
+	archive       archivev1connect.ArchiveReadServiceClient
 }
 
 var _ coreapi.Dial = Dial
@@ -75,6 +79,8 @@ func Dial(cfg coreapi.Config) (coreapi.Client, error) {
 		note:          notev1connect.NewNoteServiceClient(cc),
 		task:          taskv1connect.NewTaskServiceClient(cc),
 		slides:        slidesv1connect.NewSlidesServiceClient(cc),
+		document:      documentv1connect.NewDocumentServiceClient(cc),
+		archive:       archivev1connect.NewArchiveReadServiceClient(cc),
 	}, nil
 }
 

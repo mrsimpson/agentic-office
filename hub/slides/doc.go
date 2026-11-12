@@ -8,7 +8,7 @@
 //   - RenderDeck takes a deck (an optional title and at least one slide; every slide needs a
 //     title, bullets and notes are optional) and renders it with Render into one HTML document
 //     (MediaType). The deck gets the ID "slides/<n>". n starts at 1 and grows by one with every
-//     deck. IDs are never used twice. The stage shows a deck by this ID (artifact.shown).
+//     deck. IDs are never used twice. The stage shows a deck by this ID (artifact.focused).
 //   - The rendering is deterministic (con-no-intelligence): the same title and slides give the
 //     same bytes, also on another hub. The document holds nothing but the deck: no time, no
 //     random value, no hub address. Text is plain text; Markdown inside a bullet is shown as it
@@ -50,6 +50,6 @@
 //     link, is PermissionDenied; no valid token is Unauthenticated; a reused command_id is
 //     AlreadyExists; a failed write to the archive is Internal, and the client can repeat the
 //     command.
-//   - The meeting session does not check that a shown artifact exists (session.ShowArtifact). The
+//   - The meeting session does not check that a shown artifact exists (session.FocusArtifact). The
 //     stage handles an ID that Load does not know.
 package slides

@@ -350,7 +350,7 @@ func TestCLICommandsAppearInLog(t *testing.T) {
 	adaUtt := do(ada, events.UtteranceFinal, "say", "Hello bot")
 	do(bot, events.HandRaised, "hand", "raise", "--topic", "budget")
 	do(bot, events.MinutesUpdated, "minutes", "update", "Budget: agreed")
-	do(bot, events.ArtifactShown, "stage", "show", "slides/42")
+	do(bot, events.ArtifactFocused, "stage", "focus", "slides/42")
 	do(ada, events.ParticipantPaused, "meeting", "pause")
 	do(ada, events.ParticipantResumed, "meeting", "resume")
 	do(bot, events.TurnEnd, "signal", "turn-end", "--participant", "ada")
@@ -928,4 +928,49 @@ func TestCLITasks(t *testing.T) {
 	bot.fails(1, "not_found", "task", "get", "local:999")
 	bot.fails(1, "not_found", "task", "update", "github:owner/repo#1", "--status", "done")
 	bot.fails(1, "invalid_argument", "task", "update", ref1, "--title", " ")
+}
+
+// TestCLIDocuments: document create, change, get and list against the real hub. A change needs
+// the version that was read; a stale one fails with aborted.
+func TestCLIDocuments(t *testing.T) {
+	m := newMachine(t)
+	bot := m.user("bot", "Bot", "agent")
+	ada := m.user("ada", "Ada", "human")
+	dir := t.TempDir()
+	file := filepath.Join(dir, "plan.md")
+	if err := os.WriteFile(file, []byte("# Plan\n\nTwo lines.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	v := ada.ok("document", "create", "documents/plan.md", "--file", file)
+	if v["path"] != "documents/plan.md" || v["version"] == "" || v["duplicate"] != false {
+		t.Fatalf("create: %v", v)
+	}
+	base, _ := v["version"].(string)
+	out, _, code := bot.run("document", "get", "documents/plan.md")
+	if code != 0 || out != "# Plan\n\nTwo lines.\n" {
+		t.Fatalf("get: exit %d, %q", code, out)
+	}
+	if g := bot.ok("document", "get", "documents/plan.md"); g["version"] != base || g["content"] != "# Plan\n\nTwo lines.\n" {
+		t.Fatalf("get --json: %v", g)
+	}
+	// The bot changes it on the version it read; Ada's change on the same version is refused.
+	if c := bot.ok("document", "change", "documents/plan.md", "--base", base, "Short."); c["version"] == base {
+		t.Fatalf("change: %v", c)
+	}
+	ada.fails(1, "aborted", "document", "change", "documents/plan.md", "--base", base, "Mine.")
+	ada.fails(1, "already_exists", "document", "create", "documents/plan.md", "again")
+	ada.fails(2, "usage", "document", "change", "documents/plan.md", "Mine.")
+	ada.fails(1, "not_found", "document", "get", "documents/none.md")
+	list, _ := ada.ok("document", "list")["files"].([]any)
+	if first, _ := list[0].(map[string]any); len(list) != 1 || first["path"] != "documents/plan.md" {
+		t.Fatalf("list: %v", list)
+	}
+	outFile := filepath.Join(dir, "out.md")
+	if g := ada.ok("document", "get", "documents/plan.md", "--out", outFile); g["file"] != outFile {
+		t.Fatalf("get --out: %v", g)
+	}
+	if b, _ := os.ReadFile(outFile); string(b) != "Short." {
+		t.Fatalf("file written by get --out: %q", b)
+	}
 }

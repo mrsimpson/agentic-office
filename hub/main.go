@@ -51,6 +51,8 @@ import (
 
 	"github.com/mrsimpson/agentic-office/hub/archive"
 	"github.com/mrsimpson/agentic-office/hub/archive/api/archivev1connect"
+	"github.com/mrsimpson/agentic-office/hub/documents"
+	"github.com/mrsimpson/agentic-office/hub/documents/api/documentv1connect"
 	"github.com/mrsimpson/agentic-office/hub/identity"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/identityv1connect"
@@ -216,6 +218,7 @@ func main() {
 	notev1connect.RegisterNoteServiceHandler(cs, recs)
 	taskv1connect.RegisterTaskServiceHandler(cs, tks)
 	slidesv1connect.RegisterSlidesServiceHandler(cs, decks)
+	documentv1connect.RegisterDocumentServiceHandler(cs, documents.New(arch, sessions))
 	archivev1connect.RegisterArchiveReadServiceHandler(cs, archive.NewReadService(arch))
 	mux := http.NewServeMux()
 	connecthttp.Mount(mux, cs)

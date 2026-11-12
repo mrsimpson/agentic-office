@@ -43,16 +43,24 @@ Meeting:
   signal addressed --participant P --utterance ID
   hand raise [--topic T]
   minutes update <text> | --file F   (--file - reads stdin)
-  stage show <artifact-id>
+  stage focus <artifact-id>
   stage link                         create a read-only link to the stage
 
 Import (dec-session-import; the format is in README.md):
   session import <conversation.json | ->  import a conversation as a new, marked session and
                                      print its ID (--session S chooses the ID; - reads stdin)
 
-Slides (the ID, such as slides/42, is what stage show takes):
+Slides (the ID, such as slides/42, is what stage focus takes):
   slides render <deck.json | deck.md>  render a deck and print its ID
   slides get <id> [--out FILE]       the rendered deck (--json: input and output)
+
+Documents (text documents are Markdown files "documents/<name>.md"; never put a sentence that is
+off the record into them; --session links the change to a session):
+  document create <path> <text> | --file F   create a document
+  document change <path> --base VERSION <text> | --file F  replace a document; the base is the
+                                     version you read, a stale one fails with "aborted"
+  document get <path> [--out FILE]   the content (--json: path, version and content)
+  document list [<dir>]              files of a directory of the archive (default: documents)
 
 Records (never put a sentence that is off the record into them):
   decision record <text> | --file F  record a decision (--session links it to a session)

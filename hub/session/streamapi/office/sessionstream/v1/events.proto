@@ -46,7 +46,9 @@ message Event {
     // Actions
     HandRaised hand_raised = 30; // "hand.raised"
     MinutesUpdated minutes_updated = 31; // "minutes.updated"
-    ArtifactShown artifact_shown = 32; // "artifact.shown"
+    ArtifactFocused artifact_focused = 32; // "artifact.focused"
+    ArtifactCreated artifact_created = 33; // "artifact.created"
+    ArtifactChanged artifact_changed = 34; // "artifact.changed"
     // Life cycle
     ParticipantJoined participant_joined = 40; // "participant.joined"
     ParticipantLeft participant_left = 41; // "participant.left"
@@ -111,9 +113,25 @@ message MinutesUpdated {
   string text = 1;
 }
 
-message ArtifactShown {
-  // artifact_id is for example "slides/42".
+message ArtifactFocused {
+  // artifact_id is the path of the artifact in the repository, for example "documents/plan.md".
+  // A slide deck still has its own ID, for example "slides/42".
   string artifact_id = 1;
+}
+
+// ArtifactCreated says that the actor created an artifact (dec-artifacts). The hub appends it
+// when a command names the session; the actor must be a participant of the session.
+message ArtifactCreated {
+  // path is the path of the artifact in the repository.
+  string path = 1;
+  // version identifies the content that the actor wrote (see archive.proto).
+  string version = 2;
+}
+
+// ArtifactChanged says that the actor changed an artifact (dec-artifacts), see ArtifactCreated.
+message ArtifactChanged {
+  string path = 1;
+  string version = 2;
 }
 
 message ParticipantJoined {

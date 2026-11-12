@@ -516,7 +516,7 @@ them. The package comment in `hub/slides/doc.go` has the details. In short:
 - `GetDeck` fetches a deck with its input and output by ID; an unknown ID fails with
   `not_found`. Any participant can fetch every deck. A stage link cannot use the slides
   interface: the stage renders on the hub.
-- **Artifact** is the general word for what the stage shows: `stage show` takes an ID with its
+- **Artifact** is the general word for what the stage shows: `stage focus` takes an ID with its
   type in front. Today `slides/<n>` is the only type. The meeting session does not check that a
   shown artifact exists; the stage shows a note for an unknown ID.
 
@@ -858,7 +858,7 @@ LOG=$(office meeting join weekly)  # returns at once and prints the path of the 
 tail -f "$LOG" | grep --line-buffered '"type":"turn.end"\|"type":"addressed"'
 office say "I can summarize that."
 office hand raise --topic budget
-office stage show slides/42
+office stage focus slides/42
 office minutes update --file minutes.md
 office meeting leave               # or: office meeting end (for everyone)
 ```
@@ -907,7 +907,7 @@ session; `task update` changes the session only with an explicit `--session`. Wi
 
 ```sh
 ID=$(office slides render deck.md)   # prints the deck ID, for example slides/42
-office stage show "$ID"
+office stage focus "$ID"
 office slides get "$ID" --out deck.html
 office slides get "$ID" --json      # {"deck": …}: the input and the output (content in base64)
 ```
@@ -1232,7 +1232,7 @@ tool names.
 | `signal_turn_end`, `signal_silence_long`, `signal_addressed` | `signal …` |
 | `hand_raise` (topic) | `hand raise` |
 | `minutes_update` (text or file) | `minutes update` |
-| `stage_show` (artifactId), `stage_link` | `stage show`, `stage link` |
+| `stage_focus` (artifactId), `stage_link` | `stage focus`, `stage link` |
 | `slides_render` (title and slides, markdown, or file) | `slides render` |
 | `slides_get` (id, out) | `slides get` |
 | `decision_record` (text, session), `decision_list` (afterId, limit, session) | `decision record`, `decision list` |

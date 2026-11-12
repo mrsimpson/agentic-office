@@ -215,7 +215,7 @@ func TestSessionRejectsCallsWithoutValidToken(t *testing.T) {
 				return err
 			},
 			"show artifact": func() error {
-				_, err := s.ShowArtifact(ctx, &sessioncommandsv1.ShowArtifactRequest{SessionId: "s", CommandId: cmd(),
+				_, err := s.FocusArtifact(ctx, &sessioncommandsv1.FocusArtifactRequest{SessionId: "s", CommandId: cmd(),
 					ParticipantId: "ada", ArtifactId: "slides/1"})
 				return err
 			},

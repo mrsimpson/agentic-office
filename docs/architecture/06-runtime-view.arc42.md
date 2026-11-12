@@ -182,10 +182,49 @@ sequenceDiagram
     bb_cli->>bb_session: hand.raise
     bb_session-->>bb_stage: hand.raised
     Note over bb_session: the moderator gives the floor, event addressed
-    actor_agent->>bb_cli: office stage show slides/42
-    bb_cli->>bb_session: stage.show
-    bb_session-->>bb_stage: artifact.shown
+    actor_agent->>bb_cli: office stage focus slides/42
+    bb_cli->>bb_session: stage.focus
+    bb_session-->>bb_stage: artifact.focused
     bb_stage->>bb_slides: load deck slides/42
+```
+
+## Participant changes a document in a session
+
+A participant reads a document from the archive, changes it and sends the change with the version
+that they read and the ID of the session. The documents part writes one commit with the participant
+as author and tells the meeting session, which appends `artifact.changed`. When another change
+came first, the documents part refuses the change and gives the current version, and the participant
+reads again.
+
+```arc42
+:::runtime-scenario
+id: rs-document-change
+title: Participant changes a document in a session
+trigger: A participant sends a change of a document with the version they read
+involves: bb-documents, bb-archive, bb-session-service, bb-stage, bb-office-hub
+:::
+```
+
+```arc42
+:::diagram
+id: seq-document-change
+notation: mermaid-sequence
+scenario: rs-document-change
+aliases: bb_documents=bb-documents, bb_archive=bb-archive, bb_session=bb-session-service, bb_stage=bb-stage
+:::
+```
+
+```mermaid
+sequenceDiagram
+    participant bb_documents as Documents
+    participant bb_archive as Archive
+    participant bb_session as Meeting session
+    participant bb_stage as Stage
+    Note over bb_documents: change with base version and session ID
+    bb_documents->>bb_archive: commit, refused if the base is stale
+    bb_documents->>bb_session: artifact notice
+    bb_session-->>bb_stage: artifact.changed
+    bb_stage->>bb_archive: read the document by its path
 ```
 
 ## Human marks a sentence off the record

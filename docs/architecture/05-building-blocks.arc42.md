@@ -33,6 +33,8 @@ flowchart LR
     bb_participant_client -->|if-note-api| bb_office_hub
     bb_participant_client -->|if-task-api| bb_office_hub
     bb_participant_client -->|if-slides-api| bb_office_hub
+    bb_participant_client -->|if-document-api| bb_office_hub
+    bb_participant_client -->|if-archive-read| bb_office_hub
     bb_participant_client -->|if-auth-api| bb_office_hub
     bb_participant_client -->|if-session-stream| bb_office_hub
 ```
@@ -61,7 +63,7 @@ id: bb-office-hub-whitebox
 view: building-block
 notation: mermaid
 roots: bb-office-hub
-aliases: bb_office_hub=bb-office-hub, bb_archive=bb-archive, bb_identity=bb-identity, bb_records=bb-records, bb_session_service=bb-session-service, bb_slides=bb-slides, bb_stage=bb-stage, bb_tasks=bb-tasks, bb_tenants=bb-tenants
+aliases: bb_office_hub=bb-office-hub, bb_archive=bb-archive, bb_documents=bb-documents, bb_identity=bb-identity, bb_records=bb-records, bb_session_service=bb-session-service, bb_slides=bb-slides, bb_stage=bb-stage, bb_tasks=bb-tasks, bb_tenants=bb-tenants
 :::
 ```
 
@@ -69,6 +71,7 @@ aliases: bb_office_hub=bb-office-hub, bb_archive=bb-archive, bb_identity=bb-iden
 flowchart LR
     subgraph bb_office_hub [Office hub]
         bb_archive[Archive]
+        bb_documents[Documents]
         bb_identity[Identity]
         bb_records[Records]
         bb_session_service[Meeting session]
@@ -77,6 +80,9 @@ flowchart LR
         bb_tasks[Tasks]
         bb_tenants[Tenants]
     end
+    bb_documents -->|if-archive-storage| bb_archive
+    bb_documents -->|if-session-notice| bb_session_service
+    bb_documents -->|if-token-check| bb_identity
     bb_records -->|if-archive-storage| bb_archive
     bb_records -->|if-token-check| bb_identity
     bb_session_service -->|if-archive-storage| bb_archive
@@ -96,7 +102,7 @@ flowchart LR
 ### Session commands
 
 Synchronous calls that answer at once: `join`, `leave`, `utterance.submit`, `utterance.mark_off_the_record`,
-`pause`, `hand.raise`, `minutes.update`, `stage.show`. Each successful call creates one event in the
+`pause`, `hand.raise`, `minutes.update`, `stage.focus`. Each successful call creates one event in the
 log. Each call carries an ID created by the client, so a repeated call has no extra effect.
 
 The session commands also let anyone with a token check a session log (`dec-merkle-log`): they
@@ -338,6 +344,26 @@ path: hub/slides/api
 :::
 ```
 
+### Documents
+
+Create and change text documents: Markdown files under `documents` in the archive, without a
+schema (`dec-artifacts`). The path is the identity of a document. A change names the version that
+its author read, and the hub refuses it when another change came first. The archive records the
+participant who calls as the author of the commit. A call may name a session; the hub then tells
+the meeting session, which appends `artifact.created` or `artifact.changed`. A sentence that is off
+the record must not go into a document; the author takes care of that.
+
+```arc42
+:::interface
+id: if-document-api
+title: Documents
+provider: bb-office-hub
+x-realized-by: bb-documents
+protocol: Connect RPC, unary (dec-connect-rpc)
+path: hub/documents/api
+:::
+```
+
 ### Stage view
 
 A browser view of one session, opened by a link.
@@ -371,6 +397,22 @@ parent: bb-office-hub
 implements: concept-event-log, concept-participant-model, concept-identity
 requires: if-minutes-api, if-token-check, if-archive-storage
 path: hub/session
+:::
+```
+
+#### Session notice
+
+The notice interface lets a part of the hub that writes artifacts tell the session about it. The
+session appends `artifact.created` or `artifact.changed` for the participant who wrote, who must
+have joined the session.
+
+```arc42
+:::interface
+id: if-session-notice
+title: Session notice
+provider: bb-session-service
+protocol: In-process Go call
+path: hub/session/notice
 :::
 ```
 
@@ -433,6 +475,23 @@ technology: Go / YAML in the archive
 parent: bb-office-hub
 path: hub/tasks
 requires: if-token-check, if-archive-storage
+:::
+```
+
+### Documents part
+
+The documents part stores each text document as one Markdown file in the archive and one commit
+per change. It checks the base version of a change and tells the meeting session when a call names
+one.
+
+```arc42
+:::building-block
+id: bb-documents
+title: Documents
+technology: Go / Markdown in the archive
+parent: bb-office-hub
+requires: if-token-check, if-archive-storage, if-session-notice
+path: hub/documents
 :::
 ```
 
@@ -667,7 +726,7 @@ path: client/cli/commands
 
 ### MCP tools
 
-Tools such as `meeting.join`, `meeting.leave`, `hand.raise`, `minutes.update`, `stage.show`,
+Tools such as `meeting.join`, `meeting.leave`, `hand.raise`, `minutes.update`, `stage.focus`,
 `slides.render`, `slides.get`, `plan.validate`, `decision.record`, `minutes.get`, `note.add`, `task.create`,
 `task.update`, `session.import`.
 
@@ -820,7 +879,7 @@ title: Client core
 technology: Go
 parent: bb-participant-client
 path: client/core
-requires: if-session-commands, if-session-stream, if-session-import, if-auth-api, if-decision-api, if-minutes-api, if-note-api, if-task-api, if-slides-api, if-local-log
+requires: if-session-commands, if-session-stream, if-session-import, if-auth-api, if-decision-api, if-minutes-api, if-note-api, if-task-api, if-slides-api, if-document-api, if-archive-read, if-local-log
 :::
 ```
 

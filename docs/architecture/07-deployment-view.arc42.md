@@ -30,6 +30,7 @@ architecture-beta
     service bb-records(database)[Records] in dn-office-hub
     service bb-tasks(database)[Tasks] in dn-office-hub
     service bb-slides(database)[Slides] in dn-office-hub
+    service bb-documents(database)[Documents] in dn-office-hub
     service bb-stage(internet)[Stage] in dn-office-hub
     service bb-identity(server)[Identity] in dn-office-hub
     service bb-archive(disk)[Archive] in dn-office-hub
@@ -106,6 +107,6 @@ id: dn-office-hub
 title: Office hub
 type: server
 parent: env-mvp
-hosts: bb-session-service, bb-records, bb-tasks, bb-slides, bb-stage, bb-identity, bb-tenants, bb-archive
+hosts: bb-session-service, bb-records, bb-tasks, bb-slides, bb-documents, bb-stage, bb-identity, bb-tenants, bb-archive
 :::
 ```

@@ -54,7 +54,7 @@ const LogHelp = `How to read the log file:
   tail -n +1 -f "$LOG" | grep --line-buffered '"type":"turn.end"\|"type":"addressed"'
   or read it again from time to time and keep the last id you handled:
   jq -c 'select(.id > 41 and (.type == "utterance.final" or .type == "addressed"))' "$LOG"
-- Event types: utterance.final (someone said or typed a sentence), utterance.off_the_record (the speaker marked a sentence off the record: never use or repeat that sentence, not in minutes, decisions or notes; the original line stays in your file), turn.end (a speaker finished; a good moment to answer), addressed (someone named a participant; check addressed.participantId), silence.long, hand.raised, minutes.updated, artifact.shown, participant.joined, participant.left, participant.paused, participant.resumed, session.ended (the last line; the file is complete), session.imported and import.completed (the session was imported from another tool, see session_import; its speakers are not registered participants and the hub cannot check what they said).
+- Event types: utterance.final (someone said or typed a sentence), utterance.off_the_record (the speaker marked a sentence off the record: never use or repeat that sentence, not in minutes, decisions or notes; the original line stays in your file), turn.end (a speaker finished; a good moment to answer), addressed (someone named a participant; check addressed.participantId), silence.long, hand.raised, minutes.updated, artifact.created and artifact.changed (someone wrote an artifact), artifact.focused, participant.joined, participant.left, participant.paused, participant.resumed, session.ended (the last line; the file is complete), session.imported and import.completed (the session was imported from another tool, see session_import; its speakers are not registered participants and the hub cannot check what they said).
 - Usually filter for turn.end and addressed, and read the utterance.final lines before them for the context.
 - IDs have no gaps. If you see a gap (43 after 41), read the missing events with meeting_events (after 41). meeting_events also works without the file, if you poll it with your last id.`
 
@@ -122,9 +122,9 @@ var HandRaise = &sdk.Tool{Name: "hand_raise", Title: "Raise your hand", Annotati
 var MinutesUpdate = &sdk.Tool{Name: "minutes_update", Title: "Update the minutes", Annotations: Additive,
 	Description: `Replace the running minutes of the meeting (minutes.updated). Send the full new text, not a diff. Never include a sentence that is off the record. When the session ends, the hub stores the last version (see minutes_get). Give text, or file for a local file. Returns {"event", "duplicate"}.`}
 
-// StageShow is the tool stage_show.
-var StageShow = &sdk.Tool{Name: "stage_show", Title: "Show an artifact on the stage", Annotations: Additive,
-	Description: `Show an artifact on the stage for everyone (artifact.shown), for example the id of a deck from slides_render. Returns {"event", "duplicate"}.`}
+// StageFocus is the tool stage_focus.
+var StageFocus = &sdk.Tool{Name: "stage_focus", Title: "Show an artifact on the stage", Annotations: Additive,
+	Description: `Show an artifact on the stage for everyone (artifact.focused), for example the id of a deck from slides_render. Returns {"event", "duplicate"}.`}
 
 // StageLink is the tool stage_link.
 var StageLink = &sdk.Tool{Name: "stage_link", Title: "Create a stage link", Annotations: Additive,
@@ -132,7 +132,23 @@ var StageLink = &sdk.Tool{Name: "stage_link", Title: "Create a stage link", Anno
 
 // SlidesRender is the tool slides_render.
 var SlidesRender = &sdk.Tool{Name: "slides_render", Title: "Render slides", Annotations: Additive,
-	Description: `Render a slide deck. The hub stores its input and the rendered deck. Give the deck as title and slides, as markdown, or as a local file. Returns {"id", "mediaType", "duplicate"}; show it with stage_show (artifactId = id).`}
+	Description: `Render a slide deck. The hub stores its input and the rendered deck. Give the deck as title and slides, as markdown, or as a local file. Returns {"id", "mediaType", "duplicate"}; show it with stage_focus (artifactId = id).`}
+
+// DocumentCreate is the tool document_create.
+var DocumentCreate = &sdk.Tool{Name: "document_create", Title: "Create a document", Annotations: Additive,
+	Description: `Create a text document (Markdown) "documents/<name>.md" in the archive. The path must not exist. Returns {"path", "version", "duplicate"}. Pass session to put artifact.created into the log of a session you joined.`}
+
+// DocumentChange is the tool document_change.
+var DocumentChange = &sdk.Tool{Name: "document_change", Title: "Change a document", Annotations: Additive,
+	Description: `Replace the content of a document. Give the baseVersion you read with document_get. If someone changed the document first, the call fails with aborted and gives the current version: read again and redo your change. Returns {"path", "version", "duplicate"}.`}
+
+// DocumentGet is the tool document_get.
+var DocumentGet = &sdk.Tool{Name: "document_get", Title: "Read a document", Annotations: ReadOnly,
+	Description: `Read a Markdown or YAML file of the archive by its path. Returns {"path", "version", "content"}.`}
+
+// DocumentList is the tool document_list.
+var DocumentList = &sdk.Tool{Name: "document_list", Title: "List documents", Annotations: ReadOnly,
+	Description: `List the Markdown and YAML files of a directory of the archive (default "documents"). Returns {"files": [{"path", "version"}]}.`}
 
 // SlidesGet is the tool slides_get.
 var SlidesGet = &sdk.Tool{Name: "slides_get", Title: "Get a slide deck", Annotations: ReadOnly,
@@ -253,8 +269,8 @@ type ImportIn struct {
 	Session      string                `json:"session,omitempty" jsonschema:"ID of the new session. Default: a new ID. The session must not exist yet."`
 }
 
-// StageShowIn is the input of a tool.
-type StageShowIn struct {
+// StageFocusIn is the input of a tool.
+type StageFocusIn struct {
 	ArtifactID string `json:"artifactId" jsonschema:"Artifact to show, for example the deck ID \"slides/42\" from slides_render."`
 	Session    string `json:"session,omitempty" jsonschema:"Session ID. Default: the session given when the server was started, else the only session you joined from this machine."`
 }
@@ -278,6 +294,19 @@ type SlidesIn struct {
 type DeckIn struct {
 	ID  string `json:"id" jsonschema:"Deck ID, for example \"slides/42\"."`
 	Out string `json:"out,omitempty" jsonschema:"Write the rendered deck to this local file instead of returning it (base64) in the result."`
+}
+
+// DocumentIn is the input of document_create and document_change.
+type DocumentIn struct {
+	Path        string `json:"path" jsonschema:"Path of the document, \"documents/<name>.md\"."`
+	Content     string `json:"content" jsonschema:"The Markdown text. Never put a sentence that is off the record into it."`
+	BaseVersion string `json:"baseVersion,omitempty" jsonschema:"Only for document_change: the version you read. A stale version fails with aborted; read the document again."`
+	Session     string `json:"session,omitempty" jsonschema:"Session whose log gets the event (optional); you must have joined it."`
+}
+
+// FileIn is the input of document_get and document_list.
+type FileIn struct {
+	Path string `json:"path,omitempty" jsonschema:"document_get: the path, for example \"documents/plan.md\". document_list: the directory (default \"documents\")."`
 }
 
 // RecordIn is the input of a tool.

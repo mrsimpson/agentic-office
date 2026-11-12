@@ -106,11 +106,11 @@ func TestTwoCLIParticipants(t *testing.T) {
 		return ev.GetType() == events.HandRaised && ev.GetHandRaised().GetParticipantId() == "bot"
 	})
 	// Ada reads the shown ID from her log and loads the slides.
-	shown := waitFor(adaLog, "artifact.shown", func(ev *sessionstreamv1.Event) bool { return ev.GetType() == events.ArtifactShown })
-	if shown.GetArtifactShown().GetArtifactId() != "slides/1" {
-		t.Fatalf("shown artifact %q, want slides/1", shown.GetArtifactShown().GetArtifactId())
+	shown := waitFor(adaLog, "artifact.focused", func(ev *sessionstreamv1.Event) bool { return ev.GetType() == events.ArtifactFocused })
+	if shown.GetArtifactFocused().GetArtifactId() != "slides/1" {
+		t.Fatalf("shown artifact %q, want slides/1", shown.GetArtifactFocused().GetArtifactId())
 	}
-	html, errOut, code := contracttest.Run(t, "office", ada, "slides", "get", shown.GetArtifactShown().GetArtifactId())
+	html, errOut, code := contracttest.Run(t, "office", ada, "slides", "get", shown.GetArtifactFocused().GetArtifactId())
 	if code != 0 || !strings.Contains(html, "<h2>Costs</h2>") || !strings.Contains(html, "<li>Rent: 4,000 EUR</li>") {
 		t.Fatalf("slides get: exit %d, %q, %q", code, html, errOut)
 	}

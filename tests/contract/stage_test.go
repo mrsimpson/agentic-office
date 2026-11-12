@@ -487,7 +487,7 @@ func TestStageShowsTheSession(t *testing.T) {
 
 	// The shown artifact is embedded in a sandboxed iframe with the content of the artifact.
 	art := render(t, m.actors[bot], budgetDeck())
-	if _, err := m.s(bot).ShowArtifact(m.ctx(), &sessioncommandsv1.ShowArtifactRequest{SessionId: m.sid, CommandId: coreapi.NewCommandID(),
+	if _, err := m.s(bot).FocusArtifact(m.ctx(), &sessioncommandsv1.FocusArtifactRequest{SessionId: m.sid, CommandId: coreapi.NewCommandID(),
 		ParticipantId: bot, ArtifactId: art.GetId()}); err != nil {
 		t.Fatal(err)
 	}
@@ -534,7 +534,7 @@ func TestStageShowsTheSession(t *testing.T) {
 	}
 
 	// An unknown artifact gives a note.
-	if _, err := m.s(bot).ShowArtifact(m.ctx(), &sessioncommandsv1.ShowArtifactRequest{SessionId: m.sid, CommandId: coreapi.NewCommandID(),
+	if _, err := m.s(bot).FocusArtifact(m.ctx(), &sessioncommandsv1.FocusArtifactRequest{SessionId: m.sid, CommandId: coreapi.NewCommandID(),
 		ParticipantId: bot, ArtifactId: "slides/999"}); err != nil {
 		t.Fatal(err)
 	}
@@ -543,7 +543,7 @@ func TestStageShowsTheSession(t *testing.T) {
 		t.Errorf("no note for the unknown artifact: %q", text(n))
 	}
 	// An artifact ID of a type that the stage does not know gives a note too.
-	if _, err := m.s(bot).ShowArtifact(m.ctx(), &sessioncommandsv1.ShowArtifactRequest{SessionId: m.sid, CommandId: coreapi.NewCommandID(),
+	if _, err := m.s(bot).FocusArtifact(m.ctx(), &sessioncommandsv1.FocusArtifactRequest{SessionId: m.sid, CommandId: coreapi.NewCommandID(),
 		ParticipantId: bot, ArtifactId: "plans/1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -612,7 +612,7 @@ func TestStageShowsDeckAfterRestart(t *testing.T) {
 	m := newStageMeetingOn(t, srv)
 	st := openStage(t, m.srv, m.link)
 	bot := m.joinAs("Minute Bot", sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_AGENT, false)
-	if _, err := m.s(bot).ShowArtifact(m.ctx(), &sessioncommandsv1.ShowArtifactRequest{SessionId: m.sid, CommandId: coreapi.NewCommandID(),
+	if _, err := m.s(bot).FocusArtifact(m.ctx(), &sessioncommandsv1.FocusArtifactRequest{SessionId: m.sid, CommandId: coreapi.NewCommandID(),
 		ParticipantId: bot, ArtifactId: deck.GetId()}); err != nil {
 		t.Fatal(err)
 	}

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"time"
 
+	archivev1 "github.com/mrsimpson/agentic-office/hub/archive/api"
+	documentv1 "github.com/mrsimpson/agentic-office/hub/documents/api"
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 	decisionv1 "github.com/mrsimpson/agentic-office/hub/records/decision/api"
 	minutesv1 "github.com/mrsimpson/agentic-office/hub/records/minutes/api"
@@ -89,7 +91,7 @@ type Client interface {
 	Resume(ctx context.Context, sessionID string) (*sessioncommandsv1.CommandResult, error)
 	RaiseHand(ctx context.Context, sessionID, topic string) (*sessioncommandsv1.CommandResult, error)
 	UpdateMinutes(ctx context.Context, sessionID, text string) (*sessioncommandsv1.CommandResult, error)
-	ShowArtifact(ctx context.Context, sessionID, artifactID string) (*sessioncommandsv1.CommandResult, error)
+	FocusArtifact(ctx context.Context, sessionID, artifactID string) (*sessioncommandsv1.CommandResult, error)
 	EndSession(ctx context.Context, sessionID string) (*sessioncommandsv1.CommandResult, error)
 	// Events returns the events after a cursor from the hub, and whether there are more.
 	Events(ctx context.Context, sessionID string, after, limit uint32) ([]*sessionstreamv1.Event, bool, error)
@@ -104,6 +106,17 @@ type Client interface {
 
 	RenderDeck(ctx context.Context, req *slidesv1.RenderDeckRequest) (*slidesv1.RenderDeckResponse, error)
 	GetDeck(ctx context.Context, id string) (*slidesv1.Deck, error)
+
+	// CreateDocument creates a text document "documents/<name>.md". sessionID may be empty: the
+	// hub then puts artifact.created into the log of that session.
+	CreateDocument(ctx context.Context, path, content, sessionID string) (*documentv1.CreateDocumentResponse, error)
+	// ChangeDocument replaces a document. baseVersion is the version that the caller read; a stale
+	// one fails with the code aborted and the error says the current version.
+	ChangeDocument(ctx context.Context, path, content, baseVersion, sessionID string) (*documentv1.ChangeDocumentResponse, error)
+	// ReadFile reads a Markdown or YAML file of the archive with its version.
+	ReadFile(ctx context.Context, path string) (*archivev1.File, error)
+	// ListFiles lists the files of a directory of the archive.
+	ListFiles(ctx context.Context, dir string) ([]*archivev1.FileInfo, error)
 
 	RecordDecision(ctx context.Context, text, sessionID string) (*decisionv1.RecordDecisionResponse, error)
 	ListDecisions(ctx context.Context, after uint32, sessionID string, limit uint32) ([]*decisionv1.Decision, error)
