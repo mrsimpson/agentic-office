@@ -1069,3 +1069,25 @@ date: 2026-11-12
 addresses: qg-confidentiality
 :::
 ```
+
+## Ended sessions leave memory and load on demand
+
+**Context:** The session log stays in memory after it is archived, and the restore loads every
+session at start. With several tenants, memory grows with the sum of all sessions
+(`risk-session-memory`, issue #113). **Decision:** A session that has ended and that nobody
+follows leaves memory. A later read loads it again from the archive with the same events and the
+same signed tree head. At start, the restore loads only sessions that have not ended.
+**Consequences:** A read of an old session can take as long as a read from the archive. The
+restore, the replication and the stage must work with a session that is loaded again.
+**Rejected:** a memory limit per tenant (decide it later if a measurement shows the need); keeping
+everything in memory and buying more memory (cost grows with every tenant).
+
+```arc42
+:::decision
+id: dec-session-eviction
+title: Ended sessions leave memory and load on demand
+status: proposed
+date: 2026-11-12
+addresses: risk-session-memory
+:::
+```
