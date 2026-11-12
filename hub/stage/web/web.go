@@ -55,43 +55,56 @@ var scriptHash = func() string {
 }()
 
 const css = `
-:root { color-scheme: dark; }
+:root { color-scheme: dark; --bg: #0e1116; --surface: #161b22; --raised: #1d242d; --line: #2a323d; --text: #e8edf3;
+  --muted: #8d99a8; --accent: #7c8cff; --accent-soft: #7c8cff22; --live: #3ddc97; --warn: #f5b84b; --rec: #ff6b6b; --imp: #5cc8ff; --r: 14px; }
 * { box-sizing: border-box; }
-html { font-size: clamp(18px, 1.55vw, 34px); }
-body { margin: 0; background: #000; color: #fff; font-family: system-ui, "Segoe UI", Roboto, Arial, sans-serif; line-height: 1.3; }
-header { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; padding: 0.5rem 1rem; border-bottom: 3px solid #fff; }
-header h1 { margin: 0; font-size: 1.4rem; }
-#status span { font-weight: 700; }
-#status [data-status="live"] { color: #6f6; }
-#status [data-status="imported"] { color: #6cf; }
-#status [data-status="ended"], #status [data-status="stopped"] { color: #ffd400; }
-main.stage { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 1rem; padding: 1rem; }
-section { margin-bottom: 1rem; }
-h2 { margin: 0 0 0.4rem; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 0.05em; color: #ffd400; }
+html { font-size: clamp(16px, 1.3vw, 30px); }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; line-height: 1.45; -webkit-font-smoothing: antialiased; }
+header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 0.8rem 1.5rem; }
+.brand { display: flex; align-items: center; gap: 0.8rem; }
+.logo { width: 1.7rem; height: 1.7rem; border-radius: 0.5rem; background: linear-gradient(135deg, var(--accent), #b07cff); }
+.eyebrow, h2 { margin: 0; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted); }
+header h1 { margin: 0; font-size: 1.5rem; font-weight: 650; letter-spacing: -0.01em; }
+#status span { display: inline-flex; align-items: center; gap: 0.45em; padding: 0.2em 0.8em; border-radius: 99px; font-size: 0.85rem; font-weight: 600; background: var(--raised); border: 1px solid var(--line); }
+#status span::before { content: ""; width: 0.55em; height: 0.55em; border-radius: 50%; background: currentColor; }
+#status [data-status="live"] { color: var(--live); }
+#status [data-status="imported"] { color: var(--imp); }
+#status [data-status="ended"], #status [data-status="stopped"] { color: var(--warn); }
+#status [data-status="connecting"] { color: var(--muted); }
+main.stage { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 1.2rem; padding: 0 1.5rem 1.5rem; }
+.left, .right { display: flex; flex-direction: column; gap: 1.2rem; min-width: 0; }
+section { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 1rem 1.2rem; }
+h2 { margin-bottom: 0.7rem; }
 ul, ol { margin: 0; padding: 0; list-style: none; }
-li { padding: 0.25rem 0; border-bottom: 1px solid #444; }
-.empty, .note { color: #ccc; font-style: italic; margin: 0; }
-.note { color: #ffd400; font-size: 1.2rem; }
-.badge, .capture { display: inline-block; padding: 0 0.4em; border-radius: 0.3em; font-size: 0.8rem; font-weight: 700; vertical-align: middle; }
-.badge.agent { background: #fff; color: #000; }
-.capture.captured { background: #d40000; color: #fff; }
-.capture.paused { background: #ffd400; color: #000; }
-.capture.not-captured { border: 2px solid #fff; color: #fff; }
-.capture.imported { border: 2px solid #6cf; color: #6cf; }
-.capture.left { border: 2px dashed #999; color: #ccc; }
-.name { font-weight: 700; }
-.hands li { font-size: 1.15rem; color: #ffd400; }
-#artifact iframe { width: 100%; height: 62vh; border: 0; background: #fff; }
-#artifact { margin-bottom: 1rem; }
+li { padding: 0.35rem 0; }
+.empty, .note { color: var(--muted); margin: 0; }
+.note { color: var(--warn); }
+.badge, .capture { display: inline-flex; align-items: center; gap: 0.4em; font-size: 0.78rem; font-weight: 600; vertical-align: middle; }
+.badge.agent { padding: 0 0.5em; border-radius: 0.4em; background: #f5b84b22; color: var(--warn); }
+.capture::before { content: ""; width: 0.55em; height: 0.55em; border-radius: 50%; background: currentColor; }
+.capture.captured { color: var(--rec); }
+.capture.paused { color: var(--warn); }
+.capture.not-captured, .capture.left { color: var(--muted); }
+.capture.imported { color: var(--imp); }
+.participants li { display: flex; align-items: center; gap: 0.7rem; }
+.participants .capture { margin-left: auto; }
+.avatar { flex: none; width: 2rem; height: 2rem; border-radius: 50%; display: grid; place-items: center; font-size: 0.72rem; font-weight: 700; background: var(--accent-soft); color: var(--accent); }
+.avatar::before { content: attr(data-initials); }
+.avatar.agent { border-radius: 0.55rem; background: #f5b84b22; color: var(--warn); }
+.name { font-weight: 650; }
+.hands li { margin-bottom: 0.5rem; padding: 0.7rem 0.9rem; border-radius: 12px; background: var(--accent-soft); border: 1px solid var(--accent); }
+#artifact { padding: 0; overflow: hidden; }
+#artifact iframe { display: block; width: 100%; height: 62vh; border: 0; background: #fff; }
+#artifact .note, #artifact .empty { padding: 1rem 1.2rem; }
 .minutes-text { white-space: pre-wrap; max-height: 40vh; overflow: auto; }
-.utterances li { font-size: 1.05rem; }
-#origin .imported { margin: 0; padding: 0.5rem 1rem; border-bottom: 3px solid #6cf; color: #6cf; white-space: pre-line; }
+.utterances li { display: flex; gap: 0.7rem; align-items: flex-start; }
+.utterances .line { min-width: 0; }
+.utterances time, .corrected { color: var(--muted); font-size: 0.8rem; }
+#origin .imported { margin: 0 1.5rem 1.2rem; padding: 0.8rem 1.2rem; border-radius: var(--r); border: 1px solid var(--imp); background: #5cc8ff14; color: var(--imp); white-space: pre-line; }
 .source, .title { font-weight: 700; }
-.utterances time { color: #ccc; font-size: 0.8rem; }
-.corrected { color: #ccc; font-size: 0.8rem; }
 body.error main { padding: 2rem; }
-body.error h1 { color: #ffd400; }
-body.error p { font-size: 1.3rem; }
+body.error h1 { color: var(--warn); }
+body.error p { font-size: 1.2rem; }
 `
 
 // Page is the page of a session with every region. Fields: Session, Events (the address of the
@@ -101,7 +114,7 @@ var Page = template.Must(template.New("page").Parse(`<!DOCTYPE html>
 <meta name="referrer" content="no-referrer">
 <title>{{.Session}} · Agentic office stage</title><style>` + css + `</style></head>
 <body>
-<header><h1>Session <span id="session">{{.Session}}</span></h1><div id="status">{{.Regions.status}}</div></header>
+<header><div class="brand"><div class="logo"></div><div><div class="eyebrow">Agentic office</div><h1>Session <span id="session">{{.Session}}</span></h1></div></div><div id="status">{{.Regions.status}}</div></header>
 <div id="origin">{{.Regions.origin}}</div>
 <noscript><p class="note">This page needs JavaScript for live updates.</p></noscript>
 <main id="stage" class="stage" data-events="{{.Events}}">
@@ -134,11 +147,13 @@ var RegionTemplates = template.Must(template.New("stage").Parse(`
 {{define "origin"}}{{with .Imported}}<p class="imported" data-imported="{{if .Complete}}complete{{else}}importing{{end}}">Imported from <span class="source">{{.Source}}</span>{{if .Title}}: <span class="title">{{.Title}}</span>{{end}}, by {{.By}}.{{if not .Complete}} The import is not complete yet.{{end}}
 The office did not see this conversation happen. The hub's signature proves who imported it, not who said what.</p>{{end}}{{end}}
 
+{{define "avatar"}}<span class="avatar{{if .Agent}} agent{{end}}" data-initials="{{.Initials}}" aria-hidden="true"></span>{{end}}
+
 {{define "name"}}<span class="name">{{.Name}}</span>{{if .Agent}} <span class="badge agent" data-kind="agent">agent</span>{{end}}{{end}}
 
 {{define "participants"}}<h2>Participants</h2>
 {{if .Participants}}<ul class="participants">
-{{range .Participants}}<li data-participant="{{.ID}}" data-kind="{{if .Agent}}agent{{else}}human{{end}}" data-capture="{{.Status}}">{{template "name" .}} <span class="capture {{.Status}}">{{.StatusText}}</span></li>
+{{range .Participants}}<li data-participant="{{.ID}}" data-kind="{{if .Agent}}agent{{else}}human{{end}}" data-capture="{{.Status}}">{{template "avatar" .}}{{template "name" .}} <span class="capture {{.Status}}">{{.StatusText}}</span></li>
 {{end}}</ul>{{else}}<p class="empty">Nobody has joined yet.</p>{{end}}{{end}}
 
 {{define "hands"}}<h2>Raised hands</h2>
@@ -155,6 +170,6 @@ The office did not see this conversation happen. The hub's signature proves who 
 
 {{define "utterances"}}<h2>Recent contributions</h2>
 {{if .Utterances}}<ol class="utterances">
-{{range .Utterances}}<li data-utterance="{{.EventID}}" data-participant="{{.Speaker.ID}}">{{template "name" .Speaker}}: {{if not .OriginalTime.IsZero}}<time datetime="{{.OriginalTime.Format "2006-01-02T15:04:05Z07:00"}}">{{.OriginalTime.Format "2006-01-02 15:04"}} UTC</time> {{end}}<span class="text">{{.Text}}</span>{{if .Corrected}} <span class="corrected">(corrected)</span>{{end}}</li>
+{{range .Utterances}}<li data-utterance="{{.EventID}}" data-participant="{{.Speaker.ID}}">{{template "avatar" .Speaker}}<span class="line">{{template "name" .Speaker}}: {{if not .OriginalTime.IsZero}}<time datetime="{{.OriginalTime.Format "2006-01-02T15:04:05Z07:00"}}">{{.OriginalTime.Format "2006-01-02 15:04"}} UTC</time> {{end}}<span class="text">{{.Text}}</span>{{if .Corrected}} <span class="corrected">(corrected)</span>{{end}}</span></li>
 {{end}}</ol>{{else}}<p class="empty">Nothing said yet.</p>{{end}}{{end}}
 `))

@@ -64,6 +64,18 @@ func (p *participantView) Status() string {
 	return "not-captured"
 }
 
+// Initials are the first letters of the first two words of the name, for the avatar.
+func (p *participantView) Initials() string {
+	var out []rune
+	for _, w := range strings.Fields(p.Name) {
+		out = append(out, []rune(strings.ToUpper(w))[0])
+		if len(out) == 2 {
+			break
+		}
+	}
+	return string(out)
+}
+
 // StatusText is the status as the audience reads it.
 func (p *participantView) StatusText() string { return strings.ReplaceAll(p.Status(), "-", " ") }
 
