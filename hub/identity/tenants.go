@@ -27,7 +27,7 @@ func (s *Service) CreateTenant(ctx context.Context, id, displayName, firstAdmin 
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.mutate(ctx, "Create tenant "+id, func(st *state, now time.Time) error {
+	return s.mutate(ctx, "System: create tenant "+id, func(st *state, now time.Time) error {
 		if st.tenants[id] != nil {
 			return alreadyExists("tenant " + id + " exists or was removed: a tenant ID is never used again")
 		}
@@ -44,7 +44,7 @@ func (s *Service) CreateTenant(ctx context.Context, id, displayName, firstAdmin 
 func (s *Service) RemoveTenant(ctx context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.mutate(ctx, "Remove tenant "+id, func(st *state, now time.Time) error {
+	return s.mutate(ctx, "System: remove tenant "+id, func(st *state, now time.Time) error {
 		t := st.tenants[id]
 		if t == nil {
 			return notFound("no such tenant")
