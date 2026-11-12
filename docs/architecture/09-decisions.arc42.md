@@ -103,10 +103,13 @@ addresses: con-turn-based-agents, qg-usability
 :::
 ```
 
-## What the agent runner sends, and when
+## Notification strategy of the agent runner
 
 **Context:** The runner must deliver what was said reliably, while the agent may be busy and the
-log may grow. **Decision:**
+log may grow. The harness works in turns and does not follow the session by itself, so the runner
+decides when to notify it over ACP. **Decision:** The runner has one notification strategy with
+two variants. With a decision model, the model decides after each utterance whether to wake the
+agent. Without one, the change of speaker wakes it. The rules:
 
 - The runner joins the session with the key of the agent and runs the log replicator in its own
   process. The agent does not need to join; a join through the tools reuses the same participant
@@ -148,9 +151,9 @@ without a decision model (too many wake-ups).
 ```arc42
 :::decision
 id: dec-agent-runner-delivery
-title: What the agent runner sends, and when
-status: proposed
-date: 2026-11-11
+title: Notification strategy of the agent runner towards the harness
+status: accepted
+date: 2026-11-12
 addresses: qg-resumability, qg-usability, risk-retraction-leak, risk-agent-wakeups, risk-harness-drift
 :::
 ```
