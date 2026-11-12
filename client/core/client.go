@@ -18,6 +18,7 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/documents/api/documentv1connect"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/identityv1connect"
+	"github.com/mrsimpson/agentic-office/hub/identity/userapi/userv1connect"
 	"github.com/mrsimpson/agentic-office/hub/records/decision/api/decisionv1connect"
 	"github.com/mrsimpson/agentic-office/hub/records/minutes/api/minutesv1connect"
 	"github.com/mrsimpson/agentic-office/hub/records/note/api/notev1connect"
@@ -26,6 +27,7 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/session/streamapi/sessionstreamv1connect"
 	"github.com/mrsimpson/agentic-office/hub/slides/api/slidesv1connect"
 	"github.com/mrsimpson/agentic-office/hub/tasks/api/taskv1connect"
+	"github.com/mrsimpson/agentic-office/hub/tenant/api/tenantv1connect"
 )
 
 // hubClient is the client of the office hub for one actor (one key). It implements
@@ -40,6 +42,8 @@ type hubClient struct {
 	// sessionImport imports conversations (if-session-import); see Import.
 	sessionImport sessionimportv1connect.SessionImportServiceClient
 	identity      identityv1connect.IdentityServiceClient
+	users         userv1connect.UserServiceClient
+	tenants       tenantv1connect.TenantServiceClient
 	decision      decisionv1connect.DecisionServiceClient
 	minutes       minutesv1connect.MinutesServiceClient
 	note          notev1connect.NoteServiceClient
@@ -56,7 +60,7 @@ var _ coreapi.Dial = Dial
 func Dial(cfg coreapi.Config) (coreapi.Client, error) {
 	key, err := auth.ReadKey(cfg.KeyFile)
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil, fmt.Errorf("%w %s: create one with \"office key create\" and let an admin register it", coreapi.ErrNoKey, cfg.KeyFile)
+		return nil, fmt.Errorf("%w %s: create one with \"office key create\" and let a system admin register it", coreapi.ErrNoKey, cfg.KeyFile)
 	}
 	if err != nil {
 		return nil, err
@@ -68,12 +72,14 @@ func Dial(cfg coreapi.Config) (coreapi.Client, error) {
 	base := strings.TrimRight(cfg.Hub, "/")
 	// The identity client inside the token source must not use Bearer itself.
 	ts := auth.NewTokenSource(identityv1connect.NewIdentityServiceClient(newConnect(hc, base)), key)
-	cc := newConnect(hc, base, auth.Bearer(ts))
+	cc := newConnect(hc, base, auth.Bearer(ts), auth.Tenant(cfg.Tenant))
 	return &hubClient{cfg: cfg, key: key, tokens: ts,
 		commands:      sessioncommandsv1connect.NewSessionCommandsServiceClient(cc),
 		stream:        sessionstreamv1connect.NewSessionStreamServiceClient(cc),
 		sessionImport: sessionimportv1connect.NewSessionImportServiceClient(cc),
 		identity:      identityv1connect.NewIdentityServiceClient(cc),
+		users:         userv1connect.NewUserServiceClient(cc),
+		tenants:       tenantv1connect.NewTenantServiceClient(cc),
 		decision:      decisionv1connect.NewDecisionServiceClient(cc),
 		minutes:       minutesv1connect.NewMinutesServiceClient(cc),
 		note:          notev1connect.NewNoteServiceClient(cc),

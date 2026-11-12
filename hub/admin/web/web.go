@@ -130,7 +130,17 @@ var Page = template.Must(template.New("page").Funcs(template.FuncMap{
 <div class="eyebrow">{{.Section}}</div>
 <h1>{{.Title}}</h1>
 {{if .Notice}}<p class="notice" role="status" data-notice>{{.Notice}}</p>{{end}}{{if .Error}}<p class="error" role="alert" data-error>{{.Error}}</p>{{end}}
-{{if eq .Mode "placeholder"}}<div class="placeholder" data-placeholder="{{.Active}}"><p>{{.Placeholder}}</p></div>
+{{if eq .Mode "tenants"}}{{if .Tenants}}<table class="tenants">
+<tr><th>Tenant</th><th>Name</th><th>Status</th></tr>
+{{range .Tenants}}<tr data-tenant="{{.TenantId}}"><td><span class="name">{{.TenantId}}</span></td><td>{{.Name}}</td><td>{{if .Removed}}<span class="badge revoked">removed</span>{{else}}<span class="badge active">active</span>{{end}}</td></tr>
+{{end}}</table>{{else}}<p class="empty">There are no tenants yet. Create one with: office admin tenant create</p>{{end}}
+{{else if eq .Mode "admins"}}<table class="keys">
+<tr><th>User</th><th>Kind</th><th>Key</th><th>Status</th></tr>
+{{range .Keys}}<tr data-participant="{{.ParticipantId}}" data-key="{{.KeyId}}">
+<td><div class="who"><span class="avatar" data-initials="{{initials .Name}}" aria-hidden="true"></span><div><div class="name">{{.Name}}</div><small>{{.ParticipantId}}</small></div></div></td>
+<td>{{.KindName}}</td><td><code title="{{.KeyId}}">{{short .KeyId}}</code></td>
+<td>{{if .Revoked}}<span class="badge revoked">revoked</span>{{else}}<span class="badge active">active</span>{{end}}</td></tr>
+{{end}}</table>
 {{else if eq .Mode "register"}}<form class="stack" method="post" action="/admin/keys/register" data-form="register">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
 <label>User ID<input name="participant_id" value="{{.Form.ParticipantID}}" required maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9._-]*" autocomplete="off"><small>1 to 64 letters, digits, ".", "_" or "-", for example ada.</small></label>
@@ -153,8 +163,8 @@ var Page = template.Must(template.New("page").Funcs(template.FuncMap{
 <td><div class="who"><span class="avatar{{if eq .KindName "agent"}} agent{{end}}" data-initials="{{initials .Name}}" aria-hidden="true"></span><div><div class="name">{{.Name}}</div><small>{{.ParticipantId}}</small></div></div></td>
 <td>{{.KindName}}</td>
 <td><code title="{{.KeyId}}">{{short .KeyId}}</code></td>
-<td>{{if .Revoked}}<span class="badge revoked">revoked</span>{{else}}<span class="badge active">active</span>{{end}}{{if .Admin}} <span class="badge admin">admin</span>{{end}}</td>
-<td>{{if and (not .Revoked) (not .Admin)}}<a class="link" href="/admin/keys/revoke?key_id={{.KeyId}}">Revoke</a>{{end}}</td>
+<td>{{if .Revoked}}<span class="badge revoked">revoked</span>{{else}}<span class="badge active">active</span>{{end}}{{if .Removed}} <span class="badge revoked">removed</span>{{end}}{{if .Admin}} <span class="badge admin">system admin</span>{{end}}</td>
+<td>{{if and (not .Revoked) (not .Removed)}}<a class="link" href="/admin/keys/revoke?key_id={{.KeyId}}">Revoke</a>{{end}}</td>
 </tr>
 {{end}}</table>{{else}}<p class="empty">There are no keys yet.</p>{{end}}{{end}}
 </main></body></html>

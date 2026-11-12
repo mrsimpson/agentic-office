@@ -42,6 +42,8 @@ func slowGit(t *testing.T, d time.Duration) (string, string) {
 	}
 	logFile := filepath.Join(dir, "commits.log")
 	script := fmt.Sprintf(`#!/bin/sh
+# Only the commits of the tenant repositories count; the hub repository is not slowed.
+case "$PWD" in */repos/tenants/*) ;; *) exec %[2]q "$@";; esac
 if [ "$1" = commit ]; then
   kind=record
   case "$*" in *" -m Sessions:"*) kind=session;; esac

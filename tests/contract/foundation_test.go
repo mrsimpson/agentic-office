@@ -25,7 +25,7 @@ import (
 // identity_test.go, records_test.go, tasks_test.go and slides_test.go cover the services.
 func TestServerMountsEveryInterface(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
-	c := srv.Admin(t)
+	c := srv.Participant(t, "ada", "Ada", human)
 	ctx := context.Background()
 
 	if _, err := c.Commands.Join(ctx, &sessioncommandsv1.JoinRequest{SessionId: "s", CommandId: "c"}); err != nil {
@@ -62,6 +62,7 @@ func TestPlainHTTPWithJSON(t *testing.T) {
 			t.Fatal(err)
 		}
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Office-Tenant", contracttest.DefaultTenant)
 		if token != "" {
 			req.Header.Set("Authorization", "Bearer "+token)
 		}
@@ -80,7 +81,7 @@ func TestPlainHTTPWithJSON(t *testing.T) {
 		t.Fatalf("join without token: status %d, body %s", status, body)
 	}
 
-	token, err := srv.Admin(t).Tokens.Token(context.Background())
+	token, err := srv.Participant(t, "ada", "Ada", human).Tokens.Token(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,13 +95,13 @@ func TestPlainHTTPWithJSON(t *testing.T) {
 			} `json:"event"`
 		} `json:"result"`
 	}
-	if err := json.Unmarshal(body, &join); err != nil || status != http.StatusOK || join.ParticipantID != contracttest.AdminID ||
+	if err := json.Unmarshal(body, &join); err != nil || status != http.StatusOK || join.ParticipantID != "ada" ||
 		join.Result.Event.ID != 1 || join.Result.Event.Type != "participant.joined" {
 		t.Fatalf("join: status %d, body %s", status, body)
 	}
 
 	status, body = post("/office.decision.v1.DecisionService/RecordDecision", token,
-		`{"commandId":"c","text":"We ship.","authorParticipantId":"admin"}`)
+		`{"commandId":"c","text":"We ship.","authorParticipantId":"ada"}`)
 	var dec struct {
 		Decision struct {
 			ID     int    `json:"id"`
@@ -108,12 +109,12 @@ func TestPlainHTTPWithJSON(t *testing.T) {
 		} `json:"decision"`
 	}
 	if err := json.Unmarshal(body, &dec); err != nil || status != http.StatusOK || dec.Decision.ID != 1 ||
-		dec.Decision.Author != contracttest.AdminID {
+		dec.Decision.Author != "ada" {
 		t.Fatalf("record a decision: status %d, body %s", status, body)
 	}
 
 	status, body = post("/office.slides.v1.SlidesService/RenderDeck", token,
-		`{"commandId":"c","title":"Plan","slides":[{"title":"One","bullets":["a"]}],"authorParticipantId":"admin"}`)
+		`{"commandId":"c","title":"Plan","slides":[{"title":"One","bullets":["a"]}],"authorParticipantId":"ada"}`)
 	var deck struct {
 		Deck struct {
 			ID        string `json:"id"`

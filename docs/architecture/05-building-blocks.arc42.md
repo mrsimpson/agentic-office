@@ -36,6 +36,8 @@ flowchart LR
     bb_participant_client -->|if-document-api| bb_office_hub
     bb_participant_client -->|if-archive-read| bb_office_hub
     bb_participant_client -->|if-auth-api| bb_office_hub
+    bb_participant_client -->|if-user-api| bb_office_hub
+    bb_participant_client -->|if-tenant-api| bb_office_hub
     bb_participant_client -->|if-session-stream| bb_office_hub
 ```
 
@@ -82,6 +84,8 @@ flowchart LR
         bb_tenants[Tenants]
     end
     bb_admin -->|if-auth-api| bb_identity
+    bb_admin -->|if-tenant-api| bb_tenants
+    bb_admin -->|if-user-api| bb_identity
     bb_documents -->|if-archive-storage| bb_archive
     bb_documents -->|if-session-notice| bb_session_service
     bb_documents -->|if-token-check| bb_identity
@@ -96,8 +100,10 @@ flowchart LR
     bb_stage -->|if-slides-api| bb_slides
     bb_stage -->|if-auth-api| bb_identity
     bb_tasks -->|if-archive-storage| bb_archive
+    bb_identity -->|if-archive-storage| bb_archive
     bb_tasks -->|if-token-check| bb_identity
     bb_tenants -->|if-archive-storage| bb_archive
+    bb_tenants -->|if-tenant-roster| bb_identity
     bb_tenants -->|if-token-check| bb_identity
 ```
 
@@ -195,7 +201,7 @@ path: hub/session/importapi
 ### Auth API
 
 Challenge and response: the client asks for a challenge, signs it with its private key and gets a
-short-lived access token that is bound to its key. Also: create a read-only stage link.
+short-lived access token that is bound to its key. Also: create a read-only stage link. The calls of the meeting session, the records, the tasks and the slides name their tenant in a header, and Identity checks that the caller is a member of it; the auth API, the user API and the tenant API name no tenant.
 
 ```arc42
 :::interface
@@ -214,7 +220,8 @@ Two steps. First, register a user at the hub: create the user, add a key, revoke
 Second, assign the user to tenants: add the user to a tenant with the role `member` or
 `tenant admin`, change the role and remove the user. Name and remove system admins. Who may do
 what: a system admin everything; a tenant admin only the memberships of their own tenant; everyone
-else only their own keys.
+else only their own keys. Every change is checked against the rules in `concept-multi-tenancy`
+and refused if it breaks one. A user ID is never used again.
 
 ```arc42
 :::interface
@@ -368,9 +375,10 @@ path: hub/documents/api
 
 ### Admin view
 
-A browser view for the admins of the hub, opened by a link that an admin creates with the CLI.
-It shows the users and their keys and registers and revokes keys. Tenants, memberships and system admins follow with
-`dec-multi-tenancy`. It has the same design as the stage. The link holds a code that works once;
+A browser view for the system admins of the hub, opened by a link that a system admin creates with
+the CLI. It shows the users with their keys, the tenants and the system admins, and it creates users
+and adds and revokes keys. Memberships and tenants are still managed with the CLI. It has the same
+design as the stage. The link holds a code that works once;
 the admin view swaps it for an access token and keeps the token in a cookie that the page scripts
 cannot read.
 
@@ -388,8 +396,8 @@ path: hub/admin/web
 ### Admin part
 
 The admin part renders the admin view on the server. It has no logic and no state of its own:
-every page asks the identity part with the access token of the admin and shows what it gets, so the
-admin view has exactly the rights of the admin key (`dec-admin-web`).
+every page asks the user API and the tenant API with the access token of the system admin and shows
+what it gets, so the admin view has exactly the rights of the admin key (`dec-admin-web`).
 
 ```arc42
 :::building-block
@@ -397,7 +405,7 @@ id: bb-admin
 title: Admin view
 technology: Go, rendered by the hub
 parent: bb-office-hub
-requires: if-auth-api
+requires: if-auth-api, if-user-api, if-tenant-api
 path: hub/admin
 :::
 ```
@@ -602,11 +610,13 @@ path: hub/archive/api
 
 #### Archive storage
 
-The in-process interface of the archive: write a set of files as one commit, and read the files
-of a directory as they are in the current commit. Paths are relative to the repository. Every call
-names the tenant; the archive keeps one git repository per tenant, with a directory per kind of
-content. The hub itself has one further repository for the users, the tenants and the system
-admins.
+The in-process interface of the archive: write a set of files as one commit, list the paths of a
+directory, and read the files of a directory (or one file) as they are in the current commit. Paths are relative to the repository. The archive
+keeps one git repository for each tenant, with a directory per kind of content, and one further
+repository for the hub itself, for the users, the tenants, the memberships and the system admins. A
+caller asks for the archive of a repository, and each repository has its own commit queue, so one
+tenant does not hold up another. A tenant repository is created with the tenant and stays when the
+tenant is removed.
 
 ```arc42
 :::interface
@@ -645,8 +655,9 @@ path: hub/stage
 
 ### Identity
 
-Knows all users (participants) and their public keys in one place for the whole hub, in the hub
-repository. Each user,
+Knows all users (participants), their public keys, their tenant memberships and the system admins
+in one place for the whole hub, and keeps them in the hub repository through the archive. It is
+the only writer there and checks every change. Each user,
 human or agent, is its own actor with its own Ed25519 key pair. A user can be a member of several
 tenants, with a role in each (`member` or `tenant admin`). A user can also be a system admin; this
 role replaces the file of admin keys. The client creates the key pair locally and sends only the public
@@ -662,6 +673,7 @@ title: Identity
 technology: Go
 parent: bb-office-hub
 implements: concept-identity
+requires: if-archive-storage
 path: hub/identity
 :::
 ```
@@ -680,12 +692,31 @@ path: hub/identity/tokencheck
 :::
 ```
 
+#### Tenant roster
+
+Identity keeps the tenant records in the hub repository, next to the users and memberships, so it
+can check that a membership belongs to a tenant that exists. Tenants uses this in-process interface
+to create a tenant together with its first tenant admin, to end a tenant with all its memberships,
+and to list tenants. A tenant ID is never used again.
+
+```arc42
+:::interface
+id: if-tenant-roster
+title: Tenant roster
+provider: bb-identity
+protocol: In-process Go call
+path: hub/identity/roster
+:::
+```
+
 ### Tenants
 
 Knows the tenants and their members. A tenant is the unit of separation: its sessions, records,
 tasks and slides live only in the git repository of the tenant and are visible only to its members.
-The memberships and roles of a tenant are kept in its repository. Synchronisation with remotes
-is not part of this stage.
+Only a system admin creates, lists and removes tenants. Tenants does not keep the tenant records or
+the memberships: Identity owns them and Tenants asks Identity through the tenant roster. Creating
+a tenant also creates its repository (`if-archive-storage`). Synchronisation with
+remotes is not part of this stage.
 
 ```arc42
 :::building-block
@@ -694,7 +725,7 @@ title: Tenants
 technology: Go
 parent: bb-office-hub
 implements: concept-multi-tenancy
-requires: if-token-check, if-archive-storage
+requires: if-token-check, if-tenant-roster, if-archive-storage
 path: hub/tenant
 :::
 ```
@@ -921,7 +952,7 @@ title: Client core
 technology: Go
 parent: bb-participant-client
 path: client/core
-requires: if-session-commands, if-session-stream, if-session-import, if-auth-api, if-decision-api, if-minutes-api, if-note-api, if-task-api, if-slides-api, if-document-api, if-archive-read, if-local-log
+requires: if-session-commands, if-session-stream, if-session-import, if-auth-api, if-user-api, if-tenant-api, if-decision-api, if-minutes-api, if-note-api, if-task-api, if-slides-api, if-local-log, if-document-api, if-archive-read
 :::
 ```
 
@@ -963,7 +994,7 @@ id: bb-cli
 title: office CLI
 technology: Go, single binary
 parent: bb-participant-client
-requires: if-client-core, if-replication, if-local-log, if-session-commands, if-session-stream, if-slides-api, if-auth-api
+requires: if-client-core, if-replication, if-local-log, if-session-commands, if-session-stream, if-slides-api, if-auth-api, if-user-api
 implements: concept-read-file-write-tools, concept-client-configuration
 path: client/cli
 :::

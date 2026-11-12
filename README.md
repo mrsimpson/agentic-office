@@ -127,7 +127,7 @@ hub/                      bb-office-hub: wiring of the hub (binary office-hub)
                           dotted form (streamapi/events), Merkle code (streamapi/merkle),
                           stored form of a session log: lines and tree head (streamapi/logfile)
     importapi/            if-session-import: contract and generated code
-  archive/                bb-archive: local Git repository, push mocked
+  archive/                bb-archive: local Git repositories (hub and tenants), push mocked
     storage/              if-archive-storage: write files as one commit, read them back (in-process)
   identity/               bb-identity
     api/                  if-auth-api: contract, generated code, client side (api/auth: key files,
@@ -212,9 +212,11 @@ Rules that hold for all of them:
 
 ### Meeting session
 
-The meeting session (`hub/session`) is implemented. It keeps its logs in memory and writes them
-to the archive in the background (see [Archive](#archive)). After a restart it reads them back
-and the peers fill in what the archive does not have yet (see
+The meeting session (`hub/session`) is implemented. It keeps the logs of the open sessions in
+memory and writes them to the archive in the background (see [Archive](#archive)). A session that
+has ended, is in the archive and is read by nobody leaves memory; the next call loads it from the
+archive with the same events and the same signed tree head (`dec-session-eviction`). After a restart
+it reads the open sessions back and the peers fill in what the archive does not have yet (see
 [Restore after a restart](#restore-after-a-restart)). The package comment in `hub/session/doc.go`
 has the details.
 In short:
@@ -297,10 +299,11 @@ Transparency), and the hub signs its tree heads (`dec-merkle-log`). Package
 
 ### Archive
 
-The archive (`hub/archive`) stores the sessions, the records (decisions, minutes and notes,
+The archive (`hub/archive`) stores, in the repository of each tenant, the sessions, the records (decisions, minutes and notes,
 see [Records](#records-decisions-minutes-and-notes)), the tasks (see [Tasks](#tasks)) and the slide decks (see [Slides](#slides)) of the hub in a local Git repository on the hub
-host, by default `<data-dir>/archive` (`-archive-dir`). It creates the repository (branch `main`)
-on the first start. Every write is one commit. The push to a remote is mocked: it does nothing
+host. Each tenant has its own repository, `<data-dir>/repos/tenants/<id>`; the hub creates it with the
+tenant (branch `main`). The tenant is named in every call (see [Tenants](#tenants)). The
+hub repository `<data-dir>/repos/hub` holds the users, tenants and memberships. Every write is one commit. The push to a remote is mocked: it does nothing
 and reports success (#43). The hub needs the `git` command line tool in `PATH`. It runs git
 without your system and global git configuration, so hooks and commit signing do not apply.
 
@@ -341,11 +344,33 @@ log of the one before.
 after a last write of every session, `false` from the next start on. No session name starts with
 `+`.
 
+### Tenants
+
+The hub serves several tenants (`dec-multi-tenancy`). A tenant is one organisation with its own
+repository. Its sessions, decisions, minutes, notes, tasks and slide decks are visible only to its
+members. The session IDs and the numbers of tasks and decks count in each tenant.
+
+- **Every call of the session, records, tasks, slides and stage link names the tenant** in the
+  header `Office-Tenant` (`auth.TenantHeader`; `auth.Tenant(id)` is the client interceptor). The
+  client sets it from `OFFICE_TENANT` or `--tenant`. The calls of the auth API, the user API and
+  the tenant API name no tenant.
+- The identity interceptor checks that the caller is an active member of the tenant. Everyone
+  else, a system admin too, gets `not_found`, the same answer as for a tenant that does not exist.
+  A call without the header fails with `invalid_argument`.
+- A stage link belongs to the tenant of the user who creates it. It shows the session and the
+  decks of this tenant, and it ends when the tenant is removed.
+- The hub keeps one instance of the session, records, tasks and slides for each tenant. They read
+  and write only the repository of the tenant. At start the hub opens the tenants that exist and
+  restores their sessions; a new tenant is opened on its first call.
+
 ### Restore after a restart
 
-When the hub starts, it restores every session from the archive (`dec-restore-from-peers`):
+When the hub starts, it restores every session that has not ended from the archive
+(`dec-restore-from-peers`). It reads one session at a time. A session that has ended, or an
+imported conversation that is complete, stays in the archive; the first call that needs it loads
+and checks it (`dec-session-eviction`).
 
-1. It reads `log.jsonl` and `tree-head.yaml` of every session and checks the log against the
+1. It reads `log.jsonl` and `tree-head.yaml` of every such session and checks the log against the
    head with its signing key (`merkle.VerifyEvents`). A log that verifies is the start of the
    session: the events keep their IDs, repeated command IDs still return their events, ended
    sessions stay ended, and the next write appends to the stored lines.
@@ -391,16 +416,18 @@ the details. In short:
 
 - Every actor (each human device, each agent) has its own Ed25519 key pair, created locally with
   `hub/identity/api/auth`. Only the public key goes to the hub.
-- An admin registers a public key for a participant with `RegisterKey`. The admin chooses the
-  participant ID, for example `ada`. A participant can have several keys. `RevokeKey` removes a
-  key; its tokens stop working at once.
+- A system admin creates a user with `CreateUser` and its first key. The system admin chooses the
+  user ID, for example `ada`; it is also the participant ID in every session. A user can have
+  several keys (`AddKey`). `RevokeKey` removes a key; its tokens stop working at once. A system
+  admin or the tenant admin assigns users to tenants (`SetMembership`); a system admin is never a
+  tenant member. See the user API (`hub/identity/userapi`).
 - A client gets a challenge (`GetChallenge`), signs it and exchanges it for an access token
   (`ExchangeChallenge`). The token lives 15 minutes (`-token-ttl`). `auth.TokenSource` does this
   and renews the token before it expires; `auth.Bearer` attaches it to every Connect call.
 - `CreateStageLink` returns a read-only link `https://<hub>/stage/<session>?token=<token>`
   for one session. Its token only allows `Subscribe` for that session. It lives 24 hours
   (`-stage-link-ttl`). Open it in a browser to see the stage (below).
-- Registered keys are stored in `<data-dir>/identity.json`. Tokens are kept in memory only, so
+- Users, keys, tenants and memberships are YAML files in the hub repository (`repos/hub`, directory `system/`). Tokens are kept in memory only, so
   clients authenticate again after a restart of the hub.
 
 ### Records: decisions, minutes and notes
@@ -507,8 +534,8 @@ it waits at most for the one session write that is in progress (see [Archive](#a
 
 The admin view (`hub/admin`, `/admin/`) is a web page for the admins of the hub. It has the design
 of the stage, in dark and light, and no scripts (`dec-admin-web`). Today it shows the users with
-their keys and registers and revokes keys; tenants and system admins are placeholders until
-multi-tenancy.
+their keys, the tenants and the system admins (read only), and it creates users and adds and revokes
+keys. Only a system admin gets a link.
 
 ```sh
 office admin link   # prints a link; it works once and expires after a few minutes
@@ -517,16 +544,18 @@ office admin link   # prints a link; it works once and expires after a few minut
 Open the link in a browser. The view swaps its code for an access token of your admin key, keeps it
 in a cookie that scripts cannot read (`office_admin`, one hour), and sends you to the list of keys.
 Every page asks the identity part with this token, so the view has exactly your rights. A used or
-expired link gives an error page.
+expired link gives an error page. The pages are `/admin/keys`, `/admin/tenants` and
+`/admin/admins`.
 
 - **Register a key:** `Register key` opens a form with the user ID, the display name (needed for a
   new user), the kind and the base64 public key that `office key show` prints. It calls
-  `RegisterKey`; a refusal shows its message on the form, which keeps what you typed.
+  `CreateUser` for a new user and `AddKey` for a known one; a refusal shows its message on the
+  form, which keeps what you typed.
 - **Revoke a key:** `Revoke` next to a key opens a page that asks you to confirm. It calls
-  `RevokeKey`. Keys of the admin file have no link: remove them in the file.
+  `RevokeKey`. A user keeps at least one key that works: the last key cannot be revoked.
 - Every form carries a token that is derived from your session, and the view refuses a post whose
-  `Origin` is another server. `office.identity.v1.IdentityService` has the calls behind it:
-`ListKeys`, `CreateAdminLink` (both only for admin keys) and `ExchangeAdminLink` (needs no token).
+  `Origin` is another server. `office.identity.v1.IdentityService` has the calls behind the link:
+`CreateAdminLink` (only for a system admin, no tenant) and `ExchangeAdminLink` (needs no token).
 
 ### Documents
 
@@ -633,10 +662,9 @@ All files of the hub are in its data directory (`-data-dir`), by default
 
 | File | What it is |
 |---|---|
-| `admins` | Admin keys. You write it by hand. |
-| `identity.json` | Registered participants and keys. The hub writes it. |
 | `tls.crt`, `tls.key` | TLS certificate and key. The hub creates a self-signed pair if neither exists. |
-| `archive/` | The Git repository of the archive (`-archive-dir`): sessions, decisions, minutes, notes, tasks and slide decks. The hub creates it and commits into it. See [Archive](#archive). |
+| `repos/hub/` | The hub repository: users, tenants and memberships (`system/`). The hub creates it and is the only writer. |
+| `repos/tenants/<id>/` | The Git repository of one tenant: sessions, decisions, minutes, notes, tasks and slide decks. The hub creates it with the tenant, commits into it and keeps it when the tenant is removed. See [Archive](#archive). |
 
 Flags of the hub (`bin/office-hub -h` lists them all):
 
@@ -644,12 +672,11 @@ Flags of the hub (`bin/office-hub -h` lists them all):
 |---|---|---|
 | `-addr` | `127.0.0.1:8740` | Listen address |
 | `-data-dir` | `<config>/agentic-office/hub` | Data directory |
-| `-archive-dir` | `<data-dir>/archive` | Git repository of the archive |
 | `-archive-interval` | `30s` | Time between two writes of changed sessions. Keep it above the usual commit time. |
 | `-restore-wait` | `10s` | After a restart, how long a restored session that has not ended waits for a peer to fill in (see [Restore](#restore-after-a-restart)) |
 | `-tls-cert`, `-tls-key`, `-tls-hosts` | see [TLS](#tls-and-your-own-certificate) | TLS certificate |
 | `-signing-key` | none, required | Key file that signs tree heads (see [Signing key](#signing-key)) |
-| `-admins` | `<data-dir>/admins` | Admin keys |
+| `-first-system-admin` | none | `ID=PUBLIC_KEY` of the first system admin. Needed at the first start, ignored later (see [First system admin](#first-system-admin)) |
 | `-public-url` | `https://<listen address>` | Base URL in stage links |
 | `-token-ttl`, `-stage-link-ttl` | `15m`, `24h` | Lifetime of access tokens and stage links |
 
@@ -673,24 +700,23 @@ bin/office-hub keygen /etc/office/hub-signing.key
   then no longer verify against `GetHubKey`.
 - How clients pin the public key is still open (#41).
 
-### First admin
+### First system admin
 
-An admin is a key in the `admins` file. Only admin keys may call `RegisterKey` and `RevokeKey`.
-Each line has a participant ID, the public key (base64 of the 32 raw bytes, see `hub/identity/api/auth`) and
-an optional display name:
-
-```
-# participant  public key                                     display name
-ada            hGs7aXk0n1V6lH1d3mFzWQ0bX2j7zv8nq3C4oD5pE6A=  Ada Lovelace
-```
+A system admin runs the hub: creates users, registers keys and names other system admins. The
+hub has no file of admin keys. At the **first start**, when the hub repository has no users yet,
+you name the first system admin with a user ID and a public key:
 
 1. Create a key pair on your device: `office key create` prints the public key.
-2. Write the public key into `admins` on the hub host.
-3. Start or restart the hub. It reads the file at start.
-4. Authenticate with your key; your token may now register the keys of the other participants
-   with `office admin key register` (see [Participant client](#participant-client-office-cli)).
+2. Start the hub with `-first-system-admin root=<public key>`. The hub creates the user `root` as a
+   human and system admin. Without the flag, the first start fails.
+3. Authenticate with your key (`office whoami`). Your token may now create users and register their
+   keys with `office admin user create` (see [Participant client](#participant-client-office-cli)).
 
-To remove an admin, delete the line and restart. Admin keys cannot be revoked through the API.
+At later starts the hub ignores the flag. More system admins come from the user API
+(`SetSystemAdmin`). The hub always keeps at least one.
+
+**A system admin is never a member of a tenant**, and a member is never made a system admin.
+If you administer the hub and also work in a tenant, use two users with two different keys.
 
 ### TLS and your own certificate
 
@@ -763,11 +789,10 @@ Run the hub:
 ```sh
 docker volume create office-hub
 docker run --rm -v office-hub:/data ghcr.io/mrsimpson/agentic-office/office-hub keygen /data/signing.key
-docker run --rm -v office-hub:/data --entrypoint sh ghcr.io/mrsimpson/agentic-office/office-hub \
-  -c 'echo "ada <public key of Ada> Ada" > /data/admins'
 docker run -d --name office-hub -p 8740:8740 -v office-hub:/data \
   ghcr.io/mrsimpson/agentic-office/office-hub \
-  -data-dir /data -addr 0.0.0.0:8740 -signing-key /data/signing.key -tls-hosts hub.example.org
+  -data-dir /data -addr 0.0.0.0:8740 -signing-key /data/signing.key \
+  -first-system-admin root=<public key of root> -tls-hosts hub.example.org
 ```
 
 The default command is `-data-dir /data -addr 0.0.0.0:8740 -signing-key /data/signing.key`.
@@ -800,13 +825,26 @@ the shared core in `client/core` (`dec-cli-and-mcp`). Run `office help` for all 
 
 ```sh
 office key create                  # creates <config>/agentic-office/client/key.pem, prints the public key
-# an admin registers it:
-office admin key register ada <public-key> --name "Ada Lovelace" --kind human
+# a system admin registers it:
+office admin user create ada <public-key> --name "Ada Lovelace" --kind human
+office admin tenant create acme ada --name "Acme Corp"     # ada is the first tenant admin
+office admin member set acme bob [--role member|tenant-admin]
+office admin member remove acme bob
+office admin member list acme
 office whoami                      # authenticates and prints "ada"
 ```
 
-`office key show` prints the public key and key ID again. `office admin key revoke <key-id>`
-removes a key. Only admin keys may register and revoke (see [First admin](#first-admin)).
+Who may do what: a **system admin** creates, lists and removes users and tenants, names system
+admins and manages the members of any tenant. A **tenant admin** manages the members of the own
+tenant (`admin member set|remove`); a member lists them (`admin member list`). Everything else
+returns `permission_denied`, and a tenant that you are not a member of looks as if it did not
+exist (`not_found`). Removing a user, a membership or a tenant ends its validity and keeps the
+record.
+
+`office key show` prints the public key and key ID again. `office admin key add <user> <public-key>`
+adds a key to a user (your own, or any as a system admin). `office admin key revoke <key-id>`
+revokes a key; the last key of a user cannot be revoked. Only a system admin creates users (see
+[First system admin](#first-system-admin)).
 
 ### Configuration
 
@@ -817,6 +855,7 @@ Every command takes these flags. The environment variables set the defaults. `<c
 |---|---|---|
 | `--hub` | `OFFICE_HUB` | `https://127.0.0.1:8740` |
 | `--ca-cert` | `OFFICE_CA_CERT` | `<config>/agentic-office/client/hub.crt` if it exists (then only it is trusted), else the system roots |
+| `--tenant` | `OFFICE_TENANT` | none; the calls of the meeting, records, tasks and slides need it (see [Tenants](#tenants)) |
 | `--key` | `OFFICE_KEY` | `<config>/agentic-office/client/key.pem` |
 | `--runtime-dir` | `OFFICE_RUNTIME_DIR` | `$XDG_RUNTIME_DIR/agentic-office`, else `/tmp/agentic-office-<uid>` |
 | `--session` | `OFFICE_SESSION` | the only session this participant joined on this machine |
@@ -1596,7 +1635,7 @@ through its interfaces:
 
 - A contract test starts the block with `tests/contracttest` (as a real process, or as a fake that
   follows the same contract) and uses only its interfaces. `contracttest.StartHub` starts
-  `office-hub` with TLS, an admin key and a signing key file (`-signing-key`); `StartHubIn`
+  `office-hub` with TLS, a first system admin and a signing key file (`-signing-key`); `StartHubIn`
   restarts it with the same file. `Hub.Participant` registers a key for a test
   participant and returns authenticated clients. It never imports the package that
   implements the block.

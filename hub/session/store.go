@@ -20,6 +20,9 @@ type Store interface {
 	Read(sessionID string, after uint32) ([]*sessionstreamv1.Event, <-chan struct{}, error)
 	// ByCommand returns the event that the command with this ID created, or nil.
 	ByCommand(sessionID, commandID string) (*sessionstreamv1.Event, error)
+	// Forget removes the log of a session from the store. The service calls it only for an ended
+	// session that is in the archive and that nobody reads; it loads the log again on demand.
+	Forget(sessionID string)
 }
 
 // MemoryStore is a Store in memory. All data is lost when the process stops.
@@ -59,6 +62,12 @@ func (m *MemoryStore) Append(sessionID string, ev *sessionstreamv1.Event) (*sess
 	close(l.notify)
 	l.notify = make(chan struct{})
 	return ev, nil
+}
+
+func (m *MemoryStore) Forget(sessionID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.logs, sessionID)
 }
 
 func (m *MemoryStore) Read(sessionID string, after uint32) ([]*sessionstreamv1.Event, <-chan struct{}, error) {

@@ -41,6 +41,8 @@ import (
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	identityv1connect "github.com/mrsimpson/agentic-office/hub/identity/api/identityv1connect"
+	userv1 "github.com/mrsimpson/agentic-office/hub/identity/userapi"
+	"github.com/mrsimpson/agentic-office/hub/identity/userapi/userv1connect"
 	decisionv1connect "github.com/mrsimpson/agentic-office/hub/records/decision/api/decisionv1connect"
 	minutesv1connect "github.com/mrsimpson/agentic-office/hub/records/minutes/api/minutesv1connect"
 	notev1connect "github.com/mrsimpson/agentic-office/hub/records/note/api/notev1connect"
@@ -49,6 +51,8 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/session/streamapi/sessionstreamv1connect"
 	"github.com/mrsimpson/agentic-office/hub/slides/api/slidesv1connect"
 	taskv1connect "github.com/mrsimpson/agentic-office/hub/tasks/api/taskv1connect"
+	tenantv1 "github.com/mrsimpson/agentic-office/hub/tenant/api"
+	"github.com/mrsimpson/agentic-office/hub/tenant/api/tenantv1connect"
 )
 
 var (
@@ -218,10 +222,14 @@ func (p *Process) WaitStderr(t testing.TB, re *regexp.Regexp, timeout time.Durat
 
 var listening = regexp.MustCompile(`listening on (https://\S+)`)
 
-// AdminID is the participant ID of the admin that StartHub creates.
+// AdminID is the user ID of the first system admin that StartHub names.
 const AdminID = "admin"
 
-// Server is a running office-hub with TLS and an admin key.
+// DefaultTenant is the tenant that Participant and EnsureMember use. The first participant becomes
+// its tenant admin, the others members. A test that manages tenants itself uses User instead.
+const DefaultTenant = "acme"
+
+// Hub is a running office-hub with TLS and a first system admin.
 type Hub struct {
 	*Process
 	URL string
@@ -229,7 +237,7 @@ type Hub struct {
 	DataDir string
 	// CertFile is the self-signed TLS certificate of the server. Clients trust it.
 	CertFile string
-	// AdminKey is the private key of the admin (participant AdminID).
+	// AdminKey is the private key of the first system admin (user AdminID).
 	AdminKey ed25519.PrivateKey
 	// SigningKeyFile is the signing key file that the hub gets with -signing-key.
 	SigningKeyFile string
@@ -240,16 +248,12 @@ type Hub struct {
 func SigningKeyFile(dir string) string { return filepath.Join(dir, "test-signing.key") }
 
 // StartHub starts office-hub on a free port and waits until it listens. It creates a data
-// directory with an admin key and a signing key file (SigningKeyFile). args are extra flags, for example "-token-ttl", "2s".
+// directory with a key for the first system admin (AdminID) and a signing key file (SigningKeyFile). args are extra flags, for example "-token-ttl", "2s".
 func StartHub(t testing.TB, env []string, args ...string) *Hub {
 	t.Helper()
 	dir := t.TempDir()
 	key, err := auth.NewKey()
 	if err != nil {
-		t.Fatal(err)
-	}
-	line := AdminID + " " + auth.FormatPublicKey(auth.PublicKey(key)) + " Test Admin\n"
-	if err := os.WriteFile(filepath.Join(dir, "admins"), []byte(line), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	signing, err := auth.NewKey()
@@ -263,12 +267,13 @@ func StartHub(t testing.TB, env []string, args ...string) *Hub {
 }
 
 // StartHubIn starts office-hub with an existing data directory, for example to restart a
-// server. adminKey is the key of AdminID in the admin file of dir. The hub gets the signing key
+// server. adminKey is the key of the first system admin AdminID, who was named at the first start. The hub gets the signing key
 // file of dir (SigningKeyFile), so a restart signs with the same key.
 func StartHubIn(t testing.TB, dir string, adminKey ed25519.PrivateKey, env []string, args ...string) *Hub {
 	t.Helper()
 	p := Start(t, "office-hub", env, append([]string{"-addr", "127.0.0.1:0", "-data-dir", dir,
-		"-signing-key", SigningKeyFile(dir)}, args...)...)
+		"-signing-key", SigningKeyFile(dir),
+		"-first-system-admin", AdminID + "=" + auth.FormatPublicKey(auth.PublicKey(adminKey))}, args...)...)
 	// Stop the hub gracefully first, so it ends its last write to the archive before the data
 	// directory is removed. Start's cleanup kills it if it does not stop in time.
 	t.Cleanup(func() { _, _ = p.Stop(10 * time.Second) })
@@ -291,26 +296,37 @@ func (s *Hub) Anonymous(t testing.TB) Clients {
 	return NewClients(s.URL, s.HTTPClient(t))
 }
 
-// WithToken returns clients that send a fixed token, for example the token of a stage link.
+// WithToken returns clients that send a fixed token, for example the token of a stage link, and
+// name DefaultTenant (a stage link token has its own tenant and ignores the header).
 func (s *Hub) WithToken(t testing.TB, token string) Clients {
-	return NewClients(s.URL, s.HTTPClient(t), auth.StaticToken(token))
+	return NewClients(s.URL, s.HTTPClient(t), auth.StaticToken(token), auth.Tenant(DefaultTenant))
 }
 
 // Actor is a participant with its own key and authenticated clients.
 type Actor struct {
 	Clients
 	ParticipantID string
-	Key           ed25519.PrivateKey
-	KeyID         string
-	Tokens        *auth.TokenSource
+	// TenantID is the tenant the calls of the actor name (auth.TenantHeader); empty for none.
+	TenantID string
+	Key      ed25519.PrivateKey
+	KeyID    string
+	Tokens   *auth.TokenSource
 }
 
-// WithKey returns an actor that authenticates with key. The key must be registered.
+// WithKey returns an actor that authenticates with key and works in DefaultTenant. The key must be
+// registered. The actor of a system admin has to use WithTenant with no tenant: a system admin is
+// no member of a tenant.
 func (s *Hub) WithKey(t testing.TB, key ed25519.PrivateKey) *Actor {
+	t.Helper()
+	return s.WithTenant(t, key, DefaultTenant)
+}
+
+// WithTenant is WithKey for another tenant, or for none ("").
+func (s *Hub) WithTenant(t testing.TB, key ed25519.PrivateKey, tenant string) *Actor {
 	t.Helper()
 	hc := s.HTTPClient(t)
 	ts := auth.NewTokenSource(NewClients(s.URL, hc).Identity, key)
-	a := &Actor{Clients: NewClients(s.URL, hc, auth.Bearer(ts)), Key: key,
+	a := &Actor{Clients: NewClients(s.URL, hc, auth.Bearer(ts), auth.Tenant(tenant)), TenantID: tenant, Key: key,
 		KeyID: auth.KeyID(auth.PublicKey(key)), Tokens: ts}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -322,33 +338,91 @@ func (s *Hub) WithKey(t testing.TB, key ed25519.PrivateKey) *Actor {
 	return a
 }
 
-// Admin returns the admin actor.
-func (s *Hub) Admin(t testing.TB) *Actor { return s.WithKey(t, s.AdminKey) }
+// Admin returns the actor of the first system admin. It names no tenant.
+func (s *Hub) Admin(t testing.TB) *Actor { return s.WithTenant(t, s.AdminKey, "") }
 
-// RegisterKey registers key for a participant as the admin and returns the key ID.
+// RegisterKey registers key for a participant as the system admin and returns the key ID. A new
+// user is created; a known user gets the key as a further key.
 func (s *Hub) RegisterKey(t testing.TB, participantID, displayName string, kind identityv1.ActorKind, key ed25519.PrivateKey) string {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	res, err := s.Admin(t).Identity.RegisterKey(ctx, &identityv1.RegisterKeyRequest{CommandId: coreapi.NewCommandID(),
-		ParticipantId: participantID, DisplayName: displayName, Kind: kind, PublicKey: auth.PublicKey(key)})
+	admin := s.Admin(t)
+	if displayName == "" {
+		// A further key of a known user.
+		added, err := admin.User.AddKey(ctx, &userv1.AddKeyRequest{CommandId: coreapi.NewCommandID(),
+			UserId: participantID, PublicKey: auth.PublicKey(key)})
+		if err != nil {
+			t.Fatalf("add a key to %s: %v", participantID, err)
+		}
+		return added.GetKeyId()
+	}
+	res, err := admin.User.CreateUser(ctx, &userv1.CreateUserRequest{CommandId: coreapi.NewCommandID(),
+		UserId: participantID, DisplayName: displayName, Kind: kind, PublicKey: auth.PublicKey(key)})
+	if connect.CodeOf(err) == connect.CodeAlreadyExists {
+		added, err := admin.User.AddKey(ctx, &userv1.AddKeyRequest{CommandId: coreapi.NewCommandID(),
+			UserId: participantID, PublicKey: auth.PublicKey(key)})
+		if err != nil {
+			t.Fatalf("add a key to %s: %v", participantID, err)
+		}
+		return added.GetKeyId()
+	}
 	if err != nil {
-		t.Fatalf("register key of %s: %v", participantID, err)
+		t.Fatalf("create user %s: %v", participantID, err)
 	}
 	return res.GetKeyId()
 }
 
-// Participant registers a new key for a participant and returns the authenticated actor. The
-// participant is created if it is new; participantID can be called several times (several
-// keys of one participant).
-func (s *Hub) Participant(t testing.TB, participantID, displayName string, kind identityv1.ActorKind) *Actor {
+// User registers a new key for a user, as a system admin, and returns the authenticated actor. The
+// user is created if it is new; User can be called several times for one user (several keys). The
+// user is in no tenant and the actor names none.
+func (s *Hub) User(t testing.TB, userID, displayName string, kind identityv1.ActorKind) *Actor {
 	t.Helper()
 	key, err := auth.NewKey()
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.RegisterKey(t, participantID, displayName, kind, key)
+	s.RegisterKey(t, userID, displayName, kind, key)
+	return s.WithTenant(t, key, "")
+}
+
+// Participant is User and EnsureMember: the user works in DefaultTenant.
+func (s *Hub) Participant(t testing.TB, userID, displayName string, kind identityv1.ActorKind) *Actor {
+	t.Helper()
+	key, err := auth.NewKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.RegisterKey(t, userID, displayName, kind, key)
+	s.EnsureMember(t, userID)
 	return s.WithKey(t, key)
+}
+
+// EnsureMember makes a registered user a member of DefaultTenant. The tenant is created, with the
+// user as its tenant admin, if it does not exist yet.
+func (s *Hub) EnsureMember(t testing.TB, userID string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	admin := s.Admin(t)
+	_, err := admin.Tenant.CreateTenant(ctx, &tenantv1.CreateTenantRequest{CommandId: coreapi.NewCommandID(),
+		TenantId: DefaultTenant, DisplayName: "Acme", FirstAdminUserId: userID})
+	if connect.CodeOf(err) == connect.CodeAlreadyExists {
+		// The tenant exists: add the user unless it is a member already (do not change its role).
+		var ms *userv1.ListMembershipsResponse
+		if ms, err = admin.User.ListMemberships(ctx, &userv1.ListMembershipsRequest{TenantId: DefaultTenant}); err == nil {
+			for _, m := range ms.GetMemberships() {
+				if m.GetUserId() == userID && m.GetValidUntil() == nil {
+					return
+				}
+			}
+			_, err = admin.User.SetMembership(ctx, &userv1.SetMembershipRequest{CommandId: coreapi.NewCommandID(),
+				TenantId: DefaultTenant, UserId: userID, Role: userv1.Role_ROLE_MEMBER})
+		}
+	}
+	if err != nil {
+		t.Fatalf("make %s a member of %s: %v", userID, DefaultTenant, err)
+	}
 }
 
 // Clients holds a Connect client for every office interface.
@@ -357,6 +431,7 @@ type Clients struct {
 	Stream   sessionstreamv1connect.SessionStreamServiceClient
 	Import   sessionimportv1connect.SessionImportServiceClient
 	Identity identityv1connect.IdentityServiceClient
+	User     userv1connect.UserServiceClient
 	Decision decisionv1connect.DecisionServiceClient
 	Minutes  minutesv1connect.MinutesServiceClient
 	Note     notev1connect.NoteServiceClient
@@ -364,6 +439,7 @@ type Clients struct {
 	Slides   slidesv1connect.SlidesServiceClient
 	Archive  archivev1connect.ArchiveReadServiceClient
 	Document documentv1connect.DocumentServiceClient
+	Tenant   tenantv1connect.TenantServiceClient
 }
 
 // NewClients returns clients for baseURL that use hc (nil: a new default client) and the
@@ -378,6 +454,7 @@ func NewClients(baseURL string, hc *http.Client, interceptors ...connect.ClientI
 		Stream:   sessionstreamv1connect.NewSessionStreamServiceClient(c),
 		Import:   sessionimportv1connect.NewSessionImportServiceClient(c),
 		Identity: identityv1connect.NewIdentityServiceClient(c),
+		User:     userv1connect.NewUserServiceClient(c),
 		Decision: decisionv1connect.NewDecisionServiceClient(c),
 		Minutes:  minutesv1connect.NewMinutesServiceClient(c),
 		Note:     notev1connect.NewNoteServiceClient(c),
@@ -385,6 +462,7 @@ func NewClients(baseURL string, hc *http.Client, interceptors ...connect.ClientI
 		Slides:   slidesv1connect.NewSlidesServiceClient(c),
 		Archive:  archivev1connect.NewArchiveReadServiceClient(c),
 		Document: documentv1connect.NewDocumentServiceClient(c),
+		Tenant:   tenantv1connect.NewTenantServiceClient(c),
 	}
 }
 

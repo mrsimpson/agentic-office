@@ -20,6 +20,7 @@ import (
 	archivev1 "github.com/mrsimpson/agentic-office/hub/archive/api"
 	documentv1 "github.com/mrsimpson/agentic-office/hub/documents/api"
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
+	userv1 "github.com/mrsimpson/agentic-office/hub/identity/userapi"
 	decisionv1 "github.com/mrsimpson/agentic-office/hub/records/decision/api"
 	minutesv1 "github.com/mrsimpson/agentic-office/hub/records/minutes/api"
 	notev1 "github.com/mrsimpson/agentic-office/hub/records/note/api"
@@ -27,6 +28,7 @@ import (
 	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
 	"github.com/mrsimpson/agentic-office/hub/session/streamapi/events"
 	slidesv1 "github.com/mrsimpson/agentic-office/hub/slides/api"
+	tenantv1 "github.com/mrsimpson/agentic-office/hub/tenant/api"
 )
 
 // joinState is the content of the join state file.
@@ -318,24 +320,120 @@ func (c *hubClient) StageLink(ctx context.Context, sessionID string) (*identityv
 	return res, err
 }
 
-// RegisterKey registers a public key for a participant. Only admin keys may call it.
-func (c *hubClient) RegisterKey(ctx context.Context, req *identityv1.RegisterKeyRequest) (*identityv1.RegisterKeyResponse, error) {
+// CreateUser registers a user with a first key. Only a system admin may call it.
+func (c *hubClient) CreateUser(ctx context.Context, req *userv1.CreateUserRequest) (*userv1.CreateUserResponse, error) {
 	req.CommandId = coreapi.NewCommandID()
-	var res *identityv1.RegisterKeyResponse
+	var res *userv1.CreateUserResponse
 	err := retry(ctx, func() (err error) {
-		res, err = c.identity.RegisterKey(ctx, req)
+		res, err = c.users.CreateUser(ctx, req)
 		return err
 	})
 	return res, err
 }
 
-// RevokeKey revokes a key by its key ID. Only admin keys may call it.
-func (c *hubClient) RevokeKey(ctx context.Context, keyID string) error {
-	cmdID := coreapi.NewCommandID()
-	return retry(ctx, func() error {
-		_, err := c.identity.RevokeKey(ctx, &identityv1.RevokeKeyRequest{CommandId: cmdID, KeyId: keyID})
+// AddKey adds a public key to a user. A user adds keys for itself, a system admin for anyone.
+func (c *hubClient) AddKey(ctx context.Context, userID string, publicKey []byte) (string, error) {
+	req := &userv1.AddKeyRequest{CommandId: coreapi.NewCommandID(), UserId: userID, PublicKey: publicKey}
+	var res *userv1.AddKeyResponse
+	err := retry(ctx, func() (err error) {
+		res, err = c.users.AddKey(ctx, req)
 		return err
 	})
+	return res.GetKeyId(), err
+}
+
+// RevokeKey revokes a key by its key ID. A user revokes its own keys, a system admin any key.
+func (c *hubClient) RevokeKey(ctx context.Context, keyID string) error {
+	req := &userv1.RevokeKeyRequest{CommandId: coreapi.NewCommandID(), KeyId: keyID}
+	return retry(ctx, func() error {
+		_, err := c.users.RevokeKey(ctx, req)
+		return err
+	})
+}
+
+// ListUsers returns all users, also the removed ones. Only a system admin may call it.
+func (c *hubClient) ListUsers(ctx context.Context) ([]*userv1.User, error) {
+	var res *userv1.ListUsersResponse
+	err := retry(ctx, func() (err error) {
+		res, err = c.users.ListUsers(ctx, &userv1.ListUsersRequest{})
+		return err
+	})
+	return res.GetUsers(), err
+}
+
+// RemoveUser ends a user and its memberships. Only a system admin may call it.
+func (c *hubClient) RemoveUser(ctx context.Context, userID string) error {
+	req := &userv1.RemoveUserRequest{CommandId: coreapi.NewCommandID(), UserId: userID}
+	return retry(ctx, func() error {
+		_, err := c.users.RemoveUser(ctx, req)
+		return err
+	})
+}
+
+// SetSystemAdmin makes a human user a system admin, or takes the role away.
+func (c *hubClient) SetSystemAdmin(ctx context.Context, userID string, on bool) error {
+	req := &userv1.SetSystemAdminRequest{CommandId: coreapi.NewCommandID(), UserId: userID, SystemAdmin: on}
+	return retry(ctx, func() error {
+		_, err := c.users.SetSystemAdmin(ctx, req)
+		return err
+	})
+}
+
+// SetMembership adds a user to a tenant with a role, or changes the role.
+func (c *hubClient) SetMembership(ctx context.Context, tenantID, userID string, role userv1.Role) error {
+	req := &userv1.SetMembershipRequest{CommandId: coreapi.NewCommandID(), TenantId: tenantID, UserId: userID, Role: role}
+	return retry(ctx, func() error {
+		_, err := c.users.SetMembership(ctx, req)
+		return err
+	})
+}
+
+// RemoveMembership ends the membership of a user in a tenant.
+func (c *hubClient) RemoveMembership(ctx context.Context, tenantID, userID string) error {
+	req := &userv1.RemoveMembershipRequest{CommandId: coreapi.NewCommandID(), TenantId: tenantID, UserId: userID}
+	return retry(ctx, func() error {
+		_, err := c.users.RemoveMembership(ctx, req)
+		return err
+	})
+}
+
+// ListMemberships returns the memberships of a tenant, also the ended ones.
+func (c *hubClient) ListMemberships(ctx context.Context, tenantID string) ([]*userv1.Membership, error) {
+	var res *userv1.ListMembershipsResponse
+	err := retry(ctx, func() (err error) {
+		res, err = c.users.ListMemberships(ctx, &userv1.ListMembershipsRequest{TenantId: tenantID})
+		return err
+	})
+	return res.GetMemberships(), err
+}
+
+// CreateTenant creates a tenant with its first tenant admin. Only a system admin may call it.
+func (c *hubClient) CreateTenant(ctx context.Context, tenantID, displayName, firstAdminUserID string) error {
+	req := &tenantv1.CreateTenantRequest{CommandId: coreapi.NewCommandID(), TenantId: tenantID, DisplayName: displayName,
+		FirstAdminUserId: firstAdminUserID}
+	return retry(ctx, func() error {
+		_, err := c.tenants.CreateTenant(ctx, req)
+		return err
+	})
+}
+
+// RemoveTenant ends a tenant and its memberships. Only a system admin may call it.
+func (c *hubClient) RemoveTenant(ctx context.Context, tenantID string) error {
+	req := &tenantv1.RemoveTenantRequest{CommandId: coreapi.NewCommandID(), TenantId: tenantID}
+	return retry(ctx, func() error {
+		_, err := c.tenants.RemoveTenant(ctx, req)
+		return err
+	})
+}
+
+// ListTenants returns all tenants, also the removed ones. Only a system admin may call it.
+func (c *hubClient) ListTenants(ctx context.Context) ([]*tenantv1.Tenant, error) {
+	var res *tenantv1.ListTenantsResponse
+	err := retry(ctx, func() (err error) {
+		res, err = c.tenants.ListTenants(ctx, &tenantv1.ListTenantsRequest{})
+		return err
+	})
+	return res.GetTenants(), err
 }
 
 // RenderDeck renders a slide deck. The author is the caller.

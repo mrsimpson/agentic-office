@@ -102,10 +102,18 @@ use the binary.** It runs directly on macOS, without a virtual machine. Apple's 
 is not a good base for a hub yet: in our tests its service stopped answering, and `container exec`
 and `container system stop` hung (see [Troubleshooting](#6-troubleshooting)).
 
-### The first admin
+### The first system admin
 
-An admin registers the keys of the other participants. You are the first admin, so create your
-key on **your own computer** first:
+The hub has two kinds of admins. A **system admin** runs the hub: creates tenants and users and
+names other system admins. A **tenant admin** runs one tenant: adds and removes its members. A
+**tenant** is one organisation with its own repository; its sessions and records are visible only
+to its members.
+
+**A system admin is never a member of a tenant**, and a member is never made a system admin. If
+you run the hub and also work in a tenant, use two users with two different keys.
+
+You are the first system admin. Give this user a name that tells it apart from the users who work
+in a tenant, for example `root`, and create its key on **your own computer** first:
 
 ```sh
 office key create        # prints "public key: …"
@@ -120,17 +128,18 @@ On the server. `CFG` is where the programs keep their files: `~/.config/agentic-
 CFG="$([ "$(uname)" = Darwin ] && echo "$HOME/Library/Application Support" || echo "${XDG_CONFIG_HOME:-$HOME/.config}")/agentic-office"
 office-hub keygen ~/office-hub/signing.key           # once; keep the file safe and back it up
 mkdir -p "$CFG/hub"
-echo "ada <your public key> Ada" > "$CFG/hub/admins"
 office-hub -signing-key ~/office-hub/signing.key -addr 0.0.0.0:8740 \
-  -tls-hosts hub.example.org -public-url https://hub.example.org:8740
+  -first-system-admin root=<your public key> -tls-hosts hub.example.org -public-url https://hub.example.org:8740
 ```
 
 - The data of the hub lives in `$CFG/hub` (`-data-dir` changes it): the
-  registered keys, the TLS certificate and the archive with all sessions and records.
+  users and keys, the TLS certificate and the archive with all sessions and records.
 - On the first start, the hub creates a self-signed TLS certificate for the names in
   `-tls-hosts`, in `tls.crt`. To use your own certificate, see "TLS and your own certificate" in
   [`README.md`](README.md).
-- The hub reads `admins` at start. After you change it, restart the hub.
+- `-first-system-admin` names the first system admin at the first start. The hub ignores it later.
+  A system admin is never a member of a tenant: if you also work in a tenant, use a second user
+  with another key.
 - To keep the hub running, start it as a service of your system, for example with systemd or
   launchd.
 
@@ -142,10 +151,9 @@ With Docker or Podman (`podman` instead of `docker`):
 H=ghcr.io/mrsimpson/agentic-office/office-hub
 docker volume create office-hub
 docker run --rm -v office-hub:/data $H keygen /data/signing.key
-docker run --rm -v office-hub:/data --entrypoint sh $H -c 'echo "ada <your public key> Ada" > /data/admins'
 docker run -d --name office-hub --restart unless-stopped -p 8740:8740 -v office-hub:/data $H \
   -data-dir /data -addr 0.0.0.0:8740 -signing-key /data/signing.key \
-  -tls-hosts hub.example.org -public-url https://hub.example.org:8740
+  -first-system-admin root=<your public key> -tls-hosts hub.example.org -public-url https://hub.example.org:8740
 docker cp office-hub:/data/tls.crt hub.crt
 ```
 
@@ -159,20 +167,33 @@ With the self-signed certificate, each participant needs the file `tls.crt` of t
 to them, for example in your team chat; it holds no secret. With a certificate from a public CA,
 they need nothing.
 
-### Register a participant
+### Create a tenant and register the participants
 
-Each participant sends you their public key (see [Join a meeting](#3-join-a-meeting)). You
-register it from your computer:
+Create a tenant and name its first tenant admin, a user who is not a system admin. Each participant
+sends you their public key (see [Join a meeting](#3-join-a-meeting)). You register it from your
+computer, then you or the tenant admin adds the user to the tenant. Registering a user and adding
+it to a tenant are two steps, so one user can work in several tenants:
 
 ```sh
-office admin key register grace <public key> --name "Grace Hopper" --kind human
-office admin key register minutes-bot <public key> --name "Minute Bot" --kind agent
+office admin user create grace <public key> --name "Grace Hopper" --kind human
+office admin user create minutes-bot <public key> --name "Minute Bot" --kind agent
+office admin tenant create acme grace --name "Acme Corp"          # grace is the first tenant admin
+office admin member set acme minutes-bot                          # the tenant admin may do this too
 ```
 
-`office admin key revoke <key-id>` removes a key again.
+`office admin member set <tenant> <user> --role tenant-admin` makes a member a tenant admin.
+`office admin member remove <tenant> <user>` ends a membership, and `office admin member list <tenant>`
+lists the members. `office admin tenant list` and `office admin tenant remove <tenant>` list and end
+tenants, `office admin user list` and `office admin user remove <user>` do the same for users.
+Removing ends the validity and keeps the record, so an ID is never used again. A tenant always
+keeps at least one tenant admin, and the hub at least one system admin.
 
-You can do the same in the browser. The admin view lists all users and keys, registers a key with
-a form and revokes a key after a confirmation:
+`office admin key add <user> <public key>` adds a further key to a user. `office admin key revoke <key-id>` revokes a key.
+The last key of a user cannot be revoked.
+
+A system admin can do the keys in the browser too. The admin view lists all users and keys, creates a
+user or adds a key with a form, and revokes a key after a confirmation. It shows the tenants and the
+system admins, read only. Tenants and memberships stay with the commands above:
 
 ```sh
 office admin link
@@ -180,7 +201,7 @@ office admin link
 
 The command prints a link. Open it in a browser within a few minutes: the link works once. The
 page then stays open for one hour. After that, or if you see `Admin link not valid` or `Session
-ended`, run `office admin link` again. Only admins get a link.
+ended`, run `office admin link` again. Only system admins get a link.
 
 ## 3. Join a meeting
 
@@ -209,7 +230,15 @@ ended`, run `office admin link` again. Only admins get a link.
    office key create
    ```
 
-5. After the admin has registered you, check it: `office whoami` prints your participant ID.
+5. Tell the client which tenant you work in, for example in your `~/.zshrc` or `~/.bashrc`. If you
+   are a member of several tenants, choose per command with `--tenant`:
+
+   ```sh
+   export OFFICE_TENANT=acme
+   ```
+
+6. After the admin has registered you and added you to the tenant, check it: `office whoami` prints
+   your participant ID.
 
 Your private key stays in `$CFG/client/key.pem`. It never leaves your computer.
 
@@ -359,12 +388,14 @@ done
 ```
 
 Each `key create` prints a public key. Send them to your admin, who registers each one as an
-agent (see [Register a participant](#register-a-participant)):
+agent and adds it to the tenant (see
+[Create a tenant and register the participants](#create-a-tenant-and-register-the-participants)):
 
 ```sh
-office admin key register claude-bot <public key> --name "Claude" --kind agent
-office admin key register opencode-bot <public key> --name "opencode" --kind agent
-office admin key register kiro-bot <public key> --name "Kiro" --kind agent
+office admin user create claude-bot <public key> --name "Claude" --kind agent
+office admin user create opencode-bot <public key> --name "opencode" --kind agent
+office admin user create kiro-bot <public key> --name "Kiro" --kind agent
+office admin member set acme claude-bot; office admin member set acme opencode-bot; office admin member set acme kiro-bot
 ```
 
 If you are the admin yourself, on the same computer, this does both steps at once:
@@ -372,7 +403,8 @@ If you are the admin yourself, on the same computer, this does both steps at onc
 ```sh
 for a in claude opencode kiro; do
   PUB=$(office key create --key "$CFG/agents/$a/key.pem" | awk '/^public key:/{print $3}')
-  office admin key register "$a-bot" "$PUB" --name "$a" --kind agent
+  office admin user create "$a-bot" "$PUB" --name "$a" --kind agent
+  office admin member set acme "$a-bot"
 done
 ```
 
@@ -720,8 +752,9 @@ See "Container images" in [`README.md`](README.md).
 
 ## 5. Try everything on one computer
 
-To get to know the office before you set up a hub, `scripts/try-local.sh` starts a hub and two
-participants in containers: Ada, a human, and a bot, an agent. You need the repository
+To get to know the office before you set up a hub, `scripts/try-local.sh` starts a hub and three
+participants in containers: `root`, the system admin who runs the hub, Ada, a human and the tenant
+admin of the tenant `trial`, and a bot, an agent. You need the repository
 (`git clone`), `bash` and one of these container runtimes:
 
 | Platform | Container runtime |
@@ -775,7 +808,7 @@ scripts/try-local.sh tail bot                        # what the agent reads; sto
 | `certificate signed by unknown authority` or `certificate is not standards compliant` | The client lacks the certificate of the hub. Copy `tls.crt` to `$CFG/client/hub.crt` (on macOS `~/Library/Application Support/agentic-office/client/hub.crt`), or set `OFFICE_CA_CERT`. |
 | `certificate is valid for …, not …` or `cannot validate certificate for …` | The name or address in `OFFICE_HUB` is not in the certificate. Delete `tls.crt` and `tls.key` in the data directory of the hub and start it with this name in `-tls-hosts`. Then give the participants the new `tls.crt`. |
 | `public key is not registered: ask an admin to register SHA256:…` | Send your public key to your admin (`office key show` prints it). Check with `office whoami`. |
-| `Admin link not valid` or `Session ended` in the admin view | The link works once and for a few minutes, and the page for one hour. Run `office admin link` again. Only admin keys get a link (`permission_denied` otherwise). |
+| `Admin link not valid` or `Session ended` in the admin view | The link works once and for a few minutes, and the page for one hour. Run `office admin link` again. Only system admins get a link (`permission_denied` otherwise). |
 | `the document has changed since you read it` (`aborted`) | Someone changed the document first. Read it again with `office document get` and redo your change with the new version in `--base`. |
 | `no audio recorder found` | Install `ffmpeg` (macOS) or `pulseaudio-utils` (Linux), or set `OFFICE_MIC_COMMAND` (see [`README.md`](README.md)). |
 | The model download fails | Check your network, or download the models elsewhere and set `OFFICE_MODEL_URL` to a mirror. |

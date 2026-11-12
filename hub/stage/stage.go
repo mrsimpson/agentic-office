@@ -26,21 +26,29 @@ type Slides interface {
 	Load(ctx context.Context, id string) (*slidesv1.Deck, error)
 }
 
+// StageLink is what the stage learns from a stage link token.
+type StageLink struct {
+	// SessionID is the session of the link.
+	SessionID string
+	// Slides loads the shown decks of the tenant of the link (artifact IDs "slides/<n>"). Nil
+	// means the stage shows a note instead.
+	Slides Slides
+	// Artifacts reads the artifacts of the tenant of the link by their path (if-archive-read). Nil
+	// means the stage shows a note instead.
+	Artifacts Artifacts
+}
+
 // Options configure a Handler.
 type Options struct {
 	// Session is a transport to the session service behind the token check, for example
 	// connectinprocess.New on the server of office-hub. The stage subscribes through it with
 	// the token of the link, so it has exactly the rights of the link.
 	Session connect.Transport
-	// StageSession returns the session of a stage link token. It returns "" for a valid token
-	// that is not a stage link, and an error for an unknown, expired or revoked token.
-	StageSession func(token string) (string, error)
-	// Slides loads shown decks (artifact IDs "slides/<n>"). Nil means the stage shows a note
-	// instead.
-	Slides Slides
-	// Artifacts reads artifacts by their path (if-archive-read). Nil means the stage shows a note
-	// instead.
-	Artifacts Artifacts
+	// StageSession returns the session and the slide decks of a stage link token: the link names
+	// a tenant, and the decks are the decks of this tenant. It returns a link with an empty
+	// SessionID for a valid token that is not a stage link, and an error for an unknown, expired
+	// or revoked token.
+	StageSession func(token string) (StageLink, error)
 	// KeepAlive is the interval of comments on an idle event stream. Default 15 seconds.
 	KeepAlive time.Duration
 }
@@ -84,39 +92,40 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	token := r.URL.Query().Get("token")
-	if status, title, msg := h.check(token, sid); status != http.StatusOK {
+	link, status, title, msg := h.check(token, sid)
+	if status != http.StatusOK {
 		h.fail(w, status, title, msg)
 		return
 	}
 	if sub == "events" {
-		h.events(w, r, sid, token)
+		h.events(w, r, sid, token, link)
 		return
 	}
 	h.page(w, r, sid, token)
 }
 
 // check returns http.StatusOK if token is a valid stage link for the session.
-func (h *Handler) check(token, sid string) (int, string, string) {
+func (h *Handler) check(token, sid string) (StageLink, int, string, string) {
 	if token == "" {
-		return http.StatusUnauthorized, "No stage link",
+		return StageLink{}, http.StatusUnauthorized, "No stage link",
 			"This address has no token. Ask a participant for the stage link: office stage link."
 	}
 	if h.opts.StageSession == nil {
-		return http.StatusUnauthorized, "Stage link not valid", "The server cannot check stage links."
+		return StageLink{}, http.StatusUnauthorized, "Stage link not valid", "The server cannot check stage links."
 	}
-	linked, err := h.opts.StageSession(token)
+	link, err := h.opts.StageSession(token)
 	switch {
 	case err != nil:
-		return http.StatusUnauthorized, "Stage link not valid",
+		return StageLink{}, http.StatusUnauthorized, "Stage link not valid",
 			"This stage link is unknown or has expired. Ask a participant for a new link: office stage link."
-	case linked == "":
-		return http.StatusForbidden, "Not a stage link",
+	case link.SessionID == "":
+		return StageLink{}, http.StatusForbidden, "Not a stage link",
 			"This token is not a stage link. Ask a participant for the stage link: office stage link."
-	case linked != sid:
-		return http.StatusForbidden, "Stage link for another session",
+	case link.SessionID != sid:
+		return StageLink{}, http.StatusForbidden, "Stage link for another session",
 			"This stage link is for another session."
 	}
-	return http.StatusOK, "", ""
+	return link, http.StatusOK, "", ""
 }
 
 func (h *Handler) fail(w http.ResponseWriter, status int, title, msg string) {
@@ -142,7 +151,7 @@ const coalesce = 30 * time.Millisecond
 // events streams the regions of the view as server-sent events. Each event is named after a
 // region and carries its inner HTML. The first message sends all regions; later messages send
 // only regions that changed. After session.ended, or when the link expires, it sends "end".
-func (h *Handler) events(w http.ResponseWriter, r *http.Request, sid, token string) {
+func (h *Handler) events(w http.ResponseWriter, r *http.Request, sid, token string, link StageLink) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		h.fail(w, http.StatusInternalServerError, "No streaming", "The server cannot stream events.")
@@ -214,11 +223,11 @@ func (h *Handler) events(w http.ResponseWriter, r *http.Request, sid, token stri
 		case <-timer.C:
 			pending = false
 			v.live = true
-			v.refresh(ctx, h.opts.Slides, h.opts.Artifacts)
+			v.refresh(ctx, link.Slides, link.Artifacts)
 			send()
 		case err := <-errc:
 			v.live = true
-			v.refresh(ctx, h.opts.Slides, h.opts.Artifacts)
+			v.refresh(ctx, link.Slides, link.Artifacts)
 			switch {
 			case errors.Is(err, io.EOF):
 				// The stream ends after session.ended.

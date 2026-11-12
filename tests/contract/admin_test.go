@@ -4,6 +4,7 @@ package contract
 // and open the pages with a browser-like HTTP client.
 
 import (
+	"crypto/ed25519"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -17,6 +18,7 @@ import (
 	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
+	userv1 "github.com/mrsimpson/agentic-office/hub/identity/userapi"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
@@ -47,7 +49,7 @@ func fetch(t *testing.T, hc *http.Client, url string) (*http.Response, string) {
 }
 
 // An admin link opens the view once. The session is a cookie that scripts cannot read; the pages
-// show the users and their keys, a revoked key, and the placeholders.
+// show the users and their keys, a revoked key, the tenants and the system admins.
 func TestAdminViewOpensWithALink(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	admin := srv.Admin(t)
@@ -112,40 +114,53 @@ func TestAdminViewOpensWithALink(t *testing.T) {
 		}
 		return els[0]
 	}
-	if got := text(row("ada")); !strings.Contains(got, "Ada Lovelace") || !strings.Contains(got, "human") || !strings.Contains(got, "active") || strings.Contains(got, "admin") {
+	if got := text(row("ada")); !strings.Contains(got, "Ada Lovelace") || !strings.Contains(got, "human") || !strings.Contains(got, "active") || strings.Contains(got, "system admin") {
 		t.Errorf("row of ada: %q", got)
 	}
 	if got := text(row("bot")); !strings.Contains(got, "agent") {
 		t.Errorf("row of bot: %q", got)
 	}
-	if got := text(row(contracttest.AdminID)); !strings.Contains(got, "admin") {
-		t.Errorf("row of the admin: %q", got)
+	if got := text(row(contracttest.AdminID)); !strings.Contains(got, "system admin") {
+		t.Errorf("row of the system admin: %q", got)
 	}
 
-	// A revoked key shows as revoked.
-	keys, err := admin.Identity.ListKeys(ctx, &identityv1.ListKeysRequest{})
+	// A user needs a key that works, so a key is revoked when its user has another one.
+	extra, err := auth.NewKey()
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, k := range keys.GetKeys() {
-		if k.GetParticipantId() == "bot" {
-			if _, err := admin.Identity.RevokeKey(ctx, &identityv1.RevokeKeyRequest{CommandId: coreapi.NewCommandID(), KeyId: k.GetKeyId()}); err != nil {
-				t.Fatal(err)
-			}
+	extraID := srv.RegisterKey(t, "bot", "", identityv1.ActorKind_ACTOR_KIND_UNSPECIFIED, extra)
+	var botKey string
+	users, err := admin.User.ListUsers(ctx, &userv1.ListUsersRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, u := range users.GetUsers() {
+		if u.GetUserId() == "bot" {
+			botKey = u.GetKeys()[0].GetKeyId()
 		}
+	}
+	if _, err := admin.User.RevokeKey(ctx, &userv1.RevokeKeyRequest{CommandId: coreapi.NewCommandID(), KeyId: botKey}); err != nil {
+		t.Fatal(err)
 	}
 	_, body = fetch(t, b, srv.URL+"/admin/keys")
 	doc = parseDoc(t, body)
-	if got := text(row("bot")); !strings.Contains(got, "revoked") {
-		t.Errorf("row of the revoked bot: %q", got)
+	if r := findAll(doc, withAttr("data-key", botKey)); len(r) != 1 || !strings.Contains(text(r[0]), "revoked") {
+		t.Errorf("row of the revoked key: %q", text(doc))
+	}
+	if r := findAll(doc, withAttr("data-key", extraID)); len(r) != 1 || !strings.Contains(text(r[0]), "active") {
+		t.Errorf("row of the other key: %q", text(doc))
 	}
 
-	// The placeholders.
-	for _, p := range []string{"/admin/tenants", "/admin/admins"} {
-		res, body := fetch(t, b, srv.URL+p)
-		if res.StatusCode != http.StatusOK || len(findAll(parseDoc(t, body), withAttr("data-placeholder", p))) != 1 {
-			t.Errorf("%s: status %d", p, res.StatusCode)
-		}
+	// The tenants and the system admins.
+	_, body = fetch(t, b, srv.URL+"/admin/tenants")
+	if rows := findAll(parseDoc(t, body), withAttr("data-tenant", contracttest.DefaultTenant)); len(rows) != 1 || !strings.Contains(text(rows[0]), "active") {
+		t.Errorf("tenants page: %q", text(parseDoc(t, body)))
+	}
+	_, body = fetch(t, b, srv.URL+"/admin/admins")
+	doc = parseDoc(t, body)
+	if len(findAll(doc, withAttr("data-participant", contracttest.AdminID))) != 1 || len(findAll(doc, withAttr("data-participant", "ada"))) != 0 {
+		t.Errorf("system admins page: %q", text(doc))
 	}
 	if res, _ := fetch(t, b, srv.URL+"/admin/nothing"); res.StatusCode != http.StatusNotFound {
 		t.Errorf("unknown page: status %d", res.StatusCode)
@@ -153,7 +168,7 @@ func TestAdminViewOpensWithALink(t *testing.T) {
 }
 
 // A session cookie that the identity part does not know ends the session. A participant who is
-// not an admin gets no link.
+// not a system admin gets no link.
 func TestAdminViewRefusesOthers(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
@@ -222,76 +237,89 @@ func post(t *testing.T, hc *http.Client, url string, v url.Values) (*http.Respon
 	return res, string(b)
 }
 
-// An admin registers a key with a form and revokes it after a confirmation. The key works until it
-// is revoked.
+// keyWorks reports whether a key can still log in.
+func keyWorks(t *testing.T, srv *contracttest.Hub, key ed25519.PrivateKey) bool {
+	t.Helper()
+	ts := auth.NewTokenSource(contracttest.NewClients(srv.URL, srv.HTTPClient(t)).Identity, key)
+	_, err := ts.ParticipantID(ctx10(t))
+	return err == nil
+}
+
+// An admin creates a user with a form, gives the user a second key with the same form and revokes
+// a key after a confirmation. A key works until it is revoked.
 func TestAdminViewRegistersAndRevokesKeys(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	b := signIn(t, srv)
-	ctx := ctx10(t)
 
 	_, body := fetch(t, b, srv.URL+"/admin/keys/new")
-	doc := parseDoc(t, body)
-	csrf := formField(t, doc, "csrf")
-	key, err := auth.NewKey()
-	if err != nil {
-		t.Fatal(err)
+	csrf := formField(t, parseDoc(t, body), "csrf")
+	register := func(key ed25519.PrivateKey, name string) (*http.Response, string) {
+		return post(t, b, srv.URL+"/admin/keys/register", url.Values{"csrf": {csrf}, "participant_id": {"newbot"},
+			"display_name": {name}, "kind": {"agent"}, "public_key": {auth.FormatPublicKey(auth.PublicKey(key))}})
 	}
-	pub := auth.FormatPublicKey(auth.PublicKey(key))
-	res, body := post(t, b, srv.URL+"/admin/keys/register", url.Values{"csrf": {csrf}, "participant_id": {"newbot"},
-		"display_name": {"New Bot"}, "kind": {"agent"}, "public_key": {pub}})
+	key1, _ := auth.NewKey()
+	res, body := register(key1, "New Bot")
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("register: status %d\n%s", res.StatusCode, body)
 	}
-	doc = parseDoc(t, body)
+	doc := parseDoc(t, body)
 	if len(findAll(doc, withAttr("data-notice", ""))) != 1 || !strings.Contains(text(doc), "The key is registered.") {
 		t.Errorf("no notice after the registration: %q", text(doc))
 	}
-	row := findAll(doc, withAttr("data-participant", "newbot"))
+	id1 := auth.KeyID(auth.PublicKey(key1))
+	row := findAll(doc, withAttr("data-key", id1))
 	if len(row) != 1 || !strings.Contains(text(row[0]), "New Bot") || !strings.Contains(text(row[0]), "agent") || !strings.Contains(text(row[0]), "active") {
 		t.Fatalf("row of the new key: %q", text(doc))
 	}
-	// The new key works.
-	bot := srv.WithKey(t, key)
-	if _, err := bot.Identity.CreateStageLink(ctx, &identityv1.CreateStageLinkRequest{SessionId: "s", CommandId: coreapi.NewCommandID()}); err != nil {
-		t.Fatalf("the registered key does not work: %v", err)
+	if !keyWorks(t, srv, key1) {
+		t.Fatalf("the registered key does not work")
 	}
-	// Notice and page are gone after a reload.
 	if _, body := fetch(t, b, srv.URL+"/admin/keys"); strings.Contains(body, "The key is registered.") {
 		t.Errorf("the notice stays")
 	}
+	// The same form gives the known user another key.
+	key2, _ := auth.NewKey()
+	if res, body := register(key2, "New Bot"); res.StatusCode != http.StatusOK || len(findAll(parseDoc(t, body), withAttr("data-participant", "newbot"))) != 2 {
+		t.Fatalf("second key: status %d\n%s", res.StatusCode, text(parseDoc(t, body)))
+	}
+	id2 := auth.KeyID(auth.PublicKey(key2))
 
 	// Revoke: the link opens a page that asks, a post revokes.
-	keyID := auth.KeyID(auth.PublicKey(key))
+	revokeHref := "/admin/keys/revoke?key_id=" + url.QueryEscape(id1)
 	_, body = fetch(t, b, srv.URL+"/admin/keys")
-	var revokeHref string
+	found := false
 	for _, a := range findAll(parseDoc(t, body), byTag("a")) {
-		if h, _ := attr(a, "href"); strings.HasPrefix(h, "/admin/keys/revoke?") && strings.Contains(h, "key_id=") {
-			if r := findAll(parseDoc(t, body), withAttr("data-key", keyID)); len(r) == 1 && strings.Contains(text(r[0]), "Revoke") {
-				revokeHref = h
-			}
+		h, _ := attr(a, "href")
+		if u, err := url.Parse(h); err == nil && u.Path == "/admin/keys/revoke" && u.Query().Get("key_id") == id1 {
+			found = true
+			revokeHref = h
 		}
 	}
-	if revokeHref == "" {
-		t.Fatalf("no link to revoke the new key")
+	if !found {
+		t.Fatalf("no link to revoke the first key")
 	}
 	res, body = fetch(t, b, srv.URL+revokeHref)
 	doc = parseDoc(t, body)
 	if res.StatusCode != http.StatusOK || len(findAll(doc, withAttr("data-confirm", "revoke"))) != 1 || !strings.Contains(text(doc), "New Bot") {
 		t.Fatalf("confirmation: status %d\n%s", res.StatusCode, text(doc))
 	}
-	// Nothing happened yet.
-	if _, err := bot.Identity.CreateStageLink(ctx, &identityv1.CreateStageLinkRequest{SessionId: "s", CommandId: coreapi.NewCommandID()}); err != nil {
-		t.Fatalf("the key stopped before the confirmation: %v", err)
+	if !keyWorks(t, srv, key1) {
+		t.Fatalf("the key stopped before the confirmation")
 	}
-	res, body = post(t, b, srv.URL+"/admin/keys/revoke", url.Values{"csrf": {formField(t, doc, "csrf")}, "key_id": {keyID}})
+	res, body = post(t, b, srv.URL+"/admin/keys/revoke", url.Values{"csrf": {formField(t, doc, "csrf")}, "key_id": {id1}})
 	if res.StatusCode != http.StatusOK || !strings.Contains(body, "The key is revoked.") {
 		t.Fatalf("revoke: status %d\n%s", res.StatusCode, body)
 	}
-	if r := findAll(parseDoc(t, body), withAttr("data-key", keyID)); len(r) != 1 || !strings.Contains(text(r[0]), "revoked") || strings.Contains(text(r[0]), "Revoke ") {
+	if r := findAll(parseDoc(t, body), withAttr("data-key", id1)); len(r) != 1 || !strings.Contains(text(r[0]), "revoked") || strings.Contains(text(r[0]), "Revoke ") {
 		t.Errorf("row after the revocation: %q", text(parseDoc(t, body)))
 	}
-	if _, err := bot.Identity.CreateStageLink(ctx, &identityv1.CreateStageLinkRequest{SessionId: "s", CommandId: coreapi.NewCommandID()}); err == nil {
-		t.Errorf("the revoked key still works")
+	if keyWorks(t, srv, key1) || !keyWorks(t, srv, key2) {
+		t.Errorf("after the revocation: first key works %v, second key works %v", keyWorks(t, srv, key1), keyWorks(t, srv, key2))
+	}
+	// The last key of a user cannot be revoked.
+	res, body = post(t, b, srv.URL+"/admin/keys/revoke", url.Values{"csrf": {csrf}, "key_id": {id2}})
+	if res.StatusCode != http.StatusConflict || !keyWorks(t, srv, key2) {
+		t.Errorf("revoke of the last key: status %d, key works %v\n%s", res.StatusCode, keyWorks(t, srv, key2), text(parseDoc(t, body)))
 	}
 }
 
@@ -299,7 +327,7 @@ func TestAdminViewRegistersAndRevokesKeys(t *testing.T) {
 // be changed. The form keeps what the admin typed.
 func TestAdminViewFormsRefuse(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
-	srv.Participant(t, "ada", "Ada", human)
+	ada := srv.Participant(t, "ada", "Ada", human)
 	b := signIn(t, srv)
 	_, body := fetch(t, b, srv.URL+"/admin/keys/new")
 	csrf := formField(t, parseDoc(t, body), "csrf")
@@ -327,7 +355,6 @@ func TestAdminViewFormsRefuse(t *testing.T) {
 	if res, _ := post(t, browser(t, srv, true), reg, form(nil)); res.StatusCode != http.StatusUnauthorized {
 		t.Errorf("no session: status %d", res.StatusCode)
 	}
-	// Another session cannot use the token of this page.
 	other := signIn(t, srv)
 	if res, _ := post(t, other, reg, form(nil)); res.StatusCode != http.StatusForbidden {
 		t.Errorf("token of another session: status %d", res.StatusCode)
@@ -352,39 +379,25 @@ func TestAdminViewFormsRefuse(t *testing.T) {
 			t.Errorf("%s: the form lost the public key: %q", name, got)
 		}
 	}
-	// A key of another participant, and a participant with another kind.
-	var adaKey string
-	keys, _ := srv.Admin(t).Identity.ListKeys(ctx10(t), &identityv1.ListKeysRequest{})
-	for _, k := range keys.GetKeys() {
-		if k.GetParticipantId() == "ada" {
-			adaKey = k.GetKeyId()
-		}
-	}
-	if res, _ := post(t, b, reg, form(map[string]string{"participant_id": "ada", "kind": "agent"})); res.StatusCode != http.StatusConflict {
-		t.Errorf("ada as an agent: status %d", res.StatusCode)
+	// A key of another user cannot be registered again.
+	adaPub := auth.FormatPublicKey(auth.PublicKey(ada.Key))
+	if res, _ := post(t, b, reg, form(map[string]string{"public_key": adaPub})); res.StatusCode != http.StatusConflict {
+		t.Errorf("a key of another user: status %d", res.StatusCode)
 	}
 
-	// Revoke: a key of the admin file, an unknown key and a key that is revoked.
-	var adminKey string
-	for _, k := range keys.GetKeys() {
-		if k.GetAdmin() {
-			adminKey = k.GetKeyId()
-		}
-	}
-	if res, _ := fetch(t, b, srv.URL+"/admin/keys/revoke?key_id="+url.QueryEscape(adminKey)); res.StatusCode != http.StatusConflict {
-		t.Errorf("confirm for the key of the admin file: status %d", res.StatusCode)
-	}
+	// Revoke: an unknown key, a wrong token, and the only key of a user.
+	adaKey := ada.KeyID
+	rev := srv.URL + "/admin/keys/revoke"
 	if res, _ := fetch(t, b, srv.URL+"/admin/keys/revoke?key_id=nothing"); res.StatusCode != http.StatusConflict {
 		t.Errorf("confirm for an unknown key: status %d", res.StatusCode)
-	}
-	rev := srv.URL + "/admin/keys/revoke"
-	if res, _ := post(t, b, rev, url.Values{"csrf": {csrf}, "key_id": {adminKey}}); res.StatusCode != http.StatusConflict {
-		t.Errorf("revoke of the key of the admin file: status %d", res.StatusCode)
 	}
 	if res, _ := post(t, b, rev, url.Values{"csrf": {"wrong"}, "key_id": {adaKey}}); res.StatusCode != http.StatusForbidden {
 		t.Errorf("revoke with a wrong token: status %d", res.StatusCode)
 	}
 	if res, _ := post(t, b, rev, url.Values{"csrf": {csrf}, "key_id": {"nothing"}}); res.StatusCode != http.StatusConflict {
 		t.Errorf("revoke of an unknown key: status %d", res.StatusCode)
+	}
+	if res, _ := post(t, b, rev, url.Values{"csrf": {csrf}, "key_id": {adaKey}}); res.StatusCode != http.StatusConflict {
+		t.Errorf("revoke of the only key of a user: status %d", res.StatusCode)
 	}
 }

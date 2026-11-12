@@ -395,8 +395,10 @@ sequenceDiagram
 
 The hub crashes while a session runs. Its last write to the archive has the session up to some
 event; the events after it are lost on the hub, but the peers still have them. When the hub starts
-again, the meeting session reads every stored log back from the archive and checks it against its
-signed tree head (`dec-restore-from-peers`). A session that has not ended takes no commands yet.
+again, the meeting session reads the stored log of every session that has not ended back from the
+archive and checks it against its signed tree head (`dec-restore-from-peers`). An ended session
+stays in the archive: the first call that needs it loads and checks it then
+(`dec-session-eviction`). A session that has not ended takes no commands yet.
 The replicators reconnect with their cursors. The hub does not know these cursors and answers that
 they are beyond the end. Each replicator then asks the hub how many events it has and offers the
 events after that, with the tree head the hub signed over its copy before the crash
@@ -571,4 +573,22 @@ sequenceDiagram
     actor_agent-->>bb_agent_runner: end of turn
     bb_session-->>bb_replicator: utterance.final of the agent
     Note over bb_agent_runner: leaves out the agent's own utterance
+```
+
+## System admin creates a tenant and the tenant admin adds a member
+
+A system admin creates a tenant and names an active user as its first tenant admin. Tenants checks
+the token (a system admin only) and asks Identity through the tenant roster. Identity applies the
+change to a copy of its state, checks all rules and writes the tenant and the first membership as
+one commit in the hub repository. Later, the tenant admin adds a user to the tenant. Identity
+checks that the caller is a tenant admin of this tenant and that the change keeps all rules. A
+user who is no member gets the same answer as for a tenant that does not exist.
+
+```arc42
+:::runtime-scenario
+id: rs-tenant-setup
+title: A system admin creates a tenant, the tenant admin adds a member
+trigger: A system admin creates a tenant
+involves: bb-office-hub, bb-tenants, bb-identity, bb-archive
+:::
 ```

@@ -17,7 +17,15 @@ import (
 )
 
 // ArchiveDir returns the default Git repository of the archive of the hub.
-func (s *Hub) ArchiveDir() string { return filepath.Join(s.DataDir, "archive") }
+func (s *Hub) ArchiveDir() string { return s.TenantRepoDir(DefaultTenant) }
+
+// HubRepoDir is the Git repository of the hub: users, tenants and memberships (system/).
+func (s *Hub) HubRepoDir() string { return filepath.Join(s.DataDir, "repos", "hub") }
+
+// TenantRepoDir is the Git repository of a tenant. It exists once the tenant is created.
+func (s *Hub) TenantRepoDir(tenantID string) string {
+	return filepath.Join(s.DataDir, "repos", "tenants", tenantID)
+}
 
 // Git runs git in dir and returns its output. It fails the test if git fails.
 func Git(t testing.TB, dir string, args ...string) string {

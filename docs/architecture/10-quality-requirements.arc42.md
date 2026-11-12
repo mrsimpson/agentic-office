@@ -174,3 +174,19 @@ response: The terminal shows the status; the stage shows the capture status
 metric: Status visible ≤ 1 s after the hub confirms it (OPEN)
 :::
 ```
+
+## Ended sessions do not fill the memory
+
+A hub that runs for months holds many ended sessions. They must not take memory from the open
+sessions or from the other tenants.
+
+```arc42
+:::quality-scenario
+id: qs-session-memory
+title: Ended sessions leave the memory of the hub
+quality: qg-performance
+stimulus: Many large sessions have ended and are in the archive
+response: The hub takes them out of memory; the next read loads one from the archive with the same events and tree head
+metric: The resident memory of the hub does not grow with the size of the ended sessions (at most half of their data)
+:::
+```

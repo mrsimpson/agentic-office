@@ -31,7 +31,7 @@ func TestImportedConversationToRecords(t *testing.T) {
 	srv := contracttest.StartHub(t, nil, "-archive-interval", "1h")
 	runtime := filepath.Join(t.TempDir(), "run")
 	envFor := func(key string) []string {
-		return []string{"OFFICE_HUB=" + srv.URL, "OFFICE_CA_CERT=" + srv.CertFile, "OFFICE_KEY=" + key,
+		return []string{"OFFICE_HUB=" + srv.URL, "OFFICE_CA_CERT=" + srv.CertFile, "OFFICE_TENANT=" + contracttest.DefaultTenant, "OFFICE_KEY=" + key,
 			"OFFICE_RUNTIME_DIR=" + runtime, "OFFICE_SESSION=", "OFFICE_JSON="}
 	}
 	office := func(env []string, args ...string) map[string]any {
@@ -51,7 +51,8 @@ func TestImportedConversationToRecords(t *testing.T) {
 	user := func(pid, name, kind string) []string {
 		env := envFor(filepath.Join(t.TempDir(), pid+".pem"))
 		k := office(env, "key", "create")
-		office(admin, "admin", "key", "register", pid, k["publicKey"].(string), "--name", name, "--kind", kind)
+		office(admin, "admin", "user", "create", pid, k["publicKey"].(string), "--name", name, "--kind", kind)
+		srv.EnsureMember(t, pid)
 		return env
 	}
 	ada, bot := user("ada", "Ada", "human"), user("bot", "Bot", "agent")
@@ -141,7 +142,7 @@ func TestImportedConversationToRecords(t *testing.T) {
 
 	// The archive holds the ended session, marked as imported and covered by its tree head.
 	a := contracttest.WaitArchived(t, srv.ArchiveDir(), "planning", 20*time.Second, (*contracttest.ArchivedSession).Ended)
-	keyRes, err := srv.Admin(t).Commands.GetHubKey(ctx, &sessioncommandsv1.GetHubKeyRequest{})
+	keyRes, err := srv.Participant(t, "viewer", "Viewer", 1).Commands.GetHubKey(ctx, &sessioncommandsv1.GetHubKeyRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}

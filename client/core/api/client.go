@@ -8,6 +8,7 @@ import (
 	archivev1 "github.com/mrsimpson/agentic-office/hub/archive/api"
 	documentv1 "github.com/mrsimpson/agentic-office/hub/documents/api"
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
+	userv1 "github.com/mrsimpson/agentic-office/hub/identity/userapi"
 	decisionv1 "github.com/mrsimpson/agentic-office/hub/records/decision/api"
 	minutesv1 "github.com/mrsimpson/agentic-office/hub/records/minutes/api"
 	notev1 "github.com/mrsimpson/agentic-office/hub/records/note/api"
@@ -17,6 +18,7 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/session/streamapi/sessionstreamv1connect"
 	slidesv1 "github.com/mrsimpson/agentic-office/hub/slides/api"
 	taskv1 "github.com/mrsimpson/agentic-office/hub/tasks/api"
+	tenantv1 "github.com/mrsimpson/agentic-office/hub/tenant/api"
 )
 
 // Dial returns an authenticated client of the office hub for the key of cfg. It does not connect
@@ -101,8 +103,34 @@ type Client interface {
 	Import(ctx context.Context, sessionID string, conv *Conversation) (*Imported, error)
 
 	StageLink(ctx context.Context, sessionID string) (*identityv1.CreateStageLinkResponse, error)
-	RegisterKey(ctx context.Context, req *identityv1.RegisterKeyRequest) (*identityv1.RegisterKeyResponse, error)
+	// CreateUser registers a user with a first key (if-user-api). Only a system admin may call it.
+	CreateUser(ctx context.Context, req *userv1.CreateUserRequest) (*userv1.CreateUserResponse, error)
+	// AddKey adds a key to a user: for itself, or for anyone as a system admin.
+	AddKey(ctx context.Context, userID string, publicKey []byte) (string, error)
+	// RevokeKey revokes a key by its key ID: an own key, or any key as a system admin.
 	RevokeKey(ctx context.Context, keyID string) error
+
+	// ListUsers returns all users, also the removed ones. Only a system admin may call it.
+	ListUsers(ctx context.Context) ([]*userv1.User, error)
+	// RemoveUser ends a user and its memberships. Only a system admin may call it.
+	RemoveUser(ctx context.Context, userID string) error
+	// SetSystemAdmin makes a human user a system admin, or takes the role away. Only a system
+	// admin may call it.
+	SetSystemAdmin(ctx context.Context, userID string, on bool) error
+	// SetMembership adds a user to a tenant with a role, or changes the role. A system admin or the
+	// tenant admin of the tenant may call it.
+	SetMembership(ctx context.Context, tenantID, userID string, role userv1.Role) error
+	// RemoveMembership ends the membership of a user in a tenant. Who may: as for SetMembership.
+	RemoveMembership(ctx context.Context, tenantID, userID string) error
+	// ListMemberships returns the memberships of a tenant, also the ended ones. A system admin or a
+	// member of the tenant may call it.
+	ListMemberships(ctx context.Context, tenantID string) ([]*userv1.Membership, error)
+
+	// CreateTenant, RemoveTenant and ListTenants manage the tenants of the hub (if-tenant-api).
+	// Only a system admin may call them.
+	CreateTenant(ctx context.Context, tenantID, displayName, firstAdminUserID string) error
+	RemoveTenant(ctx context.Context, tenantID string) error
+	ListTenants(ctx context.Context) ([]*tenantv1.Tenant, error)
 
 	RenderDeck(ctx context.Context, req *slidesv1.RenderDeckRequest) (*slidesv1.RenderDeckResponse, error)
 	GetDeck(ctx context.Context, id string) (*slidesv1.Deck, error)

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -16,6 +17,10 @@ import (
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/identityv1connect"
+	userv1 "github.com/mrsimpson/agentic-office/hub/identity/userapi"
+	"github.com/mrsimpson/agentic-office/hub/identity/userapi/userv1connect"
+	tenantv1 "github.com/mrsimpson/agentic-office/hub/tenant/api"
+	"github.com/mrsimpson/agentic-office/hub/tenant/api/tenantv1connect"
 )
 
 // Options configure a Handler.
@@ -34,25 +39,41 @@ type Handler struct {
 // New returns a Handler.
 func New(opts Options) *Handler { return &Handler{opts: opts} }
 
-// keyView is a key as the page shows it.
+// keyView is a key as the page shows it, with its user.
 type keyView struct {
-	*identityv1.KeyInfo
+	ParticipantId string
+	Name          string
+	KindName      string
+	KeyId         string
+	Revoked       bool
+	Removed       bool // the user is removed
+	Admin         bool // the user is a system admin
 }
 
-// Name is the display name, or the participant ID if there is none.
-func (k keyView) Name() string {
-	if k.GetDisplayName() != "" {
-		return k.GetDisplayName()
+// keyRows returns one row for each key of each user, ordered by user and key.
+func keyRows(users []*userv1.User) []keyView {
+	var rows []keyView
+	for _, u := range users {
+		name := u.GetDisplayName()
+		if name == "" {
+			name = u.GetUserId()
+		}
+		kind := "human"
+		if u.GetKind() == identityv1.ActorKind_ACTOR_KIND_AGENT {
+			kind = "agent"
+		}
+		for _, k := range u.GetKeys() {
+			rows = append(rows, keyView{ParticipantId: u.GetUserId(), Name: name, KindName: kind, KeyId: k.GetKeyId(),
+				Revoked: k.GetRevoked(), Removed: u.GetValidUntil() != nil, Admin: u.GetSystemAdmin()})
+		}
 	}
-	return k.GetParticipantId()
-}
-
-// KindName is "human" or "agent".
-func (k keyView) KindName() string {
-	if k.GetKind() == identityv1.ActorKind_ACTOR_KIND_AGENT {
-		return "agent"
-	}
-	return "human"
+	sort.SliceStable(rows, func(i, j int) bool {
+		if rows[i].ParticipantId != rows[j].ParticipantId {
+			return rows[i].ParticipantId < rows[j].ParticipantId
+		}
+		return rows[i].KeyId < rows[j].KeyId
+	})
+	return rows
 }
 
 // ServeHTTP serves the pages of the admin view.
@@ -96,9 +117,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.confirmRevoke(w, r)
 		}
 	case "/admin/tenants":
-		h.placeholder(w, r, "Tenants", "Tenants arrive with multi-tenancy. Each tenant will have its own repository and its own admins.")
+		h.tenants(w, r)
 	case "/admin/admins":
-		h.placeholder(w, r, "System admins", "System admins move from the admin file into the hub repository with multi-tenancy.")
+		h.admins(w, r)
 	default:
 		h.fail(w, http.StatusNotFound, "Not found", "There is no such page.")
 	}
@@ -131,13 +152,20 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 }
 
 // client returns an identity client with the token of the session, or answers with an error page.
-func (h *Handler) client(w http.ResponseWriter, r *http.Request) (identityv1connect.IdentityServiceClient, bool) {
+// backend is what the pages ask: the user API and the tenant API, with the token of the session.
+type backend struct {
+	users   userv1connect.UserServiceClient
+	tenants tenantv1connect.TenantServiceClient
+}
+
+func (h *Handler) client(w http.ResponseWriter, r *http.Request) (*backend, bool) {
 	ck, err := r.Cookie(web.CookieName)
 	if err != nil || ck.Value == "" {
 		h.fail(w, http.StatusUnauthorized, "Not signed in", "Open an admin link to sign in. "+askForLink)
 		return nil, false
 	}
-	return identityv1connect.NewIdentityServiceClient(connect.NewClient(h.opts.Identity, auth.StaticToken(ck.Value))), true
+	cc := connect.NewClient(h.opts.Identity, auth.StaticToken(ck.Value))
+	return &backend{users: userv1connect.NewUserServiceClient(cc), tenants: tenantv1connect.NewTenantServiceClient(cc)}, true
 }
 
 // denied answers a call that the identity part refused, and clears the cookie of an old session.
@@ -160,24 +188,60 @@ func (h *Handler) keys(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	res, err := c.ListKeys(ctx, &identityv1.ListKeysRequest{})
+	res, err := c.users.ListUsers(ctx, &userv1.ListUsersRequest{})
 	if err != nil {
 		h.denied(w, err)
 		return
 	}
-	keys := make([]keyView, 0, len(res.GetKeys()))
-	for _, k := range res.GetKeys() {
-		keys = append(keys, keyView{k})
-	}
+	keys := keyRows(res.GetUsers())
 	notice := map[string]string{"registered": "The key is registered.", "revoked": "The key is revoked."}[r.URL.Query().Get("done")]
 	h.page(w, map[string]any{"Title": "Users and keys", "Section": "Hub", "Active": web.KeysPath, "Keys": keys, "Notice": notice})
 }
 
-func (h *Handler) placeholder(w http.ResponseWriter, r *http.Request, title, text string) {
-	if _, ok := h.client(w, r); !ok {
+// tenantView is a tenant as the page shows it.
+type tenantView struct {
+	TenantId, Name string
+	Removed        bool
+}
+
+func (h *Handler) tenants(w http.ResponseWriter, r *http.Request) {
+	c, ok := h.client(w, r)
+	if !ok {
 		return
 	}
-	h.page(w, map[string]any{"Title": title, "Mode": "placeholder", "Section": "Tenants", "Active": "/admin/" + strings.ToLower(strings.Fields(title)[len(strings.Fields(title))-1]), "Placeholder": text})
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	res, err := c.tenants.ListTenants(ctx, &tenantv1.ListTenantsRequest{})
+	if err != nil {
+		h.denied(w, err)
+		return
+	}
+	var rows []tenantView
+	for _, t := range res.GetTenants() {
+		rows = append(rows, tenantView{TenantId: t.GetTenantId(), Name: t.GetDisplayName(), Removed: t.GetValidUntil() != nil})
+	}
+	h.page(w, map[string]any{"Title": "Tenants", "Section": "Tenants", "Active": "/admin/tenants", "Mode": "tenants", "Tenants": rows})
+}
+
+func (h *Handler) admins(w http.ResponseWriter, r *http.Request) {
+	c, ok := h.client(w, r)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	res, err := c.users.ListUsers(ctx, &userv1.ListUsersRequest{})
+	if err != nil {
+		h.denied(w, err)
+		return
+	}
+	var admins []*userv1.User
+	for _, u := range res.GetUsers() {
+		if u.GetSystemAdmin() {
+			admins = append(admins, u)
+		}
+	}
+	h.page(w, map[string]any{"Title": "System admins", "Section": "Tenants", "Active": "/admin/admins", "Mode": "admins", "Keys": keyRows(admins)})
 }
 
 func (h *Handler) page(w http.ResponseWriter, data map[string]any) {
@@ -220,7 +284,7 @@ func (h *Handler) newKey(w http.ResponseWriter, r *http.Request) {
 
 // checkForm checks that a form post comes from a page of this view: the origin, if the browser
 // sends one, is this server, and the form carries the token of the session.
-func (h *Handler) checkForm(w http.ResponseWriter, r *http.Request) (identityv1connect.IdentityServiceClient, string, bool) {
+func (h *Handler) checkForm(w http.ResponseWriter, r *http.Request) (*backend, string, bool) {
 	c, ok := h.client(w, r)
 	if !ok {
 		return nil, "", false
@@ -278,8 +342,22 @@ func (h *Handler) register(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	_, err = c.RegisterKey(ctx, &identityv1.RegisterKeyRequest{CommandId: commandID(), ParticipantId: form.ParticipantID,
-		DisplayName: form.DisplayName, Kind: kind, PublicKey: pub})
+	// A user that exists gets another key; a new user is created with this key.
+	list, err := c.users.ListUsers(ctx, &userv1.ListUsersRequest{})
+	if err != nil {
+		h.failed(w, err, show)
+		return
+	}
+	exists := false
+	for _, u := range list.GetUsers() {
+		exists = exists || (u.GetUserId() == form.ParticipantID && u.GetValidUntil() == nil)
+	}
+	if exists {
+		_, err = c.users.AddKey(ctx, &userv1.AddKeyRequest{CommandId: commandID(), UserId: form.ParticipantID, PublicKey: pub})
+	} else {
+		_, err = c.users.CreateUser(ctx, &userv1.CreateUserRequest{CommandId: commandID(), UserId: form.ParticipantID,
+			DisplayName: form.DisplayName, Kind: kind, PublicKey: pub})
+	}
 	if err != nil {
 		h.failed(w, err, show)
 		return
@@ -287,15 +365,15 @@ func (h *Handler) register(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, web.KeysPath+"?done=registered", http.StatusSeeOther)
 }
 
-// findKey returns the key with this ID, as ListKeys shows it.
-func findKey(ctx context.Context, c identityv1connect.IdentityServiceClient, id string) (keyView, error) {
-	res, err := c.ListKeys(ctx, &identityv1.ListKeysRequest{})
+// findKey returns the key with this ID, as the list of users shows it.
+func findKey(ctx context.Context, c *backend, id string) (keyView, error) {
+	res, err := c.users.ListUsers(ctx, &userv1.ListUsersRequest{})
 	if err != nil {
 		return keyView{}, err
 	}
-	for _, k := range res.GetKeys() {
-		if k.GetKeyId() == id {
-			return keyView{k}, nil
+	for _, k := range keyRows(res.GetUsers()) {
+		if k.KeyId == id {
+			return k, nil
 		}
 	}
 	return keyView{}, connect.NewError(connect.CodeNotFound, "there is no such key")
@@ -314,8 +392,8 @@ func (h *Handler) confirmRevoke(w http.ResponseWriter, r *http.Request) {
 		h.failed(w, err, func(status int, msg string) { h.fail(w, status, "Key not found", msg) })
 		return
 	}
-	if k.GetRevoked() || k.GetAdmin() {
-		h.fail(w, http.StatusConflict, "Cannot revoke", "This key is already revoked, or it is a key of the admin file: remove it there and restart the server.")
+	if k.Revoked || k.Removed {
+		h.fail(w, http.StatusConflict, "Cannot revoke", "This key is already revoked, or its user is removed.")
 		return
 	}
 	h.page(w, map[string]any{"Title": "Revoke a key", "Section": "Hub", "Active": web.KeysPath, "Mode": "revoke", "CSRF": csrf(ck.Value), "Key": k})
@@ -328,7 +406,7 @@ func (h *Handler) revoke(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	if _, err := c.RevokeKey(ctx, &identityv1.RevokeKeyRequest{CommandId: commandID(), KeyId: r.PostForm.Get("key_id")}); err != nil {
+	if _, err := c.users.RevokeKey(ctx, &userv1.RevokeKeyRequest{CommandId: commandID(), KeyId: r.PostForm.Get("key_id")}); err != nil {
 		h.failed(w, err, func(status int, msg string) { h.fail(w, status, "Cannot revoke", msg) })
 		return
 	}

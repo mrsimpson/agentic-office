@@ -114,7 +114,7 @@ func (s *Service) UseArchive(ctx context.Context, opts ArchiveOptions) error {
 	if opts.RestoreWait < 0 {
 		return errors.New("session: the restore wait must not be negative")
 	}
-	s.arch = &archiver{opts: opts, lines: map[string]*archivedLog{}}
+	s.arch = &archiver{opts: opts, lines: map[string]*archivedLog{}, committed: map[string]int{}}
 	s.dirty = map[string]bool{}
 	s.wake = make(chan struct{}, 1)
 	return s.restore(ctx)
@@ -155,6 +155,14 @@ type state struct {
 	restoring    bool
 	restoreUntil time.Time
 	broken       string
+
+	// refs counts the calls that read the log of the session outside st.mu, such as an open
+	// stream. A session that is read leaves memory never (dec-session-eviction). Changed under
+	// st.mu only.
+	refs int
+	// evicted is set when the session left memory. The state is not used any more: a call that
+	// finds it looks the session up again (see lock).
+	evicted bool
 }
 
 type participant struct {
@@ -216,6 +224,12 @@ func (st *state) apply(ev *sessionstreamv1.Event) error {
 	return nil
 }
 
+// finished reports whether the session is over: it has ended, or it is an imported conversation
+// that is complete. Such a session may leave memory (dec-session-eviction). The caller holds st.mu.
+func (st *state) finished() bool {
+	return st.ended || (st.importer != "" && !st.importing)
+}
+
 // newState returns the empty state of a session of a schema.
 func newState(schema string) *state {
 	return &state{schema: schema, participants: map[string]*participant{}, utterances: map[uint32]*utterance{}}
@@ -237,30 +251,52 @@ func schemaMismatch(schema string) string {
 
 // lock returns the locked state of a session. It loads the state from the store on first use.
 // The caller must unlock st.mu.
+//
+// A session that is not in memory is read from the store; if the store has no log of it, from the
+// archive (dec-session-eviction): an ended session left memory when it was archived and nobody
+// followed it. Only then a session is new.
 func (s *Service) lock(sessionID string) (*state, error) {
-	s.mu.Lock()
-	st, ok := s.sessions[sessionID]
-	if !ok {
-		st = newState(sessionstreamv1.Schema)
-		s.sessions[sessionID] = st
-	}
-	s.mu.Unlock()
-	st.mu.Lock()
-	if !st.loaded {
-		evs, _, err := s.store.Read(sessionID, 0)
-		if err != nil {
-			st.mu.Unlock()
-			return nil, connect.NewError(connect.CodeInternal, "read session log: "+err.Error())
+	for {
+		s.mu.Lock()
+		st, ok := s.sessions[sessionID]
+		if !ok {
+			st = newState(sessionstreamv1.Schema)
+			s.sessions[sessionID] = st
 		}
-		for _, ev := range evs {
-			if err := st.apply(ev); err != nil {
+		s.mu.Unlock()
+		st.mu.Lock()
+		if st.evicted {
+			// The session left memory between the lookup and the lock: look it up again.
+			st.mu.Unlock()
+			continue
+		}
+		if !st.loaded {
+			if err := s.load(sessionID, st); err != nil {
 				st.mu.Unlock()
 				return nil, err
 			}
+			st.loaded = true
 		}
-		st.loaded = true
+		return st, nil
 	}
-	return st, nil
+}
+
+// load fills the state of a session that is not in memory: from the log in the store, else from
+// the archive. The caller holds st.mu.
+func (s *Service) load(sessionID string, st *state) error {
+	evs, _, err := s.store.Read(sessionID, 0)
+	if err != nil {
+		return connect.NewError(connect.CodeInternal, "read session log: "+err.Error())
+	}
+	if len(evs) == 0 && s.arch != nil {
+		return s.loadStored(context.Background(), sessionID, st)
+	}
+	for _, ev := range evs {
+		if err := st.apply(ev); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func invalid(msg string) error  { return connect.NewError(connect.CodeInvalidArgument, msg) }
@@ -730,7 +766,10 @@ func (s *Service) Subscribe(ctx context.Context, req *sessionstreamv1.SubscribeR
 		return err
 	}
 	last, ended := st.lastID, st.ended
+	// An open stream reads the log: the session stays in memory until the stream ends.
+	st.refs++
 	st.mu.Unlock()
+	defer s.release(sid, st)
 	if cursor > last {
 		return connect.NewError(connect.CodeOutOfRange, "after_event_id is beyond the last event of the session")
 	}
@@ -820,7 +859,9 @@ func (s *Service) GetEvents(ctx context.Context, req *sessionstreamv1.GetEventsR
 		return nil, err
 	}
 	last := st.lastID
+	st.refs++
 	st.mu.Unlock()
+	defer s.release(sid, st)
 	cursor := req.GetAfterEventId()
 	if cursor > last {
 		return nil, connect.NewError(connect.CodeOutOfRange, "after_event_id is beyond the last event of the session")

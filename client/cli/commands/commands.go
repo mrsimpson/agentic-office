@@ -17,7 +17,17 @@ Keys and identity:
   key create                         create a key pair (if there is none) and print the public key
   key show                           print the public key and key ID
   whoami                             authenticate and print the participant ID
-  admin key register <participant> <public-key> [--name N] [--kind human|agent]
+  admin user create <user> <public-key> --name N --kind human|agent
+  admin user list                    all users, also the removed ones (system admin)
+  admin user remove <user>           end a user and its memberships (system admin)
+  admin system-admin add <user>      make a human user a system admin (system admin)
+  admin system-admin remove <user>   take the role away (system admin)
+  admin tenant create <tenant> <first-tenant-admin> [--name N]   (system admin)
+  admin tenant list | remove <tenant>                            (system admin)
+  admin member set <tenant> <user> [--role member|tenant-admin]  (system admin, tenant admin)
+  admin member remove <tenant> <user>                            (system admin, tenant admin)
+  admin member list <tenant>                                     (system admin, member)
+  admin key add <user> <public-key>
   admin key revoke <key-id>
 
 Meeting:
@@ -116,6 +126,7 @@ Flags of every command:
   --session S       the session; default: the only session joined from this machine (env OFFICE_SESSION)
   --hub URL         office hub (env OFFICE_HUB, default https://127.0.0.1:8740)
   --ca-cert FILE    trust this server certificate (env OFFICE_CA_CERT)
+  --tenant ID       tenant to work in (env OFFICE_TENANT)
   --key FILE        private key of this actor (env OFFICE_KEY)
   --runtime-dir D   directory for local logs and state (env OFFICE_RUNTIME_DIR)
 
