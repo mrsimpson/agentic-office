@@ -358,7 +358,7 @@ func TestStagePageNeedsStageLink(t *testing.T) {
 		u.EscapedPath() != "/stage/"+url.PathEscape(m.sid)+"/events" {
 		t.Errorf("data-events %q does not point to the event stream of the session", events)
 	}
-	for _, id := range []string{"status", "origin", "participants", "hands", "artifact", "artifacts", "minutes", "utterances"} {
+	for _, id := range []string{"status", "origin", "participants", "artifact", "artifacts", "artifactlog", "minutes", "utterances"} {
 		if len(findAll(doc, withAttr("id", id))) != 1 {
 			t.Errorf("page has no region #%s", id)
 		}
@@ -478,9 +478,22 @@ func TestStageShowsTheSession(t *testing.T) {
 		ParticipantId: bot, Topic: "budget <b>numbers</b>"}); err != nil {
 		t.Fatal(err)
 	}
-	n = st.wait("hands", "hand of the bot", func(n *html.Node) bool { return participantEl(n, bot) != nil })
-	if got := text(participantEl(n, bot)); !strings.Contains(got, "Minute Bot agent: budget <b>numbers</b>") {
+	n = st.wait("participants", "hand of the bot", func(n *html.Node) bool {
+		el := participantEl(n, bot)
+		if el == nil {
+			return false
+		}
+		_, up := attr(el, "data-hand")
+		return up
+	})
+	if got := text(participantEl(n, bot)); !strings.Contains(got, "budget <b>numbers</b>") {
 		t.Errorf("raised hand: %q", got)
+	}
+	if hand, _ := attr(participantEl(n, bot), "data-hand"); hand != "1" {
+		t.Errorf("the hand is number %q in the queue, want 1", hand)
+	}
+	if counter := findAll(n, withAttr("data-hands", "1")); len(counter) != 1 {
+		t.Errorf("no counter of raised hands: %q", text(n))
 	}
 	if len(findAll(n, byTag("b"))) != 0 {
 		t.Errorf("the topic became HTML")
@@ -509,7 +522,9 @@ func TestStageShowsTheSession(t *testing.T) {
 		ParticipantId: bot, Text: "# Minutes\n- Ada opened the meeting"}); err != nil {
 		t.Fatal(err)
 	}
-	st.wait("minutes", "the minutes", func(n *html.Node) bool { return strings.Contains(text(n), "# Minutes - Ada opened the meeting") })
+	st.wait("minutes", "the minutes", func(n *html.Node) bool {
+		return strings.Contains(text(n), "Ada opened the meeting") && len(findAll(n, byTag("h1"))) == 1
+	})
 
 	// Utterances; a off the record one disappears.
 	m.say(ada, "Welcome everyone")
@@ -526,7 +541,14 @@ func TestStageShowsTheSession(t *testing.T) {
 
 	// When the bot speaks, its hand goes down; agent contributions are marked.
 	m.say(bot, "The budget is on the stage.")
-	st.wait("hands", "no raised hand", func(n *html.Node) bool { return participantEl(n, bot) == nil })
+	st.wait("participants", "no raised hand", func(n *html.Node) bool {
+		el := participantEl(n, bot)
+		if el == nil {
+			return false
+		}
+		_, up := attr(el, "data-hand")
+		return !up && len(findAll(n, withAttr("data-hands", ""))) == 0
+	})
 	st.wait("utterances", "the bot's contribution", func(n *html.Node) bool {
 		return strings.Contains(text(n), "Minute Bot agent: The budget is on the stage.")
 	})
@@ -695,6 +717,16 @@ func TestStageShowsDocuments(t *testing.T) {
 			}
 		}
 		return true
+	})
+
+	// The artifact log names who did what, newest first.
+	st.wait("artifactlog", "the log of the artifacts", func(n *html.Node) bool {
+		items := findAll(n, withAttr("data-log", ""))
+		if len(items) < 4 {
+			return false
+		}
+		first := text(items[0])
+		return strings.Contains(first, "Minute Bot") && strings.Contains(first, "focused") && strings.Contains(first, "documents/notes.md")
 	})
 
 	// The session logs cannot be shown.

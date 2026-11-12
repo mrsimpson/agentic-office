@@ -25,7 +25,7 @@ const PathPrefix = "/stage/"
 // Regions are the regions of the page. Each region is an element with this ID. Every event of the
 // event stream is named after one and carries its inner HTML; the stream sends a region again only
 // when its HTML changed.
-var Regions = []string{"status", "origin", "participants", "hands", "artifact", "artifacts", "minutes", "utterances"}
+var Regions = []string{"status", "origin", "participants", "artifact", "artifacts", "artifactlog", "utterances", "minutes"}
 
 // ErrorPage is the page for a missing, unknown, expired or wrong token. It shows no session
 // data. Fields: Title, Message, Status.
@@ -40,7 +40,7 @@ const Script = `(function () {
   var main = document.getElementById("stage");
   var status = document.getElementById("status");
   var es = new EventSource(main.getAttribute("data-events"));
-  ["status", "origin", "participants", "hands", "artifact", "artifacts", "minutes", "utterances"].forEach(function (name) {
+  ["status", "origin", "participants", "artifact", "artifacts", "artifactlog", "utterances", "minutes"].forEach(function (name) {
     es.addEventListener(name, function (e) { document.getElementById(name).innerHTML = e.data; });
   });
   es.addEventListener("end", function () { es.close(); });
@@ -55,72 +55,85 @@ var scriptHash = func() string {
 }()
 
 const css = `
-:root { color-scheme: dark; --bg: #0e1116; --surface: #161b22; --raised: #1d242d; --line: #2a323d; --text: #e8edf3;
-  --muted: #8d99a8; --accent: #7c8cff; --accent-soft: #7c8cff22; --live: #3ddc97; --warn: #f5b84b; --rec: #ff6b6b; --imp: #5cc8ff; --r: 14px; }
+:root { color-scheme: light dark; --bg: #fafaf8; --text: #111; --muted: #777; --line: #e4e4df; --soft: #f0f0ec; --ink: #111; --on-ink: #fff;
+  --live: #1f8a52; --rec: #c0392b; --warn: #b7791f; --imp: #1f6fb0; }
+@media (prefers-color-scheme: dark) { :root { --bg: #0c0c0d; --text: #ececec; --muted: #8a8a90; --line: #26262a; --soft: #17171a; --ink: #ececec; --on-ink: #0c0c0d;
+  --live: #3ddc97; --rec: #ff6b5e; --warn: #f5b84b; --imp: #5cc8ff; } }
 * { box-sizing: border-box; }
-html { font-size: clamp(16px, 1.3vw, 30px); }
-body { margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; line-height: 1.45; -webkit-font-smoothing: antialiased; }
-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 0.8rem 1.5rem; }
+html { font-size: clamp(16px, 1.25vw, 30px); }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 1.1rem 2.4rem; border-bottom: 1px solid var(--line); }
 .brand { display: flex; align-items: center; gap: 0.8rem; }
-.logo { width: 1.7rem; height: 1.7rem; border-radius: 0.5rem; background: linear-gradient(135deg, var(--accent), #b07cff); }
-.eyebrow, h2 { margin: 0; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted); }
-header h1 { margin: 0; font-size: 1.5rem; font-weight: 650; letter-spacing: -0.01em; }
-#status span { display: inline-flex; align-items: center; gap: 0.45em; padding: 0.2em 0.8em; border-radius: 99px; font-size: 0.85rem; font-weight: 600; background: var(--raised); border: 1px solid var(--line); }
-#status span::before { content: ""; width: 0.55em; height: 0.55em; border-radius: 50%; background: currentColor; }
+.logo { width: 1.1rem; height: 1.1rem; border-radius: 50%; background: var(--ink); }
+.eyebrow, h2 { margin: 0; font-size: 0.7rem; font-weight: 500; letter-spacing: 0.13em; text-transform: uppercase; color: var(--muted); }
+header h1 { margin: 0; font-size: 1.1rem; font-weight: 600; }
+#status span { display: inline-flex; align-items: center; gap: 0.45em; padding: 0.15em 0.8em; border-radius: 99px; font-size: 0.8rem; font-weight: 500; border: 1px solid currentColor; }
+#status span::before { content: ""; width: 0.5em; height: 0.5em; border-radius: 50%; background: currentColor; }
 #status [data-status="live"] { color: var(--live); }
 #status [data-status="imported"] { color: var(--imp); }
 #status [data-status="ended"], #status [data-status="stopped"] { color: var(--warn); }
 #status [data-status="connecting"] { color: var(--muted); }
-main.stage { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 1.2rem; padding: 0 1.5rem 1.5rem; }
-.left, .right { display: flex; flex-direction: column; gap: 1.2rem; min-width: 0; }
-section { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 1rem 1.2rem; }
-h2 { margin-bottom: 0.7rem; }
+main.stage { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 3.2rem; padding: 2rem 2.4rem 3rem; }
+.left, .right { display: flex; flex-direction: column; gap: 2.2rem; min-width: 0; }
+section { padding: 0; }
+.right section, #artifacts, #artifactlog { border-top: 1px solid var(--line); padding-top: 1rem; }
+h2 { margin-bottom: 0.8rem; display: flex; align-items: center; gap: 0.6rem; }
 ul, ol { margin: 0; padding: 0; list-style: none; }
-li { padding: 0.35rem 0; }
+li { padding: 0.3rem 0; }
+section:empty { display: none; }
 .empty, .note { color: var(--muted); margin: 0; }
 .note { color: var(--warn); }
-.badge, .capture { display: inline-flex; align-items: center; gap: 0.4em; font-size: 0.78rem; font-weight: 600; vertical-align: middle; }
-.badge.agent { padding: 0 0.5em; border-radius: 0.4em; background: #f5b84b22; color: var(--warn); }
-.capture::before { content: ""; width: 0.55em; height: 0.55em; border-radius: 50%; background: currentColor; }
+.badge, .capture { display: inline-flex; align-items: center; gap: 0.4em; font-size: 0.75rem; font-weight: 500; vertical-align: middle; }
+.badge.agent { padding: 0 0.5em; border: 1px solid var(--line); border-radius: 0.3em; color: var(--muted); }
+.capture::before { content: ""; width: 0.5em; height: 0.5em; border-radius: 50%; background: currentColor; }
 .capture.captured { color: var(--rec); }
 .capture.paused { color: var(--warn); }
 .capture.not-captured, .capture.left { color: var(--muted); }
 .capture.imported { color: var(--imp); }
-.participants li { display: flex; align-items: center; gap: 0.7rem; }
-.participants .capture { margin-left: auto; }
-.avatar { flex: none; width: 2rem; height: 2rem; border-radius: 50%; display: grid; place-items: center; font-size: 0.72rem; font-weight: 700; background: var(--accent-soft); color: var(--accent); }
+.avatar { flex: none; width: 2rem; height: 2rem; border-radius: 50%; border: 1px solid var(--text); display: grid; place-items: center; font-size: 0.68rem; font-weight: 600; }
 .avatar::before { content: attr(data-initials); }
-.avatar.agent { border-radius: 0.55rem; background: #f5b84b22; color: var(--warn); }
-.name { font-weight: 650; }
-.hands li { margin-bottom: 0.5rem; padding: 0.7rem 0.9rem; border-radius: 12px; background: var(--accent-soft); border: 1px solid var(--accent); }
-section:empty { display: none; }
-#artifact { padding: 0; overflow: hidden; }
-.art-head { display: flex; justify-content: space-between; gap: 1rem; padding: 0.6rem 1.2rem; border-bottom: 1px solid var(--line); }
-.art-id { color: var(--muted); font-size: 0.8rem; font-weight: 600; letter-spacing: 0.05em; }
-.chips { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-.chip { padding: 0.25rem 0.8rem; border-radius: 99px; background: var(--raised); border: 1px solid var(--line); color: var(--muted); font-size: 0.85rem; }
-.chip.focused { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
-#artifact iframe { display: block; width: 100%; height: 50vh; border: 0; background: #fff; }
+.avatar.agent { border-radius: 0; }
+.name { font-weight: 600; }
+.nameline { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.participants li { display: grid; grid-template-columns: auto 1fr 3.4rem auto; align-items: center; gap: 0.2rem 0.8rem; padding: 0.45rem 0; border-bottom: 1px solid var(--line); }
+.participants li:last-child { border-bottom: 0; }
+.participants .who { display: flex; flex-direction: column; min-width: 0; }
+.participants .topic { color: var(--muted); font-size: 0.85rem; overflow-wrap: anywhere; }
+.participants .hand-col { text-align: center; }
+.hand, .hands-count { white-space: nowrap; display: inline-flex; align-items: center; gap: 0.25em; font-size: 0.8rem; font-weight: 600; padding: 0.05em 0.6em; border-radius: 99px; background: var(--ink); color: var(--on-ink); letter-spacing: 0; text-transform: none; }
+#artifact { padding: 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--bg); }
+#artifact iframe { display: block; width: 100%; height: 55vh; border: 0; background: #fff; }
 #artifact .note, #artifact .empty { padding: 1rem 1.2rem; }
-.minutes-main { max-width: 46rem; margin: 0 auto; padding: 1.6rem 2rem 2rem; min-height: 45vh; }
-.minutes-main .eyebrow { margin-bottom: 1rem; text-align: center; }
-.minutes-body { font-size: 1.15rem; line-height: 1.6; }
-.minutes-body h1, .minutes-body h2, .minutes-body h3 { line-height: 1.25; letter-spacing: -0.01em; margin: 1.2em 0 0.4em; }
-.minutes-body h1 { font-size: 1.6em; }
-.minutes-body h2 { font-size: 1.3em; text-transform: none; letter-spacing: -0.01em; color: var(--text); font-weight: 650; }
+.art-head { display: flex; justify-content: space-between; gap: 1rem; padding: 0.55rem 1.2rem; border-bottom: 1px solid var(--line); }
+.art-id { color: var(--muted); font-size: 0.8rem; }
+.minutes-main { max-width: 40rem; margin: 0 auto; padding: 1.4rem 1.6rem 2rem; min-height: 40vh; }
+.minutes-main .eyebrow { margin-bottom: 1.2rem; text-align: center; }
+.minutes-body { font-family: Georgia, "Times New Roman", serif; font-size: 1.2rem; line-height: 1.7; }
+.minutes-body h1, .minutes-body h2, .minutes-body h3 { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; line-height: 1.25; margin: 1.4em 0 0.4em; }
+.minutes-body h1 { font-size: 2rem; font-weight: 400; font-family: Georgia, "Times New Roman", serif; margin-top: 0.2em; }
+.minutes-body h2, .minutes-body h3 { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
 .minutes-body ul, .minutes-body ol { padding-left: 1.3em; list-style: revert; }
 .minutes-body li { padding: 0.15rem 0; }
 .minutes-body p { margin: 0.6em 0; }
-.placeholder { min-height: 40vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 0.6rem; }
-.placeholder h2 { margin: 0; font-size: 1.5rem; text-transform: none; letter-spacing: -0.01em; color: var(--text); font-weight: 650; }
-.placeholder p { margin: 0; color: var(--muted); max-width: 26rem; }
-.ph-icon { width: 4rem; height: 4rem; border-radius: 50%; background: var(--accent-soft); border: 1px solid var(--accent); display: grid; place-items: center; margin-bottom: 0.6rem; }
-.ph-icon::before { content: "\270E"; font-size: 1.7rem; color: var(--accent); }
-.minutes-text { white-space: pre-wrap; max-height: 40vh; overflow: auto; }
-.utterances li { display: flex; gap: 0.7rem; align-items: flex-start; }
+.placeholder { min-height: 36vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 0.5rem; }
+.placeholder h2 { margin: 0; font-size: 1.3rem; text-transform: none; letter-spacing: 0; color: var(--text); font-weight: 500; font-family: Georgia, "Times New Roman", serif; }
+.placeholder p { margin: 0; color: var(--muted); max-width: 24rem; }
+.ph-icon { width: 3rem; height: 3rem; border-radius: 50%; border: 1px solid var(--line); display: grid; place-items: center; margin-bottom: 0.6rem; color: var(--muted); }
+.ph-icon::before { content: "\270E"; font-size: 1.3rem; }
+.chips { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.chip { padding: 0.15rem 0.7rem; border: 1px solid var(--line); border-radius: 0; color: var(--muted); font-size: 0.8rem; }
+.chip.focused { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
+.artifact-log li { display: flex; gap: 0.8rem; align-items: baseline; font-size: 0.9rem; border-bottom: 1px solid var(--line); }
+.artifact-log li:last-child { border-bottom: 0; }
+.artifact-log time { color: var(--muted); font-variant-numeric: tabular-nums; flex: none; }
+.artifact-log .verb { color: var(--muted); }
+.artifact-log .path { margin-left: auto; color: var(--muted); font-size: 0.8rem; overflow-wrap: anywhere; text-align: right; }
+.right .minutes-body { font-size: 1rem; line-height: 1.6; max-height: 40vh; overflow: auto; }
+.right .minutes-body h1 { font-size: 1.3rem; }
+.utterances li { display: flex; gap: 0.8rem; align-items: flex-start; }
 .utterances .line { min-width: 0; }
 .utterances time, .corrected { color: var(--muted); font-size: 0.8rem; }
-#origin .imported { margin: 0 1.5rem 1.2rem; padding: 0.8rem 1.2rem; border-radius: var(--r); border: 1px solid var(--imp); background: #5cc8ff14; color: var(--imp); white-space: pre-line; }
+#origin .imported { margin: 1.2rem 2.4rem 0; padding: 0.8rem 1.2rem; border: 1px solid var(--imp); border-radius: 6px; color: var(--imp); white-space: pre-line; }
 .source, .title { font-weight: 700; }
 body.error main { padding: 2rem; }
 body.error h1 { color: var(--warn); }
@@ -139,13 +152,13 @@ var Page = template.Must(template.New("page").Parse(`<!DOCTYPE html>
 <noscript><p class="note">This page needs JavaScript for live updates.</p></noscript>
 <main id="stage" class="stage" data-events="{{.Events}}">
 <div class="left">
-<section id="artifact" aria-label="Shown artifact">{{.Regions.artifact}}</section>
+<section id="artifact" aria-label="Artifact in focus">{{.Regions.artifact}}</section>
 <section id="artifacts" aria-label="Artifacts of the session">{{.Regions.artifacts}}</section>
-<section id="utterances" aria-live="polite">{{.Regions.utterances}}</section>
+<section id="artifactlog" class="artifact-log" aria-label="Artifact log">{{.Regions.artifactlog}}</section>
 </div>
 <div class="right">
 <section id="participants">{{.Regions.participants}}</section>
-<section id="hands" aria-live="polite">{{.Regions.hands}}</section>
+<section id="utterances" aria-live="polite">{{.Regions.utterances}}</section>
 <section id="minutes">{{.Regions.minutes}}</section>
 </div>
 </main>
@@ -172,15 +185,10 @@ The office did not see this conversation happen. The hub's signature proves who 
 
 {{define "name"}}<span class="name">{{.Name}}</span>{{if .Agent}} <span class="badge agent" data-kind="agent">agent</span>{{end}}{{end}}
 
-{{define "participants"}}<h2>Participants</h2>
+{{define "participants"}}<h2>Participants{{if .HandCount}} <span class="hands-count" data-hands="{{.HandCount}}" title="Raised hands">&#9995; {{.HandCount}}</span>{{end}}</h2>
 {{if .Participants}}<ul class="participants">
-{{range .Participants}}<li data-participant="{{.ID}}" data-kind="{{if .Agent}}agent{{else}}human{{end}}" data-capture="{{.Status}}">{{template "avatar" .}}{{template "name" .}} <span class="capture {{.Status}}">{{.StatusText}}</span></li>
+{{range .Participants}}<li data-participant="{{.ID}}" data-kind="{{if .Agent}}agent{{else}}human{{end}}" data-capture="{{.Status}}"{{if .HandNumber}} data-hand="{{.HandNumber}}"{{end}}>{{template "avatar" .}}<span class="who"><span class="nameline">{{template "name" .}}</span>{{if .HandTopic}}<span class="topic">{{.HandTopic}}</span>{{end}}</span><span class="hand-col">{{if .HandNumber}}<span class="hand" title="Raised hand">&#9995; {{.HandNumber}}</span>{{end}}</span><span class="capture {{.Status}}">{{.StatusText}}</span></li>
 {{end}}</ul>{{else}}<p class="empty">Nobody has joined yet.</p>{{end}}{{end}}
-
-{{define "hands"}}<h2>Raised hands</h2>
-{{if .Hands}}<ol class="hands">
-{{range .Hands}}<li data-participant="{{.Participant.ID}}">✋ {{template "name" .Participant}}{{if .Topic}}: <span class="topic">{{.Topic}}</span>{{end}}</li>
-{{end}}</ol>{{else}}<p class="empty">No raised hands.</p>{{end}}{{end}}
 
 {{define "artifact"}}{{if .ShowsMinutes}}{{template "minutes-main" .}}{{else}}{{with .Artifact}}{{if .ID}}<div class="art-head"><span class="eyebrow">Now showing</span><span class="art-id">{{.ID}}</span></div>
 {{end}}{{if .Content}}<iframe title="{{.ID}}" data-artifact="{{.ID}}" sandbox="" referrerpolicy="no-referrer" srcdoc="{{.Content}}"></iframe>
@@ -195,15 +203,20 @@ The office did not see this conversation happen. The hub's signature proves who 
 <p>Nobody is taking minutes yet. Ask an agent to join this session and keep them.</p></div>
 {{end}}</div>{{end}}
 
-{{define "artifacts"}}{{if gt (len .Artifacts) 1}}<h2>Artifacts</h2>
+{{define "artifactlog"}}{{if .ArtifactLog}}<h2>Artifact log</h2>
+<ol>
+{{range .ArtifactLog}}<li data-log="{{.Verb}}"><time datetime="{{.Time.Format "2006-01-02T15:04:05Z07:00"}}">{{.Time.Format "15:04"}}</time><span>{{template "name" .Actor}} <span class="verb">{{.Verb}}</span></span><span class="path">{{.Path}}</span></li>
+{{end}}</ol>{{end}}{{end}}
+
+{{define "artifacts"}}{{if gt (len .Artifacts) 1}}<h2>Other artifacts</h2>
 <ul class="chips">
 {{range .Artifacts}}<li class="chip{{if .Focused}} focused{{end}}" data-artifact="{{.Path}}">{{.Path}}</li>
 {{end}}</ul>{{end}}{{end}}
 
 {{define "minutes"}}{{if not .ShowsMinutes}}<h2>Minutes</h2>
-{{if .Minutes}}<div class="minutes-text">{{.Minutes}}</div>{{else}}<p class="empty">No minutes yet.</p>{{end}}{{end}}{{end}}
+{{if .Minutes}}<div class="minutes-body">{{.MinutesHTML}}</div>{{else}}<p class="empty">No minutes yet.</p>{{end}}{{end}}{{end}}
 
-{{define "utterances"}}<h2>Recent contributions</h2>
+{{define "utterances"}}<h2>Transcript</h2>
 {{if .Utterances}}<ol class="utterances">
 {{range .Utterances}}<li data-utterance="{{.EventID}}" data-participant="{{.Speaker.ID}}">{{template "avatar" .Speaker}}<span class="line">{{template "name" .Speaker}}: {{if not .OriginalTime.IsZero}}<time datetime="{{.OriginalTime.Format "2006-01-02T15:04:05Z07:00"}}">{{.OriginalTime.Format "2006-01-02 15:04"}} UTC</time> {{end}}<span class="text">{{.Text}}</span>{{if .Corrected}} <span class="corrected">(corrected)</span>{{end}}</span></li>
 {{end}}</ol>{{else}}<p class="empty">Nothing said yet.</p>{{end}}{{end}}

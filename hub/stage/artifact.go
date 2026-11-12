@@ -24,7 +24,8 @@ type Artifacts interface {
 const paperCSS = `body{font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#151a21;background:#fff;margin:0;padding:1.6rem 2rem;max-width:60rem}
 h1,h2,h3{line-height:1.25;letter-spacing:-.01em}h1{font-size:1.8rem}h2{font-size:1.4rem}code,pre{font-family:ui-monospace,Menlo,Consolas,monospace;background:#f2f4f8;border-radius:6px}
 code{padding:.1em .3em}pre{padding:.8rem 1rem;overflow:auto;white-space:pre-wrap}pre code{padding:0;background:none}blockquote{margin-left:0;padding-left:1rem;border-left:3px solid #c5cbd6;color:#4a5361}
-table{border-collapse:collapse}td,th{border:1px solid #d5dae3;padding:.3rem .6rem}`
+table{border-collapse:collapse}td,th{border:1px solid #d5dae3;padding:.3rem .6rem}
+@media (prefers-color-scheme:dark){body{color:#ececec;background:#101012}code,pre{background:#1c1c20}blockquote{border-color:#3a3a40;color:#a0a0a8}td,th{border-color:#2e2e34}}`
 
 // markdown renders Markdown without raw HTML: what an author writes cannot become markup.
 var markdown = goldmark.New(goldmark.WithExtensions(extension.GFM))

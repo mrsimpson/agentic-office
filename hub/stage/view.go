@@ -24,6 +24,7 @@ type view struct {
 	participants []*participantView // in the order of their first join
 	byID         map[string]*participantView
 	hands        []handView // in the order they were raised
+	artifactLog  []logEntry // the events about artifacts, oldest first
 	artifact     artifactView
 	focus        string           // path or ID of the artifact in focus
 	entries      []*artifactEntry // the artifacts of the session in the order they first appeared
@@ -45,12 +46,14 @@ type importView struct {
 }
 
 type participantView struct {
-	ID, Name string
-	Agent    bool
-	imported bool
-	captured bool
-	paused   bool
-	left     bool
+	ID, Name  string
+	Agent     bool
+	imported  bool
+	hand      int // the place in the queue of raised hands, 0 if the hand is down
+	handTopic string
+	captured  bool
+	paused    bool
+	left      bool
 }
 
 // Status is one of "imported", "captured", "paused", "not-captured" and "left".
@@ -68,6 +71,34 @@ func (p *participantView) Status() string {
 	return "not-captured"
 }
 
+// logEntry is one line of the artifact log.
+type logEntry struct {
+	Time  time.Time
+	Actor *participantView
+	Verb  string // "created", "changed" or "focused"
+	Path  string
+}
+
+// logArtifact adds a line to the artifact log.
+func (v *view) logArtifact(ev *sessionstreamv1.Event, verb, path string) {
+	v.artifactLog = append(v.artifactLog, logEntry{Time: ev.GetTime().AsTime().UTC(), Actor: v.participant(ev.GetActorParticipantId()), Verb: verb, Path: path})
+}
+
+// recentLog is how many lines the artifact log shows.
+const recentLog = 6
+
+// ArtifactLog returns the latest lines of the artifact log, newest first.
+func (v *view) ArtifactLog() []logEntry {
+	var out []logEntry
+	for i := len(v.artifactLog) - 1; i >= 0 && len(out) < recentLog; i-- {
+		out = append(out, v.artifactLog[i])
+	}
+	return out
+}
+
+// HandCount is the number of raised hands.
+func (v *view) HandCount() int { return len(v.hands) }
+
 // ShowsMinutes reports whether the minutes take the place of an artifact: nothing is in focus.
 func (v *view) ShowsMinutes() bool { return v.focus == "" }
 
@@ -79,6 +110,12 @@ func (v *view) MinutesHTML() template.HTML {
 	}
 	return template.HTML(b.String()) // goldmark leaves out raw HTML and unsafe links
 }
+
+// HandNumber is the place of the raised hand in the queue, or 0 if the hand is down.
+func (p *participantView) HandNumber() int { return p.hand }
+
+// HandTopic is what the participant wants to say with the raised hand.
+func (p *participantView) HandTopic() string { return p.handTopic }
 
 // Initials are the first letters of the first two words of the name, for the avatar.
 func (p *participantView) Initials() string {
@@ -183,10 +220,13 @@ func (v *view) apply(ev *sessionstreamv1.Event) {
 	case *sessionstreamv1.Event_ArtifactFocused:
 		v.focus = p.ArtifactFocused.GetArtifactId()
 		v.entry(v.focus)
+		v.logArtifact(ev, "focused", v.focus)
 	case *sessionstreamv1.Event_ArtifactCreated:
 		v.entry(p.ArtifactCreated.GetPath()).version = p.ArtifactCreated.GetVersion()
+		v.logArtifact(ev, "created", p.ArtifactCreated.GetPath())
 	case *sessionstreamv1.Event_ArtifactChanged:
 		v.entry(p.ArtifactChanged.GetPath()).version = p.ArtifactChanged.GetVersion()
+		v.logArtifact(ev, "changed", p.ArtifactChanged.GetPath())
 	case *sessionstreamv1.Event_SessionImported:
 		v.imported = &importView{Source: p.SessionImported.GetSource(), Title: p.SessionImported.GetTitle(),
 			By: ev.GetActorParticipantId()}
@@ -305,11 +345,19 @@ func (v *view) StatusText() string {
 	return "Connecting …"
 }
 
-func (v *view) Imported() *importView            { return v.imported }
-func (v *view) Participants() []*participantView { return v.participants }
-func (v *view) Hands() []handView                { return v.hands }
-func (v *view) Artifact() artifactView           { return v.artifact }
-func (v *view) Minutes() string                  { return v.minutes }
+func (v *view) Imported() *importView { return v.imported }
+func (v *view) Participants() []*participantView {
+	for _, p := range v.participants {
+		p.hand, p.handTopic = 0, ""
+	}
+	for i, h := range v.hands {
+		h.Participant.hand, h.Participant.handTopic = i+1, h.Topic
+	}
+	return v.participants
+}
+func (v *view) Hands() []handView      { return v.hands }
+func (v *view) Artifact() artifactView { return v.artifact }
+func (v *view) Minutes() string        { return v.minutes }
 
 // Utterances returns the most recent utterances that are not off the record, oldest first.
 func (v *view) Utterances() []*utteranceView {
