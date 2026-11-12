@@ -220,7 +220,10 @@ belongs to exactly one tenant. The archive writes to the repository of that tena
 other; neither is configurable. Later, a repository can be synchronised with 0..n remotes; this is out of
 scope for now.
 
-**Separation.** Every call names a tenant. The hub checks the membership and the role of the
+**Separation.** Every call of the meeting session, the records, the tasks, the slides and the
+stage link names a tenant in a header; a stage link carries the tenant of the user who created it.
+The hub keeps one instance of each of these parts for each tenant, and each instance reads and
+writes only the repository of its tenant. The hub checks the membership and the role of the
 caller (from the token) before it reads or writes. A caller who is no member gets the same answer
 as for something that does not exist. Tenants share no data, and the log of one session is never
 visible in another tenant.

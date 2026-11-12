@@ -103,7 +103,7 @@ func newMeeting(t *testing.T) *meeting {
 }
 
 func (m *meeting) envFor(key, server string) []string {
-	return []string{"OFFICE_HUB=" + server, "OFFICE_CA_CERT=" + m.srv.CertFile, "OFFICE_KEY=" + key,
+	return []string{"OFFICE_HUB=" + server, "OFFICE_CA_CERT=" + m.srv.CertFile, "OFFICE_TENANT=" + contracttest.DefaultTenant, "OFFICE_KEY=" + key,
 		"OFFICE_RUNTIME_DIR=" + m.runtime, "OFFICE_SESSION=", "OFFICE_JSON="}
 }
 
@@ -123,6 +123,7 @@ func (m *meeting) user(pid, kind, server string) []string {
 	env := m.envFor(filepath.Join(m.t.TempDir(), pid+".pem"), server)
 	k := m.office(env, "key", "create")
 	m.office(m.admin, "admin", "user", "create", pid, k["publicKey"].(string), "--name", pid, "--kind", kind)
+	m.srv.EnsureMember(m.t, pid)
 	return env
 }
 

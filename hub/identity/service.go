@@ -23,6 +23,7 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	identityv1connect "github.com/mrsimpson/agentic-office/hub/identity/api/identityv1connect"
 	"github.com/mrsimpson/agentic-office/hub/identity/tokencheck"
+	"github.com/mrsimpson/agentic-office/hub/identity/userapi/userv1connect"
 )
 
 // Options configure a Service.
@@ -42,6 +43,9 @@ type Options struct {
 	Bootstrap *Bootstrap
 	// Logf logs notices of the start. Optional.
 	Logf func(format string, args ...any)
+	// TenantFreeServices are the names of the services, besides the user API, whose calls do
+	// not belong to a tenant and need no tenant header. The wiring of the server sets them.
+	TenantFreeServices []string
 	// StageProcedures are the procedures that a stage link token may call. The wiring of the
 	// server sets them, so that identity does not need to know the other interfaces.
 	StageProcedures []string
@@ -61,6 +65,7 @@ type challenge struct {
 type token struct {
 	keyID        string
 	stageSession string
+	stageTenant  string
 	expires      time.Time
 	done         chan struct{}
 	timer        *time.Timer
@@ -131,6 +136,20 @@ func unauthenticated(msg string) error { return connect.NewError(connect.CodeUna
 func denied(msg string) error          { return connect.NewError(connect.CodePermissionDenied, msg) }
 func precondition(msg string) error    { return connect.NewError(connect.CodeFailedPrecondition, msg) }
 
+// tenantFree reports whether a call does not belong to a tenant: the public procedures, the user
+// API and the services that the wiring names in Options.TenantFreeServices.
+func (s *Service) tenantFree(procedure string) bool {
+	if publicProcedures[procedure] {
+		return true
+	}
+	for _, name := range append([]string{userv1connect.UserServiceName}, s.opts.TenantFreeServices...) {
+		if strings.HasPrefix(procedure, "/"+name+"/") {
+			return true
+		}
+	}
+	return false
+}
+
 // publicProcedures need no token.
 var publicProcedures = map[string]bool{
 	identityv1connect.IdentityServiceGetChallengeProcedure:      true,
@@ -158,8 +177,27 @@ func (s *Service) Interceptor() connect.ServerInterceptor {
 			if err != nil {
 				return err
 			}
-			if c.StageSessionID != "" && !s.stageProcedures[spec.Procedure] {
-				return denied("a stage link only allows reading the session stream")
+			if c.StageSessionID != "" {
+				if !s.stageProcedures[spec.Procedure] {
+					return denied("a stage link only allows reading the session stream")
+				}
+				return next(tokencheck.WithCaller(ctx, c), spec, stream)
+			}
+			if !s.tenantFree(spec.Procedure) {
+				// The calls that belong to a tenant name it (auth.TenantHeader). A caller who is
+				// no member, a system admin too, gets the answer for a tenant that does not exist.
+				var name string
+				if info, ok := connect.CallInfoForServerContext(ctx); ok {
+					name = info.RequestHeader().Get(auth.TenantHeader)
+				}
+				if name == "" {
+					return invalid("name the tenant: send the header " + auth.TenantHeader)
+				}
+				role, member := c.Member(name)
+				if !member {
+					return notFound("no such tenant")
+				}
+				c.TenantID, c.TenantRole = name, role
 			}
 			return next(tokencheck.WithCaller(ctx, c), spec, stream)
 		}
@@ -182,7 +220,11 @@ func (s *Service) CheckToken(tok string) (Caller, error) {
 		return Caller{}, unauthenticated("access token expired: authenticate again")
 	}
 	if t.stageSession != "" {
-		return Caller{StageSessionID: t.stageSession, Expires: t.expires, Done: t.done}, nil
+		// A stage link ends with its tenant.
+		if tn := s.st.tenants[t.stageTenant]; tn == nil || !tn.active(time.Now()) {
+			return Caller{}, unauthenticated("the tenant of the stage link was removed")
+		}
+		return Caller{StageSessionID: t.stageSession, TenantID: t.stageTenant, Expires: t.expires, Done: t.done}, nil
 	}
 	now := time.Now()
 	k, u, ok := s.usable(t.keyID, now)
@@ -205,7 +247,7 @@ func (s *Service) CheckToken(tok string) (Caller, error) {
 }
 
 // newToken creates a token. The caller holds s.mu.
-func (s *Service) newToken(prefix, keyID, stageSession string, ttl time.Duration) (string, time.Time) {
+func (s *Service) newToken(prefix, keyID, stageSession, stageTenant string, ttl time.Duration) (string, time.Time) {
 	now := time.Now()
 	for h, t := range s.tokens {
 		if !now.Before(t.expires) {
@@ -216,7 +258,7 @@ func (s *Service) newToken(prefix, keyID, stageSession string, ttl time.Duration
 	b := make([]byte, 32)
 	_, _ = rand.Read(b)
 	tok := prefix + base64.RawURLEncoding.EncodeToString(b)
-	t := &token{keyID: keyID, stageSession: stageSession, expires: now.Add(ttl), done: make(chan struct{})}
+	t := &token{keyID: keyID, stageSession: stageSession, stageTenant: stageTenant, expires: now.Add(ttl), done: make(chan struct{})}
 	t.timer = time.AfterFunc(ttl, t.end)
 	s.tokens[sha256.Sum256([]byte(tok))] = t
 	return tok, t.expires
@@ -271,7 +313,7 @@ func (s *Service) ExchangeChallenge(_ context.Context, req *identityv1.ExchangeC
 	if !ed25519.Verify(req.GetPublicKey(), req.GetChallenge(), req.GetSignature()) {
 		return nil, unauthenticated("signature does not match the challenge and the public key")
 	}
-	tok, exp := s.newToken("oat_", id, "", s.opts.TokenTTL)
+	tok, exp := s.newToken("oat_", id, "", "", s.opts.TokenTTL)
 	return &identityv1.ExchangeChallengeResponse{AccessToken: tok, ExpiresAt: timestamppb.New(exp),
 		ParticipantId: k.userID}, nil
 }
@@ -304,7 +346,7 @@ func (s *Service) CreateStageLink(ctx context.Context, req *identityv1.CreateSta
 	} else if prev != nil {
 		return prev.(*identityv1.CreateStageLinkResponse), nil
 	}
-	tok, exp := s.newToken("ost_", "", req.GetSessionId(), s.opts.StageLinkTTL)
+	tok, exp := s.newToken("ost_", "", req.GetSessionId(), c.TenantID, s.opts.StageLinkTTL)
 	res := &identityv1.CreateStageLinkResponse{
 		Url:       s.opts.PublicURL + "/stage/" + url.PathEscape(req.GetSessionId()) + "?token=" + tok,
 		ExpiresAt: timestamppb.New(exp)}

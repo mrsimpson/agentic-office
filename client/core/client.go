@@ -68,7 +68,7 @@ func Dial(cfg coreapi.Config) (coreapi.Client, error) {
 	base := strings.TrimRight(cfg.Hub, "/")
 	// The identity client inside the token source must not use Bearer itself.
 	ts := auth.NewTokenSource(identityv1connect.NewIdentityServiceClient(newConnect(hc, base)), key)
-	cc := newConnect(hc, base, auth.Bearer(ts))
+	cc := newConnect(hc, base, auth.Bearer(ts), auth.Tenant(cfg.Tenant))
 	return &hubClient{cfg: cfg, key: key, tokens: ts,
 		commands:      sessioncommandsv1connect.NewSessionCommandsServiceClient(cc),
 		stream:        sessionstreamv1connect.NewSessionStreamServiceClient(cc),

@@ -117,6 +117,25 @@ func StaticToken(token string) connect.ClientInterceptor {
 	}
 }
 
+// TenantHeader is the header that names the tenant of a call. Every call of the session, the
+// records, the tasks, the slides and the stage link carries it; the calls of the auth API, the
+// user API and the tenant API do not. A caller who is no member of the tenant gets "not found",
+// the same answer as for a tenant that does not exist.
+const TenantHeader = "Office-Tenant"
+
+// Tenant returns a client interceptor that names the tenant of every call. With an empty ID it
+// sends nothing.
+func Tenant(id string) connect.ClientInterceptor {
+	return func(next connect.ClientFunc) connect.ClientFunc {
+		return func(ctx context.Context, spec connect.Spec) (connect.ClientStream, error) {
+			if info, ok := connect.CallInfoForClientContext(ctx); ok && id != "" {
+				info.RequestHeader().Set(TenantHeader, id)
+			}
+			return next(ctx, spec)
+		}
+	}
+}
+
 func setToken(ctx context.Context, token string) {
 	if info, ok := connect.CallInfoForClientContext(ctx); ok {
 		info.RequestHeader().Set(AuthorizationHeader, "Bearer "+token)

@@ -127,7 +127,7 @@ hub/                      bb-office-hub: wiring of the hub (binary office-hub)
                           dotted form (streamapi/events), Merkle code (streamapi/merkle),
                           stored form of a session log: lines and tree head (streamapi/logfile)
     importapi/            if-session-import: contract and generated code
-  archive/                bb-archive: local Git repository, push mocked
+  archive/                bb-archive: local Git repositories (hub and tenants), push mocked
     storage/              if-archive-storage: write files as one commit, read them back (in-process)
   identity/               bb-identity
     api/                  if-auth-api: contract, generated code, client side (api/auth: key files,
@@ -291,10 +291,11 @@ Transparency), and the hub signs its tree heads (`dec-merkle-log`). Package
 
 ### Archive
 
-The archive (`hub/archive`) stores the sessions, the records (decisions, minutes and notes,
+The archive (`hub/archive`) stores, in the repository of each tenant, the sessions, the records (decisions, minutes and notes,
 see [Records](#records-decisions-minutes-and-notes)), the tasks (see [Tasks](#tasks)) and the slide decks (see [Slides](#slides)) of the hub in a local Git repository on the hub
-host, by default `<data-dir>/archive` (`-archive-dir`). It creates the repository (branch `main`)
-on the first start. Every write is one commit. The push to a remote is mocked: it does nothing
+host. Each tenant has its own repository, `<data-dir>/repos/tenants/<id>`; the hub creates it with the
+tenant (branch `main`). The tenant is named in every call (see [Tenants](#tenants)). The
+hub repository `<data-dir>/repos/hub` holds the users, tenants and memberships. Every write is one commit. The push to a remote is mocked: it does nothing
 and reports success (#43). The hub needs the `git` command line tool in `PATH`. It runs git
 without your system and global git configuration, so hooks and commit signing do not apply.
 
@@ -334,6 +335,25 @@ log of the one before.
 `sessions/+state.yaml` says whether the archive is complete: `complete: true` when the hub stopped
 after a last write of every session, `false` from the next start on. No session name starts with
 `+`.
+
+### Tenants
+
+The hub serves several tenants (`dec-multi-tenancy`). A tenant is one organisation with its own
+repository. Its sessions, decisions, minutes, notes, tasks and slide decks are visible only to its
+members. The session IDs and the numbers of tasks and decks count in each tenant.
+
+- **Every call of the session, records, tasks, slides and stage link names the tenant** in the
+  header `Office-Tenant` (`auth.TenantHeader`; `auth.Tenant(id)` is the client interceptor). The
+  client sets it from `OFFICE_TENANT` or `--tenant`. The calls of the auth API, the user API and
+  the tenant API name no tenant.
+- The identity interceptor checks that the caller is an active member of the tenant. Everyone
+  else, a system admin too, gets `not_found`, the same answer as for a tenant that does not exist.
+  A call without the header fails with `invalid_argument`.
+- A stage link belongs to the tenant of the user who creates it. It shows the session and the
+  decks of this tenant, and it ends when the tenant is removed.
+- The hub keeps one instance of the session, records, tasks and slides for each tenant. They read
+  and write only the repository of the tenant. At start the hub opens the tenants that exist and
+  restores their sessions; a new tenant is opened on its first call.
 
 ### Restore after a restart
 
@@ -580,8 +600,7 @@ All files of the hub are in its data directory (`-data-dir`), by default
 |---|---|
 | `tls.crt`, `tls.key` | TLS certificate and key. The hub creates a self-signed pair if neither exists. |
 | `repos/hub/` | The hub repository: users, tenants and memberships (`system/`). The hub creates it and is the only writer. |
-| `repos/tenants/<id>/` | The Git repository of one tenant. The hub creates it with the tenant and keeps it when the tenant is removed. |
-| `archive/` | The Git repository of the archive (`-archive-dir`): sessions, decisions, minutes, notes, tasks and slide decks. The hub creates it and commits into it. See [Archive](#archive). |
+| `repos/tenants/<id>/` | The Git repository of one tenant: sessions, decisions, minutes, notes, tasks and slide decks. The hub creates it with the tenant, commits into it and keeps it when the tenant is removed. See [Archive](#archive). |
 
 Flags of the hub (`bin/office-hub -h` lists them all):
 
@@ -589,7 +608,6 @@ Flags of the hub (`bin/office-hub -h` lists them all):
 |---|---|---|
 | `-addr` | `127.0.0.1:8740` | Listen address |
 | `-data-dir` | `<config>/agentic-office/hub` | Data directory |
-| `-archive-dir` | `<data-dir>/archive` | Git repository of the archive |
 | `-archive-interval` | `30s` | Time between two writes of changed sessions. Keep it above the usual commit time. |
 | `-restore-wait` | `10s` | After a restart, how long a restored session that has not ended waits for a peer to fill in (see [Restore](#restore-after-a-restart)) |
 | `-tls-cert`, `-tls-key`, `-tls-hosts` | see [TLS](#tls-and-your-own-certificate) | TLS certificate |
@@ -745,8 +763,19 @@ the shared core in `client/core` (`dec-cli-and-mcp`). Run `office help` for all 
 office key create                  # creates <config>/agentic-office/client/key.pem, prints the public key
 # a system admin registers it:
 office admin user create ada <public-key> --name "Ada Lovelace" --kind human
+office admin tenant create acme ada --name "Acme Corp"     # ada is the first tenant admin
+office admin member set acme bob [--role member|tenant-admin]
+office admin member remove acme bob
+office admin member list acme
 office whoami                      # authenticates and prints "ada"
 ```
+
+Who may do what: a **system admin** creates, lists and removes users and tenants, names system
+admins and manages the members of any tenant. A **tenant admin** manages the members of the own
+tenant (`admin member set|remove`); a member lists them (`admin member list`). Everything else
+returns `permission_denied`, and a tenant that you are not a member of looks as if it did not
+exist (`not_found`). Removing a user, a membership or a tenant ends its validity and keeps the
+record.
 
 `office key show` prints the public key and key ID again. `office admin key add <user> <public-key>`
 adds a key to a user (your own, or any as a system admin). `office admin key revoke <key-id>`
@@ -762,6 +791,7 @@ Every command takes these flags. The environment variables set the defaults. `<c
 |---|---|---|
 | `--hub` | `OFFICE_HUB` | `https://127.0.0.1:8740` |
 | `--ca-cert` | `OFFICE_CA_CERT` | `<config>/agentic-office/client/hub.crt` if it exists (then only it is trusted), else the system roots |
+| `--tenant` | `OFFICE_TENANT` | none; the calls of the meeting, records, tasks and slides need it (see [Tenants](#tenants)) |
 | `--key` | `OFFICE_KEY` | `<config>/agentic-office/client/key.pem` |
 | `--runtime-dir` | `OFFICE_RUNTIME_DIR` | `$XDG_RUNTIME_DIR/agentic-office`, else `/tmp/agentic-office-<uid>` |
 | `--session` | `OFFICE_SESSION` | the only session this participant joined on this machine |

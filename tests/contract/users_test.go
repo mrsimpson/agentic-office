@@ -66,10 +66,10 @@ func active(m *userv1.Membership) bool { return m != nil && m.GetValidUntil() ==
 func TestMembershipRights(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	admin := srv.Admin(t)
-	ada := srv.Participant(t, "ada", "Ada", human)
-	bob := srv.Participant(t, "bob", "Bob", human)
-	cy := srv.Participant(t, "cy", "Cy", human)
-	dee := srv.Participant(t, "dee", "Dee", human)
+	ada := srv.User(t, "ada", "Ada", human)
+	bob := srv.User(t, "bob", "Bob", human)
+	cy := srv.User(t, "cy", "Cy", human)
+	dee := srv.User(t, "dee", "Dee", human)
 
 	wantCode(t, "membership in a tenant that does not exist", setMember(t, admin, "acme", "ada", roleAdmin), connect.CodeNotFound)
 	wantCode(t, "bad tenant ID", setMember(t, admin, "a b", "ada", roleAdmin), connect.CodeInvalidArgument)
@@ -138,9 +138,9 @@ func TestMembershipRights(t *testing.T) {
 func TestSystemAdminIsNeverMember(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	admin := srv.Admin(t)
-	ada := srv.Participant(t, "ada", "Ada", human)
-	bot := srv.Participant(t, "bot", "Bot", agent)
-	boss := srv.Participant(t, "boss", "Boss", human)
+	ada := srv.User(t, "ada", "Ada", human)
+	bot := srv.User(t, "bot", "Bot", agent)
+	boss := srv.User(t, "boss", "Boss", human)
 	setAdmin := func(a *contracttest.Actor, user string, on bool) error {
 		_, err := a.User.SetSystemAdmin(ctx10(t), &userv1.SetSystemAdminRequest{CommandId: coreapi.NewCommandID(),
 			UserId: user, SystemAdmin: on})
@@ -179,8 +179,8 @@ func TestSystemAdminIsNeverMember(t *testing.T) {
 func TestRemoveUserKeepsTheRecord(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	admin := srv.Admin(t)
-	ada := srv.Participant(t, "ada", "Ada", human)
-	bob := srv.Participant(t, "bob", "Bob", human)
+	ada := srv.User(t, "ada", "Ada", human)
+	bob := srv.User(t, "bob", "Bob", human)
 	if err := createTenant(t, admin, "acme", "ada"); err != nil {
 		t.Fatal(err)
 	}
@@ -292,7 +292,7 @@ func TestFirstSystemAdmin(t *testing.T) {
 // breaks one: nobody gets rights by editing a file.
 func TestHubRepositoryBreakingARuleStopsTheHub(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
-	ada := srv.Participant(t, "ada", "Ada", human)
+	ada := srv.User(t, "ada", "Ada", human)
 	if err := createTenant(t, srv.Admin(t), "acme", "ada"); err != nil {
 		t.Fatal(err)
 	}
@@ -345,8 +345,8 @@ func TestHubRepositoryBreakingARuleStopsTheHub(t *testing.T) {
 // Users, keys and memberships survive a restart, with the validity of the memberships.
 func TestUsersSurviveRestart(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
-	ada := srv.Participant(t, "ada", "Ada", human)
-	srv.Participant(t, "bob", "Bob", human)
+	ada := srv.User(t, "ada", "Ada", human)
+	srv.User(t, "bob", "Bob", human)
 	if err := createTenant(t, srv.Admin(t), "acme", "ada"); err != nil {
 		t.Fatal(err)
 	}

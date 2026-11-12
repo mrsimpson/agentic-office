@@ -191,7 +191,7 @@ path: hub/session/importapi
 ### Auth API
 
 Challenge and response: the client asks for a challenge, signs it with its private key and gets a
-short-lived access token that is bound to its key. Also: create a read-only stage link.
+short-lived access token that is bound to its key. Also: create a read-only stage link. The calls of the meeting session, the records, the tasks and the slides name their tenant in a header, and Identity checks that the caller is a member of it; the auth API, the user API and the tenant API name no tenant.
 
 ```arc42
 :::interface

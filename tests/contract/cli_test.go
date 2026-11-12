@@ -55,7 +55,7 @@ type officeUser struct {
 // configuration file of the host takes part.
 func (m *machine) userWithKey(keyFile string) *officeUser {
 	return &officeUser{m: m, key: keyFile, env: []string{"OFFICE_HUB=" + m.srv.URL, "OFFICE_CA_CERT=" + m.srv.CertFile,
-		"OFFICE_KEY=" + keyFile, "OFFICE_RUNTIME_DIR=" + m.runtime, "OFFICE_SESSION=", "OFFICE_JSON=",
+		"OFFICE_TENANT=" + contracttest.DefaultTenant, "OFFICE_KEY=" + keyFile, "OFFICE_RUNTIME_DIR=" + m.runtime, "OFFICE_SESSION=", "OFFICE_JSON=",
 		"XDG_CONFIG_HOME=" + m.t.TempDir()}}
 }
 
@@ -68,6 +68,7 @@ func (m *machine) user(pid, name, kind string) *officeUser {
 		m.t.Fatalf("key create: %v", k)
 	}
 	m.admin.ok("admin", "user", "create", pid, k["publicKey"].(string), "--name", name, "--kind", kind)
+	m.srv.EnsureMember(m.t, pid)
 	return u
 }
 

@@ -49,6 +49,7 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/session/streamapi/sessionstreamv1connect"
 	"github.com/mrsimpson/agentic-office/hub/slides/api/slidesv1connect"
 	taskv1connect "github.com/mrsimpson/agentic-office/hub/tasks/api/taskv1connect"
+	tenantv1 "github.com/mrsimpson/agentic-office/hub/tenant/api"
 	"github.com/mrsimpson/agentic-office/hub/tenant/api/tenantv1connect"
 )
 
@@ -222,6 +223,10 @@ var listening = regexp.MustCompile(`listening on (https://\S+)`)
 // AdminID is the user ID of the first system admin that StartHub names.
 const AdminID = "admin"
 
+// DefaultTenant is the tenant that Participant and EnsureMember use. The first participant becomes
+// its tenant admin, the others members. A test that manages tenants itself uses User instead.
+const DefaultTenant = "acme"
+
 // Hub is a running office-hub with TLS and a first system admin.
 type Hub struct {
 	*Process
@@ -289,26 +294,37 @@ func (s *Hub) Anonymous(t testing.TB) Clients {
 	return NewClients(s.URL, s.HTTPClient(t))
 }
 
-// WithToken returns clients that send a fixed token, for example the token of a stage link.
+// WithToken returns clients that send a fixed token, for example the token of a stage link, and
+// name DefaultTenant (a stage link token has its own tenant and ignores the header).
 func (s *Hub) WithToken(t testing.TB, token string) Clients {
-	return NewClients(s.URL, s.HTTPClient(t), auth.StaticToken(token))
+	return NewClients(s.URL, s.HTTPClient(t), auth.StaticToken(token), auth.Tenant(DefaultTenant))
 }
 
 // Actor is a participant with its own key and authenticated clients.
 type Actor struct {
 	Clients
 	ParticipantID string
-	Key           ed25519.PrivateKey
-	KeyID         string
-	Tokens        *auth.TokenSource
+	// TenantID is the tenant the calls of the actor name (auth.TenantHeader); empty for none.
+	TenantID string
+	Key      ed25519.PrivateKey
+	KeyID    string
+	Tokens   *auth.TokenSource
 }
 
-// WithKey returns an actor that authenticates with key. The key must be registered.
+// WithKey returns an actor that authenticates with key and works in DefaultTenant. The key must be
+// registered. The actor of a system admin has to use WithTenant with no tenant: a system admin is
+// no member of a tenant.
 func (s *Hub) WithKey(t testing.TB, key ed25519.PrivateKey) *Actor {
+	t.Helper()
+	return s.WithTenant(t, key, DefaultTenant)
+}
+
+// WithTenant is WithKey for another tenant, or for none ("").
+func (s *Hub) WithTenant(t testing.TB, key ed25519.PrivateKey, tenant string) *Actor {
 	t.Helper()
 	hc := s.HTTPClient(t)
 	ts := auth.NewTokenSource(NewClients(s.URL, hc).Identity, key)
-	a := &Actor{Clients: NewClients(s.URL, hc, auth.Bearer(ts)), Key: key,
+	a := &Actor{Clients: NewClients(s.URL, hc, auth.Bearer(ts), auth.Tenant(tenant)), TenantID: tenant, Key: key,
 		KeyID: auth.KeyID(auth.PublicKey(key)), Tokens: ts}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -320,8 +336,8 @@ func (s *Hub) WithKey(t testing.TB, key ed25519.PrivateKey) *Actor {
 	return a
 }
 
-// Admin returns the actor of the first system admin.
-func (s *Hub) Admin(t testing.TB) *Actor { return s.WithKey(t, s.AdminKey) }
+// Admin returns the actor of the first system admin. It names no tenant.
+func (s *Hub) Admin(t testing.TB) *Actor { return s.WithTenant(t, s.AdminKey, "") }
 
 // RegisterKey registers key for a participant as the system admin and returns the key ID. A new
 // user is created; a known user gets the key as a further key.
@@ -355,17 +371,56 @@ func (s *Hub) RegisterKey(t testing.TB, participantID, displayName string, kind 
 	return res.GetKeyId()
 }
 
-// Participant registers a new key for a participant and returns the authenticated actor. The
-// user is created if it is new; participantID can be called several times (several keys of one
-// user).
-func (s *Hub) Participant(t testing.TB, participantID, displayName string, kind identityv1.ActorKind) *Actor {
+// User registers a new key for a user, as a system admin, and returns the authenticated actor. The
+// user is created if it is new; User can be called several times for one user (several keys). The
+// user is in no tenant and the actor names none.
+func (s *Hub) User(t testing.TB, userID, displayName string, kind identityv1.ActorKind) *Actor {
 	t.Helper()
 	key, err := auth.NewKey()
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.RegisterKey(t, participantID, displayName, kind, key)
+	s.RegisterKey(t, userID, displayName, kind, key)
+	return s.WithTenant(t, key, "")
+}
+
+// Participant is User and EnsureMember: the user works in DefaultTenant.
+func (s *Hub) Participant(t testing.TB, userID, displayName string, kind identityv1.ActorKind) *Actor {
+	t.Helper()
+	key, err := auth.NewKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.RegisterKey(t, userID, displayName, kind, key)
+	s.EnsureMember(t, userID)
 	return s.WithKey(t, key)
+}
+
+// EnsureMember makes a registered user a member of DefaultTenant. The tenant is created, with the
+// user as its tenant admin, if it does not exist yet.
+func (s *Hub) EnsureMember(t testing.TB, userID string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	admin := s.Admin(t)
+	_, err := admin.Tenant.CreateTenant(ctx, &tenantv1.CreateTenantRequest{CommandId: coreapi.NewCommandID(),
+		TenantId: DefaultTenant, DisplayName: "Acme", FirstAdminUserId: userID})
+	if connect.CodeOf(err) == connect.CodeAlreadyExists {
+		// The tenant exists: add the user unless it is a member already (do not change its role).
+		var ms *userv1.ListMembershipsResponse
+		if ms, err = admin.User.ListMemberships(ctx, &userv1.ListMembershipsRequest{TenantId: DefaultTenant}); err == nil {
+			for _, m := range ms.GetMemberships() {
+				if m.GetUserId() == userID && m.GetValidUntil() == nil {
+					return
+				}
+			}
+			_, err = admin.User.SetMembership(ctx, &userv1.SetMembershipRequest{CommandId: coreapi.NewCommandID(),
+				TenantId: DefaultTenant, UserId: userID, Role: userv1.Role_ROLE_MEMBER})
+		}
+	}
+	if err != nil {
+		t.Fatalf("make %s a member of %s: %v", userID, DefaultTenant, err)
+	}
 }
 
 // Clients holds a Connect client for every office interface.
