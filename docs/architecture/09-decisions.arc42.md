@@ -1043,17 +1043,19 @@ and one admin file. A team can use it, but several organisations cannot share a 
 **Decision:** One hub serves several tenants. An organisation is one tenant, and a tenant has one
 local git repository with a directory for each kind of content. Users are global: they are
 registered at the hub first and then assigned to tenants. The hub keeps users, keys, tenants and
-system admins in its own git repository; each tenant keeps its memberships and roles in its
-repository. The role per tenant is `member` or `tenant admin`; a separate system admin role runs
+system admins and the memberships with their roles in its own git repository, and only Identity
+writes there. The role per tenant is `member` or `tenant admin`; a separate system admin role runs
 the hub. Authentication stays with Ed25519 key pairs (`dec-auth-keypair`); first contact for
 further users works through an invitation (issue #2). One signing key of the hub signs the tree
-heads of all tenants. **Consequences:** Every interface of the hub needs a tenant, and the archive
-needs a tenant in every call. The file of admin keys is removed. At start, the hub reads all
-repositories and builds the index from keys to users in memory. Revoking a key happens once, at the
+heads of all tenants. Identity checks every change and the loaded state against fixed rules (`concept-multi-tenancy`).
+**Consequences:** Every interface of the hub needs a tenant, and the archive
+needs a tenant in every call. The file of admin keys is removed. At start, the hub reads the hub
+repository and builds the index from keys to users in memory. Revoking a key happens once, at the
 hub. **Rejected:** one hub per tenant (many processes to operate, no single user list); several
 repositories per tenant (no use case; directories separate content); users that belong to exactly
-one tenant (advisers and agents would need several accounts); keys inside each tenant repository
-(a revoked key would have to be removed in every tenant); OIDC (see `dec-auth-keypair`); one
+one tenant (advisers and agents would need several accounts); keys or memberships inside each tenant repository
+(a revoked key would have to be removed in every tenant, and files in a tenant repository cannot
+be trusted for rights); OIDC (see `dec-auth-keypair`); one
 signing key per tenant (only useful when tenants distrust the operator). **Out of scope:**
 synchronisation of a repository with 0..n remotes (#43). OPEN: whether a tenant needs its own
 signing key later.

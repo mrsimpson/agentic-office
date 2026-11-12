@@ -185,8 +185,9 @@ one git repository where it keeps all its information. One hub, one user list, m
 **Users.** Users are global and registered at the hub first (name and keys); this is step one. The
 hub keeps them in its own git repository, together with the list of tenants and system admins. A
 tenant admin or system admin then assigns the user to a tenant (step two). A user can be a member
-of several tenants. A membership has one role: `member` or `tenant admin`, and the tenant keeps it
-in its repository. Roles inside a session (moderator, minute taker) stay as in
+of several tenants. A membership has one role: `member` or `tenant admin`. Identity keeps the memberships in the hub
+repository, so a key and a membership are each kept in one place. A membership names the user ID
+and never a key, so rotating a key touches no membership. Roles inside a session (moderator, minute taker) stay as in
 `concept-participant-model`; they are not tenant roles.
 
 **Admins.** There are two admin levels. A **system admin** runs the hub: creates tenants and
@@ -195,8 +196,19 @@ one tenant: manages its members. A system admin is no member of a tenant by defa
 read its content. At least one system admin always exists; the first one is named when the hub
 starts. Every tenant has at least one tenant admin.
 
+**Rules for changes.** Identity is the only writer of users, keys, memberships and system admins.
+It refuses a change when: the caller may not make it (a tenant admin changes only the memberships
+of their own tenant; a user adds and revokes only their own keys); the tenant or user does not
+exist; the change would leave a tenant without a tenant admin or the hub without a system admin.
+Removing a user removes the memberships in the same commit. A user ID is blocked after removal and
+never used again, so a new user cannot inherit old memberships. Identity checks the same rules
+when it loads the hub repository at start and refuses to start on a violation, for example after
+a manual edit. **Key rotation:** a user adds the new key with the old one and then revokes the old
+one; tokens bound to the old key expire after about 15 minutes at the latest. A compromised key is
+revoked by a system admin and stops working in all tenants.
+
 **Repository.** A tenant has exactly one local git repository, with a directory for each kind of
-content (sessions, records, tasks, slides, members). Every session, record, task and slide deck
+content (sessions, records, tasks, slides). Every session, record, task and slide deck
 belongs to exactly one tenant. The archive writes to the repository of that tenant only
 (`dec-yaml-git-storage`). Later, a repository can be synchronised with 0..n remotes; this is out of
 scope for now.

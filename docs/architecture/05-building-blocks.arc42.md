@@ -88,6 +88,7 @@ flowchart LR
     bb_stage -->|if-slides-api| bb_slides
     bb_stage -->|if-auth-api| bb_identity
     bb_tasks -->|if-archive-storage| bb_archive
+    bb_identity -->|if-archive-storage| bb_archive
     bb_tasks -->|if-token-check| bb_identity
     bb_tenants -->|if-archive-storage| bb_archive
     bb_tenants -->|if-token-check| bb_identity
@@ -206,7 +207,8 @@ Two steps. First, register a user at the hub: create the user, add a key, revoke
 Second, assign the user to tenants: add the user to a tenant with the role `member` or
 `tenant admin`, change the role and remove the user. Name and remove system admins. Who may do
 what: a system admin everything; a tenant admin only the memberships of their own tenant; everyone
-else only their own keys.
+else only their own keys. Every change is checked against the rules in `concept-multi-tenancy`
+and refused if it breaks one. A user ID is never used again.
 
 ```arc42
 :::interface
@@ -521,8 +523,9 @@ path: hub/stage
 
 ### Identity
 
-Knows all users (participants) and their public keys in one place for the whole hub, in the hub
-repository. Each user,
+Knows all users (participants), their public keys, their tenant memberships and the system admins
+in one place for the whole hub, and keeps them in the hub repository through the archive. It is
+the only writer there and checks every change. Each user,
 human or agent, is its own actor with its own Ed25519 key pair. A user can be a member of several
 tenants, with a role in each (`member` or `tenant admin`). A user can also be a system admin; this
 role replaces the file of admin keys. The client creates the key pair locally and sends only the public
@@ -538,6 +541,7 @@ title: Identity
 technology: Go
 parent: bb-office-hub
 implements: concept-identity
+requires: if-archive-storage
 path: hub/identity
 :::
 ```
@@ -560,8 +564,9 @@ path: hub/identity/tokencheck
 
 Knows the tenants and their members. A tenant is the unit of separation: its sessions, records,
 tasks and slides live only in the git repository of the tenant and are visible only to its members.
-The memberships and roles of a tenant are kept in its repository. Synchronisation with remotes
-is not part of this stage.
+It does not keep the memberships: Identity owns them. Creating a tenant creates its repository;
+removing a tenant asks Identity to remove its memberships. Synchronisation with remotes is not
+part of this stage.
 
 ```arc42
 :::building-block
