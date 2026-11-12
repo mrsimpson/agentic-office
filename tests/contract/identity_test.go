@@ -99,6 +99,7 @@ func TestIdentityChallengeAndResponse(t *testing.T) {
 	if id := srv.RegisterKey(t, "ada", "Ada", human, key); id != auth.KeyID(pub) {
 		t.Fatalf("key_id %q, want %q", id, auth.KeyID(pub))
 	}
+	srv.EnsureMember(t, "ada")
 	challenge := func() []byte {
 		t.Helper()
 		res, err := anon.GetChallenge(ctx, &identityv1.GetChallengeRequest{PublicKey: pub})

@@ -156,6 +156,7 @@ func RunContext(ctx context.Context, args []string, stdin io.Reader, stdout, std
 	fs.StringVar(&e.session, "session", e.session, "session ID")
 	fs.StringVar(&e.cfg.Hub, "hub", e.cfg.Hub, "office hub URL")
 	fs.StringVar(&e.cfg.CACert, "ca-cert", e.cfg.CACert, "server certificate to trust (PEM)")
+	fs.StringVar(&e.cfg.Tenant, "tenant", e.cfg.Tenant, "tenant to work in")
 	fs.StringVar(&e.cfg.KeyFile, "key", e.cfg.KeyFile, "private key file")
 	fs.StringVar(&e.cfg.RuntimeDir, "runtime-dir", e.cfg.RuntimeDir, "directory for local logs and state")
 	runCmd := commandTable[name](e, fs)

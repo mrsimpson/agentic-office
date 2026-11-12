@@ -42,6 +42,11 @@ type Caller struct {
 	SystemAdmin bool
 	// Tenants are the active memberships of the caller at the time of the call.
 	Tenants []Membership
+	// TenantID is the tenant of the call, set by the identity interceptor for the calls that
+	// belong to a tenant. The caller is an active member of it, with TenantRole. A stage link
+	// token has the tenant of its link and no role.
+	TenantID   string
+	TenantRole Role
 	// StageSessionID is set for the token of a stage link. Such a token may only read the
 	// session stream of this session.
 	StageSessionID string

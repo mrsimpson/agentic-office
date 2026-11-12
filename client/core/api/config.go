@@ -17,6 +17,7 @@ const (
 	EnvCACert     = "OFFICE_CA_CERT"
 	EnvKey        = "OFFICE_KEY"
 	EnvRuntimeDir = "OFFICE_RUNTIME_DIR"
+	EnvTenant     = "OFFICE_TENANT"
 )
 
 // DefaultHub is the hub URL if OFFICE_HUB is not set.
@@ -29,6 +30,9 @@ type Config struct {
 	// CACert is a PEM file with the certificate of the server (its tls.crt if it is
 	// self-signed). Empty means: trust the system roots only.
 	CACert string
+	// Tenant is the tenant the client works in. The calls of the meeting, the records, the tasks
+	// and the slides name it. The calls of the auth API, the user API and the tenant API do not.
+	Tenant string
 	// KeyFile is the private key of this actor.
 	KeyFile string
 	// RuntimeDir is the private directory for local logs and state.
@@ -41,12 +45,14 @@ type Config struct {
 //   - Hub: OFFICE_HUB, else DefaultHub.
 //   - CACert: OFFICE_CA_CERT, else <config dir>/agentic-office/client/hub.crt if it exists,
 //     else empty (system roots).
+//   - Tenant: OFFICE_TENANT, else empty. A client without a tenant can only call the auth API, the
+//     user API and the tenant API.
 //   - KeyFile: OFFICE_KEY, else <config dir>/agentic-office/client/key.pem.
 //   - RuntimeDir: OFFICE_RUNTIME_DIR, else $XDG_RUNTIME_DIR/agentic-office, else
 //     <temp dir>/agentic-office-<uid>.
 func ConfigFromEnv() Config {
 	c := Config{Hub: os.Getenv(EnvHub), CACert: os.Getenv(EnvCACert), KeyFile: os.Getenv(EnvKey),
-		RuntimeDir: os.Getenv(EnvRuntimeDir)}
+		RuntimeDir: os.Getenv(EnvRuntimeDir), Tenant: os.Getenv(EnvTenant)}
 	if c.Hub == "" {
 		c.Hub = DefaultHub
 	}
@@ -72,7 +78,7 @@ func ConfigFromEnv() Config {
 // Env returns the configuration as OFFICE_* environment variables, for a child process.
 func (c Config) Env() []string {
 	return []string{EnvHub + "=" + c.Hub, EnvCACert + "=" + c.CACert, EnvKey + "=" + c.KeyFile,
-		EnvRuntimeDir + "=" + c.RuntimeDir}
+		EnvRuntimeDir + "=" + c.RuntimeDir, EnvTenant + "=" + c.Tenant}
 }
 
 // ClientConfigDir is the configuration folder of the client: <config dir>/agentic-office/client,

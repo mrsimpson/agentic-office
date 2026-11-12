@@ -40,8 +40,8 @@ func tenantList(t *testing.T, a *contracttest.Actor) (map[string]*tenantv1.Tenan
 func TestTenantsCreateListRemove(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	admin := srv.Admin(t)
-	ada := srv.Participant(t, "ada", "Ada", human)
-	bob := srv.Participant(t, "bob", "Bob", human)
+	ada := srv.User(t, "ada", "Ada", human)
+	bob := srv.User(t, "bob", "Bob", human)
 
 	wantCode(t, "create as a user", createTenant(t, ada, "acme", "ada"), connect.CodePermissionDenied)
 	wantCode(t, "create without a token", func() error {
@@ -114,8 +114,8 @@ func TestTenantsCreateListRemove(t *testing.T) {
 func TestTenantsSurviveRestart(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	admin := srv.Admin(t)
-	srv.Participant(t, "ada", "Ada", human)
-	srv.Participant(t, "bob", "Bob", human)
+	srv.User(t, "ada", "Ada", human)
+	srv.User(t, "bob", "Bob", human)
 	if err := createTenant(t, admin, "acme", "ada"); err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestTenantsSurviveRestart(t *testing.T) {
 // A manual edit of the hub repository that breaks a rule of the tenants stops the hub.
 func TestHubRepositoryWithBrokenTenantsStopsTheHub(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
-	srv.Participant(t, "ada", "Ada", human)
+	srv.User(t, "ada", "Ada", human)
 	if err := createTenant(t, srv.Admin(t), "acme", "ada"); err != nil {
 		t.Fatal(err)
 	}
@@ -190,8 +190,8 @@ func TestHubRepositoryWithBrokenTenantsStopsTheHub(t *testing.T) {
 func TestTenantRepositories(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	admin := srv.Admin(t)
-	srv.Participant(t, "ada", "Ada", human)
-	srv.Participant(t, "bob", "Bob", human)
+	srv.User(t, "ada", "Ada", human)
+	srv.User(t, "bob", "Bob", human)
 
 	for _, bad := range []string{"..", "a/b", ".hidden", "a b"} {
 		wantCode(t, "tenant ID "+bad, createTenant(t, admin, bad, "ada"), connect.CodeInvalidArgument)

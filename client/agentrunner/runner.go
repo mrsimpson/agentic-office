@@ -108,7 +108,7 @@ func Run(ctx context.Context, o Options) error {
 	}()
 	office := acp.McpServerStdio{Name: "office", Command: o.Office, Args: []string{"mcp", "--session", o.Session},
 		Env: []acp.EnvVariable{absEnv(coreapi.EnvHub, cfg.Hub), absEnv(coreapi.EnvCACert, cfg.CACert),
-			absEnv(coreapi.EnvKey, cfg.KeyFile), absEnv(coreapi.EnvRuntimeDir, cfg.RuntimeDir)}}
+			absEnv(coreapi.EnvKey, cfg.KeyFile), absEnv(coreapi.EnvRuntimeDir, cfg.RuntimeDir), absEnv(coreapi.EnvTenant, cfg.Tenant)}}
 	if err := h.Open(ctx, o.Cwd, office, o.Version); err != nil {
 		return err
 	}

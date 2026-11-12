@@ -29,7 +29,7 @@ func TestAgentThroughMCP(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	runtime := filepath.Join(t.TempDir(), "run")
 	envFor := func(key string) []string {
-		return []string{"OFFICE_HUB=" + srv.URL, "OFFICE_CA_CERT=" + srv.CertFile, "OFFICE_KEY=" + key,
+		return []string{"OFFICE_HUB=" + srv.URL, "OFFICE_CA_CERT=" + srv.CertFile, "OFFICE_TENANT=" + contracttest.DefaultTenant, "OFFICE_KEY=" + key,
 			"OFFICE_RUNTIME_DIR=" + runtime, "OFFICE_SESSION=", "OFFICE_JSON="}
 	}
 	office := func(env []string, args ...string) map[string]any {
@@ -50,6 +50,7 @@ func TestAgentThroughMCP(t *testing.T) {
 		env := envFor(filepath.Join(t.TempDir(), pid+".pem"))
 		k := office(env, "key", "create")
 		office(admin, "admin", "user", "create", pid, k["publicKey"].(string), "--name", name, "--kind", kind)
+		srv.EnsureMember(t, pid)
 		return env
 	}
 	ada, bot := user("ada", "Ada", "human"), user("bot", "Bot", "agent")

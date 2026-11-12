@@ -104,10 +104,10 @@ func TestArchiveWritesAtInterval(t *testing.T) {
 }
 
 // When the hub stops, it writes the changed sessions a last time. A session ID that is not safe
-// as a file name is stored under "=" plus its base64url form. -archive-dir moves the repository.
+// as a file name is stored under "=" plus its base64url form.
 func TestArchiveOnStopAndUnsafeName(t *testing.T) {
-	repo := t.TempDir() + "/repo"
-	srv := contracttest.StartHub(t, nil, "-archive-interval", "1h", "-archive-dir", repo)
+	srv := contracttest.StartHub(t, nil, "-archive-interval", "1h")
+	repo := srv.ArchiveDir()
 	ada := srv.Participant(t, "ada", "Ada", identityv1.ActorKind_ACTOR_KIND_HUMAN)
 	sid := "team/weekly 1"
 	m := &meeting{t: t, srv: srv, sid: sid, actors: map[string]*contracttest.Actor{"ada": ada}, reader: ada}

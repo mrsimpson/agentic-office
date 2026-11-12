@@ -1,13 +1,17 @@
 // Command office-hub runs the office hub (bb-office-hub).
 //
 // All services are mounted, and the stage at /stage/<session>?token=<stage link token>. Every call
-// needs an access token from the identity block, except GetChallenge and ExchangeChallenge. The server speaks only TLS. The meeting session keeps its
-// logs in memory, signs their tree heads with the signing key and writes them to the archive (a local Git
-// repository; the push is mocked). The records (decisions, minutes and notes), the tasks (local
-// drafts) and the slide decks are files in the archive too.
-// The users, tenants and memberships are files in the hub repository (repos/hub, system/), and each
-// tenant has a repository of its own (repos/tenants/<id>). At the first start the operator names
-// the first system admin with -first-system-admin ID=PUBLIC_KEY.
+// needs an access token from the identity block, except GetChallenge and ExchangeChallenge. The
+// server speaks only TLS.
+//
+// The hub serves several tenants (dec-multi-tenancy). The users, tenants and memberships are files
+// in the hub repository (repos/hub, directory system/). Each tenant has a repository of its own
+// (repos/tenants/<id>), and one instance of the meeting session, the records, the tasks and the
+// slides that read and write only this repository. The meeting session keeps its logs in memory,
+// signs their tree heads with the signing key and writes them to the repository of the tenant
+// (a local Git repository; the push is mocked). Every call of these services names the tenant in the
+// header Office-Tenant; the identity interceptor checks the membership. At the first start the
+// operator names the first system admin with -first-system-admin ID=PUBLIC_KEY.
 //
 // The operator gives the hub its signing key at start (dec-hub-signing-key): -signing-key FILE is
 // required, and the hub does not start without a valid key. Create a key file once with
@@ -20,11 +24,11 @@
 //
 //	tls.crt      TLS certificate; created self-signed if neither it nor tls.key exists
 //	tls.key      TLS private key
-//	archive/     Git repository of the archive (-archive-dir); the meeting session writes its logs
-//	             there at the interval -archive-interval and when a session ends; decisions,
-//	             minutes and notes are committed there one by one (see package records), and so
-//	             is every new or changed task (see package tasks) and every new slide deck, with
-//	             its input and its rendered output (see package slides)
+//	repos/hub/   hub repository: users, tenants and memberships
+//	repos/tenants/<id>/   repository of one tenant: its sessions (written at the interval
+//	             -archive-interval and when a session ends), decisions, minutes, notes, tasks and
+//	             slide decks, with the input and the rendered output
+
 package main
 
 import (
@@ -55,18 +59,14 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/identityv1connect"
 	"github.com/mrsimpson/agentic-office/hub/identity/userapi/userv1connect"
-	"github.com/mrsimpson/agentic-office/hub/records"
 	"github.com/mrsimpson/agentic-office/hub/records/decision/api/decisionv1connect"
 	"github.com/mrsimpson/agentic-office/hub/records/minutes/api/minutesv1connect"
 	"github.com/mrsimpson/agentic-office/hub/records/note/api/notev1connect"
-	"github.com/mrsimpson/agentic-office/hub/session"
 	"github.com/mrsimpson/agentic-office/hub/session/commandsapi/sessioncommandsv1connect"
 	"github.com/mrsimpson/agentic-office/hub/session/importapi/sessionimportv1connect"
 	"github.com/mrsimpson/agentic-office/hub/session/streamapi/sessionstreamv1connect"
-	"github.com/mrsimpson/agentic-office/hub/slides"
 	"github.com/mrsimpson/agentic-office/hub/slides/api/slidesv1connect"
 	"github.com/mrsimpson/agentic-office/hub/stage"
-	"github.com/mrsimpson/agentic-office/hub/tasks"
 	"github.com/mrsimpson/agentic-office/hub/tasks/api/taskv1connect"
 	"github.com/mrsimpson/agentic-office/hub/tenant"
 	"github.com/mrsimpson/agentic-office/hub/tenant/api/tenantv1connect"
@@ -118,7 +118,6 @@ func main() {
 	publicURL := flag.String("public-url", "", "base URL of the server in stage links; default https://<listen address>")
 	tokenTTL := flag.Duration("token-ttl", 15*time.Minute, "lifetime of access tokens")
 	stageTTL := flag.Duration("stage-link-ttl", 24*time.Hour, "lifetime of stage links")
-	archiveDir := flag.String("archive-dir", "", "Git repository of the archive; default <data-dir>/archive, created if missing")
 	archiveInterval := flag.Duration("archive-interval", 30*time.Second, "time between two writes of changed sessions to the archive; sessions are also written when they end")
 	restoreWait := flag.Duration("restore-wait", 10*time.Second, "after a restart, how long a restored session that has not ended waits for a peer to fill in the events after the last write to the archive")
 	flag.Parse()
@@ -159,12 +158,6 @@ func main() {
 	if *publicURL == "" {
 		*publicURL = "https://" + ln.Addr().String()
 	}
-	// The archive (dec-yaml-git-storage): a local Git repository; the push is mocked (#43).
-	arch, err := archive.Open(context.Background(), archive.Options{Dir: or(*archiveDir, "archive"), Push: archive.NoPush{}})
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Printf("archive %s, sessions written every %s and when they end; push mocked", arch.Dir(), *archiveInterval)
 	// The repositories of the hub (dec-multi-tenancy): the hub repository for the users, tenants and
 	// memberships, and one for each tenant. The layout is fixed.
 	repos, err := archive.OpenRepos(context.Background(), filepath.Join(*dataDir, "repos"), archive.Options{Push: archive.NoPush{}})
@@ -182,62 +175,58 @@ func main() {
 	// not start when the repository breaks a rule.
 	ids, err := identity.New(context.Background(), identity.Options{TokenTTL: *tokenTTL, StageLinkTTL: *stageTTL,
 		PublicURL: *publicURL, Archive: repos.Hub(), Bootstrap: bootstrap, Logf: log.Printf,
-		StageProcedures: []string{sessionstreamv1connect.SessionStreamServiceSubscribeProcedure}})
+		TenantFreeServices: []string{tenantv1connect.TenantServiceName},
+		StageProcedures:    []string{sessionstreamv1connect.SessionStreamServiceSubscribeProcedure}})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Decisions, minutes and notes: YAML files in the archive, read once at the start.
-	recs, err := records.Open(context.Background(), arch)
+	// The content of each tenant (dec-multi-tenancy): sessions, decisions, minutes, notes, tasks and
+	// slide decks, in the repository of the tenant. A tenant is opened on its first call; the
+	// tenants that exist are opened now, so their sessions are restored.
+	rts := newRuntimes(repos, signingKey, *archiveInterval, *restoreWait)
+	tenants, err := ids.Tenants(context.Background())
 	if err != nil {
 		log.Fatal(err)
 	}
-	nd, nm, nn := recs.Counts()
-	log.Printf("records: %d decisions, %d minutes, %d notes", nd, nm, nn)
-	// Tasks: local drafts as YAML files in the archive, read once at the start (#40 syncs them later).
-	tks, err := tasks.Open(context.Background(), arch)
-	if err != nil {
-		log.Fatal(err)
+	for _, t := range tenants {
+		if !t.Active() {
+			continue
+		}
+		if _, err := rts.get(context.Background(), t.ID); err != nil {
+			log.Fatal(err)
+		}
 	}
-	log.Printf("tasks: %d local drafts", tks.Count())
-	// Slide decks: input as YAML and output as HTML in the archive, read once at the start.
-	decks, err := slides.Open(context.Background(), arch)
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Printf("slides: %d decks", decks.Count())
-	sessions := session.New(session.NewMemoryStore(), session.TokenCheck(), recs, signingKey)
-	if err := sessions.UseArchive(context.Background(), session.ArchiveOptions{Archive: arch, Interval: *archiveInterval,
-		RestoreWait: *restoreWait, Logf: log.Printf}); err != nil {
-		log.Fatal(err)
-	}
-	// The writer runs until the server has stopped, then writes a last time.
-	archCtx, archStop := context.WithCancel(context.Background())
-	archDone := make(chan struct{})
-	go func() { sessions.RunArchive(archCtx); close(archDone) }()
 
 	cs := connect.NewServer(ids.Interceptor())
-	sessioncommandsv1connect.RegisterSessionCommandsServiceHandler(cs, sessions)
-	sessionstreamv1connect.RegisterSessionStreamServiceHandler(cs, sessions)
-	sessionimportv1connect.RegisterSessionImportServiceHandler(cs, sessions)
+	sessioncommandsv1connect.RegisterSessionCommandsServiceHandler(cs, commandsMux{rts})
+	sessionstreamv1connect.RegisterSessionStreamServiceHandler(cs, streamMux{rts})
+	sessionimportv1connect.RegisterSessionImportServiceHandler(cs, importMux{rts})
 	identityv1connect.RegisterIdentityServiceHandler(cs, ids)
 	userv1connect.RegisterUserServiceHandler(cs, ids)
 	tenantv1connect.RegisterTenantServiceHandler(cs, tenant.New(ids, repos))
-	decisionv1connect.RegisterDecisionServiceHandler(cs, recs)
-	minutesv1connect.RegisterMinutesServiceHandler(cs, recs)
-	notev1connect.RegisterNoteServiceHandler(cs, recs)
-	taskv1connect.RegisterTaskServiceHandler(cs, tks)
-	slidesv1connect.RegisterSlidesServiceHandler(cs, decks)
+	decisionv1connect.RegisterDecisionServiceHandler(cs, decisionMux{rts})
+	minutesv1connect.RegisterMinutesServiceHandler(cs, minutesMux{rts})
+	notev1connect.RegisterNoteServiceHandler(cs, noteMux{rts})
+	taskv1connect.RegisterTaskServiceHandler(cs, taskMux{rts})
+	slidesv1connect.RegisterSlidesServiceHandler(cs, slidesMux{rts})
 	mux := http.NewServeMux()
 	connecthttp.Mount(mux, cs)
 	// The stage subscribes in-process through the token check, with the token of the link.
 	mux.Handle(web.PathPrefix, stage.New(stage.Options{
 		Session: connectinprocess.New(cs),
-		StageSession: func(token string) (string, error) {
+		StageSession: func(token string) (stage.StageLink, error) {
 			c, err := ids.CheckToken(token)
-			return c.StageSessionID, err
+			if err != nil || c.StageSessionID == "" {
+				return stage.StageLink{}, err
+			}
+			// The link names its tenant: the stage shows the decks of this tenant.
+			rt, err := rts.get(context.Background(), c.TenantID)
+			if err != nil {
+				return stage.StageLink{}, err
+			}
+			return stage.StageLink{SessionID: c.StageSessionID, Slides: rt.slides}, nil
 		},
-		Slides: decks,
 	}))
 
 	p := new(http.Protocols)
@@ -263,7 +252,6 @@ func main() {
 		log.Fatal(err)
 	}
 	<-shutDown
-	archStop()
-	<-archDone
+	rts.stopAll()
 	log.Printf("office-hub stopped")
 }
