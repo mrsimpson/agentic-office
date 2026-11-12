@@ -1067,3 +1067,32 @@ date: 2026-11-12
 addresses: qg-confidentiality
 :::
 ```
+
+## Artifacts: a path, a schema and a focus
+
+**Context:** Humans and agents work together in one session. They create notes, slide decks,
+documents and changes to documents. The stage shows one artifact, chosen by the type in front of
+its ID. Only slide decks work; the types so far were illustrations (`dec-records-per-type`).
+**Decision:** An artifact belongs to a path in the git repository of the tenant. The path is its
+identity. The artifact names its schema inside itself, and the hub ships the schemas. A schema
+decides how the hub checks the artifact and how the stage renders it. An artifact without a
+schema is shown as plain text. Every participant may create and change artifacts. A session
+refers to several artifacts and exactly one has the focus; people normally discuss the artifact
+in focus. The archive stores every change of an artifact in one commit. The rule for off the
+record applies when an artifact is created, not when it is shown. **Consequences:** The stage
+chooses its renderer by the schema and no longer by a fixed prefix. The session log needs events
+for shown, created, changed and focused artifacts. The stage and the admin UI can share one
+design for the artifact area. **Rejected:** schemas defined by the tenant (out of scope for now);
+one artifact in focus per participant (it breaks the shared screen). OPEN: which types the hub
+ships first; how a change to a document is modelled (a commit, a proposal or a comment); how this
+fits `dec-records-per-type`, which gives every type its own interface (#114).
+
+```arc42
+:::decision
+id: dec-artifacts
+title: Artifacts: a path, a schema and a focus
+status: proposed
+date: 2026-11-12
+addresses: qg-usability
+:::
+```

@@ -122,14 +122,14 @@ definition: A later listening mode for several speakers at one microphone, with 
 
 ## Artifact
 
-The general word for what the stage shows. Each type of artifact has its own interface
-(`dec-records-per-type`); today slide decks are the only type.
+The general word for what the stage shows. An artifact is a path in the repository of the
+tenant and names its schema (`dec-artifacts`, proposed). Today the stage shows slide decks only.
 
 ```arc42
 :::glossary-term
 id: term-artifact
 title: Artifact
-definition: Anything that the stage can show by an ID with its type in front, for example the slide deck slides/42
+definition: Anything that the stage can show by its path in the tenant repository, for example the slide deck slides/42
 :::
 ```
 
