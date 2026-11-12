@@ -285,6 +285,15 @@ func TestFirstSystemAdmin(t *testing.T) {
 	}
 	_, err = srv.Anonymous(t).Identity.GetChallenge(ctx10(t), &identityv1.GetChallengeRequest{PublicKey: auth.PublicKey(other)})
 	wantCode(t, "key of the ignored first system admin", err, connect.CodeUnauthenticated)
+
+	// A later start ignores the flag, also when it holds nothing usable.
+	if code, err := srv.Stop(5 * time.Second); err != nil || code != 0 {
+		t.Fatalf("stop: %d, %v", code, err)
+	}
+	srv = contracttest.StartHubIn(t, srv.DataDir, srv.AdminKey, nil, "-first-system-admin", "garbage")
+	if _, err := srv.Admin(t).User.ListUsers(ctx10(t), &userv1.ListUsersRequest{}); err != nil {
+		t.Fatalf("hub after a restart with a flag that is not usable: %v", err)
+	}
 	_ = flag
 }
 

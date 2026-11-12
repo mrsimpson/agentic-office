@@ -112,7 +112,8 @@ to its members.
 **A system admin is never a member of a tenant**, and a member is never made a system admin. If
 you run the hub and also work in a tenant, use two users with two different keys.
 
-You are the first system admin, so create your key on **your own computer** first:
+You are the first system admin. Give this user a name that tells it apart from the users who work
+in a tenant, for example `root`, and create its key on **your own computer** first:
 
 ```sh
 office key create        # prints "public key: …"
@@ -128,7 +129,7 @@ CFG="$([ "$(uname)" = Darwin ] && echo "$HOME/Library/Application Support" || ec
 office-hub keygen ~/office-hub/signing.key           # once; keep the file safe and back it up
 mkdir -p "$CFG/hub"
 office-hub -signing-key ~/office-hub/signing.key -addr 0.0.0.0:8740 \
-  -first-system-admin ada=<your public key> -tls-hosts hub.example.org -public-url https://hub.example.org:8740
+  -first-system-admin root=<your public key> -tls-hosts hub.example.org -public-url https://hub.example.org:8740
 ```
 
 - The data of the hub lives in `$CFG/hub` (`-data-dir` changes it): the
@@ -152,7 +153,7 @@ docker volume create office-hub
 docker run --rm -v office-hub:/data $H keygen /data/signing.key
 docker run -d --name office-hub --restart unless-stopped -p 8740:8740 -v office-hub:/data $H \
   -data-dir /data -addr 0.0.0.0:8740 -signing-key /data/signing.key \
-  -first-system-admin ada=<your public key> -tls-hosts hub.example.org -public-url https://hub.example.org:8740
+  -first-system-admin root=<your public key> -tls-hosts hub.example.org -public-url https://hub.example.org:8740
 docker cp office-hub:/data/tls.crt hub.crt
 ```
 

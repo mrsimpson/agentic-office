@@ -68,6 +68,9 @@ func (s *Service) load(ctx context.Context) error {
 }
 
 func (s *Service) bootstrap(ctx context.Context) error {
+	if s.opts.BootstrapErr != nil {
+		return fmt.Errorf("-first-system-admin: %w", s.opts.BootstrapErr)
+	}
 	b := s.opts.Bootstrap
 	if b == nil {
 		return fmt.Errorf("the hub repository has no users: at the first start, name the first system admin " +

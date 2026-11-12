@@ -166,15 +166,14 @@ func main() {
 	}
 	log.Printf("hub repository %s; one repository for each tenant below %s; push mocked", repos.HubDir(), filepath.Join(*dataDir, "repos", "tenants"))
 	var bootstrap *identity.Bootstrap
+	var bootstrapErr error
 	if *firstAdmin != "" {
-		if bootstrap, err = identity.ParseBootstrap(*firstAdmin); err != nil {
-			log.Fatalf("-first-system-admin: %v", err)
-		}
+		bootstrap, bootstrapErr = identity.ParseBootstrap(*firstAdmin)
 	}
 	// Users, keys and memberships live in the hub repository (dec-multi-tenancy); the hub does
 	// not start when the repository breaks a rule.
 	ids, err := identity.New(context.Background(), identity.Options{TokenTTL: *tokenTTL, StageLinkTTL: *stageTTL,
-		PublicURL: *publicURL, Archive: repos.Hub(), Bootstrap: bootstrap, Logf: log.Printf,
+		PublicURL: *publicURL, Archive: repos.Hub(), Bootstrap: bootstrap, BootstrapErr: bootstrapErr, Logf: log.Printf,
 		TenantFreeServices: []string{tenantv1connect.TenantServiceName},
 		StageProcedures:    []string{sessionstreamv1connect.SessionStreamServiceSubscribeProcedure}})
 	if err != nil {
