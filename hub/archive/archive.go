@@ -223,7 +223,29 @@ func (r *Repo) Commit(ctx context.Context, c storage.Change) (string, error) {
 	return id, nil
 }
 
-// Read implements storage.Archive. It lists the files of dir in the current commit and reads
+// List implements storage.Archive.
+func (r *Repo) List(ctx context.Context, dir string) ([]string, error) {
+	if err := storage.CheckPath(dir); err != nil {
+		return nil, err
+	}
+	head, err := r.head(ctx)
+	if err != nil || head == "" {
+		return nil, err
+	}
+	list, err := r.run(ctx, "ls-tree", "-r", "-z", "--name-only", "--full-tree", head, "--", dir)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, p := range strings.Split(list, "\x00") {
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out, nil
+}
+
+// Read implements storage.Archive. It lists the files of dir (or reads the file dir) in the current commit and reads
 // their content in one more run of git. It does not wait for a running change.
 func (r *Repo) Read(ctx context.Context, dir string) ([]storage.File, error) {
 	if err := storage.CheckPath(dir); err != nil {
@@ -234,7 +256,7 @@ func (r *Repo) Read(ctx context.Context, dir string) ([]storage.File, error) {
 		return nil, err
 	}
 	// One entry per file: "<mode> <type> <object>\t<path>", separated by NUL.
-	list, err := r.run(ctx, "ls-tree", "-r", "-z", "--full-tree", head, "--", dir+"/")
+	list, err := r.run(ctx, "ls-tree", "-r", "-z", "--full-tree", head, "--", dir)
 	if err != nil {
 		return nil, err
 	}

@@ -315,8 +315,10 @@ sequenceDiagram
 
 The hub crashes while a session runs. Its last write to the archive has the session up to some
 event; the events after it are lost on the hub, but the peers still have them. When the hub starts
-again, the meeting session reads every stored log back from the archive and checks it against its
-signed tree head (`dec-restore-from-peers`). A session that has not ended takes no commands yet.
+again, the meeting session reads the stored log of every session that has not ended back from the
+archive and checks it against its signed tree head (`dec-restore-from-peers`). An ended session
+stays in the archive: the first call that needs it loads and checks it then
+(`dec-session-eviction`). A session that has not ended takes no commands yet.
 The replicators reconnect with their cursors. The hub does not know these cursors and answers that
 they are beyond the end. Each replicator then asks the hub how many events it has and offers the
 events after that, with the tree head the hub signed over its copy before the crash

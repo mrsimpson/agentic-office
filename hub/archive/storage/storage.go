@@ -33,10 +33,15 @@ type Archive interface {
 	// the change as Background.
 	Commit(ctx context.Context, c Change) (string, error)
 	// Read returns the files under the directory dir as they are in the current commit, ordered
-	// by path. dir is a valid path (see CheckPath). A directory that is not in the current
+	// by path. dir is a valid path (see CheckPath); if it names a file, Read returns this file. A directory that is not in the current
 	// commit, or a repository without commits, has no files. Files of a change whose commit
 	// failed are not returned.
 	Read(ctx context.Context, dir string) ([]File, error)
+	// List returns the paths of the files under the directory dir as they are in the current
+	// commit, ordered, without reading their content. A directory that is not in the current
+	// commit has no files. A caller that wants the content of a few files from a large
+	// directory lists it first and reads them one by one.
+	List(ctx context.Context, dir string) ([]string, error)
 }
 
 // Archives gives the archive of each repository (concept-multi-tenancy). The hub has one

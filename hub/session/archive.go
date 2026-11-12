@@ -4,10 +4,14 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"path"
 	"regexp"
+	"runtime/debug"
 	"slices"
 	"strings"
 	"time"
+
+	"connectrpc.com/connect/v2"
 
 	"github.com/mrsimpson/agentic-office/hub/archive/storage"
 	"github.com/mrsimpson/agentic-office/hub/session/streamapi/events"
@@ -57,7 +61,10 @@ type ArchiveOptions struct {
 type archiver struct {
 	opts ArchiveOptions
 	// lines is the stored form of every session written so far, and how many events it holds.
-	lines map[string]*archivedLog
+	// committed is the number of events of a session that a successful commit has in the archive.
+	// Both are guarded by Service.archMu.
+	lines     map[string]*archivedLog
+	committed map[string]int
 }
 
 type archivedLog struct {
@@ -140,6 +147,7 @@ func (s *Service) writeArchive(ctx context.Context, final bool) {
 	slices.Sort(ids)
 	var files []storage.File
 	var summary []string
+	written := map[string]int{}
 	failed := false
 	for _, sid := range ids {
 		f, n, err := s.archiveFiles(sid)
@@ -149,6 +157,7 @@ func (s *Service) writeArchive(ctx context.Context, final bool) {
 			continue
 		}
 		files = append(files, f...)
+		written[sid] = n
 		summary = append(summary, fmt.Sprintf("%s (%d events)", sid, n))
 	}
 	if final && !failed && !s.anyRestoring() {
@@ -166,7 +175,15 @@ func (s *Service) writeArchive(ctx context.Context, final bool) {
 			s.dirty[id] = true
 		}
 		s.archMu.Unlock()
+		return
 	}
+	s.archMu.Lock()
+	for sid, n := range written {
+		s.arch.committed[sid] = n
+	}
+	s.archMu.Unlock()
+	// Ended sessions that nobody reads can leave memory now (dec-session-eviction).
+	s.evictIdle()
 }
 
 // archiveFiles returns the files of one session: the raw log and the signed tree head over it.
@@ -180,11 +197,13 @@ func (s *Service) archiveFiles(sid string) ([]storage.File, int, error) {
 	head := s.signedHead(sid, st)
 	st.mu.Unlock()
 
+	s.archMu.Lock()
 	al := s.arch.lines[sid]
 	if al == nil {
 		al = &archivedLog{}
 		s.arch.lines[sid] = al
 	}
+	s.archMu.Unlock()
 	if al.count < n {
 		evs, _, err := s.store.Read(sid, uint32(al.count))
 		if err != nil {
@@ -232,4 +251,93 @@ func (s *Service) anyRestoring() bool {
 		}
 	}
 	return false
+}
+
+// release ends a call that read the log of a session outside st.mu (see state.refs). The session
+// may leave memory now.
+func (s *Service) release(sid string, st *state) {
+	st.mu.Lock()
+	st.refs--
+	st.mu.Unlock()
+	s.evictIdle()
+}
+
+// evictIdle takes sessions out of memory that nobody needs there (dec-session-eviction): the
+// session has ended, every event of it is in the archive by a successful commit, no call reads
+// it and no peer is filling it in. It frees the log in the store, the state with its Merkle
+// leaves and the stored form that the writer keeps. A later call loads the session from the
+// archive again (loadStored), with the same events and the same signed tree head.
+func (s *Service) evictIdle() {
+	if s.arch == nil {
+		return
+	}
+	evicted := 0
+	defer func() {
+		// The logs of the sessions are garbage now: hand their memory back to the host, so the
+		// hub shows what it really holds. This runs when a session has left, not for every call.
+		if evicted > 0 {
+			debug.FreeOSMemory()
+		}
+	}()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for sid, st := range s.sessions {
+		if !st.mu.TryLock() {
+			continue // in use
+		}
+		s.archMu.Lock()
+		n, archived := s.arch.committed[sid]
+		dirty := s.dirty[sid]
+		s.archMu.Unlock()
+		if st.loaded && st.finished() && st.refs == 0 && !st.restoring && st.broken == "" &&
+			archived && n == len(st.leaves) && !dirty {
+			st.evicted = true
+			delete(s.sessions, sid)
+			s.store.Forget(sid)
+			s.archMu.Lock()
+			delete(s.arch.lines, sid)
+			delete(s.arch.committed, sid)
+			s.archMu.Unlock()
+			evicted++
+			s.logf("session %q left memory (ended, archived, nobody reads it)", sid)
+		}
+		st.mu.Unlock()
+	}
+}
+
+// loadStored loads a session from the archive into st, if the archive has it, and verifies it
+// like restore does. A session that is not in the archive is new. A stored log that does not
+// verify is not used: the session takes no commands until a peer offers its copy. The caller
+// holds st.mu.
+func (s *Service) loadStored(ctx context.Context, sid string, st *state) error {
+	name := ArchiveName(sid)
+	files, err := s.arch.opts.Archive.Read(ctx, "sessions/"+name)
+	if err != nil {
+		return connect.NewError(connect.CodeInternal, "read the session from the archive: "+err.Error())
+	}
+	var logData, headData []byte
+	for _, f := range files {
+		switch path.Base(f.Path) {
+		case path.Base(ArchiveLogFile):
+			logData = f.Data
+		case path.Base(ArchiveTreeHeadFile):
+			headData = f.Data
+		}
+	}
+	if logData == nil && headData == nil {
+		return nil
+	}
+	if _, err := s.restoreInto(st, name, logData, headData); err != nil {
+		s.logf("session %q: %v; it takes no commands until a peer offers its copy", sid, err)
+		st.restoring, st.broken = true, err.Error()
+		return nil
+	}
+	s.archMu.Lock()
+	s.arch.committed[sid] = len(st.leaves)
+	if !st.finished() {
+		// The writer appends to the stored form of a session that goes on.
+		s.arch.lines[sid] = &archivedLog{data: logData, count: len(st.leaves)}
+	}
+	s.archMu.Unlock()
+	return nil
 }

@@ -120,55 +120,69 @@ func sessionIDOf(name string) string {
 	return name
 }
 
-// restore reads every session log and its signed tree head back from the archive
-// (dec-restore-from-peers). Every log must verify against its head with the key of the hub
-// before it is used. A log that verifies is the start of the session: its events keep their
-// IDs, and the next write appends to the stored lines. A session that has not ended may have
-// lost the events after the last write: unless the archive is complete (the hub stopped after a
-// last write), commands wait up to RestoreWait for a peer to offer its copy (OfferLog). A log
-// that does not verify is not used; its session takes no commands until a peer offers a copy.
+// restore reads the sessions that have not ended and their signed tree heads back from the
+// archive (dec-restore-from-peers, dec-session-eviction). It reads one session at a time, so the
+// hub never holds the whole archive. A session that has ended stays in the archive: it is loaded
+// and verified when a call needs it (loadStored). Every log that restore loads must verify
+// against its head with the key of the hub before it is used. A log that verifies is the start of
+// the session: its events keep their IDs, and the next write appends to the stored lines. A
+// session that has not ended may have lost the events after the last write: unless the archive is
+// complete (the hub stopped after a last write), commands wait up to RestoreWait for a peer to
+// offer its copy (OfferLog). A log that does not verify is not used; its session takes no commands
+// until a peer offers a copy.
 func (s *Service) restore(ctx context.Context) error {
 	a := s.arch
-	files, err := a.opts.Archive.Read(ctx, "sessions")
+	paths, err := a.opts.Archive.List(ctx, "sessions")
 	if err != nil {
-		return fmt.Errorf("session: read the sessions from the archive: %w", err)
+		return fmt.Errorf("session: list the sessions in the archive: %w", err)
 	}
 	complete := false
-	type stored struct{ log, head []byte }
-	byName := map[string]*stored{}
 	var names []string
-	for _, f := range files {
-		if f.Path == ArchiveStateFile {
+	seen := map[string]bool{}
+	for _, p := range paths {
+		if p == ArchiveStateFile {
+			files, err := a.opts.Archive.Read(ctx, p)
+			if err != nil {
+				return fmt.Errorf("session: read %s: %w", ArchiveStateFile, err)
+			}
 			var as archiveState
-			if err := yaml.Unmarshal(f.Data, &as); err != nil {
-				s.logf("restore: %s: %v; peers may fill in every session", ArchiveStateFile, err)
+			if len(files) > 0 {
+				if err := yaml.Unmarshal(files[0].Data, &as); err != nil {
+					s.logf("restore: %s: %v; peers may fill in every session", ArchiveStateFile, err)
+				}
 			}
 			complete = as.Complete
 			continue
 		}
-		dir, file := path.Split(f.Path)
-		name := path.Base(dir)
-		if path.Dir(strings.TrimSuffix(dir, "/")) != "sessions" {
+		dir := path.Dir(p)
+		if path.Dir(dir) != "sessions" || seen[dir] {
 			continue
 		}
-		st := byName[name]
-		if st == nil {
-			st = &stored{}
-			byName[name] = st
-			names = append(names, name)
-		}
-		switch file {
-		case path.Base(ArchiveLogFile):
-			st.log = f.Data
-		case path.Base(ArchiveTreeHeadFile):
-			st.head = f.Data
-		}
+		seen[dir] = true
+		names = append(names, path.Base(dir))
 	}
 	until := time.Now().Add(a.opts.RestoreWait)
-	var restored, waiting, broken, other int
+	var restored, waiting, broken, other, ended int
 	for _, name := range names {
-		f := byName[name]
-		sid, st, err := s.restoreOne(name, f.log, f.head)
+		files, err := a.opts.Archive.Read(ctx, "sessions/"+name)
+		if err != nil {
+			return fmt.Errorf("session: read session %s from the archive: %w", name, err)
+		}
+		var logData, headData []byte
+		for _, f := range files {
+			switch path.Base(f.Path) {
+			case path.Base(ArchiveLogFile):
+				logData = f.Data
+			case path.Base(ArchiveTreeHeadFile):
+				headData = f.Data
+			}
+		}
+		if hasFinished(logData) {
+			// Stays in the archive; the first call that needs it loads and verifies it.
+			ended++
+			continue
+		}
+		sid, st, err := s.restoreOne(name, logData, headData)
 		if err != nil {
 			s.logf("restore: session %q: %v; it takes no commands until a peer offers its copy", sid, err)
 			st := newState(sessionstreamv1.Schema)
@@ -186,11 +200,12 @@ func (s *Service) restore(ctx context.Context) error {
 			waiting++
 		}
 		s.sessions[sid] = st
-		a.lines[sid] = &archivedLog{data: f.log, count: len(st.leaves)}
+		a.lines[sid] = &archivedLog{data: logData, count: len(st.leaves)}
+		a.committed[sid] = len(st.leaves)
 		restored++
 	}
-	s.logf("restore: %d sessions from the archive, %d wait up to %s for peers, %d do not verify, %d have another schema",
-		restored, waiting, a.opts.RestoreWait, broken, other)
+	s.logf("restore: %d sessions from the archive, %d wait up to %s for peers, %d do not verify, %d have another schema; "+
+		"%d ended sessions stay in the archive", restored, waiting, a.opts.RestoreWait, broken, other, ended)
 	if complete {
 		// From now on the archive may miss events again until the next stop.
 		if _, err := a.opts.Archive.Commit(ctx, storage.Change{Message: "Sessions: the hub started",
@@ -201,42 +216,68 @@ func (s *Service) restore(ctx context.Context) error {
 	return nil
 }
 
+// hasFinished reports whether a stored log holds session.ended or import.completed: nothing is
+// added to it any more. A log that cannot be read has not finished: restore treats it like any
+// other log and reports it.
+func hasFinished(logData []byte) bool {
+	evs, err := logfile.UnmarshalLines(logData)
+	if err != nil {
+		return false
+	}
+	for _, ev := range evs {
+		if ev.GetSessionEnded() != nil || ev.GetImportCompleted() != nil {
+			return true
+		}
+	}
+	return false
+}
+
 // restoreOne verifies one stored session and loads it into the store and a new state.
 func (s *Service) restoreOne(name string, logData, headData []byte) (string, *state, error) {
+	st := newState(sessionstreamv1.Schema)
+	sid, err := s.restoreInto(st, name, logData, headData)
+	if err != nil {
+		return sid, nil, err
+	}
+	return sid, st, nil
+}
+
+// restoreInto verifies one stored session and loads it into the store and into st, which must be
+// empty. The session keeps the schema of its stored tree head (dec-session-schema).
+func (s *Service) restoreInto(st *state, name string, logData, headData []byte) (string, error) {
 	sid := sessionIDOf(name)
 	if headData == nil || logData == nil {
-		return sid, nil, fmt.Errorf("the log or its tree head is missing")
+		return sid, fmt.Errorf("the log or its tree head is missing")
 	}
 	head, err := logfile.UnmarshalTreeHead(headData)
 	if err != nil {
-		return sid, nil, fmt.Errorf("read the tree head: %w", err)
+		return sid, fmt.Errorf("read the tree head: %w", err)
 	}
 	if head.GetSessionId() != "" {
 		sid = head.GetSessionId()
 	}
 	if ArchiveName(sid) != name {
-		return sid, nil, fmt.Errorf("the tree head is for session %q, not for %s", sid, name)
+		return sid, fmt.Errorf("the tree head is for session %q, not for %s", sid, name)
 	}
 	evs, err := logfile.UnmarshalLines(logData)
 	if err != nil {
-		return sid, nil, fmt.Errorf("read the log: %w", err)
+		return sid, fmt.Errorf("read the log: %w", err)
 	}
 	if err := s.verifyStored(evs, head); err != nil {
-		return sid, nil, err
+		return sid, err
 	}
-	// The session keeps the schema of its stored tree head (dec-session-schema).
-	st := newState(head.GetSchema())
+	st.schema = head.GetSchema()
 	st.loaded = true
 	for _, ev := range evs {
 		stored, err := s.store.Append(sid, ev)
 		if err != nil {
-			return sid, nil, err
+			return sid, err
 		}
 		if err := st.apply(stored); err != nil {
-			return sid, nil, err
+			return sid, err
 		}
 	}
-	return sid, st, nil
+	return sid, nil
 }
 
 // verifyStored checks a stored log against its stored tree head. A log of the schema of the hub
