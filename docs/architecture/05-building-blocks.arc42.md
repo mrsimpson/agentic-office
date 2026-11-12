@@ -89,6 +89,8 @@ flowchart LR
     bb_stage -->|if-auth-api| bb_identity
     bb_tasks -->|if-archive-storage| bb_archive
     bb_tasks -->|if-token-check| bb_identity
+    bb_tenants -->|if-archive-storage| bb_archive
+    bb_tenants -->|if-token-check| bb_identity
 ```
 
 ### Session commands
@@ -562,14 +564,13 @@ The memberships and roles of a tenant are kept in its repository. Synchronisatio
 is not part of this stage.
 
 ```arc42
-:::ignore W002 bb-tenants gets its required interfaces when its code exists; the epic adds them :::
-
 :::building-block
 id: bb-tenants
 title: Tenants
 technology: Go
 parent: bb-office-hub
 implements: concept-multi-tenancy
+requires: if-token-check, if-archive-storage
 path: hub/tenant
 :::
 ```
