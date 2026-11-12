@@ -102,6 +102,20 @@ section:empty { display: none; }
 .chip.focused { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 #artifact iframe { display: block; width: 100%; height: 50vh; border: 0; background: #fff; }
 #artifact .note, #artifact .empty { padding: 1rem 1.2rem; }
+.minutes-main { max-width: 46rem; margin: 0 auto; padding: 1.6rem 2rem 2rem; min-height: 45vh; }
+.minutes-main .eyebrow { margin-bottom: 1rem; text-align: center; }
+.minutes-body { font-size: 1.15rem; line-height: 1.6; }
+.minutes-body h1, .minutes-body h2, .minutes-body h3 { line-height: 1.25; letter-spacing: -0.01em; margin: 1.2em 0 0.4em; }
+.minutes-body h1 { font-size: 1.6em; }
+.minutes-body h2 { font-size: 1.3em; text-transform: none; letter-spacing: -0.01em; color: var(--text); font-weight: 650; }
+.minutes-body ul, .minutes-body ol { padding-left: 1.3em; list-style: revert; }
+.minutes-body li { padding: 0.15rem 0; }
+.minutes-body p { margin: 0.6em 0; }
+.placeholder { min-height: 40vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 0.6rem; }
+.placeholder h2 { margin: 0; font-size: 1.5rem; text-transform: none; letter-spacing: -0.01em; color: var(--text); font-weight: 650; }
+.placeholder p { margin: 0; color: var(--muted); max-width: 26rem; }
+.ph-icon { width: 4rem; height: 4rem; border-radius: 50%; background: var(--accent-soft); border: 1px solid var(--accent); display: grid; place-items: center; margin-bottom: 0.6rem; }
+.ph-icon::before { content: "\270E"; font-size: 1.7rem; color: var(--accent); }
 .minutes-text { white-space: pre-wrap; max-height: 40vh; overflow: auto; }
 .utterances li { display: flex; gap: 0.7rem; align-items: flex-start; }
 .utterances .line { min-width: 0; }
@@ -168,18 +182,26 @@ The office did not see this conversation happen. The hub's signature proves who 
 {{range .Hands}}<li data-participant="{{.Participant.ID}}">✋ {{template "name" .Participant}}{{if .Topic}}: <span class="topic">{{.Topic}}</span>{{end}}</li>
 {{end}}</ol>{{else}}<p class="empty">No raised hands.</p>{{end}}{{end}}
 
-{{define "artifact"}}{{with .Artifact}}{{if .ID}}<div class="art-head"><span class="eyebrow">Now showing</span><span class="art-id">{{.ID}}</span></div>
+{{define "artifact"}}{{if .ShowsMinutes}}{{template "minutes-main" .}}{{else}}{{with .Artifact}}{{if .ID}}<div class="art-head"><span class="eyebrow">Now showing</span><span class="art-id">{{.ID}}</span></div>
 {{end}}{{if .Content}}<iframe title="{{.ID}}" data-artifact="{{.ID}}" sandbox="" referrerpolicy="no-referrer" srcdoc="{{.Content}}"></iframe>
 {{else if .ID}}<p class="note" data-artifact="{{.ID}}">{{.Note}}</p>
-{{else}}<p class="empty">Nothing is shown.</p>{{end}}{{end}}{{end}}
+{{else}}<p class="empty">Nothing is shown.</p>{{end}}{{end}}{{end}}{{end}}
+
+{{define "minutes-main"}}<div class="minutes-main">
+{{if .Minutes}}<div class="eyebrow">Minutes</div>
+<div class="minutes-body" data-minutes>{{.MinutesHTML}}</div>
+{{else}}<div class="placeholder" data-placeholder="minutes"><div class="ph-icon" aria-hidden="true"></div>
+<h2>Waiting for the minutes</h2>
+<p>Nobody is taking minutes yet. Ask an agent to join this session and keep them.</p></div>
+{{end}}</div>{{end}}
 
 {{define "artifacts"}}{{if gt (len .Artifacts) 1}}<h2>Artifacts</h2>
 <ul class="chips">
 {{range .Artifacts}}<li class="chip{{if .Focused}} focused{{end}}" data-artifact="{{.Path}}">{{.Path}}</li>
 {{end}}</ul>{{end}}{{end}}
 
-{{define "minutes"}}<h2>Minutes</h2>
-{{if .Minutes}}<div class="minutes-text">{{.Minutes}}</div>{{else}}<p class="empty">No minutes yet.</p>{{end}}{{end}}
+{{define "minutes"}}{{if not .ShowsMinutes}}<h2>Minutes</h2>
+{{if .Minutes}}<div class="minutes-text">{{.Minutes}}</div>{{else}}<p class="empty">No minutes yet.</p>{{end}}{{end}}{{end}}
 
 {{define "utterances"}}<h2>Recent contributions</h2>
 {{if .Utterances}}<ol class="utterances">

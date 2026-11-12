@@ -68,6 +68,18 @@ func (p *participantView) Status() string {
 	return "not-captured"
 }
 
+// ShowsMinutes reports whether the minutes take the place of an artifact: nothing is in focus.
+func (v *view) ShowsMinutes() bool { return v.focus == "" }
+
+// MinutesHTML renders the minutes as Markdown. Raw HTML in the text is left out.
+func (v *view) MinutesHTML() template.HTML {
+	var b bytes.Buffer
+	if err := markdown.Convert([]byte(v.minutes), &b); err != nil {
+		return template.HTML(template.HTMLEscapeString(v.minutes))
+	}
+	return template.HTML(b.String()) // goldmark leaves out raw HTML and unsafe links
+}
+
 // Initials are the first letters of the first two words of the name, for the avatar.
 func (p *participantView) Initials() string {
 	var out []rune

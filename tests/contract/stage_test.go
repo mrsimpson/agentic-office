@@ -706,3 +706,43 @@ func TestStageShowsDocuments(t *testing.T) {
 		t.Errorf("note: %q", text(n))
 	}
 }
+
+// TestStageShowsMinutesInTheMiddle: while no artifact is in focus, the minutes take the middle of
+// the stage. Until there are minutes, a placeholder asks for an agent that takes them. When an
+// artifact gets the focus, the minutes move to the side.
+func TestStageShowsMinutesInTheMiddle(t *testing.T) {
+	m := newStageMeeting(t)
+	st := openStage(t, m.srv, m.link)
+	bot := m.joinAs("Minute Bot", sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_AGENT, false)
+
+	n := st.wait("artifact", "the placeholder", func(n *html.Node) bool {
+		return len(findAll(n, withAttr("data-placeholder", "minutes"))) == 1
+	})
+	if !strings.Contains(text(n), "Ask an agent to join") {
+		t.Errorf("placeholder: %q", text(n))
+	}
+	st.wait("minutes", "no side minutes", func(n *html.Node) bool { return text(n) == "" })
+
+	if _, err := m.s(bot).UpdateMinutes(m.ctx(), &sessioncommandsv1.UpdateMinutesRequest{SessionId: m.sid, CommandId: coreapi.NewCommandID(),
+		ParticipantId: bot, Text: "# Weekly\n\n- Ada opened <b>the</b> meeting\n"}); err != nil {
+		t.Fatal(err)
+	}
+	n = st.wait("artifact", "the minutes in the middle", func(n *html.Node) bool {
+		return len(findAll(n, withAttr("data-minutes", ""))) == 1 && len(findAll(n, withAttr("data-placeholder", ""))) == 0
+	})
+	if len(findAll(n, byTag("h1"))) != 1 || len(findAll(n, byTag("li"))) != 1 || len(findAll(n, byTag("b"))) != 0 {
+		t.Errorf("the minutes are not formatted text without raw HTML: %s", text(n))
+	}
+
+	// An artifact in focus takes the middle; the minutes go to the side.
+	if _, err := m.actors[bot].Document.CreateDocument(m.ctx(), &documentv1.CreateDocumentRequest{Path: "documents/a.md", Content: "# A\n",
+		CommandId: coreapi.NewCommandID(), SessionId: m.sid}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.s(bot).FocusArtifact(m.ctx(), &sessioncommandsv1.FocusArtifactRequest{SessionId: m.sid, CommandId: coreapi.NewCommandID(),
+		ParticipantId: bot, ArtifactId: "documents/a.md"}); err != nil {
+		t.Fatal(err)
+	}
+	st.wait("artifact", "the document", func(n *html.Node) bool { return len(findAll(n, byTag("iframe"))) == 1 })
+	st.wait("minutes", "the minutes at the side", func(n *html.Node) bool { return strings.Contains(text(n), "Ada opened") })
+}
