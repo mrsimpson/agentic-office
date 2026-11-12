@@ -234,8 +234,8 @@ func TestTenantRepositories(t *testing.T) {
 		t.Fatalf("repository of a removed tenant: %v", err)
 	}
 	// Creating a tenant is one commit, with the tenant and its first membership.
-	log := contracttest.Git(t, srv.HubRepoDir(), "log", "-1", "--name-only", "--format=%s", "--grep=Create tenant acme")
-	if !strings.Contains(log, "Create tenant acme") || !strings.Contains(log, "system/memberships/acme/ada.yaml") {
+	log := contracttest.Git(t, srv.HubRepoDir(), "log", "-1", "--name-only", "--format=%s", "--grep=System: create tenant acme")
+	if !strings.Contains(log, "System: create tenant acme") || !strings.Contains(log, "system/memberships/acme/ada.yaml") {
 		t.Errorf("commit that created acme:\n%s", log)
 	}
 }
