@@ -582,8 +582,12 @@ path: hub/archive/storage
 
 ### Stage
 
-One web page per session, shown in the meeting by screen share. It shows the running minutes,
-raised hands, the shown artifact (a slide deck), and who is captured or paused. It marks an
+One web page per session, shown in the meeting by screen share. It shows the artifact in focus,
+the other artifacts of the session as tabs, a log of the changes of artifacts, the transcript, and
+who is captured or paused, with the raised hands in the same list. The minutes are the first
+artifact of every session: they are the first tab and are in focus until someone focuses another
+artifact (`stage focus minutes` brings them back). Until there are minutes, the stage asks for an
+agent that takes them. It marks an
 imported session with its source and the participant who imported it, and never shows it as
 live. It is only a view of the session log and has no logic of its own. It reads an artifact
 straight from the archive (`if-archive-read`) by its path and renders it by its schema (`dec-artifacts`); it reads

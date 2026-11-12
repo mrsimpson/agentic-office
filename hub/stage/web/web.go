@@ -25,7 +25,7 @@ const PathPrefix = "/stage/"
 // Regions are the regions of the page. Each region is an element with this ID. Every event of the
 // event stream is named after one and carries its inner HTML; the stream sends a region again only
 // when its HTML changed.
-var Regions = []string{"status", "origin", "participants", "artifact", "artifacts", "artifactlog", "utterances", "minutes"}
+var Regions = []string{"status", "origin", "participants", "artifacts", "artifact", "artifactlog", "utterances"}
 
 // ErrorPage is the page for a missing, unknown, expired or wrong token. It shows no session
 // data. Fields: Title, Message, Status.
@@ -40,7 +40,7 @@ const Script = `(function () {
   var main = document.getElementById("stage");
   var status = document.getElementById("status");
   var es = new EventSource(main.getAttribute("data-events"));
-  ["status", "origin", "participants", "artifact", "artifacts", "artifactlog", "utterances", "minutes"].forEach(function (name) {
+  ["status", "origin", "participants", "artifacts", "artifact", "artifactlog", "utterances"].forEach(function (name) {
     es.addEventListener(name, function (e) { document.getElementById(name).innerHTML = e.data; });
   });
   es.addEventListener("end", function () { es.close(); });
@@ -76,7 +76,7 @@ header h1 { margin: 0; font-size: 1.1rem; font-weight: 600; }
 main.stage { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 3.2rem; padding: 2rem 2.4rem 3rem; }
 .left, .right { display: flex; flex-direction: column; gap: 2.2rem; min-width: 0; }
 section { padding: 0; }
-.right section, #artifacts, #artifactlog { border-top: 1px solid var(--line); padding-top: 1rem; }
+.right section, #artifactlog { border-top: 1px solid var(--line); padding-top: 1rem; }
 h2 { margin-bottom: 0.8rem; display: flex; align-items: center; gap: 0.6rem; }
 ul, ol { margin: 0; padding: 0; list-style: none; }
 li { padding: 0.3rem 0; }
@@ -120,9 +120,11 @@ section:empty { display: none; }
 .placeholder p { margin: 0; color: var(--muted); max-width: 24rem; }
 .ph-icon { width: 3rem; height: 3rem; border-radius: 50%; border: 1px solid var(--line); display: grid; place-items: center; margin-bottom: 0.6rem; color: var(--muted); }
 .ph-icon::before { content: "\270E"; font-size: 1.3rem; }
-.chips { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-.chip { padding: 0.15rem 0.7rem; border: 1px solid var(--line); border-radius: 0; color: var(--muted); font-size: 0.8rem; }
-.chip.focused { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
+.viewer { display: flex; flex-direction: column; }
+.tabs { display: flex; flex-wrap: wrap; gap: 0.2rem; border-bottom: 1px solid var(--line); }
+.tab { padding: 0.5rem 1.1rem; color: var(--muted); font-size: 0.85rem; border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0; margin-bottom: -1px; }
+.tab.focused { color: var(--text); border-color: var(--line); background: var(--bg); font-weight: 600; }
+#artifacts:not(:empty) + #artifact { border-top-left-radius: 0; border-top-color: var(--line); }
 .artifact-log li { display: flex; gap: 0.8rem; align-items: baseline; font-size: 0.9rem; border-bottom: 1px solid var(--line); }
 .artifact-log li:last-child { border-bottom: 0; }
 .artifact-log time { color: var(--muted); font-variant-numeric: tabular-nums; flex: none; }
@@ -152,14 +154,15 @@ var Page = template.Must(template.New("page").Parse(`<!DOCTYPE html>
 <noscript><p class="note">This page needs JavaScript for live updates.</p></noscript>
 <main id="stage" class="stage" data-events="{{.Events}}">
 <div class="left">
-<section id="artifact" aria-label="Artifact in focus">{{.Regions.artifact}}</section>
+<div class="viewer">
 <section id="artifacts" aria-label="Artifacts of the session">{{.Regions.artifacts}}</section>
+<section id="artifact" aria-label="Artifact in focus">{{.Regions.artifact}}</section>
+</div>
 <section id="artifactlog" class="artifact-log" aria-label="Artifact log">{{.Regions.artifactlog}}</section>
 </div>
 <div class="right">
 <section id="participants">{{.Regions.participants}}</section>
 <section id="utterances" aria-live="polite">{{.Regions.utterances}}</section>
-<section id="minutes">{{.Regions.minutes}}</section>
 </div>
 </main>
 <script>{{.Script}}</script>
@@ -208,13 +211,9 @@ The office did not see this conversation happen. The hub's signature proves who 
 {{range .ArtifactLog}}<li data-log="{{.Verb}}"><time datetime="{{.Time.Format "2006-01-02T15:04:05Z07:00"}}">{{.Time.Format "15:04"}}</time><span>{{template "name" .Actor}} <span class="verb">{{.Verb}}</span></span><span class="path">{{.Path}}</span></li>
 {{end}}</ol>{{end}}{{end}}
 
-{{define "artifacts"}}{{if gt (len .Artifacts) 1}}<h2>Other artifacts</h2>
-<ul class="chips">
-{{range .Artifacts}}<li class="chip{{if .Focused}} focused{{end}}" data-artifact="{{.Path}}">{{.Path}}</li>
+{{define "artifacts"}}{{if gt (len .Artifacts) 1}}<ul class="tabs" role="tablist">
+{{range .Artifacts}}<li class="tab{{if .Focused}} focused{{end}}" role="tab" aria-selected="{{.Focused}}" data-artifact="{{.Path}}" title="{{.Path}}">{{.Label}}</li>
 {{end}}</ul>{{end}}{{end}}
-
-{{define "minutes"}}{{if not .ShowsMinutes}}<h2>Minutes</h2>
-{{if .Minutes}}<div class="minutes-body">{{.MinutesHTML}}</div>{{else}}<p class="empty">No minutes yet.</p>{{end}}{{end}}{{end}}
 
 {{define "utterances"}}<h2>Transcript</h2>
 {{if .Utterances}}<ol class="utterances">

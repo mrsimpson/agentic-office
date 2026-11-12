@@ -218,9 +218,14 @@ func (v *view) apply(ev *sessionstreamv1.Event) {
 	case *sessionstreamv1.Event_MinutesUpdated:
 		v.minutes = p.MinutesUpdated.GetText()
 	case *sessionstreamv1.Event_ArtifactFocused:
-		v.focus = p.ArtifactFocused.GetArtifactId()
-		v.entry(v.focus)
-		v.logArtifact(ev, "focused", v.focus)
+		id := p.ArtifactFocused.GetArtifactId()
+		v.focus = id
+		if id == MinutesID {
+			v.focus = ""
+		} else {
+			v.entry(id)
+		}
+		v.logArtifact(ev, "focused", id)
 	case *sessionstreamv1.Event_ArtifactCreated:
 		v.entry(p.ArtifactCreated.GetPath()).version = p.ArtifactCreated.GetVersion()
 		v.logArtifact(ev, "created", p.ArtifactCreated.GetPath())
@@ -247,8 +252,25 @@ type artifactEntry struct {
 	v       *view
 }
 
+// MinutesID is the artifact ID of the running minutes of the session. The minutes are the first
+// artifact of every session; focusing it (or no artifact at all) shows them in the middle.
+const MinutesID = "minutes"
+
 // Focused reports whether the artifact is the one in focus.
-func (e *artifactEntry) Focused() bool { return e.Path == e.v.focus }
+func (e *artifactEntry) Focused() bool {
+	if e.Path == MinutesID {
+		return e.v.ShowsMinutes()
+	}
+	return e.Path == e.v.focus
+}
+
+// Label is the name of the tab: "Minutes", or the last part of the path.
+func (e *artifactEntry) Label() string {
+	if e.Path == MinutesID {
+		return "Minutes"
+	}
+	return path.Base(e.Path)
+}
 
 // entry returns the entry of a path and adds it when the log names the path for the first time.
 func (v *view) entry(p string) *artifactEntry {
@@ -262,8 +284,11 @@ func (v *view) entry(p string) *artifactEntry {
 	return e
 }
 
-// Artifacts returns the artifacts of the session.
-func (v *view) Artifacts() []*artifactEntry { return v.entries }
+// Artifacts returns the artifacts of the session: the minutes first, then the others in the order
+// the log named them.
+func (v *view) Artifacts() []*artifactEntry {
+	return append([]*artifactEntry{{Path: MinutesID, v: v}}, v.entries...)
+}
 
 // refresh loads the artifact in focus when it is another one or has changed since it was loaded.
 // Loading happens here, once per batch of events, and not for every event: a reconnect replays

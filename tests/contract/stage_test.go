@@ -358,7 +358,7 @@ func TestStagePageNeedsStageLink(t *testing.T) {
 		u.EscapedPath() != "/stage/"+url.PathEscape(m.sid)+"/events" {
 		t.Errorf("data-events %q does not point to the event stream of the session", events)
 	}
-	for _, id := range []string{"status", "origin", "participants", "artifact", "artifacts", "artifactlog", "minutes", "utterances"} {
+	for _, id := range []string{"status", "origin", "participants", "artifacts", "artifact", "artifactlog", "utterances"} {
 		if len(findAll(doc, withAttr("id", id))) != 1 {
 			t.Errorf("page has no region #%s", id)
 		}
@@ -522,9 +522,6 @@ func TestStageShowsTheSession(t *testing.T) {
 		ParticipantId: bot, Text: "# Minutes\n- Ada opened the meeting"}); err != nil {
 		t.Fatal(err)
 	}
-	st.wait("minutes", "the minutes", func(n *html.Node) bool {
-		return strings.Contains(text(n), "Ada opened the meeting") && len(findAll(n, byTag("h1"))) == 1
-	})
 
 	// Utterances; a off the record one disappears.
 	m.say(ada, "Welcome everyone")
@@ -603,7 +600,11 @@ func TestStageShowsTheSession(t *testing.T) {
 	}
 	again := openStage(t, m.srv, m.link)
 	again.wait("status", "ended", hasStatus("ended"))
-	again.wait("minutes", "the minutes", func(n *html.Node) bool { return strings.Contains(text(n), "Ada opened the meeting") })
+	again.wait("artifacts", "the minutes as the first tab", func(n *html.Node) bool {
+		tabs := findAll(n, withAttr("data-artifact", ""))
+		first, _ := attr(tabs[0], "data-artifact")
+		return len(tabs) >= 2 && first == "minutes"
+	})
 	again.waitEnd()
 }
 
@@ -698,21 +699,18 @@ func TestStageShowsDocuments(t *testing.T) {
 	}
 	st.wait("artifact", "the changed document", func(n *html.Node) bool { return strings.Contains(srcdoc(n), "<h1>Budget 2</h1>") })
 
-	// Two artifacts: the list marks the one in focus.
-	if _, err := a.Document.CreateDocument(m.ctx(), &documentv1.CreateDocumentRequest{Path: "documents/notes.md", Content: "Notes",
-		CommandId: coreapi.NewCommandID(), SessionId: m.sid}); err != nil {
-		t.Fatal(err)
-	}
+	// Tabs: the minutes first, then the documents in the order of the log; the one in focus is selected.
 	focus("documents/notes.md")
-	st.wait("artifacts", "two artifacts, notes in focus", func(n *html.Node) bool {
-		chips := findAll(n, withAttr("data-artifact", ""))
-		if len(chips) != 2 {
+	st.wait("artifacts", "three tabs, notes selected", func(n *html.Node) bool {
+		tabs := findAll(n, withAttr("data-artifact", ""))
+		if len(tabs) != 3 {
 			return false
 		}
-		for _, c := range chips {
-			p, _ := attr(c, "data-artifact")
-			cls, _ := attr(c, "class")
-			if (p == "documents/notes.md") != strings.Contains(cls, "focused") {
+		want := []string{"minutes", "documents/plan.md", "documents/notes.md"}
+		for i, tab := range tabs {
+			p, _ := attr(tab, "data-artifact")
+			sel, _ := attr(tab, "aria-selected")
+			if p != want[i] || (sel == "true") != (i == 2) {
 				return false
 			}
 		}
@@ -753,7 +751,6 @@ func TestStageShowsMinutesInTheMiddle(t *testing.T) {
 	if !strings.Contains(text(n), "Ask an agent to join") {
 		t.Errorf("placeholder: %q", text(n))
 	}
-	st.wait("minutes", "no side minutes", func(n *html.Node) bool { return text(n) == "" })
 
 	if _, err := m.s(bot).UpdateMinutes(m.ctx(), &sessioncommandsv1.UpdateMinutesRequest{SessionId: m.sid, CommandId: coreapi.NewCommandID(),
 		ParticipantId: bot, Text: "# Weekly\n\n- Ada opened <b>the</b> meeting\n"}); err != nil {
@@ -776,5 +773,19 @@ func TestStageShowsMinutesInTheMiddle(t *testing.T) {
 		t.Fatal(err)
 	}
 	st.wait("artifact", "the document", func(n *html.Node) bool { return len(findAll(n, byTag("iframe"))) == 1 })
-	st.wait("minutes", "the minutes at the side", func(n *html.Node) bool { return strings.Contains(text(n), "Ada opened") })
+	// The minutes are the first tab. Focusing them shows them again.
+	n = st.wait("artifacts", "the minutes as the first tab, the document selected", func(n *html.Node) bool {
+		tabs := findAll(n, withAttr("data-artifact", ""))
+		if len(tabs) != 2 {
+			return false
+		}
+		first, _ := attr(tabs[0], "data-artifact")
+		sel, _ := attr(tabs[1], "aria-selected")
+		return first == "minutes" && sel == "true"
+	})
+	if _, err := m.s(bot).FocusArtifact(m.ctx(), &sessioncommandsv1.FocusArtifactRequest{SessionId: m.sid, CommandId: coreapi.NewCommandID(),
+		ParticipantId: bot, ArtifactId: "minutes"}); err != nil {
+		t.Fatal(err)
+	}
+	st.wait("artifact", "the minutes again", func(n *html.Node) bool { return len(findAll(n, withAttr("data-minutes", ""))) == 1 })
 }

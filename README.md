@@ -545,8 +545,9 @@ them. The package comment in `hub/slides/doc.go` has the details. In short:
 - `GetDeck` fetches a deck with its input and output by ID; an unknown ID fails with
   `not_found`. Any participant can fetch every deck. A stage link cannot use the slides
   interface: the stage renders on the hub.
-- **Artifact** is the general word for what the stage shows: `stage focus` takes the ID of a deck or
-  the path of a document (see [Documents](#documents)). The meeting session does not check that a
+- **Artifact** is the general word for what the stage shows: `stage focus` takes the ID of a deck, the
+  path of a document (see [Documents](#documents)) or `minutes`, the running minutes of the
+  session. The minutes are the first tab and in focus until another artifact gets the focus. The meeting session does not check that a
   shown artifact exists; the stage shows a note for an unknown ID.
 
 Every deck is two files in the archive, written in one commit: `slides/000001.yaml` holds the

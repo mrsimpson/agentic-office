@@ -1083,7 +1083,8 @@ without a schema, shown as plain text. Something that lives in another system, s
 URL of the real thing; the hub resolves it through an API later. Every participant may create and
 change artifacts. A change always applies to the head of the repository; there are no branches or
 proposals. A change names the version that its author read, and the hub refuses it when the
-artifact has changed since. A session refers to several artifacts and exactly one has the focus.
+artifact has changed since. A session refers to several artifacts and exactly one has the focus. The minutes of the session
+are the first artifact and have the focus until another artifact gets it.
 Every participant may set the focus. People normally discuss the artifact in focus; the session
 log carries the discussion. The archive stores every change of an artifact in one commit. The rule
 for off the record applies when an artifact is created, not when it is shown. **Consequences:**
