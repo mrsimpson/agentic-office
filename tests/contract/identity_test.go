@@ -1,6 +1,6 @@
 package contract
 
-// Contract tests of Identity (bb-identity) through if-auth-api, and of the token check
+// Contract tests of Identity (bb-identity) through if-auth-api and if-user-api, and of the token check
 // (if-token-check) as the session uses it. They start the real office-hub and use only its
 // interfaces and the shared client helpers in server/identity/api/auth.
 
@@ -21,6 +21,7 @@ import (
 
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
+	userv1 "github.com/mrsimpson/agentic-office/hub/identity/userapi"
 	decisionv1 "github.com/mrsimpson/agentic-office/hub/records/decision/api"
 	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
 	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
@@ -265,77 +266,91 @@ func endAndRead(t *testing.T, a *contracttest.Actor, sid string) []*sessionstrea
 	}
 }
 
-// Only admins register and revoke keys. A participant can have several keys.
-func TestIdentityAdminRegistersKeys(t *testing.T) {
+// Only a system admin creates users. A user adds and revokes its own keys; a system admin any key.
+func TestUserAPIKeys(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
-	admin := srv.Admin(t).Identity
+	admin := srv.Admin(t).User
 	ctx := ctx10(t)
 	key := newKey(t)
-	reg := func(c contracttest.Clients, pid, name string, kind identityv1.ActorKind, k ed25519.PrivateKey) (string, error) {
-		res, err := c.Identity.RegisterKey(ctx, &identityv1.RegisterKeyRequest{CommandId: coreapi.NewCommandID(),
-			ParticipantId: pid, DisplayName: name, Kind: kind, PublicKey: auth.PublicKey(k)})
+	create := func(c contracttest.Clients, uid, name string, kind identityv1.ActorKind, k ed25519.PrivateKey) (string, error) {
+		res, err := c.User.CreateUser(ctx, &userv1.CreateUserRequest{CommandId: coreapi.NewCommandID(),
+			UserId: uid, DisplayName: name, Kind: kind, PublicKey: auth.PublicKey(k)})
 		return res.GetKeyId(), err
 	}
 
 	bot := srv.Participant(t, "bot", "Bot", agent)
-	_, err := reg(bot.Clients, "eve", "Eve", human, key)
-	wantCode(t, "register by a participant who is not an admin", err, connect.CodePermissionDenied)
-	_, err = reg(srv.Anonymous(t), "eve", "Eve", human, key)
-	wantCode(t, "register without a token", err, connect.CodeUnauthenticated)
-	_, err = bot.Identity.RevokeKey(ctx, &identityv1.RevokeKeyRequest{CommandId: coreapi.NewCommandID(), KeyId: bot.KeyID})
-	wantCode(t, "revoke by a participant who is not an admin", err, connect.CodePermissionDenied)
+	_, err := create(bot.Clients, "eve", "Eve", human, key)
+	wantCode(t, "create a user as a user who is no system admin", err, connect.CodePermissionDenied)
+	_, err = create(srv.Anonymous(t), "eve", "Eve", human, key)
+	wantCode(t, "create a user without a token", err, connect.CodeUnauthenticated)
+	_, err = bot.User.ListUsers(ctx, &userv1.ListUsersRequest{})
+	wantCode(t, "list users as a user who is no system admin", err, connect.CodePermissionDenied)
 
 	adminClients := srv.Admin(t).Clients
-	_, err = reg(adminClients, "", "Eve", human, key)
-	wantCode(t, "register without participant_id", err, connect.CodeInvalidArgument)
-	_, err = reg(adminClients, "eve smith", "Eve", human, key)
-	wantCode(t, "register with a bad participant_id", err, connect.CodeInvalidArgument)
-	_, err = reg(adminClients, "eve", "Eve", identityv1.ActorKind_ACTOR_KIND_UNSPECIFIED, key)
-	wantCode(t, "register a new participant without kind", err, connect.CodeInvalidArgument)
-	_, err = admin.RegisterKey(ctx, &identityv1.RegisterKeyRequest{CommandId: coreapi.NewCommandID(), ParticipantId: "eve",
+	_, err = create(adminClients, "", "Eve", human, key)
+	wantCode(t, "create without user_id", err, connect.CodeInvalidArgument)
+	_, err = create(adminClients, "eve smith", "Eve", human, key)
+	wantCode(t, "create with a bad user_id", err, connect.CodeInvalidArgument)
+	_, err = create(adminClients, "eve", "Eve", identityv1.ActorKind_ACTOR_KIND_UNSPECIFIED, key)
+	wantCode(t, "create without kind", err, connect.CodeInvalidArgument)
+	_, err = admin.CreateUser(ctx, &userv1.CreateUserRequest{CommandId: coreapi.NewCommandID(), UserId: "eve",
 		DisplayName: "Eve", Kind: human, PublicKey: []byte("short")})
-	wantCode(t, "register a malformed key", err, connect.CodeInvalidArgument)
+	wantCode(t, "create with a malformed key", err, connect.CodeInvalidArgument)
 
-	req := &identityv1.RegisterKeyRequest{CommandId: coreapi.NewCommandID(), ParticipantId: "eve", DisplayName: "Eve",
+	req := &userv1.CreateUserRequest{CommandId: coreapi.NewCommandID(), UserId: "eve", DisplayName: "Eve",
 		Kind: human, PublicKey: auth.PublicKey(key)}
-	first, err := admin.RegisterKey(ctx, req)
+	first, err := admin.CreateUser(ctx, req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	again, err := admin.RegisterKey(ctx, req)
+	again, err := admin.CreateUser(ctx, req)
 	if err != nil || again.GetKeyId() != first.GetKeyId() {
-		t.Fatalf("repeated register: %v, %v", again, err)
+		t.Fatalf("repeated create: %v, %v", again, err)
 	}
-	changed := &identityv1.RegisterKeyRequest{CommandId: req.GetCommandId(), ParticipantId: "eve", PublicKey: auth.PublicKey(newKey(t))}
-	_, err = admin.RegisterKey(ctx, changed)
+	changed := &userv1.CreateUserRequest{CommandId: req.GetCommandId(), UserId: "eve", DisplayName: "Eve",
+		Kind: human, PublicKey: auth.PublicKey(newKey(t))}
+	_, err = admin.CreateUser(ctx, changed)
 	wantCode(t, "command_id reused for another key", err, connect.CodeAlreadyExists)
-	_, err = reg(adminClients, "bot", "", identityv1.ActorKind_ACTOR_KIND_UNSPECIFIED, key)
-	wantCode(t, "register the key of eve for bot", err, connect.CodeAlreadyExists)
-	_, err = reg(adminClients, "eve", "Eve", agent, newKey(t))
-	wantCode(t, "register a key for eve with another kind", err, connect.CodeFailedPrecondition)
+	_, err = create(adminClients, "eve", "Eve", human, newKey(t))
+	wantCode(t, "create a user that exists", err, connect.CodeAlreadyExists)
+	_, err = create(adminClients, "mallory", "Mallory", human, key)
+	wantCode(t, "create a user with the key of eve", err, connect.CodeFailedPrecondition)
 
-	// A second key of eve: both keys act as the same participant.
+	// A second key of eve: both keys act as the same user. Eve adds it herself.
 	second := newKey(t)
-	if _, err := reg(adminClients, "eve", "", identityv1.ActorKind_ACTOR_KIND_UNSPECIFIED, second); err != nil {
+	eve := srv.WithKey(t, key)
+	if _, err := eve.User.AddKey(ctx, &userv1.AddKeyRequest{CommandId: coreapi.NewCommandID(), UserId: "eve",
+		PublicKey: auth.PublicKey(second)}); err != nil {
 		t.Fatal(err)
 	}
-	a, b := srv.WithKey(t, key), srv.WithKey(t, second)
-	if a.ParticipantID != "eve" || b.ParticipantID != "eve" {
-		t.Fatalf("participants of the two keys: %q and %q, want eve", a.ParticipantID, b.ParticipantID)
+	if b := srv.WithKey(t, second); b.ParticipantID != "eve" {
+		t.Fatalf("participant of the second key: %q, want eve", b.ParticipantID)
 	}
+	_, err = eve.User.AddKey(ctx, &userv1.AddKeyRequest{CommandId: coreapi.NewCommandID(), UserId: "bot",
+		PublicKey: auth.PublicKey(newKey(t))})
+	wantCode(t, "add a key for another user", err, connect.CodePermissionDenied)
+	_, err = bot.User.AddKey(ctx, &userv1.AddKeyRequest{CommandId: coreapi.NewCommandID(), UserId: "bot",
+		PublicKey: auth.PublicKey(key)})
+	wantCode(t, "add the key of eve to bot", err, connect.CodeAlreadyExists)
 
-	// Admin keys from the admin file are not revoked through the API.
-	_, err = admin.RevokeKey(ctx, &identityv1.RevokeKeyRequest{CommandId: coreapi.NewCommandID(),
-		KeyId: auth.KeyID(auth.PublicKey(srv.AdminKey))})
-	wantCode(t, "revoke an admin key", err, connect.CodeFailedPrecondition)
-	_, err = admin.RevokeKey(ctx, &identityv1.RevokeKeyRequest{CommandId: coreapi.NewCommandID(), KeyId: "SHA256:nope"})
+	// Revoking: an own key yes, the key of another user no, an unknown key not found, the last
+	// key of a user not (remove the user instead).
+	_, err = eve.User.RevokeKey(ctx, &userv1.RevokeKeyRequest{CommandId: coreapi.NewCommandID(), KeyId: bot.KeyID})
+	wantCode(t, "revoke the key of another user", err, connect.CodePermissionDenied)
+	_, err = admin.RevokeKey(ctx, &userv1.RevokeKeyRequest{CommandId: coreapi.NewCommandID(), KeyId: "SHA256:nope"})
 	wantCode(t, "revoke an unknown key", err, connect.CodeNotFound)
+	_, err = admin.RevokeKey(ctx, &userv1.RevokeKeyRequest{CommandId: coreapi.NewCommandID(), KeyId: bot.KeyID})
+	wantCode(t, "revoke the last key of a user", err, connect.CodeFailedPrecondition)
+	if _, err := eve.User.RevokeKey(ctx, &userv1.RevokeKeyRequest{CommandId: coreapi.NewCommandID(),
+		KeyId: auth.KeyID(auth.PublicKey(key))}); err != nil {
+		t.Fatalf("eve revokes her first key: %v", err)
+	}
 }
 
 // A removed key and its tokens stop working at once. Other keys of the participant still work.
 func TestIdentityRevokedKey(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
-	admin := srv.Admin(t).Identity
+	admin := srv.Admin(t).User
 	laptop := srv.Participant(t, "ada", "Ada", human)
 	phone := srv.Participant(t, "ada", "", identityv1.ActorKind_ACTOR_KIND_UNSPECIFIED)
 	join(t, laptop.Clients, "s")
@@ -346,7 +361,7 @@ func TestIdentityRevokedKey(t *testing.T) {
 	fixed := srv.WithToken(t, token)
 
 	// A stream of the laptop is open while the key is revoked.
-	revoke := &identityv1.RevokeKeyRequest{CommandId: coreapi.NewCommandID(), KeyId: laptop.KeyID}
+	revoke := &userv1.RevokeKeyRequest{CommandId: coreapi.NewCommandID(), KeyId: laptop.KeyID}
 	streamEnd := streamErr(t, fixed, "s", func() {
 		if _, err := admin.RevokeKey(ctx10(t), revoke); err != nil {
 			t.Fatal(err)
@@ -362,9 +377,9 @@ func TestIdentityRevokedKey(t *testing.T) {
 	wantCode(t, "token of a revoked key", err, connect.CodeUnauthenticated)
 	_, err = srv.Anonymous(t).Identity.GetChallenge(ctx10(t), &identityv1.GetChallengeRequest{PublicKey: auth.PublicKey(laptop.Key)})
 	wantCode(t, "challenge for a revoked key", err, connect.CodeUnauthenticated)
-	_, err = admin.RegisterKey(ctx10(t), &identityv1.RegisterKeyRequest{CommandId: coreapi.NewCommandID(), ParticipantId: "ada",
+	_, err = admin.AddKey(ctx10(t), &userv1.AddKeyRequest{CommandId: coreapi.NewCommandID(), UserId: "ada",
 		PublicKey: auth.PublicKey(laptop.Key)})
-	wantCode(t, "register a revoked key again", err, connect.CodeFailedPrecondition)
+	wantCode(t, "add a revoked key again", err, connect.CodeFailedPrecondition)
 
 	// The phone of ada still works.
 	if _, err := phone.Commands.SubmitUtterance(ctx10(t), &sessioncommandsv1.SubmitUtteranceRequest{SessionId: "s",
@@ -485,9 +500,9 @@ func TestStageLinkIsReadOnly(t *testing.T) {
 	wantCode(t, "end with a stage link", err, connect.CodePermissionDenied)
 	_, err = stage.Identity.CreateStageLink(ctx, &identityv1.CreateStageLinkRequest{SessionId: sid, CommandId: cmd()})
 	wantCode(t, "stage link with a stage link", err, connect.CodePermissionDenied)
-	_, err = stage.Identity.RegisterKey(ctx, &identityv1.RegisterKeyRequest{CommandId: cmd(), ParticipantId: "x",
+	_, err = stage.User.CreateUser(ctx, &userv1.CreateUserRequest{CommandId: cmd(), UserId: "x",
 		DisplayName: "X", Kind: human, PublicKey: auth.PublicKey(newKey(t))})
-	wantCode(t, "register a key with a stage link", err, connect.CodePermissionDenied)
+	wantCode(t, "create a user with a stage link", err, connect.CodePermissionDenied)
 	_, err = stage.Decision.ListDecisions(ctx, &decisionv1.ListDecisionsRequest{})
 	wantCode(t, "decisions with a stage link", err, connect.CodePermissionDenied)
 
@@ -521,7 +536,8 @@ func TestIdentitySurvivesRestart(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
 	gone := srv.Participant(t, "bot", "Bot", agent)
-	if _, err := srv.Admin(t).Identity.RevokeKey(ctx10(t), &identityv1.RevokeKeyRequest{CommandId: coreapi.NewCommandID(),
+	srv.Participant(t, "bot", "", agent) // a second key, so that the first one can be revoked
+	if _, err := srv.Admin(t).User.RevokeKey(ctx10(t), &userv1.RevokeKeyRequest{CommandId: coreapi.NewCommandID(),
 		KeyId: gone.KeyID}); err != nil {
 		t.Fatal(err)
 	}

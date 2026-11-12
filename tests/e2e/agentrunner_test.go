@@ -47,7 +47,7 @@ func TestAgentThroughRunner(t *testing.T) {
 	user := func(pid, name, kind string) []string {
 		env := envFor(filepath.Join(t.TempDir(), pid+".pem"))
 		k := office(env, "key", "create")
-		office(admin, "admin", "key", "register", pid, k["publicKey"].(string), "--name", name, "--kind", kind)
+		office(admin, "admin", "user", "create", pid, k["publicKey"].(string), "--name", name, "--kind", kind)
 		return env
 	}
 	ada, bot := user("ada", "Ada", "human"), user("bot", "Bot", "agent")

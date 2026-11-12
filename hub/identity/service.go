@@ -6,8 +6,10 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +18,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/mrsimpson/agentic-office/hub/archive/storage"
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	identityv1connect "github.com/mrsimpson/agentic-office/hub/identity/api/identityv1connect"
@@ -33,10 +36,12 @@ type Options struct {
 	// PublicURL is the base URL of the server in stage links, for example
 	// "https://office.example.org:8740".
 	PublicURL string
-	// StateFile stores participants and keys. Empty means memory only.
-	StateFile string
-	// Admins are the admin keys, usually from LoadAdmins.
-	Admins []Admin
+	// Archive keeps the users and memberships in the hub repository (if-archive-storage).
+	Archive storage.Archive
+	// Bootstrap names the first system admin. It is needed at the first start only.
+	Bootstrap *Bootstrap
+	// Logf logs notices of the start. Optional.
+	Logf func(format string, args ...any)
 	// StageProcedures are the procedures that a stage link token may call. The wiring of the
 	// server sets them, so that identity does not need to know the other interfaces.
 	StageProcedures []string
@@ -47,18 +52,6 @@ type Caller = tokencheck.Caller
 
 // CallerFrom returns the caller that the Interceptor found for this call.
 func CallerFrom(ctx context.Context) (Caller, bool) { return tokencheck.CallerFrom(ctx) }
-
-type participant struct {
-	DisplayName string               `json:"display_name"`
-	Kind        identityv1.ActorKind `json:"kind"`
-}
-
-type key struct {
-	ParticipantID string            `json:"participant_id"`
-	PublicKey     ed25519.PublicKey `json:"public_key"`
-	Revoked       bool              `json:"revoked,omitempty"`
-	admin         bool              // from the admin file, not stored
-}
 
 type challenge struct {
 	keyID   string
@@ -92,20 +85,25 @@ type command struct {
 type Service struct {
 	opts Options
 
-	mu           sync.Mutex
-	participants map[string]*participant
-	keys         map[string]*key // by key ID
-	challenges   map[string]challenge
-	tokens       map[[32]byte]*token // by SHA-256 of the token
-	commands     map[string]command
+	mu         sync.Mutex
+	st         *state
+	files      map[string][]byte // the files of the hub repository as written
+	keys       map[string]keyRef // by key ID
+	challenges map[string]challenge
+	tokens     map[[32]byte]*token // by SHA-256 of the token
+	commands   map[string]command
 
 	stageProcedures map[string]bool
 }
 
 var _ identityv1connect.IdentityServiceHandler = (*Service)(nil)
 
-// New returns a Service. It reads the state file if there is one.
-func New(opts Options) (*Service, error) {
+// New returns a Service. It reads the hub repository and checks its rules (see the user API). At
+// the first start it creates the first system admin from opts.Bootstrap.
+func New(ctx context.Context, opts Options) (*Service, error) {
+	if opts.Archive == nil {
+		return nil, errors.New("identity: no archive")
+	}
 	if opts.TokenTTL <= 0 {
 		opts.TokenTTL = 15 * time.Minute
 	}
@@ -116,19 +114,14 @@ func New(opts Options) (*Service, error) {
 		opts.StageLinkTTL = 24 * time.Hour
 	}
 	opts.PublicURL = strings.TrimSuffix(opts.PublicURL, "/")
-	s := &Service{opts: opts, participants: map[string]*participant{}, keys: map[string]*key{},
+	s := &Service{opts: opts, st: newState(), files: map[string][]byte{}, keys: map[string]keyRef{},
 		challenges: map[string]challenge{}, tokens: map[[32]byte]*token{}, commands: map[string]command{},
 		stageProcedures: map[string]bool{}}
 	for _, p := range opts.StageProcedures {
 		s.stageProcedures[p] = true
 	}
-	if err := s.load(); err != nil {
+	if err := s.load(ctx); err != nil {
 		return nil, err
-	}
-	for _, a := range opts.Admins {
-		if err := s.addAdmin(a); err != nil {
-			return nil, err
-		}
 	}
 	return s, nil
 }
@@ -191,13 +184,24 @@ func (s *Service) CheckToken(tok string) (Caller, error) {
 	if t.stageSession != "" {
 		return Caller{StageSessionID: t.stageSession, Expires: t.expires, Done: t.done}, nil
 	}
-	k := s.keys[t.keyID]
-	if k == nil || k.Revoked {
-		return Caller{}, unauthenticated("key revoked")
+	now := time.Now()
+	k, u, ok := s.usable(t.keyID, now)
+	if !ok {
+		return Caller{}, unauthenticated("key revoked or user removed")
 	}
-	p := s.participants[k.ParticipantID]
-	return Caller{ParticipantID: k.ParticipantID, DisplayName: p.DisplayName, Kind: callerKind(p.Kind), KeyID: t.keyID,
-		Admin: k.admin, Expires: t.expires, Done: t.done}, nil
+	c := Caller{ParticipantID: k.userID, DisplayName: u.DisplayName, Kind: callerKind(kindOf(u.Kind)), KeyID: t.keyID,
+		SystemAdmin: u.SystemAdmin, Expires: t.expires, Done: t.done}
+	for mk, m := range s.st.members {
+		if mk.user == k.userID && m.active(now) {
+			role := tokencheck.RoleMember
+			if m.Role == roleTenantAdmin {
+				role = tokencheck.RoleTenantAdmin
+			}
+			c.Tenants = append(c.Tenants, tokencheck.Membership{TenantID: mk.tenant, Role: role})
+		}
+	}
+	sort.Slice(c.Tenants, func(i, j int) bool { return c.Tenants[i].TenantID < c.Tenants[j].TenantID })
+	return c, nil
 }
 
 // newToken creates a token. The caller holds s.mu.
@@ -225,8 +229,8 @@ func (s *Service) GetChallenge(_ context.Context, req *identityv1.GetChallengeRe
 	id := auth.KeyID(req.GetPublicKey())
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if k := s.keys[id]; k == nil || k.Revoked {
-		return nil, unauthenticated("public key is not registered: ask an admin to register " + id)
+	if _, _, ok := s.usable(id, time.Now()); !ok {
+		return nil, unauthenticated("public key is not registered: ask a system admin to register " + id)
 	}
 	now := time.Now()
 	for c, ch := range s.challenges {
@@ -260,8 +264,8 @@ func (s *Service) ExchangeChallenge(_ context.Context, req *identityv1.ExchangeC
 	if !ok || ch.keyID != id || !time.Now().Before(ch.expires) {
 		return nil, unauthenticated("challenge unknown, used or expired: get a new one")
 	}
-	k := s.keys[id]
-	if k == nil || k.Revoked {
+	k, _, ok := s.usable(id, time.Now())
+	if !ok {
 		return nil, unauthenticated("public key is not registered")
 	}
 	if !ed25519.Verify(req.GetPublicKey(), req.GetChallenge(), req.GetSignature()) {
@@ -269,7 +273,7 @@ func (s *Service) ExchangeChallenge(_ context.Context, req *identityv1.ExchangeC
 	}
 	tok, exp := s.newToken("oat_", id, "", s.opts.TokenTTL)
 	return &identityv1.ExchangeChallengeResponse{AccessToken: tok, ExpiresAt: timestamppb.New(exp),
-		ParticipantId: k.ParticipantID}, nil
+		ParticipantId: k.userID}, nil
 }
 
 // repeat handles a repeated command_id. It returns the stored response, or AlreadyExists if the
@@ -309,120 +313,6 @@ func (s *Service) CreateStageLink(ctx context.Context, req *identityv1.CreateSta
 }
 
 var participantIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
-
-func admin(ctx context.Context) (Caller, error) {
-	c, _ := CallerFrom(ctx)
-	if !c.Admin {
-		return c, denied("only an admin key may register or revoke keys")
-	}
-	return c, nil
-}
-
-func (s *Service) RegisterKey(ctx context.Context, req *identityv1.RegisterKeyRequest) (*identityv1.RegisterKeyResponse, error) {
-	c, err := admin(ctx)
-	if err != nil {
-		return nil, err
-	}
-	pid := req.GetParticipantId()
-	switch {
-	case req.GetCommandId() == "":
-		return nil, invalid("command_id is required")
-	case !participantIDPattern.MatchString(pid):
-		return nil, invalid("participant_id must be 1 to 64 letters, digits, '.', '_' or '-', starting with a letter or digit")
-	case len(req.GetPublicKey()) != ed25519.PublicKeySize:
-		return nil, invalid("public_key must be a raw Ed25519 public key of 32 bytes")
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if prev, err := s.repeat(req.GetCommandId(), c.ParticipantID, req); err != nil {
-		return nil, err
-	} else if prev != nil {
-		return prev.(*identityv1.RegisterKeyResponse), nil
-	}
-	id := auth.KeyID(req.GetPublicKey())
-	res := &identityv1.RegisterKeyResponse{KeyId: id}
-	p := s.participants[pid]
-	if p != nil {
-		if req.GetKind() != identityv1.ActorKind_ACTOR_KIND_UNSPECIFIED && req.GetKind() != p.Kind {
-			return nil, precondition("participant " + pid + " is registered with another kind")
-		}
-		if req.GetDisplayName() != "" && req.GetDisplayName() != p.DisplayName {
-			return nil, precondition("participant " + pid + " is registered with another display name")
-		}
-	} else if req.GetDisplayName() == "" || req.GetKind() == identityv1.ActorKind_ACTOR_KIND_UNSPECIFIED {
-		return nil, invalid("display_name and kind are required for a new participant")
-	}
-	if k := s.keys[id]; k != nil {
-		switch {
-		case k.Revoked:
-			return nil, precondition("the key was revoked and cannot be registered again; create a new key")
-		case k.ParticipantID != pid:
-			return nil, connect.NewError(connect.CodeAlreadyExists, "the key belongs to another participant")
-		}
-		s.commands[req.GetCommandId()] = command{caller: c.ParticipantID, req: req, res: res}
-		return res, nil
-	}
-	newParticipant := p == nil
-	if newParticipant {
-		s.participants[pid] = &participant{DisplayName: req.GetDisplayName(), Kind: req.GetKind()}
-	}
-	s.keys[id] = &key{ParticipantID: pid, PublicKey: req.GetPublicKey()}
-	if err := s.save(); err != nil {
-		delete(s.keys, id)
-		if newParticipant {
-			delete(s.participants, pid)
-		}
-		return nil, connect.NewError(connect.CodeInternal, "store keys: "+err.Error())
-	}
-	s.commands[req.GetCommandId()] = command{caller: c.ParticipantID, req: req, res: res}
-	return res, nil
-}
-
-func (s *Service) RevokeKey(ctx context.Context, req *identityv1.RevokeKeyRequest) (*identityv1.RevokeKeyResponse, error) {
-	c, err := admin(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if req.GetCommandId() == "" || req.GetKeyId() == "" {
-		return nil, invalid("command_id and key_id are required")
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if prev, err := s.repeat(req.GetCommandId(), c.ParticipantID, req); err != nil {
-		return nil, err
-	} else if prev != nil {
-		return prev.(*identityv1.RevokeKeyResponse), nil
-	}
-	k := s.keys[req.GetKeyId()]
-	switch {
-	case k == nil:
-		return nil, connect.NewError(connect.CodeNotFound, "key_id is not a registered key")
-	case k.admin:
-		return nil, precondition("the key is in the admin file: remove it there and restart the server")
-	}
-	if !k.Revoked {
-		k.Revoked = true
-		if err := s.save(); err != nil {
-			k.Revoked = false
-			return nil, connect.NewError(connect.CodeInternal, "store keys: "+err.Error())
-		}
-	}
-	// Tokens of the key stop working at once.
-	for h, t := range s.tokens {
-		if t.keyID == req.GetKeyId() {
-			t.end()
-			delete(s.tokens, h)
-		}
-	}
-	for ch, v := range s.challenges {
-		if v.keyID == req.GetKeyId() {
-			delete(s.challenges, ch)
-		}
-	}
-	res := &identityv1.RevokeKeyResponse{}
-	s.commands[req.GetCommandId()] = command{caller: c.ParticipantID, req: req, res: res}
-	return res, nil
-}
 
 // callerKind maps the actor kind of the auth API to the kind of the token check.
 func callerKind(k identityv1.ActorKind) tokencheck.Kind {

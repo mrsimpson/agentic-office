@@ -2,7 +2,7 @@
 //
 // Every participant has its own Ed25519 key pair, created locally. Only the public key is sent.
 // A client gets a challenge, signs it with its private key and receives a short-lived access token
-// bound to its key. Keys are registered by hand by an admin in the first stage.
+// bound to its key. A system admin registers users and keys with the user API (if-user-api).
 //
 // Every call to the office hub, except GetChallenge and ExchangeChallenge, carries the token in
 // the header "Authorization: Bearer <token>". A call without a valid token fails with
@@ -25,10 +25,6 @@ service IdentityService {
   // CreateStageLink returns a read-only link to the stage of one session. Any participant may
   // create one. The token of the link only allows SessionStreamService.Subscribe for that session.
   rpc CreateStageLink(CreateStageLinkRequest) returns (CreateStageLinkResponse);
-
-  // Admin commands. Only a token of an admin key may call them.
-  rpc RegisterKey(RegisterKeyRequest) returns (RegisterKeyResponse);
-  rpc RevokeKey(RevokeKeyRequest) returns (RevokeKeyResponse);
 }
 
 message GetChallengeRequest {
@@ -67,31 +63,6 @@ message CreateStageLinkResponse {
   string url = 1;
   google.protobuf.Timestamp expires_at = 2;
 }
-
-message RegisterKeyRequest {
-  string command_id = 1;
-  // participant_id is the identity the key belongs to. A participant can have several keys.
-  // 1 to 64 letters, digits, ".", "_" or "-", chosen by the admin, for example "ada".
-  string participant_id = 2;
-  // display_name and kind are required for a new participant. For a known participant they may
-  // be empty; if set, they must match.
-  string display_name = 3;
-  ActorKind kind = 4;
-  bytes public_key = 5;
-}
-
-message RegisterKeyResponse {
-  // key_id is "SHA256:" and the unpadded base64 form of the SHA-256 hash of the public key.
-  string key_id = 1;
-}
-
-// RevokeKey ends all tokens of the key at once. Keys of the admin file cannot be revoked here.
-message RevokeKeyRequest {
-  string command_id = 1;
-  string key_id = 2;
-}
-
-message RevokeKeyResponse {}
 
 // ActorKind tells whether an actor is a human device or an agent (concept-identity).
 enum ActorKind {

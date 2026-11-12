@@ -6,6 +6,7 @@ modules:
   - path: hub/session/streamapi
   - path: hub/session/importapi
   - path: hub/identity/api
+  - path: hub/identity/userapi
   - path: hub/records/decision/api
   - path: hub/records/minutes/api
   - path: hub/records/note/api

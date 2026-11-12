@@ -100,16 +100,16 @@ See USER_GUIDE.md."
   local ada; ada=$(public_key_of ada)
   [ -n "$ada" ] || die "could not create the key of ada"
 
-  say "hub: signing key and first admin"
+  say "hub: signing key"
   # As root, because a new volume may belong to root; the hub itself runs as the user office.
   "$RT" run --rm -u root -v "$HUB_VOLUME:/data" --entrypoint sh "$HUB_IMAGE" -c "
     test -f /data/signing.key || office-hub keygen /data/signing.key >/dev/null
-    echo 'ada $ada Ada' > /data/admins
     chown -R office:office /data"
 
   say "hub: start"
   "$RT" run -d --name "$HUB" "${HUB_NET_ARGS[@]}" -p "$PORT:8740" -v "$HUB_VOLUME:/data" "$HUB_IMAGE" \
     -data-dir /data -addr 0.0.0.0:8740 -signing-key /data/signing.key \
+    -first-system-admin "ada=$ada" \
     -tls-hosts "$HUB_HOST,localhost,127.0.0.1" -public-url "https://localhost:$PORT" >/dev/null
   local i
   for i in $(seq 1 60); do
@@ -143,14 +143,14 @@ cmd_add() {
   local key; key=$(public_key_of "$who")
   [ -n "$key" ] || die "could not create the key of $who"
   give_cert "$who"
-  office_as ada admin key register "$who" "$key" --name "$who" --kind "$kind"
+  office_as ada admin user create "$who" "$key" --name "$who" --kind "$kind"
   echo "participant $who ($kind) is ready: $0 as $who <office command>"
 }
 
 cmd_register() {
   local who=${1:?usage: register <name> <public-key> [human|agent]} key=${2:?usage: register <name> <public-key> [human|agent]}
   need_hub
-  office_as ada admin key register "$who" "$key" --name "$who" --kind "${3:-human}"
+  office_as ada admin user create "$who" "$key" --name "$who" --kind "${3:-human}"
 }
 
 cmd_stage() { need_hub; office_as ada stage link --session "${1:-weekly}"; }

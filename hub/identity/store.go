@@ -1,145 +1,153 @@
 package identity
 
 import (
-	"bufio"
+	"context"
 	"crypto/ed25519"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io/fs"
-	"os"
-	"path/filepath"
+	"path"
 	"strings"
+	"time"
 
+	"github.com/mrsimpson/agentic-office/hub/archive/storage"
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 )
 
-// Admin is one key of the admin file.
-type Admin struct {
-	ParticipantID string
-	DisplayName   string
-	PublicKey     ed25519.PublicKey
+// Bootstrap names the first system admin. The hub needs it at its first start, when the hub
+// repository has no users yet. Later starts ignore it.
+type Bootstrap struct {
+	UserID    string
+	PublicKey ed25519.PublicKey
 }
 
-// LoadAdmins reads the admin file. A missing file means no admins.
-//
-// Each line has a participant ID, a public key in text form (see server/identity/api/auth) and optionally a
-// display name, separated by spaces. Empty lines and lines that start with "#" are ignored.
-// Example:
-//
-//	# participant  public key                                     display name
-//	ada            hGs7aXk0n1V6lH1d3mFzWQ0bX2j7zv8nq3C4oD5pE6A=  Ada Lovelace
-//
-// Admins are humans. A participant ID may have several lines (several keys).
-func LoadAdmins(path string) ([]Admin, error) {
-	f, err := os.Open(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil
+// load reads the hub repository, checks the rules and, at the first start, creates the first
+// system admin. It fails when the repository breaks a rule: nobody gets rights by a manual edit.
+func (s *Service) load(ctx context.Context) error {
+	users, err := s.opts.Archive.Read(ctx, usersDir)
+	if err != nil {
+		return fmt.Errorf("read users: %w", err)
 	}
+	members, err := s.opts.Archive.Read(ctx, membershipsDir)
+	if err != nil {
+		return fmt.Errorf("read memberships: %w", err)
+	}
+	if len(users) == 0 && len(members) == 0 {
+		return s.bootstrap(ctx)
+	}
+	if b := s.opts.Bootstrap; b != nil && s.opts.Logf != nil {
+		s.opts.Logf("the hub repository has users: the first system admin %s is ignored", b.UserID)
+	}
+	var ue, me []fileEntry
+	for _, f := range users {
+		ue = append(ue, fileEntry{path: f.Path, name: path.Base(f.Path), data: f.Data})
+	}
+	for _, f := range members {
+		me = append(me, fileEntry{path: f.Path, name: path.Base(f.Path), data: f.Data})
+	}
+	st, err := parseFiles(ue, me)
+	if err != nil {
+		return fmt.Errorf("hub repository: %w", err)
+	}
+	if err := st.validate(time.Now()); err != nil {
+		return fmt.Errorf("hub repository breaks a rule, not starting: %w", err)
+	}
+	files, err := st.files()
+	if err != nil {
+		return err
+	}
+	s.st, s.files = st, files
+	s.reindex()
+	return nil
+}
+
+func (s *Service) bootstrap(ctx context.Context) error {
+	b := s.opts.Bootstrap
+	if b == nil {
+		return fmt.Errorf("the hub repository has no users: at the first start, name the first system admin " +
+			"with -first-system-admin ID=PUBLIC_KEY (see the user guide)")
+	}
+	if !participantIDPattern.MatchString(b.UserID) || len(b.PublicKey) != ed25519.PublicKeySize {
+		return fmt.Errorf("first system admin: need a valid user ID and an Ed25519 public key")
+	}
+	now := time.Now().UTC().Truncate(time.Second)
+	st := newState()
+	st.users[b.UserID] = &userRecord{DisplayName: b.UserID, Kind: kindName(identityv1.ActorKind_ACTOR_KIND_HUMAN),
+		SystemAdmin: true, ValidFrom: now,
+		Keys: []*keyRecord{{KeyID: auth.KeyID(b.PublicKey), PublicKey: auth.FormatPublicKey(b.PublicKey)}}}
+	if err := s.commit(ctx, st, "Create the first system admin "+b.UserID); err != nil {
+		return err
+	}
+	if s.opts.Logf != nil {
+		s.opts.Logf("created the first system admin %s", b.UserID)
+	}
+	return nil
+}
+
+// commit writes the files of st that differ from the repository as one commit and makes st the
+// state. The caller holds s.mu (or is New).
+func (s *Service) commit(ctx context.Context, st *state, message string) error {
+	files, err := st.files()
+	if err != nil {
+		return err
+	}
+	var changed []storage.File
+	for p, data := range files {
+		if string(s.files[p]) != string(data) {
+			changed = append(changed, storage.File{Path: p, Data: data})
+		}
+	}
+	if len(changed) > 0 {
+		if _, err := s.opts.Archive.Commit(ctx, storage.Change{Message: message, Files: changed}); err != nil {
+			return fmt.Errorf("write the hub repository: %w", err)
+		}
+	}
+	s.st, s.files = st, files
+	s.reindex()
+	return nil
+}
+
+// keyRef is a registered key in the index of keys.
+type keyRef struct {
+	userID  string
+	public  ed25519.PublicKey
+	revoked bool
+}
+
+// reindex rebuilds the index from key IDs to users.
+func (s *Service) reindex() {
+	s.keys = map[string]keyRef{}
+	for id, u := range s.st.users {
+		for _, k := range u.Keys {
+			s.keys[k.KeyID] = keyRef{userID: id, public: publicKeyOf(k), revoked: k.Revoked}
+		}
+	}
+}
+
+// usable reports whether the key may log in now: it is not revoked and its user is active.
+func (s *Service) usable(keyID string, now time.Time) (keyRef, *userRecord, bool) {
+	k, ok := s.keys[keyID]
+	if !ok || k.revoked {
+		return keyRef{}, nil, false
+	}
+	u := s.st.users[k.userID]
+	if u == nil || !u.active(now) {
+		return keyRef{}, nil, false
+	}
+	return k, u, true
+}
+
+// ParseBootstrap parses the value of -first-system-admin: "ID=PUBLIC_KEY".
+func ParseBootstrap(v string) (*Bootstrap, error) {
+	id, key, ok := strings.Cut(v, "=")
+	if !ok {
+		return nil, fmt.Errorf("want ID=PUBLIC_KEY")
+	}
+	pub, err := auth.ParsePublicKey(strings.TrimSpace(key))
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
-	var out []Admin
-	sc := bufio.NewScanner(f)
-	for n := 1; sc.Scan(); n++ {
-		line := strings.TrimSpace(sc.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
-			return nil, fmt.Errorf("%s:%d: want: participant-id public-key [display name]", path, n)
-		}
-		if !participantIDPattern.MatchString(fields[0]) {
-			return nil, fmt.Errorf("%s:%d: bad participant ID %q", path, n, fields[0])
-		}
-		pub, err := auth.ParsePublicKey(fields[1])
-		if err != nil {
-			return nil, fmt.Errorf("%s:%d: %w", path, n, err)
-		}
-		name := strings.Join(fields[2:], " ")
-		if name == "" {
-			name = fields[0]
-		}
-		out = append(out, Admin{ParticipantID: fields[0], DisplayName: name, PublicKey: pub})
+	if !participantIDPattern.MatchString(id) {
+		return nil, fmt.Errorf("bad user ID %q: use 1 to 64 letters, digits, '.', '_' or '-'", id)
 	}
-	return out, sc.Err()
-}
-
-// addAdmin adds a key of the admin file. A participant that is already known keeps its name.
-func (s *Service) addAdmin(a Admin) error {
-	id := auth.KeyID(a.PublicKey)
-	if k := s.keys[id]; k != nil && k.ParticipantID != a.ParticipantID {
-		return fmt.Errorf("admin key %s of %s is registered for participant %s", id, a.ParticipantID, k.ParticipantID)
-	}
-	p := s.participants[a.ParticipantID]
-	if p == nil {
-		s.participants[a.ParticipantID] = &participant{DisplayName: a.DisplayName,
-			Kind: identityv1.ActorKind_ACTOR_KIND_HUMAN}
-	} else if p.Kind != identityv1.ActorKind_ACTOR_KIND_HUMAN {
-		return fmt.Errorf("admin %s is registered as an agent; admins are humans", a.ParticipantID)
-	}
-	s.keys[id] = &key{ParticipantID: a.ParticipantID, PublicKey: a.PublicKey, admin: true}
-	return nil
-}
-
-type stateFile struct {
-	Participants map[string]*participant `json:"participants"`
-	Keys         map[string]*key         `json:"keys"`
-}
-
-func (s *Service) load() error {
-	if s.opts.StateFile == "" {
-		return nil
-	}
-	b, err := os.ReadFile(s.opts.StateFile)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	var st stateFile
-	if err := json.Unmarshal(b, &st); err != nil {
-		return fmt.Errorf("%s: %w", s.opts.StateFile, err)
-	}
-	for id, p := range st.Participants {
-		s.participants[id] = p
-	}
-	for id, k := range st.Keys {
-		if s.participants[k.ParticipantID] == nil || auth.KeyID(k.PublicKey) != id {
-			return fmt.Errorf("%s: key %s is broken", s.opts.StateFile, id)
-		}
-		s.keys[id] = k
-	}
-	return nil
-}
-
-// save writes participants and keys that were registered through the API. Keys of the admin
-// file are not written. The caller holds s.mu.
-func (s *Service) save() error {
-	if s.opts.StateFile == "" {
-		return nil
-	}
-	st := stateFile{Participants: map[string]*participant{}, Keys: map[string]*key{}}
-	for id, k := range s.keys {
-		if !k.admin {
-			st.Keys[id] = k
-			st.Participants[k.ParticipantID] = s.participants[k.ParticipantID]
-		}
-	}
-	b, err := json.MarshalIndent(st, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(s.opts.StateFile), 0o700); err != nil {
-		return err
-	}
-	tmp := s.opts.StateFile + ".tmp"
-	if err := os.WriteFile(tmp, append(b, '\n'), 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, s.opts.StateFile)
+	return &Bootstrap{UserID: id, PublicKey: pub}, nil
 }

@@ -18,6 +18,7 @@ import (
 
 	"github.com/mrsimpson/agentic-office/client/replicator/locallog"
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
+	userv1 "github.com/mrsimpson/agentic-office/hub/identity/userapi"
 	decisionv1 "github.com/mrsimpson/agentic-office/hub/records/decision/api"
 	minutesv1 "github.com/mrsimpson/agentic-office/hub/records/minutes/api"
 	notev1 "github.com/mrsimpson/agentic-office/hub/records/note/api"
@@ -316,22 +317,33 @@ func (c *hubClient) StageLink(ctx context.Context, sessionID string) (*identityv
 	return res, err
 }
 
-// RegisterKey registers a public key for a participant. Only admin keys may call it.
-func (c *hubClient) RegisterKey(ctx context.Context, req *identityv1.RegisterKeyRequest) (*identityv1.RegisterKeyResponse, error) {
+// CreateUser registers a user with a first key. Only a system admin may call it.
+func (c *hubClient) CreateUser(ctx context.Context, req *userv1.CreateUserRequest) (*userv1.CreateUserResponse, error) {
 	req.CommandId = coreapi.NewCommandID()
-	var res *identityv1.RegisterKeyResponse
+	var res *userv1.CreateUserResponse
 	err := retry(ctx, func() (err error) {
-		res, err = c.identity.RegisterKey(ctx, req)
+		res, err = c.users.CreateUser(ctx, req)
 		return err
 	})
 	return res, err
 }
 
-// RevokeKey revokes a key by its key ID. Only admin keys may call it.
+// AddKey adds a public key to a user. A user adds keys for itself, a system admin for anyone.
+func (c *hubClient) AddKey(ctx context.Context, userID string, publicKey []byte) (string, error) {
+	req := &userv1.AddKeyRequest{CommandId: coreapi.NewCommandID(), UserId: userID, PublicKey: publicKey}
+	var res *userv1.AddKeyResponse
+	err := retry(ctx, func() (err error) {
+		res, err = c.users.AddKey(ctx, req)
+		return err
+	})
+	return res.GetKeyId(), err
+}
+
+// RevokeKey revokes a key by its key ID. A user revokes its own keys, a system admin any key.
 func (c *hubClient) RevokeKey(ctx context.Context, keyID string) error {
-	cmdID := coreapi.NewCommandID()
+	req := &userv1.RevokeKeyRequest{CommandId: coreapi.NewCommandID(), KeyId: keyID}
 	return retry(ctx, func() error {
-		_, err := c.identity.RevokeKey(ctx, &identityv1.RevokeKeyRequest{CommandId: cmdID, KeyId: keyID})
+		_, err := c.users.RevokeKey(ctx, req)
 		return err
 	})
 }

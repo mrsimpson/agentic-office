@@ -1,0 +1,168 @@
+// User API (if-user-api): the users of the hub, their keys, their memberships in tenants and the
+// system admins (concept-multi-tenancy, dec-multi-tenancy).
+//
+// Two steps: a system admin registers a user (CreateUser), then a system admin or the tenant admin
+// assigns the user to a tenant (SetMembership). Identity is the only writer of this data. It
+// refuses a change that would break one of these rules with failed_precondition:
+//
+//   - every active user has at least one key that is not revoked;
+//   - a key belongs to one user, also after it was revoked;
+//   - at least one system admin is active, and a system admin is a human;
+//   - a system admin is never a member of a tenant;
+//   - an active membership belongs to an active user;
+//   - a tenant with an active member has an active tenant admin.
+//
+// Users and memberships have a validity period. Removing one ends the period and keeps the
+// record, so a user ID is never used again.
+//
+// Every call needs an access token (see identity.proto). Every command carries a command_id that
+// the client creates (dec-idempotent-commands). A call that the token does not allow fails with
+// permission_denied.
+syntax = "proto3";
+
+package office.user.v1;
+
+import "google/protobuf/timestamp.proto";
+import "office/identity/v1/identity.proto";
+
+option go_package = "github.com/mrsimpson/agentic-office/hub/identity/userapi;userv1";
+
+service UserService {
+  // CreateUser registers a user with a first key (step one). Only a system admin.
+  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
+  // RemoveUser ends the validity of a user and of its memberships. Its keys stop working at once.
+  // Only a system admin.
+  rpc RemoveUser(RemoveUserRequest) returns (RemoveUserResponse);
+  // ListUsers returns all users, also the removed ones. Only a system admin.
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+  // SetSystemAdmin makes a human user a system admin or takes the role away. Only a system admin.
+  rpc SetSystemAdmin(SetSystemAdminRequest) returns (SetSystemAdminResponse);
+
+  // AddKey adds a public key to a user. A user adds keys for itself, a system admin for anyone.
+  rpc AddKey(AddKeyRequest) returns (AddKeyResponse);
+  // RevokeKey ends all tokens of the key at once. A user revokes its own keys, a system admin any
+  // key. The last key of a user cannot be revoked: remove the user instead.
+  rpc RevokeKey(RevokeKeyRequest) returns (RevokeKeyResponse);
+
+  // SetMembership adds a user to a tenant with a role, or changes the role (step two). A system
+  // admin may do it for any tenant, a tenant admin for its own tenant. The first member of a
+  // tenant must be a tenant admin.
+  rpc SetMembership(SetMembershipRequest) returns (SetMembershipResponse);
+  // RemoveMembership ends the membership of a user in a tenant. Who may: as for SetMembership.
+  rpc RemoveMembership(RemoveMembershipRequest) returns (RemoveMembershipResponse);
+  // ListMemberships returns the memberships of a tenant, also the ended ones. A system admin or a
+  // member of the tenant may call it.
+  rpc ListMemberships(ListMembershipsRequest) returns (ListMembershipsResponse);
+}
+
+// Role is the role of a user in one tenant.
+enum Role {
+  ROLE_UNSPECIFIED = 0;
+  ROLE_MEMBER = 1;
+  ROLE_TENANT_ADMIN = 2;
+}
+
+message Key {
+  // key_id is "SHA256:" and the unpadded base64 form of the SHA-256 hash of the public key.
+  string key_id = 1;
+  bool revoked = 2;
+}
+
+message User {
+  string user_id = 1;
+  string display_name = 2;
+  office.identity.v1.ActorKind kind = 3;
+  bool system_admin = 4;
+  google.protobuf.Timestamp valid_from = 5;
+  // valid_until is empty while the user is active.
+  google.protobuf.Timestamp valid_until = 6;
+  repeated Key keys = 7;
+}
+
+message Membership {
+  string tenant_id = 1;
+  string user_id = 2;
+  Role role = 3;
+  google.protobuf.Timestamp valid_from = 4;
+  // valid_until is empty while the membership is active.
+  google.protobuf.Timestamp valid_until = 5;
+}
+
+message CreateUserRequest {
+  string command_id = 1;
+  // user_id is 1 to 64 letters, digits, ".", "_" or "-", chosen by the admin, for example "ada".
+  // It is also the participant ID in every session.
+  string user_id = 2;
+  string display_name = 3;
+  office.identity.v1.ActorKind kind = 4;
+  // public_key is the raw 32-byte Ed25519 public key of the first key.
+  bytes public_key = 5;
+}
+
+message CreateUserResponse {
+  string key_id = 1;
+}
+
+message RemoveUserRequest {
+  string command_id = 1;
+  string user_id = 2;
+}
+
+message RemoveUserResponse {}
+
+message ListUsersRequest {}
+
+message ListUsersResponse {
+  repeated User users = 1;
+}
+
+message SetSystemAdminRequest {
+  string command_id = 1;
+  string user_id = 2;
+  bool system_admin = 3;
+}
+
+message SetSystemAdminResponse {}
+
+message AddKeyRequest {
+  string command_id = 1;
+  string user_id = 2;
+  bytes public_key = 3;
+}
+
+message AddKeyResponse {
+  string key_id = 1;
+}
+
+message RevokeKeyRequest {
+  string command_id = 1;
+  string key_id = 2;
+}
+
+message RevokeKeyResponse {}
+
+message SetMembershipRequest {
+  string command_id = 1;
+  // tenant_id is 1 to 64 letters, digits, ".", "_" or "-".
+  string tenant_id = 2;
+  string user_id = 3;
+  Role role = 4;
+}
+
+message SetMembershipResponse {}
+
+message RemoveMembershipRequest {
+  string command_id = 1;
+  string tenant_id = 2;
+  string user_id = 3;
+}
+
+message RemoveMembershipResponse {}
+
+message ListMembershipsRequest {
+  string tenant_id = 1;
+}
+
+message ListMembershipsResponse {
+  repeated Membership memberships = 1;
+}
