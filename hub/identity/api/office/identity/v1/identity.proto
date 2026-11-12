@@ -29,6 +29,16 @@ service IdentityService {
   // Admin commands. Only a token of an admin key may call them.
   rpc RegisterKey(RegisterKeyRequest) returns (RegisterKeyResponse);
   rpc RevokeKey(RevokeKeyRequest) returns (RevokeKeyResponse);
+  // ListKeys lists every key with its participant, ordered by participant ID and key ID. Only
+  // admin keys may call it.
+  rpc ListKeys(ListKeysRequest) returns (ListKeysResponse);
+  // CreateAdminLink creates a link that opens the admin web view (if-admin-web) for the admin
+  // who calls. The link holds a code that works once and expires after a few minutes. Only admin
+  // keys may call it. It is idempotent by command_id.
+  rpc CreateAdminLink(CreateAdminLinkRequest) returns (CreateAdminLinkResponse);
+  // ExchangeAdminLink swaps the code of an admin link for an access token of the admin key that
+  // created the link. The code works once. It needs no token.
+  rpc ExchangeAdminLink(ExchangeAdminLinkRequest) returns (ExchangeAdminLinkResponse);
 }
 
 message GetChallengeRequest {
@@ -92,6 +102,42 @@ message RevokeKeyRequest {
 }
 
 message RevokeKeyResponse {}
+
+message ListKeysRequest {}
+
+message ListKeysResponse {
+  repeated KeyInfo keys = 1;
+}
+
+message KeyInfo {
+  string key_id = 1;
+  string participant_id = 2;
+  string display_name = 3;
+  ActorKind kind = 4;
+  bool revoked = 5;
+  // admin is true for a key of the admin file.
+  bool admin = 6;
+}
+
+message CreateAdminLinkRequest {
+  string command_id = 1;
+}
+
+message CreateAdminLinkResponse {
+  // url has the form <server>/admin/login?code=<code>.
+  string url = 1;
+  google.protobuf.Timestamp expires_at = 2;
+}
+
+message ExchangeAdminLinkRequest {
+  string code = 1;
+}
+
+message ExchangeAdminLinkResponse {
+  string access_token = 1;
+  google.protobuf.Timestamp expires_at = 2;
+  string participant_id = 3;
+}
 
 // ActorKind tells whether an actor is a human device or an agent (concept-identity).
 enum ActorKind {

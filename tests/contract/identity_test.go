@@ -542,3 +542,63 @@ func TestIdentitySurvivesRestart(t *testing.T) {
 	_, err = srv.Anonymous(t).Identity.GetChallenge(ctx10(t), &identityv1.GetChallengeRequest{PublicKey: auth.PublicKey(gone.Key)})
 	wantCode(t, "revoked key after the restart", err, connect.CodeUnauthenticated)
 }
+
+// ListKeys and the admin link: only admins may call them. The code of a link works once and gives
+// an access token with the rights of the admin key that created the link.
+func TestAdminLinkAndListKeys(t *testing.T) {
+	srv := contracttest.StartHub(t, nil)
+	admin := srv.Admin(t)
+	ada := srv.Participant(t, "ada", "Ada", human)
+	ctx := ctx10(t)
+
+	keys, err := admin.Identity.ListKeys(ctx, &identityv1.ListKeysRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, k := range keys.GetKeys() {
+		ids = append(ids, k.GetParticipantId())
+		if k.GetParticipantId() == "ada" && (k.GetDisplayName() != "Ada" || k.GetKind() != human || k.GetAdmin() || k.GetRevoked() || k.GetKeyId() == "") {
+			t.Errorf("key of ada: %v", k)
+		}
+		if k.GetParticipantId() == contracttest.AdminID && !k.GetAdmin() {
+			t.Errorf("the key of the admin file is not marked as admin: %v", k)
+		}
+	}
+	if strings.Join(ids, " ") != "ada admin" {
+		t.Fatalf("participants of the keys: %v, want ada, admin in this order", ids)
+	}
+	_, err = ada.Identity.ListKeys(ctx, &identityv1.ListKeysRequest{})
+	wantCode(t, "ListKeys by a participant", err, connect.CodePermissionDenied)
+	_, err = ada.Identity.CreateAdminLink(ctx, &identityv1.CreateAdminLinkRequest{CommandId: coreapi.NewCommandID()})
+	wantCode(t, "CreateAdminLink by a participant", err, connect.CodePermissionDenied)
+	_, err = admin.Identity.CreateAdminLink(ctx, &identityv1.CreateAdminLinkRequest{})
+	wantCode(t, "CreateAdminLink without command_id", err, connect.CodeInvalidArgument)
+
+	req := &identityv1.CreateAdminLinkRequest{CommandId: coreapi.NewCommandID()}
+	link, err := admin.Identity.CreateAdminLink(ctx, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefix := srv.URL + "/admin/login?code="
+	if !strings.HasPrefix(link.GetUrl(), prefix) || !link.GetExpiresAt().AsTime().After(time.Now()) {
+		t.Fatalf("admin link %v, want %s<code>", link, prefix)
+	}
+	if again, err := admin.Identity.CreateAdminLink(ctx, req); err != nil || again.GetUrl() != link.GetUrl() {
+		t.Fatalf("repeated command: %v, %v", again, err)
+	}
+	code := strings.TrimPrefix(link.GetUrl(), prefix)
+	anon := srv.Anonymous(t)
+	res, err := anon.Identity.ExchangeAdminLink(ctx, &identityv1.ExchangeAdminLinkRequest{Code: code})
+	if err != nil || res.GetParticipantId() != contracttest.AdminID || res.GetAccessToken() == "" {
+		t.Fatalf("exchange: %v, %v", res, err)
+	}
+	_, err = anon.Identity.ExchangeAdminLink(ctx, &identityv1.ExchangeAdminLinkRequest{Code: code})
+	wantCode(t, "second exchange of a code", err, connect.CodeUnauthenticated)
+	_, err = anon.Identity.ExchangeAdminLink(ctx, &identityv1.ExchangeAdminLinkRequest{Code: "oal_unknown"})
+	wantCode(t, "unknown code", err, connect.CodeUnauthenticated)
+	// The token has the rights of the admin key.
+	if _, err := srv.WithToken(t, res.GetAccessToken()).Identity.ListKeys(ctx, &identityv1.ListKeysRequest{}); err != nil {
+		t.Errorf("ListKeys with the token of the link: %v", err)
+	}
+}

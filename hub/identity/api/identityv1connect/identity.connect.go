@@ -49,6 +49,14 @@ const (
 	IdentityServiceRegisterKeyProcedure = "/office.identity.v1.IdentityService/RegisterKey"
 	// IdentityServiceRevokeKeyProcedure is the procedure name of the IdentityService's RevokeKey RPC.
 	IdentityServiceRevokeKeyProcedure = "/office.identity.v1.IdentityService/RevokeKey"
+	// IdentityServiceListKeysProcedure is the procedure name of the IdentityService's ListKeys RPC.
+	IdentityServiceListKeysProcedure = "/office.identity.v1.IdentityService/ListKeys"
+	// IdentityServiceCreateAdminLinkProcedure is the procedure name of the IdentityService's
+	// CreateAdminLink RPC.
+	IdentityServiceCreateAdminLinkProcedure = "/office.identity.v1.IdentityService/CreateAdminLink"
+	// IdentityServiceExchangeAdminLinkProcedure is the procedure name of the IdentityService's
+	// ExchangeAdminLink RPC.
+	IdentityServiceExchangeAdminLinkProcedure = "/office.identity.v1.IdentityService/ExchangeAdminLink"
 )
 
 var (
@@ -87,6 +95,27 @@ var (
 			Procedure:  IdentityServiceRevokeKeyProcedure,
 		}
 	})
+	identityServiceListKeysSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     api.File_office_identity_v1_identity_proto.Services().ByName("IdentityService").Methods().ByName("ListKeys"),
+			Procedure:  IdentityServiceListKeysProcedure,
+		}
+	})
+	identityServiceCreateAdminLinkSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     api.File_office_identity_v1_identity_proto.Services().ByName("IdentityService").Methods().ByName("CreateAdminLink"),
+			Procedure:  IdentityServiceCreateAdminLinkProcedure,
+		}
+	})
+	identityServiceExchangeAdminLinkSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     api.File_office_identity_v1_identity_proto.Services().ByName("IdentityService").Methods().ByName("ExchangeAdminLink"),
+			Procedure:  IdentityServiceExchangeAdminLinkProcedure,
+		}
+	})
 )
 
 // IdentityServiceClient is a client for the office.identity.v1.IdentityService service.
@@ -102,6 +131,16 @@ type IdentityServiceClient interface {
 	// Admin commands. Only a token of an admin key may call them.
 	RegisterKey(context.Context, *api.RegisterKeyRequest) (*api.RegisterKeyResponse, error)
 	RevokeKey(context.Context, *api.RevokeKeyRequest) (*api.RevokeKeyResponse, error)
+	// ListKeys lists every key with its participant, ordered by participant ID and key ID. Only
+	// admin keys may call it.
+	ListKeys(context.Context, *api.ListKeysRequest) (*api.ListKeysResponse, error)
+	// CreateAdminLink creates a link that opens the admin web view (if-admin-web) for the admin
+	// who calls. The link holds a code that works once and expires after a few minutes. Only admin
+	// keys may call it. It is idempotent by command_id.
+	CreateAdminLink(context.Context, *api.CreateAdminLinkRequest) (*api.CreateAdminLinkResponse, error)
+	// ExchangeAdminLink swaps the code of an admin link for an access token of the admin key that
+	// created the link. The code works once. It needs no token.
+	ExchangeAdminLink(context.Context, *api.ExchangeAdminLinkRequest) (*api.ExchangeAdminLinkResponse, error)
 }
 
 // NewIdentityServiceClient constructs a client for the office.identity.v1.IdentityService service.
@@ -123,6 +162,16 @@ type IdentityServiceHandler interface {
 	// Admin commands. Only a token of an admin key may call them.
 	RegisterKey(context.Context, *api.RegisterKeyRequest) (*api.RegisterKeyResponse, error)
 	RevokeKey(context.Context, *api.RevokeKeyRequest) (*api.RevokeKeyResponse, error)
+	// ListKeys lists every key with its participant, ordered by participant ID and key ID. Only
+	// admin keys may call it.
+	ListKeys(context.Context, *api.ListKeysRequest) (*api.ListKeysResponse, error)
+	// CreateAdminLink creates a link that opens the admin web view (if-admin-web) for the admin
+	// who calls. The link holds a code that works once and expires after a few minutes. Only admin
+	// keys may call it. It is idempotent by command_id.
+	CreateAdminLink(context.Context, *api.CreateAdminLinkRequest) (*api.CreateAdminLinkResponse, error)
+	// ExchangeAdminLink swaps the code of an admin link for an access token of the admin key that
+	// created the link. The code works once. It needs no token.
+	ExchangeAdminLink(context.Context, *api.ExchangeAdminLinkRequest) (*api.ExchangeAdminLinkResponse, error)
 }
 
 // RegisterIdentityServiceHandler registers svc as the office.identity.v1.IdentityService
@@ -135,6 +184,9 @@ func RegisterIdentityServiceHandler(server *connect.Server, svc IdentityServiceH
 		connect.Method{Spec: identityServiceCreateStageLinkSpec(), Handler: adapter.createStageLink},
 		connect.Method{Spec: identityServiceRegisterKeySpec(), Handler: adapter.registerKey},
 		connect.Method{Spec: identityServiceRevokeKeySpec(), Handler: adapter.revokeKey},
+		connect.Method{Spec: identityServiceListKeysSpec(), Handler: adapter.listKeys},
+		connect.Method{Spec: identityServiceCreateAdminLinkSpec(), Handler: adapter.createAdminLink},
+		connect.Method{Spec: identityServiceExchangeAdminLinkSpec(), Handler: adapter.exchangeAdminLink},
 	)
 }
 
@@ -159,6 +211,18 @@ func (UnimplementedIdentityServiceHandler) RegisterKey(context.Context, *api.Reg
 
 func (UnimplementedIdentityServiceHandler) RevokeKey(context.Context, *api.RevokeKeyRequest) (*api.RevokeKeyResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, "office.identity.v1.IdentityService.RevokeKey is not implemented")
+}
+
+func (UnimplementedIdentityServiceHandler) ListKeys(context.Context, *api.ListKeysRequest) (*api.ListKeysResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "office.identity.v1.IdentityService.ListKeys is not implemented")
+}
+
+func (UnimplementedIdentityServiceHandler) CreateAdminLink(context.Context, *api.CreateAdminLinkRequest) (*api.CreateAdminLinkResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "office.identity.v1.IdentityService.CreateAdminLink is not implemented")
+}
+
+func (UnimplementedIdentityServiceHandler) ExchangeAdminLink(context.Context, *api.ExchangeAdminLinkRequest) (*api.ExchangeAdminLinkResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "office.identity.v1.IdentityService.ExchangeAdminLink is not implemented")
 }
 
 type identityServiceClient struct {
@@ -200,6 +264,30 @@ func (c *identityServiceClient) RegisterKey(ctx context.Context, req *api.Regist
 func (c *identityServiceClient) RevokeKey(ctx context.Context, req *api.RevokeKeyRequest) (*api.RevokeKeyResponse, error) {
 	var res api.RevokeKeyResponse
 	if err := c.client.CallUnary(ctx, identityServiceRevokeKeySpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *identityServiceClient) ListKeys(ctx context.Context, req *api.ListKeysRequest) (*api.ListKeysResponse, error) {
+	var res api.ListKeysResponse
+	if err := c.client.CallUnary(ctx, identityServiceListKeysSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *identityServiceClient) CreateAdminLink(ctx context.Context, req *api.CreateAdminLinkRequest) (*api.CreateAdminLinkResponse, error) {
+	var res api.CreateAdminLinkResponse
+	if err := c.client.CallUnary(ctx, identityServiceCreateAdminLinkSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *identityServiceClient) ExchangeAdminLink(ctx context.Context, req *api.ExchangeAdminLinkRequest) (*api.ExchangeAdminLinkResponse, error) {
+	var res api.ExchangeAdminLinkResponse
+	if err := c.client.CallUnary(ctx, identityServiceExchangeAdminLinkSpec(), req, &res); err != nil {
 		return nil, err
 	}
 	return &res, nil
@@ -261,6 +349,42 @@ func (h identityServiceHandler) revokeKey(ctx context.Context, _ connect.Spec, s
 		return err
 	}
 	res, err := h.svc.RevokeKey(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h identityServiceHandler) listKeys(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req api.ListKeysRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.ListKeys(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h identityServiceHandler) createAdminLink(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req api.CreateAdminLinkRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.CreateAdminLink(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h identityServiceHandler) exchangeAdminLink(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req api.ExchangeAdminLinkRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.ExchangeAdminLink(ctx, &req)
 	if err != nil {
 		return err
 	}

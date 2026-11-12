@@ -1108,3 +1108,31 @@ date: 2026-11-12
 addresses: qg-usability
 :::
 ```
+
+## The admin view is a server-rendered page behind a one-time link
+
+**Context:** The hub needs a view for admins: users and keys now, tenants and memberships with
+`dec-multi-tenancy`. Admins have Ed25519 keys and no passwords, and a browser cannot sign a
+challenge without more work. **Decision:** The admin view is a web page that the hub renders on the
+server, in the design of the stage, without scripts. An admin asks for a link with the CLI. The link
+holds a code that works once and expires after a few minutes. The admin view swaps the code for an
+access token of the admin key and keeps it in a cookie that scripts cannot read. It sends the token
+with every call to the identity part, so it has exactly the rights of the admin key and no logic of
+its own. **Consequences:** No password and no new login flow. The code is useless after its first
+use, so a link on a shared screen does no harm once it was opened. The access token lives one
+hour. Every change goes through an interface that checks the rights; the first pages only read.
+**Rejected:** a password for admins (a second secret to keep); a signature in the browser (needs
+scripts and a new key format); the stage link style with the token in the URL for the whole
+session (the URL stays in the history and on the screen). OPEN: which writes the admin view offers
+first (register and revoke keys, then tenants and memberships).
+
+```arc42
+:::decision
+id: dec-admin-web
+title: The admin view is a server-rendered page behind a one-time link
+status: proposed
+date: 2026-11-12
+addresses: qg-usability
+:::
+```
+

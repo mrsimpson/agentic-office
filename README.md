@@ -143,6 +143,8 @@ hub/                      bb-office-hub: wiring of the hub (binary office-hub)
     api/                  if-slides-api: contract and generated code
   documents/              bb-documents: text documents as Markdown files in the archive
     api/                  if-document-api: contract and generated code
+  admin/                  bb-admin: the admin view, rendered on the server
+    web/                  if-admin-web: addresses, pages and design of the admin view
   stage/                  bb-stage: renders the stage from the session stream
     web/                  if-stage-web: addresses, page, regions and event stream of the stage
 client/                   bb-participant-client: wiring of the client (binary office)
@@ -500,6 +502,22 @@ command_ids:
 
 Like the records, a task write waits for its commit. It goes before a waiting session write, so
 it waits at most for the one session write that is in progress (see [Archive](#archive)).
+
+### Admin view
+
+The admin view (`hub/admin`, `/admin/`) is a web page for the admins of the hub. It has the design
+of the stage, in dark and light, and no scripts (`dec-admin-web`). Today it shows the users with
+their keys; tenants and system admins are placeholders until multi-tenancy.
+
+```sh
+office admin link   # prints a link; it works once and expires after a few minutes
+```
+
+Open the link in a browser. The view swaps its code for an access token of your admin key, keeps it
+in a cookie that scripts cannot read (`office_admin`, one hour), and sends you to the list of keys.
+Every page asks the identity part with this token, so the view has exactly your rights. A used or
+expired link gives an error page. `office.identity.v1.IdentityService` has the calls behind it:
+`ListKeys`, `CreateAdminLink` (both only for admin keys) and `ExchangeAdminLink` (needs no token).
 
 ### Documents
 

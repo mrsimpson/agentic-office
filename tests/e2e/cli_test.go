@@ -124,8 +124,11 @@ func TestTwoCLIParticipants(t *testing.T) {
 	// The stage of the session, opened with the link from the CLI, shows the slides, the raised
 	// hand and the minutes, and then the end of the session.
 	stage := openStage(t, srv, office(ada, "stage", "link")["url"].(string))
-	stage.waitFor(t, "slides, hand and minutes on the stage", `<iframe`, `data-artifact="slides/1"`,
-		`data-participant="bot"`, `Ada asked for the budget.`)
+	stage.waitFor(t, "slides, hand and the minutes as a tab on the stage", `<iframe`, `data-artifact="slides/1"`,
+		`data-participant="bot"`, `data-artifact="minutes"`)
+	// The minutes are an artifact: focusing them shows their text.
+	office(bot, "stage", "focus", "minutes")
+	stage.waitFor(t, "the minutes on the stage", `Ada asked for the budget.`)
 	office(ada, "meeting", "end")
 	stage.waitFor(t, "the end on the stage", `data-status="ended"`, "event: end")
 

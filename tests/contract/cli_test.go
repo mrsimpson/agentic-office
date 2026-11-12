@@ -974,3 +974,18 @@ func TestCLIDocuments(t *testing.T) {
 		t.Fatalf("file written by get --out: %q", b)
 	}
 }
+
+// TestCLIAdminLink: office admin link gives a link for admin keys and refuses other participants.
+func TestCLIAdminLink(t *testing.T) {
+	m := newMachine(t)
+	bob := m.user("bob", "Bob", "human")
+	v := m.admin.ok("admin", "link")
+	if u, _ := v["url"].(string); !strings.Contains(u, "/admin/login?code=") || v["expiresAt"] == nil {
+		t.Fatalf("admin link: %v", v)
+	}
+	if out, _, code := m.admin.run("admin", "link"); code != 0 || !strings.Contains(out, "/admin/login?code=") {
+		t.Errorf("without --json: exit %d, %q", code, out)
+	}
+	bob.fails(1, "permission_denied", "admin", "link")
+	bob.fails(2, "usage", "admin", "link", "extra")
+}

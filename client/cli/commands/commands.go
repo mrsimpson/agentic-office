@@ -46,6 +46,10 @@ Meeting:
   stage focus <artifact-id>
   stage link                         create a read-only link to the stage
 
+Admin (only admin keys):
+  admin link                         create a link that opens the admin view in a browser; it works
+                                     once and expires after a few minutes
+
 Import (dec-session-import; the format is in README.md):
   session import <conversation.json | ->  import a conversation as a new, marked session and
                                      print its ID (--session S chooses the ID; - reads stdin)

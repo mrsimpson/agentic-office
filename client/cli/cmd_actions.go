@@ -615,3 +615,25 @@ func cmdDocumentList(e *env, fs *flag.FlagSet) func([]string) error {
 		return nil
 	}
 }
+
+func cmdAdminLink(e *env, fs *flag.FlagSet) func([]string) error {
+	return func(args []string) error {
+		if err := noArgs(args); err != nil {
+			return err
+		}
+		c, err := e.client()
+		if err != nil {
+			return err
+		}
+		res, err := c.CreateAdminLink(e.ctx)
+		if err != nil {
+			return err
+		}
+		if e.json {
+			e.printJSON(map[string]any{"url": res.GetUrl(), "expiresAt": res.GetExpiresAt().AsTime().Format(time.RFC3339)})
+		} else {
+			fmt.Fprintln(e.stdout, res.GetUrl())
+		}
+		return nil
+	}
+}

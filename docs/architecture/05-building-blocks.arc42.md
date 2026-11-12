@@ -63,13 +63,14 @@ id: bb-office-hub-whitebox
 view: building-block
 notation: mermaid
 roots: bb-office-hub
-aliases: bb_office_hub=bb-office-hub, bb_archive=bb-archive, bb_documents=bb-documents, bb_identity=bb-identity, bb_records=bb-records, bb_session_service=bb-session-service, bb_slides=bb-slides, bb_stage=bb-stage, bb_tasks=bb-tasks, bb_tenants=bb-tenants
+aliases: bb_office_hub=bb-office-hub, bb_admin=bb-admin, bb_archive=bb-archive, bb_documents=bb-documents, bb_identity=bb-identity, bb_records=bb-records, bb_session_service=bb-session-service, bb_slides=bb-slides, bb_stage=bb-stage, bb_tasks=bb-tasks, bb_tenants=bb-tenants
 :::
 ```
 
 ```mermaid
 flowchart LR
     subgraph bb_office_hub [Office hub]
+        bb_admin[Admin view]
         bb_archive[Archive]
         bb_documents[Documents]
         bb_identity[Identity]
@@ -80,6 +81,7 @@ flowchart LR
         bb_tasks[Tasks]
         bb_tenants[Tenants]
     end
+    bb_admin -->|if-auth-api| bb_identity
     bb_documents -->|if-archive-storage| bb_archive
     bb_documents -->|if-session-notice| bb_session_service
     bb_documents -->|if-token-check| bb_identity
@@ -361,6 +363,42 @@ provider: bb-office-hub
 x-realized-by: bb-documents
 protocol: Connect RPC, unary (dec-connect-rpc)
 path: hub/documents/api
+:::
+```
+
+### Admin view
+
+A browser view for the admins of the hub, opened by a link that an admin creates with the CLI.
+It shows the users and their keys. Tenants, memberships and system admins follow with
+`dec-multi-tenancy`. It has the same design as the stage. The link holds a code that works once;
+the admin view swaps it for an access token and keeps the token in a cookie that the page scripts
+cannot read.
+
+```arc42
+:::interface
+id: if-admin-web
+title: Admin view
+provider: bb-office-hub
+x-realized-by: bb-admin
+protocol: HTTPS (browser)
+path: hub/admin/web
+:::
+```
+
+### Admin part
+
+The admin part renders the admin view on the server. It has no logic and no state of its own:
+every page asks the identity part with the access token of the admin and shows what it gets, so the
+admin view has exactly the rights of the admin key (`dec-admin-web`).
+
+```arc42
+:::building-block
+id: bb-admin
+title: Admin view
+technology: Go, rendered by the hub
+parent: bb-office-hub
+requires: if-auth-api
+path: hub/admin
 :::
 ```
 

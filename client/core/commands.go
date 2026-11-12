@@ -364,6 +364,17 @@ func (c *hubClient) GetDeck(ctx context.Context, id string) (*slidesv1.Deck, err
 	return res.GetDeck(), err
 }
 
+// CreateAdminLink creates a link to the admin view.
+func (c *hubClient) CreateAdminLink(ctx context.Context) (*identityv1.CreateAdminLinkResponse, error) {
+	req := &identityv1.CreateAdminLinkRequest{CommandId: coreapi.NewCommandID()}
+	var res *identityv1.CreateAdminLinkResponse
+	err := retry(ctx, func() (err error) {
+		res, err = c.identity.CreateAdminLink(ctx, req)
+		return err
+	})
+	return res, err
+}
+
 // CreateDocument creates a text document. The author is the caller.
 func (c *hubClient) CreateDocument(ctx context.Context, path, content, sessionID string) (*documentv1.CreateDocumentResponse, error) {
 	req := &documentv1.CreateDocumentRequest{Path: path, Content: content, SessionId: sessionID, CommandId: coreapi.NewCommandID()}

@@ -77,6 +77,7 @@ func init() {
 		"minutes update":           cmdMinutes,
 		"stage focus":              cmdStageFocus,
 		"stage link":               cmdStageLink,
+		"admin link":               cmdAdminLink,
 		"slides render":            cmdSlidesRender,
 		"slides get":               cmdSlidesGet,
 		"document create":          cmdDocumentCreate,

@@ -227,6 +227,47 @@ sequenceDiagram
     bb_stage->>bb_archive: read the document by its path
 ```
 
+## Admin opens the admin view
+
+An admin asks for a link with the CLI. The identity part creates a code that works once and returns
+the link. The admin opens it in a browser. The admin view swaps the code for an access token of the
+admin key, keeps it in a cookie and shows the page. Every page then asks the identity part with this
+token. A used, expired or unknown code gives an error page.
+
+```arc42
+:::runtime-scenario
+id: rs-admin-opens-view
+title: Admin opens the admin view
+trigger: An admin asks for an admin link
+involves: bb-cli, bb-client-core, bb-identity, bb-admin, bb-participant-client, bb-office-hub
+:::
+```
+
+```arc42
+:::diagram
+id: seq-admin-opens-view
+notation: mermaid-sequence
+scenario: rs-admin-opens-view
+aliases: actor_system_admin=actor-system-admin, bb_cli=bb-cli, bb_identity=bb-identity, bb_admin=bb-admin
+:::
+```
+
+```mermaid
+sequenceDiagram
+    participant actor_system_admin as System admin
+    participant bb_cli as office CLI
+    participant bb_identity as Identity
+    participant bb_admin as Admin view
+    actor_system_admin->>bb_cli: office admin link
+    bb_cli->>bb_identity: create admin link
+    bb_identity-->>bb_cli: link with a code that works once
+    actor_system_admin->>bb_admin: opens the link in a browser
+    bb_admin->>bb_identity: exchange the code
+    bb_identity-->>bb_admin: access token of the admin key
+    bb_admin->>bb_identity: list keys, with the token
+    bb_admin-->>actor_system_admin: page with the users and their keys
+```
+
 ## Human marks a sentence off the record
 
 What is said stays said (`dec-off-the-record`). The human presses a key in the gateway terminal
