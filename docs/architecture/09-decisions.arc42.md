@@ -1030,7 +1030,7 @@ keys in the file (a checked-in file would leak them).
 :::decision
 id: dec-client-config-file
 title: The client reads its options from YAML files, a user file overridden by a project file
-status: proposed
+status: accepted
 date: 2026-11-12
 addresses: qg-usability, qg-confidentiality
 :::
