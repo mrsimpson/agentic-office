@@ -378,7 +378,7 @@ The unit of separation in the hub.
 :::glossary-term
 id: term-tenant
 title: Tenant
-definition: A group of people with its own git repositories; its data is visible only to its members
+definition: An organisation with its own git repository; its data is visible only to its members
 :::
 ```
 
@@ -390,7 +390,7 @@ The person who runs one tenant.
 :::glossary-term
 id: term-tenant-admin
 title: Tenant admin
-definition: A member of a tenant who registers its repositories and manages its members
+definition: A member of a tenant who manages its members
 :::
 ```
 
@@ -408,12 +408,12 @@ definition: A user who runs the whole hub: tenants, users and other system admin
 
 ## Repository
 
-A git repository that belongs to one tenant.
+The one local git repository of a tenant.
 
 ```arc42
 :::glossary-term
 id: term-repository
 title: Repository
-definition: A named git repository of a tenant in which sessions, records, tasks and slides are archived
+definition: The local git repository of a tenant, with a directory for each kind of content
 :::
 ```

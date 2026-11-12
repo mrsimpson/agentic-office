@@ -200,10 +200,11 @@ path: hub/identity/api
 
 ### User API
 
-Manage users and their keys: create a user, add a key, revoke a key, list users. Manage
-memberships: add a user to a tenant with the role `member` or `tenant admin`, change the role and
-remove the user. Name and remove system admins. Who may do what: a system admin everything; a
-tenant admin only memberships of their own tenant; everyone else only their own keys.
+Two steps. First, register a user at the hub: create the user, add a key, revoke a key, list users.
+Second, assign the user to tenants: add the user to a tenant with the role `member` or
+`tenant admin`, change the role and remove the user. Name and remove system admins. Who may do
+what: a system admin everything; a tenant admin only the memberships of their own tenant; everyone
+else only their own keys.
 
 ```arc42
 :::interface
@@ -218,9 +219,8 @@ path: hub/identity/userapi
 
 ### Tenant API
 
-Create and remove tenants. Register, list and remove the git repositories of a tenant. Each
-repository has a name that is unique within its tenant. Who may do what: a system admin creates and
-removes tenants; a tenant admin manages the repositories of their own tenant; a member lists them.
+Create, list and remove tenants. Creating a tenant creates its git repository and names its first
+tenant admin. Who may do what: only a system admin.
 
 ```arc42
 :::interface
@@ -484,8 +484,9 @@ path: hub/archive
 
 The in-process interface of the archive: write a set of files as one commit, and read the files
 of a directory as they are in the current commit. Paths are relative to the repository. Every call
-names the repository of a tenant it works on. (OPEN: how the archive learns of the repositories,
-see `dec-multi-tenancy`.)
+names the tenant; the archive keeps one git repository per tenant, with a directory per kind of
+content. The hub itself has one further repository for the users, the tenants and the system
+admins.
 
 ```arc42
 :::interface
@@ -518,7 +519,8 @@ path: hub/stage
 
 ### Identity
 
-Knows all users (participants) and their public keys in one place for the whole hub. Each user,
+Knows all users (participants) and their public keys in one place for the whole hub, in the hub
+repository. Each user,
 human or agent, is its own actor with its own Ed25519 key pair. A user can be a member of several
 tenants, with a role in each (`member` or `tenant admin`). A user can also be a system admin; this
 role replaces the file of admin keys. The client creates the key pair locally and sends only the public
@@ -554,10 +556,10 @@ path: hub/identity/tokencheck
 
 ### Tenants
 
-Knows the tenants and their git repositories. A tenant is the unit of separation: its sessions,
-records, tasks and slides live only in the repositories of the tenant and are visible only to its
-members. A tenant has several repositories, each with a name that is unique in the tenant.
-(OPEN: remote of a repository and its credentials, see `dec-multi-tenancy`.)
+Knows the tenants and their members. A tenant is the unit of separation: its sessions, records,
+tasks and slides live only in the git repository of the tenant and are visible only to its members.
+The memberships and roles of a tenant are kept in its repository. Synchronisation with remotes
+is not part of this stage.
 
 ```arc42
 :::ignore W002 bb-tenants gets its required interfaces when its code exists; the epic adds them :::

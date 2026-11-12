@@ -119,8 +119,8 @@ requires: if-forwarding-judge
 
 ## Tenant admin
 
-Runs one tenant: the group of people and the git repositories of one organisation. A tenant admin
-registers the repositories of the tenant, adds users to the tenant and removes them, and gives the
+Runs one tenant: the group of people of one organisation and the git repository where the tenant
+keeps its information. A tenant admin adds users to the tenant and removes them, and gives the
 tenant admin role to other members. Every tenant has at least one tenant admin.
 
 ```arc42
@@ -128,8 +128,8 @@ tenant admin role to other members. Every tenant has at least one tenant admin.
 id: actor-tenant-admin
 title: Tenant admin
 type: person
-description: Manages the repositories and the members of one tenant
-requires: if-tenant-api, if-user-api
+description: Manages the members of one tenant
+requires: if-user-api
 :::
 ```
 
