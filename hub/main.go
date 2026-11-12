@@ -5,8 +5,9 @@
 // logs in memory, signs their tree heads with the signing key and writes them to the archive (a local Git
 // repository; the push is mocked). The records (decisions, minutes and notes), the tasks (local
 // drafts) and the slide decks are files in the archive too.
-// The users, keys and memberships are files in the archive too (system/); at the first start the
-// operator names the first system admin with -first-system-admin ID=PUBLIC_KEY.
+// The users, tenants and memberships are files in the hub repository (repos/hub, system/), and each
+// tenant has a repository of its own (repos/tenants/<id>). At the first start the operator names
+// the first system admin with -first-system-admin ID=PUBLIC_KEY.
 //
 // The operator gives the hub its signing key at start (dec-hub-signing-key): -signing-key FILE is
 // required, and the hub does not start without a valid key. Create a key file once with
@@ -164,6 +165,13 @@ func main() {
 		log.Fatal(err)
 	}
 	log.Printf("archive %s, sessions written every %s and when they end; push mocked", arch.Dir(), *archiveInterval)
+	// The repositories of the hub (dec-multi-tenancy): the hub repository for the users, tenants and
+	// memberships, and one for each tenant. The layout is fixed.
+	repos, err := archive.OpenRepos(context.Background(), filepath.Join(*dataDir, "repos"), archive.Options{Push: archive.NoPush{}})
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("hub repository %s; one repository for each tenant below %s; push mocked", repos.HubDir(), filepath.Join(*dataDir, "repos", "tenants"))
 	var bootstrap *identity.Bootstrap
 	if *firstAdmin != "" {
 		if bootstrap, err = identity.ParseBootstrap(*firstAdmin); err != nil {
@@ -173,7 +181,7 @@ func main() {
 	// Users, keys and memberships live in the hub repository (dec-multi-tenancy); the hub does
 	// not start when the repository breaks a rule.
 	ids, err := identity.New(context.Background(), identity.Options{TokenTTL: *tokenTTL, StageLinkTTL: *stageTTL,
-		PublicURL: *publicURL, Archive: arch, Bootstrap: bootstrap, Logf: log.Printf,
+		PublicURL: *publicURL, Archive: repos.Hub(), Bootstrap: bootstrap, Logf: log.Printf,
 		StageProcedures: []string{sessionstreamv1connect.SessionStreamServiceSubscribeProcedure}})
 	if err != nil {
 		log.Fatal(err)
@@ -214,7 +222,7 @@ func main() {
 	sessionimportv1connect.RegisterSessionImportServiceHandler(cs, sessions)
 	identityv1connect.RegisterIdentityServiceHandler(cs, ids)
 	userv1connect.RegisterUserServiceHandler(cs, ids)
-	tenantv1connect.RegisterTenantServiceHandler(cs, tenant.New(ids))
+	tenantv1connect.RegisterTenantServiceHandler(cs, tenant.New(ids, repos))
 	decisionv1connect.RegisterDecisionServiceHandler(cs, recs)
 	minutesv1connect.RegisterMinutesServiceHandler(cs, recs)
 	notev1connect.RegisterNoteServiceHandler(cs, recs)

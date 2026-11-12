@@ -146,7 +146,7 @@ func TestHubRepositoryWithBrokenTenantsStopsTheHub(t *testing.T) {
 	if code, err := srv.Stop(5 * time.Second); err != nil || code != 0 {
 		t.Fatalf("stop: %d, %v", code, err)
 	}
-	repo := srv.ArchiveDir()
+	repo := srv.HubRepoDir()
 	start := func() (string, int) {
 		_, errOut, code := contracttest.Run(t, "office-hub", nil, "-addr", "127.0.0.1:0", "-data-dir", srv.DataDir,
 			"-signing-key", srv.SigningKeyFile)
@@ -181,5 +181,61 @@ func TestHubRepositoryWithBrokenTenantsStopsTheHub(t *testing.T) {
 	srv = contracttest.StartHubIn(t, srv.DataDir, srv.AdminKey, nil)
 	if _, err := listMembers(t, srv.Admin(t), "acme"); err != nil {
 		t.Fatalf("hub after the edits were undone: %v", err)
+	}
+}
+
+// Each tenant has a repository of its own. The users, tenants and memberships are in the hub
+// repository and not in a tenant repository. A tenant repository is created with the tenant and
+// stays when the tenant is removed.
+func TestTenantRepositories(t *testing.T) {
+	srv := contracttest.StartHub(t, nil)
+	admin := srv.Admin(t)
+	srv.Participant(t, "ada", "Ada", human)
+	srv.Participant(t, "bob", "Bob", human)
+
+	for _, bad := range []string{"..", "a/b", ".hidden", "a b"} {
+		wantCode(t, "tenant ID "+bad, createTenant(t, admin, bad, "ada"), connect.CodeInvalidArgument)
+	}
+	if _, err := os.Stat(filepath.Join(srv.DataDir, "repos", "tenants")); err == nil {
+		entries, _ := os.ReadDir(filepath.Join(srv.DataDir, "repos", "tenants"))
+		if len(entries) != 0 {
+			t.Fatalf("a repository was created for a bad tenant ID: %v", entries)
+		}
+	}
+	if err := createTenant(t, admin, "acme", "ada"); err != nil {
+		t.Fatal(err)
+	}
+	if err := createTenant(t, admin, "globex", "bob"); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"acme", "globex"} {
+		dir := srv.TenantRepoDir(id)
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
+			t.Fatalf("repository of %s: %v", id, err)
+		}
+		// Nothing of the users or memberships is in a tenant repository.
+		if files := contracttest.Git(t, dir, "ls-files"); strings.TrimSpace(files) != "" {
+			t.Errorf("files in the repository of %s: %s", id, files)
+		}
+	}
+	// The hub repository has the users, tenants and memberships of both.
+	files := contracttest.Git(t, srv.HubRepoDir(), "ls-files")
+	for _, want := range []string{"system/tenants/acme.yaml", "system/tenants/globex.yaml", "system/users/ada.yaml",
+		"system/memberships/acme/ada.yaml", "system/memberships/globex/bob.yaml"} {
+		if !strings.Contains(files, want) {
+			t.Errorf("hub repository has no %s:\n%s", want, files)
+		}
+	}
+	// A removed tenant keeps its repository.
+	if err := removeTenant(t, admin, "globex"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(srv.TenantRepoDir("globex"), ".git")); err != nil {
+		t.Fatalf("repository of a removed tenant: %v", err)
+	}
+	// Creating a tenant is one commit, with the tenant and its first membership.
+	log := contracttest.Git(t, srv.HubRepoDir(), "log", "-1", "--name-only", "--format=%s", "--grep=System: create tenant acme")
+	if !strings.Contains(log, "System: create tenant acme") || !strings.Contains(log, "system/memberships/acme/ada.yaml") {
+		t.Errorf("commit that created acme:\n%s", log)
 	}
 }

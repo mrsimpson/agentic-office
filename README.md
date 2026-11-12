@@ -396,7 +396,7 @@ the details. In short:
 - `CreateStageLink` returns a read-only link `https://<hub>/stage/<session>?token=<token>`
   for one session. Its token only allows `Subscribe` for that session. It lives 24 hours
   (`-stage-link-ttl`). Open it in a browser to see the stage (below).
-- Users, keys and memberships are YAML files in the hub repository (`system/` in the archive). Tokens are kept in memory only, so
+- Users, keys, tenants and memberships are YAML files in the hub repository (`repos/hub`, directory `system/`). Tokens are kept in memory only, so
   clients authenticate again after a restart of the hub.
 
 ### Records: decisions, minutes and notes
@@ -579,7 +579,9 @@ All files of the hub are in its data directory (`-data-dir`), by default
 | File | What it is |
 |---|---|
 | `tls.crt`, `tls.key` | TLS certificate and key. The hub creates a self-signed pair if neither exists. |
-| `archive/` | The Git repository of the archive (`-archive-dir`): users and memberships (`system/`), sessions, decisions, minutes, notes, tasks and slide decks. The hub creates it and commits into it. See [Archive](#archive). |
+| `repos/hub/` | The hub repository: users, tenants and memberships (`system/`). The hub creates it and is the only writer. |
+| `repos/tenants/<id>/` | The Git repository of one tenant. The hub creates it with the tenant and keeps it when the tenant is removed. |
+| `archive/` | The Git repository of the archive (`-archive-dir`): sessions, decisions, minutes, notes, tasks and slide decks. The hub creates it and commits into it. See [Archive](#archive). |
 
 Flags of the hub (`bin/office-hub -h` lists them all):
 
