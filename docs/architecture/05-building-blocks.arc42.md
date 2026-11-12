@@ -369,7 +369,7 @@ path: hub/documents/api
 ### Admin view
 
 A browser view for the admins of the hub, opened by a link that an admin creates with the CLI.
-It shows the users and their keys. Tenants, memberships and system admins follow with
+It shows the users and their keys and registers and revokes keys. Tenants, memberships and system admins follow with
 `dec-multi-tenancy`. It has the same design as the stage. The link holds a code that works once;
 the admin view swaps it for an access token and keeps the token in a cookie that the page scripts
 cannot read.

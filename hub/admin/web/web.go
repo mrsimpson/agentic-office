@@ -4,6 +4,10 @@
 //
 //	GET  /admin/login?code=<code>   swaps the code of an admin link for a session and opens the view
 //	GET  /admin/keys                the users and their keys
+//	GET  /admin/keys/new            the form that registers a key
+//	POST /admin/keys/register       registers a key
+//	GET  /admin/keys/revoke         asks to confirm that a key is revoked
+//	POST /admin/keys/revoke         revokes a key
 //	GET  /admin/tenants             placeholder until multi-tenancy (dec-multi-tenancy)
 //	GET  /admin/admins              placeholder until multi-tenancy
 //
@@ -20,12 +24,17 @@ const (
 	LoginPath = "/admin/login"
 	// KeysPath is the first page.
 	KeysPath = "/admin/keys"
+	// NewKeyPath is the form that registers a key; RegisterPath takes the form.
+	NewKeyPath   = "/admin/keys/new"
+	RegisterPath = "/admin/keys/register"
+	// RevokePath asks for the confirmation (GET) and revokes the key (POST).
+	RevokePath = "/admin/keys/revoke"
 	// CookieName is the cookie with the access token of the admin.
 	CookieName = "office_admin"
 )
 
 // CSP is the Content-Security-Policy of every page. The pages cannot be framed.
-const CSP = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+const CSP = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 
 // The design is the design of the stage (hub/stage/web). There is no shared package, so the tokens
 // are copied.
@@ -62,6 +71,23 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.85rem
 .badge.revoked { color: var(--rec); border-color: currentColor; }
 .badge.admin { color: var(--text); border-color: var(--text); }
 .empty { color: var(--muted); }
+.toolbar { display: flex; justify-content: flex-end; margin: -3.2rem 0 1.4rem; }
+.button, button { font: inherit; font-size: 0.9rem; font-weight: 500; padding: 0.4rem 1.1rem; border: 1px solid var(--ink); border-radius: 0; background: var(--ink); color: var(--on-ink); text-decoration: none; cursor: pointer; }
+.button.quiet, button.quiet { background: none; color: var(--text); border-color: var(--line); }
+button.danger { background: var(--rec); border-color: var(--rec); color: #fff; }
+.link { color: var(--muted); font-size: 0.85rem; text-decoration: underline; text-underline-offset: 0.2em; }
+form.stack { display: flex; flex-direction: column; gap: 1.2rem; max-width: 34rem; }
+label { display: flex; flex-direction: column; gap: 0.3rem; font-weight: 600; font-size: 0.9rem; }
+label small { font-weight: 400; }
+input, select, textarea { font: inherit; padding: 0.5rem 0.7rem; border: 1px solid var(--line); border-radius: 0; background: var(--bg); color: var(--text); }
+input:focus, select:focus, textarea:focus { outline: 1px solid var(--ink); border-color: var(--ink); }
+textarea { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.85rem; min-height: 4.5rem; }
+.buttons { display: flex; gap: 0.8rem; align-items: center; }
+.notice, .error { margin: 0 0 1.4rem; padding: 0.6rem 1rem; border-left: 3px solid var(--live); background: var(--soft); max-width: 40rem; }
+.error { border-left-color: var(--rec); }
+.facts { max-width: 34rem; margin: 0 0 1.4rem; }
+.facts dt { font-size: 0.7rem; letter-spacing: 0.13em; text-transform: uppercase; color: var(--muted); margin-top: 0.8rem; }
+.facts dd { margin: 0.1rem 0 0; }
 .placeholder { max-width: 30rem; padding: 2rem 0; }
 .placeholder p { color: var(--muted); }
 body.error { display: block; }
@@ -103,14 +129,32 @@ var Page = template.Must(template.New("page").Funcs(template.FuncMap{
 <main>
 <div class="eyebrow">{{.Section}}</div>
 <h1>{{.Title}}</h1>
-{{if .Placeholder}}<div class="placeholder" data-placeholder="{{.Active}}"><p>{{.Placeholder}}</p></div>
-{{else}}{{if .Keys}}<table class="keys">
-<tr><th>User</th><th>Kind</th><th>Key</th><th>Status</th></tr>
+{{if .Notice}}<p class="notice" role="status" data-notice>{{.Notice}}</p>{{end}}{{if .Error}}<p class="error" role="alert" data-error>{{.Error}}</p>{{end}}
+{{if eq .Mode "placeholder"}}<div class="placeholder" data-placeholder="{{.Active}}"><p>{{.Placeholder}}</p></div>
+{{else if eq .Mode "register"}}<form class="stack" method="post" action="/admin/keys/register" data-form="register">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<label>User ID<input name="participant_id" value="{{.Form.ParticipantID}}" required maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9._-]*" autocomplete="off"><small>1 to 64 letters, digits, ".", "_" or "-", for example ada.</small></label>
+<label>Display name<input name="display_name" value="{{.Form.DisplayName}}" maxlength="100" autocomplete="off"><small>Needed for a new user.</small></label>
+<label>Kind<select name="kind"><option value="human"{{if ne .Form.Kind "agent"}} selected{{end}}>human</option><option value="agent"{{if eq .Form.Kind "agent"}} selected{{end}}>agent</option></select></label>
+<label>Public key<textarea name="public_key" required spellcheck="false" autocomplete="off">{{.Form.PublicKey}}</textarea><small>The base64 public key that <code>office key show</code> prints.</small></label>
+<div class="buttons"><button type="submit">Register key</button><a class="link" href="/admin/keys">Cancel</a></div>
+</form>
+{{else if eq .Mode "revoke"}}<dl class="facts" data-confirm="revoke">
+<dt>User</dt><dd>{{.Key.Name}} <small>{{.Key.ParticipantId}}</small></dd>
+<dt>Key</dt><dd><code>{{.Key.KeyId}}</code></dd></dl>
+<p class="muted">The key stops working at once, and all its access tokens end. A revoked key cannot be registered again.</p>
+<form class="buttons" method="post" action="/admin/keys/revoke" data-form="revoke">
+<input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="key_id" value="{{.Key.KeyId}}">
+<button class="danger" type="submit">Revoke key</button><a class="link" href="/admin/keys">Cancel</a></form>
+{{else}}<div class="toolbar"><a class="button" href="/admin/keys/new">Register key</a></div>
+{{if .Keys}}<table class="keys">
+<tr><th>User</th><th>Kind</th><th>Key</th><th>Status</th><th></th></tr>
 {{range .Keys}}<tr data-participant="{{.ParticipantId}}" data-key="{{.KeyId}}">
 <td><div class="who"><span class="avatar{{if eq .KindName "agent"}} agent{{end}}" data-initials="{{initials .Name}}" aria-hidden="true"></span><div><div class="name">{{.Name}}</div><small>{{.ParticipantId}}</small></div></div></td>
 <td>{{.KindName}}</td>
 <td><code title="{{.KeyId}}">{{short .KeyId}}</code></td>
 <td>{{if .Revoked}}<span class="badge revoked">revoked</span>{{else}}<span class="badge active">active</span>{{end}}{{if .Admin}} <span class="badge admin">admin</span>{{end}}</td>
+<td>{{if and (not .Revoked) (not .Admin)}}<a class="link" href="/admin/keys/revoke?key_id={{.KeyId}}">Revoke</a>{{end}}</td>
 </tr>
 {{end}}</table>{{else}}<p class="empty">There are no keys yet.</p>{{end}}{{end}}
 </main></body></html>

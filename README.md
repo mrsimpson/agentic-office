@@ -507,7 +507,8 @@ it waits at most for the one session write that is in progress (see [Archive](#a
 
 The admin view (`hub/admin`, `/admin/`) is a web page for the admins of the hub. It has the design
 of the stage, in dark and light, and no scripts (`dec-admin-web`). Today it shows the users with
-their keys; tenants and system admins are placeholders until multi-tenancy.
+their keys and registers and revokes keys; tenants and system admins are placeholders until
+multi-tenancy.
 
 ```sh
 office admin link   # prints a link; it works once and expires after a few minutes
@@ -516,7 +517,15 @@ office admin link   # prints a link; it works once and expires after a few minut
 Open the link in a browser. The view swaps its code for an access token of your admin key, keeps it
 in a cookie that scripts cannot read (`office_admin`, one hour), and sends you to the list of keys.
 Every page asks the identity part with this token, so the view has exactly your rights. A used or
-expired link gives an error page. `office.identity.v1.IdentityService` has the calls behind it:
+expired link gives an error page.
+
+- **Register a key:** `Register key` opens a form with the user ID, the display name (needed for a
+  new user), the kind and the base64 public key that `office key show` prints. It calls
+  `RegisterKey`; a refusal shows its message on the form, which keeps what you typed.
+- **Revoke a key:** `Revoke` next to a key opens a page that asks you to confirm. It calls
+  `RevokeKey`. Keys of the admin file have no link: remove them in the file.
+- Every form carries a token that is derived from your session, and the view refuses a post whose
+  `Origin` is another server. `office.identity.v1.IdentityService` has the calls behind it:
 `ListKeys`, `CreateAdminLink` (both only for admin keys) and `ExchangeAdminLink` (needs no token).
 
 ### Documents

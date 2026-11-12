@@ -1120,11 +1120,11 @@ access token of the admin key and keeps it in a cookie that scripts cannot read.
 with every call to the identity part, so it has exactly the rights of the admin key and no logic of
 its own. **Consequences:** No password and no new login flow. The code is useless after its first
 use, so a link on a shared screen does no harm once it was opened. The access token lives one
-hour. Every change goes through an interface that checks the rights; the first pages only read.
+hour. Every change goes through an interface that checks the rights. A form carries a token that is derived from the session, and the view refuses a post from another origin. Revoking asks for a confirmation on its own page, so no script is needed.
 **Rejected:** a password for admins (a second secret to keep); a signature in the browser (needs
 scripts and a new key format); the stage link style with the token in the URL for the whole
-session (the URL stays in the history and on the screen). OPEN: which writes the admin view offers
-first (register and revoke keys, then tenants and memberships).
+session (the URL stays in the history and on the screen). The first writes are to register and to revoke keys. OPEN: tenants and
+memberships follow with `dec-multi-tenancy`.
 
 ```arc42
 :::decision
