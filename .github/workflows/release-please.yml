@@ -8,6 +8,9 @@
 # A tag that GITHUB_TOKEN creates does not start other workflows, so the build is started on
 # purpose with workflow_dispatch (that event is allowed). A tag that someone pushes by hand still
 # starts release.yml by itself.
+#
+# The first release is set to 0.1.0 with "release-as" in release-please-config.json. Remove that
+# line when the release pull request of 0.1.0 is merged, or every release would be 0.1.0.
 name: Release PR
 
 on:
