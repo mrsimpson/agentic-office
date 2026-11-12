@@ -105,6 +105,7 @@ Flags of every command:
   --session S       the session; default: the only session joined from this machine (env OFFICE_SESSION)
   --hub URL         office hub (env OFFICE_HUB, default https://127.0.0.1:8740)
   --ca-cert FILE    trust this server certificate (env OFFICE_CA_CERT)
+  --tenant ID       tenant to work in (env OFFICE_TENANT)
   --key FILE        private key of this actor (env OFFICE_KEY)
   --runtime-dir D   directory for local logs and state (env OFFICE_RUNTIME_DIR)
 

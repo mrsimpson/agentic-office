@@ -17,7 +17,7 @@ import (
 )
 
 // ArchiveDir returns the default Git repository of the archive of the hub.
-func (s *Hub) ArchiveDir() string { return filepath.Join(s.DataDir, "archive") }
+func (s *Hub) ArchiveDir() string { return s.TenantRepoDir(DefaultTenant) }
 
 // HubRepoDir is the Git repository of the hub: users, tenants and memberships (system/).
 func (s *Hub) HubRepoDir() string { return filepath.Join(s.DataDir, "repos", "hub") }
