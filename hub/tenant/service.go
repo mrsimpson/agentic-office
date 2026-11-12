@@ -2,7 +2,8 @@
 //
 // It provides if-tenant-api (TenantService): a system admin creates, lists and removes tenants.
 // It does not keep the tenant records or the memberships: Identity owns them, and Tenants asks
-// Identity through the tenant roster (if-tenant-roster). So creating a tenant with its first
+// Identity through the tenant roster (if-tenant-roster), and it creates the repository of each
+// tenant through the archive (if-archive-storage). So creating a tenant with its first
 // tenant admin, and ending a tenant with all its memberships, are one commit in the hub
 // repository.
 package tenant
@@ -15,6 +16,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/mrsimpson/agentic-office/hub/archive/storage"
 	"github.com/mrsimpson/agentic-office/hub/identity/roster"
 	"github.com/mrsimpson/agentic-office/hub/identity/tokencheck"
 	tenantv1 "github.com/mrsimpson/agentic-office/hub/tenant/api"
@@ -24,6 +26,7 @@ import (
 // Service implements TenantService (if-tenant-api).
 type Service struct {
 	roster roster.Roster
+	repos  storage.Archives
 
 	mu       sync.Mutex
 	commands map[string]command
@@ -36,9 +39,10 @@ type command struct {
 
 var _ tenantv1connect.TenantServiceHandler = (*Service)(nil)
 
-// New returns a Service that works through the tenant roster.
-func New(r roster.Roster) *Service {
-	return &Service{roster: r, commands: map[string]command{}}
+// New returns a Service that works through the tenant roster and creates the repositories of the
+// tenants.
+func New(r roster.Roster, repos storage.Archives) *Service {
+	return &Service{roster: r, repos: repos, commands: map[string]command{}}
 }
 
 // systemAdmin lets only a system admin pass.
@@ -75,6 +79,14 @@ func (s *Service) CreateTenant(ctx context.Context, req *tenantv1.CreateTenantRe
 		return nil, err
 	}
 	res, err := s.run(req.GetCommandId(), req, &tenantv1.CreateTenantResponse{}, func() error {
+		// The repository first: creating it twice does no harm, so a failed or repeated create
+		// does not leave a tenant without a repository.
+		if err := storage.CheckTenantID(req.GetTenantId()); err != nil {
+			return connect.NewError(connect.CodeInvalidArgument, err.Error())
+		}
+		if err := s.repos.CreateTenant(ctx, req.GetTenantId()); err != nil {
+			return connect.NewError(connect.CodeInternal, err.Error())
+		}
 		return s.roster.CreateTenant(ctx, req.GetTenantId(), req.GetDisplayName(), req.GetFirstAdminUserId())
 	})
 	if err != nil {

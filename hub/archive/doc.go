@@ -7,6 +7,12 @@
 // remote through a Pusher. The only Pusher for now is NoPush, which does nothing and reports
 // success (issue #43 covers the real remote).
 //
+// The hub has several repositories (concept-multi-tenancy), kept in Repos (storage.Archives): the
+// hub repository, where Identity keeps users, tenants and memberships, and one repository for each
+// tenant. They lie below one root in a fixed layout, hub/ and tenants/<id>/. Each is a Repo with
+// its own commit queue, so a busy tenant does not hold up another tenant or the hub repository.
+// A tenant repository is created with the tenant and stays when the tenant is removed.
+//
 // How it works:
 //
 //   - Open creates the directory and runs "git init" if it is not a repository yet. The branch

@@ -2,13 +2,14 @@
 // which the parts of the hub store their records in the archive (dec-records-per-type,
 // dec-yaml-git-storage).
 //
-// A record is a file in a repository. A Change writes one or more files and is recorded as one
+// A record is a file in a repository (the hub repository or the repository of a tenant, see Archives). A Change writes one or more files and is recorded as one
 // commit, so a reader of the repository sees all files of a change or none. The caller decides
 // the paths and the content: the archive does not know what a session or a decision is.
 package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path"
 	"strings"
@@ -36,6 +37,39 @@ type Archive interface {
 	// commit, or a repository without commits, has no files. Files of a change whose commit
 	// failed are not returned.
 	Read(ctx context.Context, dir string) ([]File, error)
+}
+
+// Archives gives the archive of each repository (concept-multi-tenancy). The hub has one
+// repository of its own, for the users, the tenants and the memberships, and each tenant has one
+// repository for its content. Every repository has its own commit queue, so a busy tenant does
+// not hold up another tenant or the hub repository.
+type Archives interface {
+	// Hub returns the archive of the hub repository.
+	Hub() Archive
+	// CreateTenant creates the repository of a tenant. It does nothing if the repository exists.
+	// It fails if id is not a valid tenant ID (see CheckTenantID).
+	CreateTenant(ctx context.Context, id string) error
+	// Tenant returns the archive of the repository of a tenant. It fails with ErrNoTenant if
+	// the repository was not created.
+	Tenant(id string) (Archive, error)
+}
+
+// ErrNoTenant is the error of Archives.Tenant for a tenant without a repository.
+var ErrNoTenant = errors.New("archive: the tenant has no repository")
+
+// CheckTenantID reports whether id is a valid tenant ID: 1 to 64 letters, digits, ".", "_" or
+// "-", starting with a letter or digit.
+func CheckTenantID(id string) error {
+	if id == "" || len(id) > 64 {
+		return fmt.Errorf("tenant ID %q must have 1 to 64 characters", id)
+	}
+	for i, r := range id {
+		letter := r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9'
+		if !letter && (i == 0 || (r != '.' && r != '_' && r != '-')) {
+			return fmt.Errorf("tenant ID %q must be letters, digits, '.', '_' or '-', starting with a letter or digit", id)
+		}
+	}
+	return nil
 }
 
 // Change is a set of files that is written as one commit.
