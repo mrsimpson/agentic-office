@@ -505,7 +505,9 @@ path: hub/archive/storage
 One web page per session, shown in the meeting by screen share. It shows the running minutes,
 raised hands, the shown artifact (a slide deck), and who is captured or paused. It marks an
 imported session with its source and the participant who imported it, and never shows it as
-live. It is only a view of the session log and has no logic of its own.
+live. It is only a view of the session log and has no logic of its own. It reads an artifact
+straight from the archive by its path and renders it by its schema (`dec-artifacts`); it reads
+only paths that the log of its own session names.
 
 ```arc42
 :::building-block
@@ -513,7 +515,7 @@ id: bb-stage
 title: Stage
 technology: Go, rendered by the hub / server-sent events
 parent: bb-office-hub
-requires: if-session-stream, if-slides-api, if-auth-api
+requires: if-session-stream, if-slides-api, if-auth-api, if-archive-storage
 implements: concept-transparency
 path: hub/stage
 :::
