@@ -349,6 +349,62 @@ func (c *hubClient) RevokeKey(ctx context.Context, keyID string) error {
 	})
 }
 
+// ListUsers returns all users, also the removed ones. Only a system admin may call it.
+func (c *hubClient) ListUsers(ctx context.Context) ([]*userv1.User, error) {
+	var res *userv1.ListUsersResponse
+	err := retry(ctx, func() (err error) {
+		res, err = c.users.ListUsers(ctx, &userv1.ListUsersRequest{})
+		return err
+	})
+	return res.GetUsers(), err
+}
+
+// RemoveUser ends a user and its memberships. Only a system admin may call it.
+func (c *hubClient) RemoveUser(ctx context.Context, userID string) error {
+	req := &userv1.RemoveUserRequest{CommandId: coreapi.NewCommandID(), UserId: userID}
+	return retry(ctx, func() error {
+		_, err := c.users.RemoveUser(ctx, req)
+		return err
+	})
+}
+
+// SetSystemAdmin makes a human user a system admin, or takes the role away.
+func (c *hubClient) SetSystemAdmin(ctx context.Context, userID string, on bool) error {
+	req := &userv1.SetSystemAdminRequest{CommandId: coreapi.NewCommandID(), UserId: userID, SystemAdmin: on}
+	return retry(ctx, func() error {
+		_, err := c.users.SetSystemAdmin(ctx, req)
+		return err
+	})
+}
+
+// SetMembership adds a user to a tenant with a role, or changes the role.
+func (c *hubClient) SetMembership(ctx context.Context, tenantID, userID string, role userv1.Role) error {
+	req := &userv1.SetMembershipRequest{CommandId: coreapi.NewCommandID(), TenantId: tenantID, UserId: userID, Role: role}
+	return retry(ctx, func() error {
+		_, err := c.users.SetMembership(ctx, req)
+		return err
+	})
+}
+
+// RemoveMembership ends the membership of a user in a tenant.
+func (c *hubClient) RemoveMembership(ctx context.Context, tenantID, userID string) error {
+	req := &userv1.RemoveMembershipRequest{CommandId: coreapi.NewCommandID(), TenantId: tenantID, UserId: userID}
+	return retry(ctx, func() error {
+		_, err := c.users.RemoveMembership(ctx, req)
+		return err
+	})
+}
+
+// ListMemberships returns the memberships of a tenant, also the ended ones.
+func (c *hubClient) ListMemberships(ctx context.Context, tenantID string) ([]*userv1.Membership, error) {
+	var res *userv1.ListMembershipsResponse
+	err := retry(ctx, func() (err error) {
+		res, err = c.users.ListMemberships(ctx, &userv1.ListMembershipsRequest{TenantId: tenantID})
+		return err
+	})
+	return res.GetMemberships(), err
+}
+
 // CreateTenant creates a tenant with its first tenant admin. Only a system admin may call it.
 func (c *hubClient) CreateTenant(ctx context.Context, tenantID, displayName, firstAdminUserID string) error {
 	req := &tenantv1.CreateTenantRequest{CommandId: coreapi.NewCommandID(), TenantId: tenantID, DisplayName: displayName,

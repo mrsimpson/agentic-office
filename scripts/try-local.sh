@@ -2,7 +2,7 @@
 # Try the agentic office on one computer with the published container images.
 # See USER_GUIDE.md. Works with Docker, Podman and Apple's `container` (macOS).
 #
-#   scripts/try-local.sh up                         start a hub and two participants: ada (human, admin), bot (agent)
+#   scripts/try-local.sh up                         start a hub with the tenant "trial" and three participants: root (system admin), ada (human, tenant admin), bot (agent)
 #   scripts/try-local.sh as <name> <office args>    run the office CLI as a participant, for example: as bot meeting join weekly
 #   scripts/try-local.sh add <name> [human|agent]   add one more participant container and register its key
 #   scripts/try-local.sh register <name> <public-key> [human|agent]
@@ -21,6 +21,7 @@ set -euo pipefail
 VERSION=${OFFICE_VERSION:-latest}
 PORT=${OFFICE_PORT:-8740}
 TRIAL_DIR=${OFFICE_TRIAL_DIR:-$PWD/office-trial}
+TENANT=${OFFICE_TENANT:-trial}
 HUB_IMAGE=ghcr.io/mrsimpson/agentic-office/office-hub:$VERSION
 CLIENT_IMAGE=ghcr.io/mrsimpson/agentic-office/office:$VERSION
 PREFIX=office-trial
@@ -71,7 +72,7 @@ office_as() { local who=$1; shift; "$RT" exec $(tty_flags) "$PREFIX-$who" office
 start_participant() {
   local who=$1
   exists "$PREFIX-$who" && die "participant $who exists already"
-  "$RT" run -d --name "$PREFIX-$who" "${NET_ARGS[@]}" -e OFFICE_HUB="https://$HUB_HOST:8740" \
+  "$RT" run -d --name "$PREFIX-$who" "${NET_ARGS[@]}" -e OFFICE_HUB="https://$HUB_HOST:8740" -e OFFICE_TENANT="$TENANT" \
     --entrypoint sleep "$CLIENT_IMAGE" infinity >/dev/null
 }
 
@@ -95,10 +96,11 @@ See USER_GUIDE.md."
   [ "$RT" = container ] || "$RT" network create "$NETWORK" >/dev/null 2>&1 || true
   mkdir -p "$TRIAL_DIR"
 
-  say "participant ada (human, first admin)"
-  start_participant ada
-  local ada; ada=$(public_key_of ada)
-  [ -n "$ada" ] || die "could not create the key of ada"
+  # root runs the hub and is never a member of a tenant; ada works in the tenant.
+  say "participant root (human, system admin)"
+  start_participant root
+  local root; root=$(public_key_of root)
+  [ -n "$root" ] || die "could not create the key of root"
 
   say "hub: signing key"
   # As root, because a new volume may belong to root; the hub itself runs as the user office.
@@ -109,7 +111,7 @@ See USER_GUIDE.md."
   say "hub: start"
   "$RT" run -d --name "$HUB" "${HUB_NET_ARGS[@]}" -p "$PORT:8740" -v "$HUB_VOLUME:/data" "$HUB_IMAGE" \
     -data-dir /data -addr 0.0.0.0:8740 -signing-key /data/signing.key \
-    -first-system-admin "ada=$ada" \
+    -first-system-admin "root=$root" \
     -tls-hosts "$HUB_HOST,localhost,127.0.0.1" -public-url "https://localhost:$PORT" >/dev/null
   local i
   for i in $(seq 1 60); do
@@ -119,8 +121,12 @@ See USER_GUIDE.md."
   "$RT" logs "$HUB" 2>&1 | grep -q listening || { "$RT" logs "$HUB" >&2 || true; die "the hub did not start"; }
 
   "$RT" cp "$HUB:/data/tls.crt" "$TRIAL_DIR/hub.crt"
-  give_cert ada
-  office_as ada whoami >/dev/null || die "ada cannot reach the hub"
+  give_cert root
+  office_as root whoami >/dev/null || die "root cannot reach the hub"
+
+  say "participant ada (human) and the tenant $TENANT"
+  add_user ada human
+  office_as root admin tenant create "$TENANT" ada --name "$TENANT" >/dev/null
 
   say "participant bot (agent)"
   cmd_add bot agent >/dev/null
@@ -136,21 +142,29 @@ See USER_GUIDE.md."
   echo "  $0 tail bot"
 }
 
-cmd_add() {
-  local who=${1:?usage: add <name> [human|agent]} kind=${2:-agent}
-  need_hub
+# Starts a participant container and registers its key as a user. The system admin does it.
+add_user() {
+  local who=$1 kind=$2
   start_participant "$who"
   local key; key=$(public_key_of "$who")
   [ -n "$key" ] || die "could not create the key of $who"
   give_cert "$who"
-  office_as ada admin user create "$who" "$key" --name "$who" --kind "$kind"
+  office_as root admin user create "$who" "$key" --name "$who" --kind "$kind"
+}
+
+cmd_add() {
+  local who=${1:?usage: add <name> [human|agent]} kind=${2:-agent}
+  need_hub
+  add_user "$who" "$kind"
+  office_as root admin member set "$TENANT" "$who"
   echo "participant $who ($kind) is ready: $0 as $who <office command>"
 }
 
 cmd_register() {
   local who=${1:?usage: register <name> <public-key> [human|agent]} key=${2:?usage: register <name> <public-key> [human|agent]}
   need_hub
-  office_as ada admin user create "$who" "$key" --name "$who" --kind "${3:-human}"
+  office_as root admin user create "$who" "$key" --name "$who" --kind "${3:-human}"
+  office_as root admin member set "$TENANT" "$who"
 }
 
 cmd_stage() { need_hub; office_as ada stage link --session "${1:-weekly}"; }
