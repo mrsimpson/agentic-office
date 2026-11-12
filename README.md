@@ -768,6 +768,89 @@ Every command takes these flags. The environment variables set the defaults. `<c
 For a self-signed hub, copy its `tls.crt` to `<config>/agentic-office/client/hub.crt`.
 Several participants on one machine (for example a human and an agent) use one key file each.
 
+### Configuration files
+
+The options of `office agent run` can live in YAML files (`concept-client-configuration`,
+`dec-client-config-file`). Other commands will follow; for now only the section `agent` exists.
+
+| Order (low to high) | Source |
+|---|---|
+| 1 | the defaults of the client |
+| 2 | the user file `<config>/agentic-office/client/config.yaml`, next to the key |
+| 3 | the project file `.office/config.yaml` in the start directory (the current directory) |
+| 4 | environment variables (`OFFICE_SESSION`) |
+| 5 | command-line flags, and the harness command after `--` |
+
+A higher source overrides a lower one key by key. A few keys exclude each other: `role` and
+`role-file`, and `wake.command` and `wake.url`. When a higher source sets one of them, the other
+from a lower source no longer counts.
+
+```yaml
+# .office/config.yaml: the minute taker of this project
+agent:
+  session: standup
+  harness: [opencode, acp]          # used when there is no command after --
+  role-file: roles/minutes.md       # relative to the start directory
+  allow: ["office_*"]
+  topic-task: Write the decisions of the block into the minutes.
+  wake:
+    strategy: decision-model
+    url: https://api.typesafe.ai/v1/systemone
+    model: jev-1.14.0
+    threshold: 0.5
+    timeout: 10s
+    key-env: OFFICE_DECIDE_KEY      # the name of the variable that holds the key
+```
+
+| Key | Flag | Default |
+|---|---|---|
+| `agent.session` | `--session` (`OFFICE_SESSION`) | |
+| `agent.harness` | the command after `--` | |
+| `agent.role` | `--role` | |
+| `agent.role-file` | `--role-file` | |
+| `agent.allow` | `--allow` | the office tools only |
+| `agent.cwd` | `--cwd` | the current directory |
+| `agent.topic-task` | `--topic-task` | |
+| `agent.wake.strategy` | `--wake` | `turn-end` |
+| `agent.wake.command` | `--decide-cmd` | |
+| `agent.wake.url` | `--decide-url` | |
+| `agent.wake.model` | `--decide-model` | |
+| `agent.wake.threshold` | `--decide-threshold` | `0.5` |
+| `agent.wake.timeout` | `--decide-timeout` | `10s` |
+| `agent.wake.key-env` | | `OFFICE_DECIDE_KEY` |
+
+Rules:
+
+- **No secrets in a file.** `key-env` names the environment variable that holds the key of the
+  model; the file never holds the key. So you can check a project file in. When `key-env` is set
+  in a file, the variable must be set.
+- **Strict.** An unknown key or a wrong type stops the command with exit code 2 and names the
+  file, the line and the key, for example
+  `configuration file /work/.office/config.yaml, line 4: unknown key agent.wake.api-key`. A
+  `wake` setting that does not fit the `strategy` of the same file is an error too.
+- **Paths.** A relative `role-file` or `cwd` in the project file is relative to the start
+  directory; in the user file, relative to `<config>/agentic-office/client`. A relative path in a
+  flag is relative to the current directory.
+- **Strategy from a flag.** When a flag changes the wake strategy (for example `--wake
+  turn-end`), the `wake` settings of a file that do not fit it are left out. A flag that does not
+  fit the strategy is an error.
+
+`office config show` prints the effective settings of the files, the defaults and the
+environment, with the source of each value, and whether the key variable is set (never the key).
+Flags are not part of it; they override what it shows. With `--json`:
+
+```json
+{"files":[{"kind":"user","path":"/home/ada/.config/agentic-office/client/config.yaml","found":true},
+  {"kind":"project","path":"/work/.office/config.yaml","found":true}],
+ "settings":[{"key":"agent.session","value":"standup","source":"project","from":"/work/.office/config.yaml"},
+  {"key":"agent.wake.threshold","value":0.7,"unused":true,"source":"user","from":"/home/ada/.config/agentic-office/client/config.yaml"},
+  {"key":"agent.wake.timeout","value":"10s","source":"default"}],
+ "keySet":true}
+```
+
+`source` is `default`, `user`, `project` or `env`; `unused` marks a `wake` setting that the
+effective strategy does not use.
+
 ### Join a meeting and read the log
 
 ```sh
@@ -1203,7 +1286,9 @@ office agent run --session weekly --role-file minute-taker.md -- kiro-cli acp
 office agent run --session weekly --role-file minute-taker.md -- npx -y @agentclientprotocol/claude-agent-acp
 ```
 
-Everything after `--` is the harness command. Flags:
+Everything after `--` is the harness command. Every flag and the harness command can also come
+from a configuration file (see [Configuration files](#configuration-files)); with a project file
+`.office/config.yaml`, `office agent run` alone is enough. Flags:
 
 - `--session S` (or `OFFICE_SESSION`): the session. Required.
 - `--role TEXT` or `--role-file F`: the role of the agent, in plain words. It goes into the first
@@ -1306,8 +1391,8 @@ no model. All model flags:
 | `--decide-threshold P` | `0.5` | `decision-model`: a probability at or above `P` counts as yes |
 | `--decide-timeout D` | `10s` | after this time without an answer, the check has failed |
 
-`OFFICE_DECIDE_KEY`, if set, goes to the endpoint as `Authorization: Bearer <key>`; it is never
-logged. The runner refuses model flags with `--wake turn-end`, and `--decide-threshold` with
+`OFFICE_DECIDE_KEY` (or the variable that `agent.wake.key-env` names), if set, goes to the
+endpoint as `Authorization: Bearer <key>`; it is never logged. The runner refuses model flags with `--wake turn-end`, and `--decide-threshold` with
 `--wake llm`.
 
 ```sh
@@ -1472,7 +1557,13 @@ through its interfaces:
   decision-model` with a fake System One endpoint: the request, the threshold, `addressed`,
   `topic_closed`, bare and wrapped answers, the key, and the switch to `turn-end` and back. The tests
   wait for records and log lines of the runner, never for a time. `tests/e2e/agentrunner_test.go`
-  combines both doubles with a real hub and a human. No real harness and no model run in the
+  combines both doubles with a real hub and a human. `tests/contract/config_test.go` runs
+  `office agent run` and `office config show` with a temporary configuration folder
+  (`XDG_CONFIG_HOME`) and start directory (`contracttest.RunIn`, `contracttest.StartIn`): the user
+  file alone, the project file over it, environment and flags over both, the key from the variable
+  that `key-env` names, errors with file, line and key, and the output of `config show`. The
+  helpers of the contract and end-to-end tests point `XDG_CONFIG_HOME` to an empty folder, so a
+  user file of the host never takes part. No real harness and no model run in the
   tests.
 - `tests/contract/cli_test.go` and `replicator_test.go` run the real `office` binary and check
   its output and the local log it leaves, including kills of the replicator and torn lines.

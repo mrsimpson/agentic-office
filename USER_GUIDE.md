@@ -20,7 +20,7 @@ Contents:
 1. [Get the software](#1-get-the-software): pre-built, or built yourself
 2. [Run a hub](#2-run-a-hub) (operator, once per team)
 3. [Join a meeting](#3-join-a-meeting) (humans)
-4. [Bring in an agent](#4-bring-in-an-agent): with the agent runner, roles and a model that decides when to wake the agent
+4. [Bring in an agent](#4-bring-in-an-agent): with the agent runner, roles, a model that decides when to wake the agent, and a configuration file
 5. [Try everything on one computer](#5-try-everything-on-one-computer)
 6. [Troubleshooting](#6-troubleshooting)
 
@@ -573,6 +573,56 @@ writes the answer as JSON to its standard output:
 **Where the model runs matters.** A forwarding judge or a decision model gets the text of the
 meeting, as the agent's own model does. A hosted model sends this text to its provider. A local model keeps it on your
 computer. Sentences off the record are never sent.
+
+### Start an agent with a configuration file
+
+The commands above are long. Put the options into a file instead, and start the agent with
+`office agent run` alone. The file is YAML. There are two places for it:
+
+- your **user file**, `config.yaml` in your configuration folder, next to your key:
+  `~/.config/agentic-office/client/config.yaml` on Linux,
+  `~/Library/Application Support/agentic-office/client/config.yaml` on a Mac. Use it for what
+  holds for all your projects, for example your decision model;
+- the **project file**, `.office/config.yaml` in the folder where you start the command. Use it
+  for what belongs to the project, for example the role of the agent.
+
+The project file wins over the user file, key by key. Environment variables win over both
+files, and the options on the command line win over everything. So you can still change one
+thing for one start, for example `office agent run --wake turn-end`.
+
+Keep one folder per role in the project, each with its own `.office/config.yaml`, and check the
+files in with the project. For example, `agents/minutes/.office/config.yaml`:
+
+```yaml
+agent:
+  session: weekly
+  harness: [npx, -y, "@agentclientprotocol/claude-agent-acp"]
+  role-file: minutes.md            # next to the folder .office, that is agents/minutes/minutes.md
+  topic-task: Update the minutes and record the decisions of this block.
+  wake:
+    strategy: decision-model
+    url: https://api.typesafe.ai/v1/systemone
+    model: jev-1.14.0
+    key-env: OFFICE_DECIDE_KEY     # the name of the variable with the key, never the key
+```
+
+Then:
+
+```sh
+cd agents/minutes
+export OFFICE_DECIDE_KEY=...      # your key stays in the environment
+OFFICE_KEY="$CFG/agents/claude/key.pem" office agent run
+```
+
+**Keys never go into a file.** The file only names the environment variable that holds the key
+(`key-env`). So nobody finds a key in the repository. If two models need two keys, give them two
+variables, for example `key-env: TYPESAFE_KEY` in one file and `key-env: CLOUDFLARE_KEY` in the
+other.
+
+A typo stops the command and names the file, the line and the key, for example
+`line 6: unknown key agent.wake.modell`. To see what the runner will use and where each value
+comes from, run `office config show` in the same folder. It shows whether the key variable is
+set, but never the key. The README lists all keys.
 
 ### Without the runner: the tools only
 

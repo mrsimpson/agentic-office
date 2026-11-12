@@ -764,6 +764,11 @@ mark a sentence off the record. `office session import <file>` imports a convers
 file in the import format of the client (`dec-import-format`). Other commands cover slides, the
 stage, decisions, minutes, notes and tasks.
 
+The CLI reads the configuration files of the client (`concept-client-configuration`): the user
+file and the project file of the start directory. It merges them with the environment and the
+command-line options and hands the result to the part that runs the command, for example the
+agent runner. `office config show` prints the effective settings and where each comes from.
+
 ```arc42
 :::building-block
 id: bb-cli
@@ -771,7 +776,7 @@ title: office CLI
 technology: Go, single binary
 parent: bb-participant-client
 requires: if-client-core, if-replication, if-local-log, if-session-commands, if-session-stream, if-slides-api, if-auth-api
-implements: concept-read-file-write-tools
+implements: concept-read-file-write-tools, concept-client-configuration
 path: client/cli
 :::
 ```

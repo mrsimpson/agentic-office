@@ -89,6 +89,11 @@ Agent runner (keeps an agent in the meeting over the Agent Client Protocol; see 
                                      the model you bring for llm or decision-model (key in
                                      OFFICE_DECIDE_KEY); when it fails, the runner falls
                                      back to turn-end
+      every option can also come from a configuration file (keys agent.* and agent.wake.*)
+
+Configuration (config.yaml in the configuration folder, overridden by .office/config.yaml in
+the current directory, then by environment variables, then by flags; see README.md):
+  config show                        the effective settings of the files and where each comes from
 
 Other:
   version                            print the version

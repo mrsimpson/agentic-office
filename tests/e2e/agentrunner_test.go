@@ -25,9 +25,10 @@ import (
 func TestAgentThroughRunner(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	runtime := filepath.Join(t.TempDir(), "run")
+	configHome := t.TempDir() // no user configuration file of the host
 	envFor := func(key string) []string {
 		return []string{"OFFICE_HUB=" + srv.URL, "OFFICE_CA_CERT=" + srv.CertFile, "OFFICE_KEY=" + key,
-			"OFFICE_RUNTIME_DIR=" + runtime, "OFFICE_SESSION=", "OFFICE_JSON="}
+			"OFFICE_RUNTIME_DIR=" + runtime, "OFFICE_SESSION=", "OFFICE_JSON=", "XDG_CONFIG_HOME=" + configHome}
 	}
 	office := func(env []string, args ...string) map[string]any {
 		t.Helper()

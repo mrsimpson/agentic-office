@@ -1008,3 +1008,30 @@ date: 2026-11-11
 addresses: qg-usability, qg-confidentiality, con-no-intelligence
 :::
 ```
+
+## The client reads its options from YAML files: a user file, overridden by a project file
+
+**Context:** The agent runner alone has more than ten options, among them the URL and the model
+of a decision model. A user types them again at every start, and a team cannot share them. A key
+of a model must not end up in a file that a team checks in. **Decision:** The client reads its
+options from two files in YAML (`concept-client-configuration`). The user file lies in the
+configuration folder of the client, where the key and the certificate of the hub already are. The
+project file in the folder `.office` of the start directory overrides it key by key, like the
+vocabulary of the project. Environment variables override both files, and command-line options
+override everything. Unknown keys and wrong types are errors that name the file and the key. A
+file names the environment variable of a key, never the key. **Consequences:** An agent with its
+role and its decision model starts with one short command, and a team can keep one project file
+per role in its repository. A typo in a file stops the command instead of being ignored. The
+client needs a YAML reader, which the hub already uses for its records. **Rejected:** TOML (the
+maintainer chose YAML); options only on the command line (long commands, nothing to share);
+keys in the file (a checked-in file would leak them).
+
+```arc42
+:::decision
+id: dec-client-config-file
+title: The client reads its options from YAML files, a user file overridden by a project file
+status: accepted
+date: 2026-11-12
+addresses: qg-usability, qg-confidentiality
+:::
+```

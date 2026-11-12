@@ -50,7 +50,7 @@ func ConfigFromEnv() Config {
 	if c.Hub == "" {
 		c.Hub = DefaultHub
 	}
-	cfgDir := clientConfigDir()
+	cfgDir := ClientConfigDir()
 	if c.CACert == "" {
 		if p := filepath.Join(cfgDir, "hub.crt"); fileExists(p) {
 			c.CACert = p
@@ -75,7 +75,10 @@ func (c Config) Env() []string {
 		EnvRuntimeDir + "=" + c.RuntimeDir}
 }
 
-func clientConfigDir() string {
+// ClientConfigDir is the configuration folder of the client: <config dir>/agentic-office/client,
+// where <config dir> is $XDG_CONFIG_HOME or ~/.config on Linux and ~/Library/Application Support
+// on macOS. It holds the key, the hub certificate and the user configuration file.
+func ClientConfigDir() string {
 	d, err := os.UserConfigDir()
 	if err != nil {
 		d = "."

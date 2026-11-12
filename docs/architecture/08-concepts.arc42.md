@@ -250,3 +250,49 @@ title: Module boundaries follow the building blocks
 category: structure
 :::
 ```
+
+## Client configuration
+
+The participant client has many options, and a user starts the same agent or the same meeting
+again and again. So the options can live in configuration files (`dec-client-config-file`).
+The office CLI reads them; the other parts of the client get the resulting options as before.
+
+**Two files.** The user file lies in the configuration folder of the client, next to the key and
+the certificate of the hub. The project file lies in the folder `.office` of the start directory,
+next to the vocabulary of the project (`dec-vocabulary-prompt`). A team can check the project
+file in, for example one file per role of an agent.
+
+**Order of precedence**, from lowest to highest. A higher source overrides a lower one, key by
+key:
+
+1. the defaults of the client;
+2. the user file;
+3. the project file;
+4. environment variables;
+5. command-line options.
+
+A few keys exclude each other, for example a role in words and a role file. When a higher source
+sets one of them, the others of lower sources no longer count.
+
+**Strict files.** Every key belongs to the section of one command, for example `agent` for the
+agent runner. An unknown key or a value of the wrong type stops the command with an error that
+names the file and the key. A setting that does not fit another setting of the same file is also
+an error. A relative path in a file is relative to the root of that file: the start directory for
+the project file, the configuration folder for the user file.
+
+**Secrets never in a file.** A file names the environment variable that holds a key, never the
+key itself. So a project file can be checked in, and a key stays where it was before.
+
+**Transparency.** A command shows the effective settings and the source of each value, without
+any key.
+
+**Scope.** First the agent runner. The address of the hub, the options of the ears and other
+commands follow as further sections. OPEN: which other commands get a section, and when.
+
+```arc42
+:::concept
+id: concept-client-configuration
+title: Client configuration in a user file and a project file
+category: usability
+:::
+```
