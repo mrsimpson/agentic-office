@@ -216,8 +216,8 @@ revoked by a system admin and stops working in all tenants.
 **Repository.** A tenant has exactly one local git repository, with a directory for each kind of
 content (sessions, records, tasks, slides). Every session, record, task and slide deck
 belongs to exactly one tenant. The archive writes to the repository of that tenant only
-(`dec-yaml-git-storage`). The hub repository has a fixed place and a reserved name that no tenant
-can take; neither is configurable. Later, a repository can be synchronised with 0..n remotes; this is out of
+(`dec-yaml-git-storage`). The hub repository and the tenant repositories have a fixed place on the hub host, apart from each
+other; neither is configurable. Later, a repository can be synchronised with 0..n remotes; this is out of
 scope for now.
 
 **Separation.** Every call names a tenant. The hub checks the membership and the role of the

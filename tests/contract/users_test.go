@@ -300,7 +300,7 @@ func TestHubRepositoryBreakingARuleStopsTheHub(t *testing.T) {
 	if code, err := srv.Stop(5 * time.Second); err != nil || code != 0 {
 		t.Fatalf("stop: %d, %v", code, err)
 	}
-	repo := srv.ArchiveDir()
+	repo := srv.HubRepoDir()
 	start := func() (string, int) {
 		_, errOut, code := contracttest.Run(t, "office-hub", nil, "-addr", "127.0.0.1:0", "-data-dir", srv.DataDir,
 			"-signing-key", srv.SigningKeyFile)
