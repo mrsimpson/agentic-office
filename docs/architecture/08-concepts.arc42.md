@@ -207,7 +207,7 @@ exist; the change would leave a tenant without a tenant admin or the hub without
 Users, memberships and tenants have a validity period. Removing one ends its period and keeps its
 record, so the ID stays taken and is never used again: a new user cannot inherit old memberships,
 and the history shows who was a member when. Ending a user ends its memberships in the same
-commit. A call is checked against the periods that are valid at the time of the call. Identity checks the same rules
+commit. A call is checked against the periods that are valid at the time of the call. A period that starts or ends in the future, for example a guest who has access until a date, would fit the same fields but is out of scope for now. Identity checks the same rules
 when it loads the hub repository at start and refuses to start on a violation, for example after
 a manual edit. **Key rotation:** a user adds the new key with the old one and then revokes the old
 one; tokens bound to the old key expire after about 15 minutes at the latest. A compromised key is
