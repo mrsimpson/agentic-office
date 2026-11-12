@@ -17,13 +17,14 @@ import (
 )
 
 // agentRun starts "office agent run" for u with the ACP test double as the harness. It returns
-// the process and the record file of the double.
+// the process and the record file of the double. A prompt with "please hold" waits until the
+// file <record file>.release exists.
 func (u *officeUser) agentRun(t *testing.T, sid string, flags ...string) (*contracttest.Process, string) {
 	t.Helper()
 	rec := filepath.Join(t.TempDir(), "acp-record.jsonl")
 	args := append([]string{"agent", "run", "--session", sid}, flags...)
 	args = append(args, "--", contracttest.ACPDouble(t))
-	p := contracttest.Start(t, "office", append(u.env, "ACP_DOUBLE_RECORD="+rec), args...)
+	p := contracttest.Start(t, "office", append(u.env, "ACP_DOUBLE_RECORD="+rec, "ACP_DOUBLE_RELEASE="+rec+".release"), args...)
 	return p, rec
 }
 
@@ -199,6 +200,9 @@ func TestAgentRunnerErrors(t *testing.T) {
 		{"agent", "run", "--session", "s1"}, // no harness
 		{"agent", "run", "--", "true"},      // no session
 		{"agent", "run", "--session", "s1", "--role", "a", "--role-file", "b", "--", "true"}, // both roles
+		{"agent", "run", "--session", "s1", "--decide-cmd", "x", "--decide-url", "http://x", "--decide-model", "m", "--", "true"}, // both kinds
+		{"agent", "run", "--session", "s1", "--decide-url", "http://x", "--", "true"},                                         // no model name
+		{"agent", "run", "--session", "s1", "--decide-cmd", "x", "--decide-timeout", "0s", "--", "true"},                      // no time-out
 	} {
 		if _, errOut, code := bot.run(args...); code != 2 {
 			t.Errorf("office %v: want exit 2, got %d: %s", args, code, errOut)
@@ -216,7 +220,8 @@ func TestAgentRunnerErrors(t *testing.T) {
 	}
 }
 
-// TestAgentRunnerSessionEnds: the runner stops by itself after session.ended.
+// TestAgentRunnerSessionEnds: after session.ended, the runner sends a last prompt with what is
+// left and stops by itself.
 func TestAgentRunnerSessionEnds(t *testing.T) {
 	m := newMachine(t)
 	ada, bot := m.user("ada", "Ada", "human"), m.user("bot", "Bot", "agent")
@@ -224,7 +229,8 @@ func TestAgentRunnerSessionEnds(t *testing.T) {
 	adaLog := ada.join(sid).LogPath
 	p, rec := bot.agentRun(t, sid, "--role", `please say "ready"`)
 	waitUtterance(t, adaLog, "bot", "ready")
-	ada.ok("meeting", "end")
+	ada.ok("say", "Final words.", "--session", sid) // no turn.end: only the last prompt carries it
+	ada.ok("meeting", "end", "--session", sid)
 	select {
 	case <-p.Done():
 	case <-time.After(20 * time.Second):
@@ -236,5 +242,12 @@ func TestAgentRunnerSessionEnds(t *testing.T) {
 	recs := contracttest.ReadACPRecords(t, rec)
 	if recs[len(recs)-1].Kind() != "exit" {
 		t.Errorf("the harness did not end: %v", recs[len(recs)-1])
+	}
+	ps := promptTexts(recs)
+	if len(ps) != 2 {
+		t.Fatalf("want the first and the last prompt, got %d:\n%s", len(ps), strings.Join(ps, "\n---\n"))
+	}
+	if last := ps[1]; !strings.Contains(last, "has ended") || !strings.Contains(last, "Ada (human): Final words.") {
+		t.Errorf("last prompt:\n%s", last)
 	}
 }

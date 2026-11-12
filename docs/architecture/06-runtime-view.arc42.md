@@ -428,9 +428,11 @@ delivery, leaves out the agent's own utterances and sentences off the record, an
 prompt. The agent decides how to act: it answers with `utterance_say` when the speaker asked it,
 raises its hand instead of interrupting, or updates the minutes silently. Its actions reach every
 local log, also that of the runner, which leaves them out of the next prompt. If the agent is
-still busy, the runner queues what comes and sends it together afterwards
-(`dec-agent-runner-delivery`). When the session ends, the runner sends a last prompt and stops
-the harness.
+still busy, the runner queues what comes and sends it together afterwards. If the decision model
+is still busy with a check, the next check judges all new utterances together
+(`dec-agent-runner-delivery`). Without a decision model, the runner wakes the agent only when the
+speaker ends the turn. When the session ends, the runner sends a last prompt with what is left
+and stops the harness.
 
 ```arc42
 :::runtime-scenario

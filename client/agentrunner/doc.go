@@ -17,9 +17,18 @@
 //     with one MCP server, "office": this office binary
 //     with "mcp --session S" and the OFFICE_* variables of the agent as absolute values.
 //   - It sends a first prompt with the role, the meeting and the path of the local log.
+//   - It checks after each utterance of another participant whether to wake the agent
+//     (dec-wake-check-per-utterance): it asks the decision model (DecisionModel, the contract
+//     in package decision) and wakes the agent on act or topic_closed, or when the model fails.
+//     Without a decision model, it wakes the agent at each turn.end of another participant.
+//   - When it wakes the agent, it sends all utterances of others since its last delivery in one
+//     prompt (delivery.go). One prompt and one check run at a time; what comes meanwhile waits
+//     and goes out, or is judged, together afterwards (dec-agent-runner-delivery).
 //   - It answers permission requests by an acpclient.Rule with the patterns of the user (--allow).
 //   - It logs the agent's reply text; the text is not spoken. The agent speaks with the tool
 //     utterance_say.
-//   - It stops after session.ended, after the agent's own participant.left, when ctx ends or when
+//   - After session.ended, it sends a last prompt with what is left and stops when the agent
+//     has ended that turn.
+//   - It stops after the agent's own participant.left, when ctx ends or when
 //     the harness stops (an error). Then it stops the harness.
 package agentrunner

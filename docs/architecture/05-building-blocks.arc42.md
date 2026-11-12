@@ -659,10 +659,12 @@ path: client/agentrunner/acpclient
 
 ### Decision model
 
-The contract for a decision model that the user brings (`dec-byo-decision-model`). At each change
-of speaker, the agent runner sends a request: the session, the agent and its role, the
-participants, the recent context and the new utterances, and who ended the turn. The model
-answers with structured output:
+The contract for a decision model that the user brings (`dec-byo-decision-model`). After each
+utterance of another participant, and when that participant ends the turn, the agent runner
+sends a request (`dec-wake-check-per-utterance`): the session, the agent and its role, the
+participants, the recent context, the new utterances that the agent has not got yet, and whether
+the speaker of the last new utterance has ended the turn. The model answers with structured
+output:
 
 - `act`: whether the agent should act now;
 - `addressed`: the participant whom the speaker addressed, or empty;
@@ -776,7 +778,9 @@ session and one agent key, it:
 - after each utterance of another participant, checks whether to wake the agent
   (`dec-wake-check-per-utterance`): it asks the decision model, if the user brought one
   (`dec-byo-decision-model`), and wakes the agent when the model says it should act or a block
-  of topics has ended; if the model fails or is slow, it wakes the agent;
+  of topics has ended; if the model fails or is slow, it wakes the agent. Without a decision
+  model, it wakes the agent at each change of speaker and says at start that it does not notice
+  a new topic within a monologue;
 - when it wakes the agent, sends what others said since its last delivery, with who said it and
   whether that participant is a human or an agent. It leaves out the agent's own utterances and
   sentences off the record. While the agent works, it queues what comes and sends it together

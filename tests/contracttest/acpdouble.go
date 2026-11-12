@@ -22,24 +22,72 @@ var (
 func ACPDouble(t testing.TB) string {
 	t.Helper()
 	acpDoubleOnce.Do(func() {
-		dir, err := os.MkdirTemp("", "office-acpdouble-")
-		if err != nil {
-			acpDoubleErr = err.Error()
-			return
-		}
-		p := filepath.Join(dir, "acpdouble")
-		cmd := exec.Command("go", "build", "-o", p, "github.com/mrsimpson/agentic-office/tests/acpdouble")
-		cmd.Dir = moduleRoot(t)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			acpDoubleErr = err.Error() + "\n" + string(out)
-			return
-		}
-		acpDoublePath = p
+		acpDoublePath, acpDoubleErr = buildTool(t, "acpdouble")
 	})
 	if acpDoubleErr != "" {
 		t.Fatalf("build the ACP test double: %s", acpDoubleErr)
 	}
 	return acpDoublePath
+}
+
+var (
+	decisionDoubleOnce sync.Once
+	decisionDoublePath string
+	decisionDoubleErr  string
+)
+
+// DecisionDouble builds the test double of a decision model (tests/decisiondouble, the command
+// kind of if-decision-model) once and returns the path of its binary. See the package comment of
+// tests/decisiondouble for its rules.
+func DecisionDouble(t testing.TB) string {
+	t.Helper()
+	decisionDoubleOnce.Do(func() {
+		decisionDoublePath, decisionDoubleErr = buildTool(t, "decisiondouble")
+	})
+	if decisionDoubleErr != "" {
+		t.Fatalf("build the decision model test double: %s", decisionDoubleErr)
+	}
+	return decisionDoublePath
+}
+
+// buildTool builds the program tests/<name> into a temporary directory. It returns the path of
+// the binary, or an error text.
+func buildTool(t testing.TB, name string) (string, string) {
+	dir, err := os.MkdirTemp("", "office-"+name+"-")
+	if err != nil {
+		return "", err.Error()
+	}
+	p := filepath.Join(dir, name)
+	cmd := exec.Command("go", "build", "-o", p, "github.com/mrsimpson/agentic-office/tests/"+name)
+	cmd.Dir = moduleRoot(t)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return "", err.Error() + "\n" + string(out)
+	}
+	return p, ""
+}
+
+// DecisionRequests reads the requests that the decision model test double recorded. A missing
+// file has no requests.
+func DecisionRequests(t testing.TB, path string) []map[string]any {
+	t.Helper()
+	f, err := os.Open(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	var out []map[string]any
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 1<<20), 16<<20)
+	for sc.Scan() {
+		var v map[string]any
+		if json.Unmarshal(sc.Bytes(), &v) == nil {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // ACPRecord is one step that the ACP test double recorded.
