@@ -44,6 +44,12 @@ const (
 	// IdentityServiceCreateStageLinkProcedure is the procedure name of the IdentityService's
 	// CreateStageLink RPC.
 	IdentityServiceCreateStageLinkProcedure = "/office.identity.v1.IdentityService/CreateStageLink"
+	// IdentityServiceCreateAdminLinkProcedure is the procedure name of the IdentityService's
+	// CreateAdminLink RPC.
+	IdentityServiceCreateAdminLinkProcedure = "/office.identity.v1.IdentityService/CreateAdminLink"
+	// IdentityServiceExchangeAdminLinkProcedure is the procedure name of the IdentityService's
+	// ExchangeAdminLink RPC.
+	IdentityServiceExchangeAdminLinkProcedure = "/office.identity.v1.IdentityService/ExchangeAdminLink"
 )
 
 var (
@@ -68,6 +74,20 @@ var (
 			Procedure:  IdentityServiceCreateStageLinkProcedure,
 		}
 	})
+	identityServiceCreateAdminLinkSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     api.File_office_identity_v1_identity_proto.Services().ByName("IdentityService").Methods().ByName("CreateAdminLink"),
+			Procedure:  IdentityServiceCreateAdminLinkProcedure,
+		}
+	})
+	identityServiceExchangeAdminLinkSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     api.File_office_identity_v1_identity_proto.Services().ByName("IdentityService").Methods().ByName("ExchangeAdminLink"),
+			Procedure:  IdentityServiceExchangeAdminLinkProcedure,
+		}
+	})
 )
 
 // IdentityServiceClient is a client for the office.identity.v1.IdentityService service.
@@ -80,6 +100,13 @@ type IdentityServiceClient interface {
 	// CreateStageLink returns a read-only link to the stage of one session. Any participant may
 	// create one. The token of the link only allows SessionStreamService.Subscribe for that session.
 	CreateStageLink(context.Context, *api.CreateStageLinkRequest) (*api.CreateStageLinkResponse, error)
+	// CreateAdminLink creates a link that opens the admin web view (if-admin-web) for the system
+	// admin who calls. The link holds a code that works once and expires after a few minutes. Only
+	// a system admin may call it. It belongs to no tenant. It is idempotent by command_id.
+	CreateAdminLink(context.Context, *api.CreateAdminLinkRequest) (*api.CreateAdminLinkResponse, error)
+	// ExchangeAdminLink swaps the code of an admin link for an access token of the key that created
+	// the link. The code works once. It needs no token.
+	ExchangeAdminLink(context.Context, *api.ExchangeAdminLinkRequest) (*api.ExchangeAdminLinkResponse, error)
 }
 
 // NewIdentityServiceClient constructs a client for the office.identity.v1.IdentityService service.
@@ -98,6 +125,13 @@ type IdentityServiceHandler interface {
 	// CreateStageLink returns a read-only link to the stage of one session. Any participant may
 	// create one. The token of the link only allows SessionStreamService.Subscribe for that session.
 	CreateStageLink(context.Context, *api.CreateStageLinkRequest) (*api.CreateStageLinkResponse, error)
+	// CreateAdminLink creates a link that opens the admin web view (if-admin-web) for the system
+	// admin who calls. The link holds a code that works once and expires after a few minutes. Only
+	// a system admin may call it. It belongs to no tenant. It is idempotent by command_id.
+	CreateAdminLink(context.Context, *api.CreateAdminLinkRequest) (*api.CreateAdminLinkResponse, error)
+	// ExchangeAdminLink swaps the code of an admin link for an access token of the key that created
+	// the link. The code works once. It needs no token.
+	ExchangeAdminLink(context.Context, *api.ExchangeAdminLinkRequest) (*api.ExchangeAdminLinkResponse, error)
 }
 
 // RegisterIdentityServiceHandler registers svc as the office.identity.v1.IdentityService
@@ -108,6 +142,8 @@ func RegisterIdentityServiceHandler(server *connect.Server, svc IdentityServiceH
 		connect.Method{Spec: identityServiceGetChallengeSpec(), Handler: adapter.getChallenge},
 		connect.Method{Spec: identityServiceExchangeChallengeSpec(), Handler: adapter.exchangeChallenge},
 		connect.Method{Spec: identityServiceCreateStageLinkSpec(), Handler: adapter.createStageLink},
+		connect.Method{Spec: identityServiceCreateAdminLinkSpec(), Handler: adapter.createAdminLink},
+		connect.Method{Spec: identityServiceExchangeAdminLinkSpec(), Handler: adapter.exchangeAdminLink},
 	)
 }
 
@@ -124,6 +160,14 @@ func (UnimplementedIdentityServiceHandler) ExchangeChallenge(context.Context, *a
 
 func (UnimplementedIdentityServiceHandler) CreateStageLink(context.Context, *api.CreateStageLinkRequest) (*api.CreateStageLinkResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, "office.identity.v1.IdentityService.CreateStageLink is not implemented")
+}
+
+func (UnimplementedIdentityServiceHandler) CreateAdminLink(context.Context, *api.CreateAdminLinkRequest) (*api.CreateAdminLinkResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "office.identity.v1.IdentityService.CreateAdminLink is not implemented")
+}
+
+func (UnimplementedIdentityServiceHandler) ExchangeAdminLink(context.Context, *api.ExchangeAdminLinkRequest) (*api.ExchangeAdminLinkResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "office.identity.v1.IdentityService.ExchangeAdminLink is not implemented")
 }
 
 type identityServiceClient struct {
@@ -149,6 +193,22 @@ func (c *identityServiceClient) ExchangeChallenge(ctx context.Context, req *api.
 func (c *identityServiceClient) CreateStageLink(ctx context.Context, req *api.CreateStageLinkRequest) (*api.CreateStageLinkResponse, error) {
 	var res api.CreateStageLinkResponse
 	if err := c.client.CallUnary(ctx, identityServiceCreateStageLinkSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *identityServiceClient) CreateAdminLink(ctx context.Context, req *api.CreateAdminLinkRequest) (*api.CreateAdminLinkResponse, error) {
+	var res api.CreateAdminLinkResponse
+	if err := c.client.CallUnary(ctx, identityServiceCreateAdminLinkSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *identityServiceClient) ExchangeAdminLink(ctx context.Context, req *api.ExchangeAdminLinkRequest) (*api.ExchangeAdminLinkResponse, error) {
+	var res api.ExchangeAdminLinkResponse
+	if err := c.client.CallUnary(ctx, identityServiceExchangeAdminLinkSpec(), req, &res); err != nil {
 		return nil, err
 	}
 	return &res, nil
@@ -186,6 +246,30 @@ func (h identityServiceHandler) createStageLink(ctx context.Context, _ connect.S
 		return err
 	}
 	res, err := h.svc.CreateStageLink(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h identityServiceHandler) createAdminLink(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req api.CreateAdminLinkRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.CreateAdminLink(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h identityServiceHandler) exchangeAdminLink(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req api.ExchangeAdminLinkRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.ExchangeAdminLink(ctx, &req)
 	if err != nil {
 		return err
 	}

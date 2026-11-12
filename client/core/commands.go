@@ -17,6 +17,8 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/mrsimpson/agentic-office/client/replicator/locallog"
+	archivev1 "github.com/mrsimpson/agentic-office/hub/archive/api"
+	documentv1 "github.com/mrsimpson/agentic-office/hub/documents/api"
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 	userv1 "github.com/mrsimpson/agentic-office/hub/identity/userapi"
 	decisionv1 "github.com/mrsimpson/agentic-office/hub/records/decision/api"
@@ -291,10 +293,10 @@ func (c *hubClient) UpdateMinutes(ctx context.Context, sessionID, text string) (
 	})
 }
 
-// ShowArtifact shows an artifact on the stage.
-func (c *hubClient) ShowArtifact(ctx context.Context, sessionID, artifactID string) (*sessioncommandsv1.CommandResult, error) {
+// FocusArtifact shows an artifact on the stage.
+func (c *hubClient) FocusArtifact(ctx context.Context, sessionID, artifactID string) (*sessioncommandsv1.CommandResult, error) {
 	return c.command(ctx, func(pid, id string) (*sessioncommandsv1.CommandResult, error) {
-		r, err := c.commands.ShowArtifact(ctx, &sessioncommandsv1.ShowArtifactRequest{SessionId: sessionID, CommandId: id, ParticipantId: pid, ArtifactId: artifactID})
+		r, err := c.commands.FocusArtifact(ctx, &sessioncommandsv1.FocusArtifactRequest{SessionId: sessionID, CommandId: id, ParticipantId: pid, ArtifactId: artifactID})
 		return r.GetResult(), err
 	})
 }
@@ -458,6 +460,60 @@ func (c *hubClient) GetDeck(ctx context.Context, id string) (*slidesv1.Deck, err
 		return err
 	})
 	return res.GetDeck(), err
+}
+
+// CreateAdminLink creates a link to the admin view.
+func (c *hubClient) CreateAdminLink(ctx context.Context) (*identityv1.CreateAdminLinkResponse, error) {
+	req := &identityv1.CreateAdminLinkRequest{CommandId: coreapi.NewCommandID()}
+	var res *identityv1.CreateAdminLinkResponse
+	err := retry(ctx, func() (err error) {
+		res, err = c.identity.CreateAdminLink(ctx, req)
+		return err
+	})
+	return res, err
+}
+
+// CreateDocument creates a text document. The author is the caller.
+func (c *hubClient) CreateDocument(ctx context.Context, path, content, sessionID string) (*documentv1.CreateDocumentResponse, error) {
+	req := &documentv1.CreateDocumentRequest{Path: path, Content: content, SessionId: sessionID, CommandId: coreapi.NewCommandID()}
+	var res *documentv1.CreateDocumentResponse
+	err := retry(ctx, func() (err error) {
+		res, err = c.document.CreateDocument(ctx, req)
+		return err
+	})
+	return res, err
+}
+
+// ChangeDocument replaces a text document, based on the version that the caller read.
+func (c *hubClient) ChangeDocument(ctx context.Context, path, content, baseVersion, sessionID string) (*documentv1.ChangeDocumentResponse, error) {
+	req := &documentv1.ChangeDocumentRequest{Path: path, Content: content, BaseVersion: baseVersion, SessionId: sessionID,
+		CommandId: coreapi.NewCommandID()}
+	var res *documentv1.ChangeDocumentResponse
+	err := retry(ctx, func() (err error) {
+		res, err = c.document.ChangeDocument(ctx, req)
+		return err
+	})
+	return res, err
+}
+
+// ReadFile reads a file of the archive by its path.
+func (c *hubClient) ReadFile(ctx context.Context, path string) (*archivev1.File, error) {
+	var res *archivev1.ReadFileResponse
+	err := retry(ctx, func() (err error) {
+		res, err = c.archive.ReadFile(ctx, &archivev1.ReadFileRequest{Path: path})
+		return err
+	})
+	return res.GetFile(), err
+}
+
+// ListFiles lists the files of a directory of the archive.
+func (c *hubClient) ListFiles(ctx context.Context, dir string) ([]*archivev1.FileInfo, error) {
+	var res *archivev1.ListFilesResponse
+	err := retry(ctx, func() (err error) {
+		res, err = c.archive.ListFiles(ctx, &archivev1.ListFilesRequest{Dir: dir})
+		return err
+	})
+	return res.GetFiles(), err
 }
 
 // RecordDecision records a decision. The author is the caller. sessionID may be empty.

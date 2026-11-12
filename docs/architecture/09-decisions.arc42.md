@@ -1070,6 +1070,74 @@ addresses: qg-confidentiality
 :::
 ```
 
+## Artifacts: a path, a schema and a focus
+
+**Context:** Humans and agents work together in one session. They create notes, slide decks,
+documents and changes to documents. The stage shows one artifact, chosen by the type in front of
+its ID. Only slide decks work; the types so far were illustrations (`dec-records-per-type`).
+**Decision:** An artifact is a file in the git repository of the tenant. Its path is its
+identity. Two kinds of file are artifacts: text (Markdown) and data (YAML). The hub refuses
+other files. The file names its schema inside itself (in the front matter of a Markdown file, in
+a key of a YAML file), and the hub ships the schemas. A schema decides how the hub checks the
+artifact and how the stage renders it. Every type keeps its own interface, which creates and
+changes its artifacts (`dec-records-per-type`). The text document is a type too: a Markdown file
+without a schema, shown as plain text. Something that lives in another system, such as a task, is a small YAML artifact that holds the
+URL of the real thing; the hub resolves it through an API later. Every participant may create and
+change artifacts. A change always applies to the head of the repository; there are no branches or
+proposals. A change names the version that its author read, and the hub refuses it when the
+artifact has changed since. A session refers to several artifacts and exactly one has the focus. The minutes of the session
+are the first artifact and have the focus until another artifact gets it.
+Every participant may set the focus. People normally discuss the artifact in focus; the session
+log carries the discussion. The archive stores every change of an artifact in one commit. The rule
+for off the record applies when an artifact is created, not when it is shown. **Consequences:**
+The stage chooses its renderer by the schema and no longer by a fixed prefix. The session log
+needs events for created, changed and focused artifacts. Decisions, minutes, notes, slides and
+tasks keep their interfaces and each has a schema; what they share is the path, the schema
+reference, the commit per change, the version check and the focus. The stage and the admin UI
+share one design for the artifact area. **Rejected:** schemas defined by the tenant (out of scope for now); one artifact in focus
+per participant (it breaks the shared screen); branches and proposals for changes (later, as a
+schema, if needed); files of any type (the stage cannot show them); one general write interface for all types (an agent should know what it writes). The archive offers an interface to read artifacts by path (`if-archive-read`). The stage reads an artifact
+through it and renders it by its schema, and only
+paths that the log of its own session names. OPEN: which types the hub ships first (proposal: text
+document, slides, minutes); the exact events; how the stage learns the tenant of a session (#114).
+
+```arc42
+:::decision
+id: dec-artifacts
+title: Artifacts: a path, a schema and a focus
+status: accepted
+date: 2026-11-12
+addresses: qg-usability
+:::
+```
+
+## The admin view is a server-rendered page behind a one-time link
+
+**Context:** The hub needs a view for system admins: users and keys, tenants and system admins
+(`dec-multi-tenancy`). Admins have Ed25519 keys and no passwords, and a browser cannot sign a
+challenge without more work. **Decision:** The admin view is a web page that the hub renders on the
+server, in the design of the stage, without scripts. An admin asks for a link with the CLI. The link
+holds a code that works once and expires after a few minutes. The admin view swaps the code for an
+access token of the admin key and keeps it in a cookie that scripts cannot read. It sends the token
+with every call to the identity part, so it has exactly the rights of the admin key and no logic of
+its own. **Consequences:** No password and no new login flow. The code is useless after its first
+use, so a link on a shared screen does no harm once it was opened. The access token lives one
+hour. Every change goes through an interface that checks the rights. A form carries a token that is derived from the session, and the view refuses a post from another origin. Revoking asks for a confirmation on its own page, so no script is needed.
+**Rejected:** a password for admins (a second secret to keep); a signature in the browser (needs
+scripts and a new key format); the stage link style with the token in the URL for the whole
+session (the URL stays in the history and on the screen). The first writes are to create users, to add keys and to revoke keys. OPEN: creating
+tenants and managing memberships in the view.
+
+```arc42
+:::decision
+id: dec-admin-web
+title: The admin view is a server-rendered page behind a one-time link
+status: accepted
+date: 2026-11-12
+addresses: qg-usability
+:::
+```
+
 ## Ended sessions leave memory and load on demand
 
 **Context:** The session log stays in memory after it is archived, and the restore loads every

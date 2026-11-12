@@ -34,6 +34,10 @@ type Options struct {
 	ChallengeTTL time.Duration
 	// StageLinkTTL is the lifetime of a stage link. Default 24 hours.
 	StageLinkTTL time.Duration
+	// AdminLinkTTL is how long the code of an admin link can be exchanged. Default 5 minutes.
+	AdminLinkTTL time.Duration
+	// AdminSessionTTL is the lifetime of the access token that an admin link gives. Default 1 hour.
+	AdminSessionTTL time.Duration
 	// PublicURL is the base URL of the server in stage links, for example
 	// "https://office.example.org:8740".
 	PublicURL string
@@ -59,6 +63,12 @@ type Caller = tokencheck.Caller
 
 // CallerFrom returns the caller that the Interceptor found for this call.
 func CallerFrom(ctx context.Context) (Caller, bool) { return tokencheck.CallerFrom(ctx) }
+
+// adminLink is the code of an admin link that has not been exchanged yet.
+type adminLink struct {
+	keyID   string
+	expires time.Time
+}
 
 type challenge struct {
 	keyID   string
@@ -98,7 +108,8 @@ type Service struct {
 	files      map[string][]byte // the files of the hub repository as written
 	keys       map[string]keyRef // by key ID
 	challenges map[string]challenge
-	tokens     map[[32]byte]*token // by SHA-256 of the token
+	adminLinks map[[32]byte]adminLink // by the hash of the code
+	tokens     map[[32]byte]*token    // by SHA-256 of the token
 	commands   map[string]command
 
 	stageProcedures map[string]bool
@@ -121,9 +132,15 @@ func New(ctx context.Context, opts Options) (*Service, error) {
 	if opts.StageLinkTTL <= 0 {
 		opts.StageLinkTTL = 24 * time.Hour
 	}
+	if opts.AdminLinkTTL <= 0 {
+		opts.AdminLinkTTL = 5 * time.Minute
+	}
+	if opts.AdminSessionTTL <= 0 {
+		opts.AdminSessionTTL = time.Hour
+	}
 	opts.PublicURL = strings.TrimSuffix(opts.PublicURL, "/")
 	s := &Service{opts: opts, st: newState(), files: map[string][]byte{}, keys: map[string]keyRef{},
-		challenges: map[string]challenge{}, tokens: map[[32]byte]*token{}, commands: map[string]command{},
+		challenges: map[string]challenge{}, adminLinks: map[[32]byte]adminLink{}, tokens: map[[32]byte]*token{}, commands: map[string]command{},
 		stageProcedures: map[string]bool{}}
 	for _, p := range opts.StageProcedures {
 		s.stageProcedures[p] = true
@@ -142,7 +159,7 @@ func precondition(msg string) error    { return connect.NewError(connect.CodeFai
 // tenantFree reports whether a call does not belong to a tenant: the public procedures, the user
 // API and the services that the wiring names in Options.TenantFreeServices.
 func (s *Service) tenantFree(procedure string) bool {
-	if publicProcedures[procedure] {
+	if publicProcedures[procedure] || procedure == identityv1connect.IdentityServiceCreateAdminLinkProcedure {
 		return true
 	}
 	for _, name := range append([]string{userv1connect.UserServiceName}, s.opts.TenantFreeServices...) {
@@ -157,6 +174,7 @@ func (s *Service) tenantFree(procedure string) bool {
 var publicProcedures = map[string]bool{
 	identityv1connect.IdentityServiceGetChallengeProcedure:      true,
 	identityv1connect.IdentityServiceExchangeChallengeProcedure: true,
+	identityv1connect.IdentityServiceExchangeAdminLinkProcedure: true,
 }
 
 // Interceptor is the token check for every call to the server. It reads the token from the
@@ -368,4 +386,57 @@ func callerKind(k identityv1.ActorKind) tokencheck.Kind {
 		return tokencheck.KindAgent
 	}
 	return tokencheck.KindUnknown
+}
+
+// CreateAdminLink implements the RPC. Only a system admin may call it.
+func (s *Service) CreateAdminLink(ctx context.Context, req *identityv1.CreateAdminLinkRequest) (*identityv1.CreateAdminLinkResponse, error) {
+	c, _ := CallerFrom(ctx)
+	if !c.SystemAdmin {
+		return nil, denied("only a system admin may create an admin link")
+	}
+	if req.GetCommandId() == "" {
+		return nil, invalid("command_id is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if prev, err := s.repeat(req.GetCommandId(), c.ParticipantID, req); err != nil {
+		return nil, err
+	} else if prev != nil {
+		return prev.(*identityv1.CreateAdminLinkResponse), nil
+	}
+	now := time.Now()
+	for h, l := range s.adminLinks {
+		if !now.Before(l.expires) {
+			delete(s.adminLinks, h)
+		}
+	}
+	b := make([]byte, 32)
+	_, _ = rand.Read(b)
+	code := "oal_" + base64.RawURLEncoding.EncodeToString(b)
+	exp := now.Add(s.opts.AdminLinkTTL)
+	s.adminLinks[sha256.Sum256([]byte(code))] = adminLink{keyID: c.KeyID, expires: exp}
+	res := &identityv1.CreateAdminLinkResponse{Url: s.opts.PublicURL + "/admin/login?code=" + code, ExpiresAt: timestamppb.New(exp)}
+	s.commands[req.GetCommandId()] = command{caller: c.ParticipantID, req: req, res: res}
+	return res, nil
+}
+
+// ExchangeAdminLink implements the RPC. The code works once.
+func (s *Service) ExchangeAdminLink(_ context.Context, req *identityv1.ExchangeAdminLinkRequest) (*identityv1.ExchangeAdminLinkResponse, error) {
+	if req.GetCode() == "" {
+		return nil, invalid("code is required")
+	}
+	h := sha256.Sum256([]byte(req.GetCode()))
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	l, ok := s.adminLinks[h]
+	delete(s.adminLinks, h)
+	if !ok || !time.Now().Before(l.expires) {
+		return nil, unauthenticated("the admin link is unknown, used or expired: ask for a new one")
+	}
+	k, _, ok := s.usable(l.keyID, time.Now())
+	if !ok {
+		return nil, unauthenticated("the key of the admin link is not valid any more")
+	}
+	tok, exp := s.newToken("oat_", l.keyID, "", "", s.opts.AdminSessionTTL)
+	return &identityv1.ExchangeAdminLinkResponse{AccessToken: tok, ExpiresAt: timestamppb.New(exp), ParticipantId: k.userID}, nil
 }

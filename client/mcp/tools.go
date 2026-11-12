@@ -192,13 +192,13 @@ func (s *Server) addTools(srv *sdk.Server) {
 			return c.UpdateMinutes(ctx, sid, text)
 		})
 
-	sessionTool(srv, s, tools.StageShow,
-		func(in tools.StageShowIn) string { return in.Session },
-		func(ctx context.Context, c coreapi.Client, sid string, in tools.StageShowIn) (*sessioncommandsv1.CommandResult, error) {
+	sessionTool(srv, s, tools.StageFocus,
+		func(in tools.StageFocusIn) string { return in.Session },
+		func(ctx context.Context, c coreapi.Client, sid string, in tools.StageFocusIn) (*sessioncommandsv1.CommandResult, error) {
 			if blank(in.ArtifactID) {
 				return nil, usagef("artifactId is required")
 			}
-			return c.ShowArtifact(ctx, sid, in.ArtifactID)
+			return c.FocusArtifact(ctx, sid, in.ArtifactID)
 		})
 
 	tool(srv, s, tools.StageLink,
@@ -254,6 +254,59 @@ func (s *Server) addTools(srv *sdk.Server) {
 			}
 			return map[string]any{"id": res.GetDeck().GetId(), "mediaType": res.GetDeck().GetMediaType(),
 				"duplicate": res.GetDuplicate()}, nil
+		})
+
+	documentResult := func(path, version string, dup bool) any {
+		return map[string]any{"path": path, "version": version, "duplicate": dup}
+	}
+	tool(srv, s, tools.DocumentCreate,
+		func(ctx context.Context, c coreapi.Client, in tools.DocumentIn) (any, error) {
+			if blank(in.Path) || blank(in.Content) {
+				return nil, usagef("path and content are required")
+			}
+			res, err := c.CreateDocument(ctx, in.Path, in.Content, in.Session)
+			if err != nil {
+				return nil, err
+			}
+			return documentResult(res.GetDocument().GetPath(), res.GetDocument().GetVersion(), res.GetDuplicate()), nil
+		})
+	tool(srv, s, tools.DocumentChange,
+		func(ctx context.Context, c coreapi.Client, in tools.DocumentIn) (any, error) {
+			if blank(in.Path) || blank(in.Content) || blank(in.BaseVersion) {
+				return nil, usagef("path, content and baseVersion are required")
+			}
+			res, err := c.ChangeDocument(ctx, in.Path, in.Content, in.BaseVersion, in.Session)
+			if err != nil {
+				return nil, err
+			}
+			return documentResult(res.GetDocument().GetPath(), res.GetDocument().GetVersion(), res.GetDuplicate()), nil
+		})
+	tool(srv, s, tools.DocumentGet,
+		func(ctx context.Context, c coreapi.Client, in tools.FileIn) (any, error) {
+			if blank(in.Path) {
+				return nil, usagef("path is required")
+			}
+			f, err := c.ReadFile(ctx, in.Path)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"path": f.GetPath(), "version": f.GetVersion(), "content": string(f.GetContent())}, nil
+		})
+	tool(srv, s, tools.DocumentList,
+		func(ctx context.Context, c coreapi.Client, in tools.FileIn) (any, error) {
+			dir := in.Path
+			if blank(dir) {
+				dir = "documents"
+			}
+			files, err := c.ListFiles(ctx, dir)
+			if err != nil {
+				return nil, err
+			}
+			list := make([]map[string]any, 0, len(files))
+			for _, f := range files {
+				list = append(list, map[string]any{"path": f.GetPath(), "version": f.GetVersion()})
+			}
+			return map[string]any{"files": list}, nil
 		})
 
 	tool(srv, s, tools.SlidesGet,

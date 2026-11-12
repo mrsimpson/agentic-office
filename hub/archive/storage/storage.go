@@ -27,7 +27,8 @@ import (
 // hub starts.
 type Archive interface {
 	// Commit writes the files of c and records them as one commit with the message of c. It
-	// returns the ID of the commit. A change that does not alter any file creates no commit and
+	// returns the ID of the commit. A change with a stale Base of a file fails with a *ConflictError and
+	// writes nothing. A change that does not alter any file creates no commit and
 	// returns the ID of the current commit. Commit fails if a path is not valid (see CheckPath).
 	// Commit may take a long time; callers that must not wait call it in the background and mark
 	// the change as Background.
@@ -81,10 +82,20 @@ func CheckTenantID(id string) error {
 type Change struct {
 	// Message describes the change. It must not be empty.
 	Message string
-	Files   []File
+	// Author is who made the change (dec-artifacts: the identity of the participant is passed
+	// through). Empty means the hub itself.
+	Author Author
+	Files  []File
 	// Background marks a change that no caller waits for, such as a write of session logs. A
 	// waiting Background change goes after every waiting change that is not Background.
 	Background bool
+}
+
+// Author names the person or agent behind a change. Both fields are required when an Author is
+// given.
+type Author struct {
+	Name  string
+	Email string
 }
 
 // File is the whole new content of one file.
@@ -92,6 +103,34 @@ type File struct {
 	// Path is relative to the root of the repository, with slashes (see CheckPath).
 	Path string
 	Data []byte
+	// Version identifies the content of the file (a Git object ID). Read sets it; Commit
+	// ignores it.
+	Version string
+	// Base is the version of the file that the author of a change read. Commit refuses the change
+	// with a *ConflictError when the file in the current commit has another version. NoFile
+	// means that the file must not exist yet. Empty means no check.
+	Base string
+}
+
+// NoFile is a Base that says the file must not exist yet.
+const NoFile = "none"
+
+// ConflictError is the error of a Commit whose Base of a file is not the version in the current
+// commit: another change came first. The author reads the file again and tries again.
+type ConflictError struct {
+	Path string
+	// Current is the version of the file in the current commit, or "" if the file does not exist.
+	Current string
+}
+
+func (e *ConflictError) Error() string {
+	return fmt.Sprintf("archive: %s has changed since it was read (current version %q)", e.Path, e.Current)
+}
+
+// IsConflict reports whether err is a *ConflictError.
+func IsConflict(err error) bool {
+	var c *ConflictError
+	return errors.As(err, &c)
 }
 
 // CheckPath reports whether p is a valid path of a file in the archive: relative, clean, with

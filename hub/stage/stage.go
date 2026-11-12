@@ -33,6 +33,9 @@ type StageLink struct {
 	// Slides loads the shown decks of the tenant of the link (artifact IDs "slides/<n>"). Nil
 	// means the stage shows a note instead.
 	Slides Slides
+	// Artifacts reads the artifacts of the tenant of the link by their path (if-archive-read). Nil
+	// means the stage shows a note instead.
+	Artifacts Artifacts
 }
 
 // Options configure a Handler.
@@ -212,7 +215,7 @@ func (h *Handler) events(w http.ResponseWriter, r *http.Request, sid, token stri
 	for {
 		select {
 		case ev := <-evs:
-			v.apply(ctx, ev, link.Slides)
+			v.apply(ev)
 			if !pending {
 				pending = true
 				timer.Reset(coalesce)
@@ -220,9 +223,11 @@ func (h *Handler) events(w http.ResponseWriter, r *http.Request, sid, token stri
 		case <-timer.C:
 			pending = false
 			v.live = true
+			v.refresh(ctx, link.Slides, link.Artifacts)
 			send()
 		case err := <-errc:
 			v.live = true
+			v.refresh(ctx, link.Slides, link.Artifacts)
 			switch {
 			case errors.Is(err, io.EOF):
 				// The stream ends after session.ended.

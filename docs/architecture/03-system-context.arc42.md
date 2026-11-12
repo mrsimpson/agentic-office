@@ -41,6 +41,7 @@ flowchart LR
     actor_human -->|if-local-log| bb_participant_client
     actor_human -->|if-stage-web| bb_office_hub
     actor_meeting_tool -->|if-stage-web| bb_office_hub
+    actor_system_admin -->|if-admin-web| bb_office_hub
     actor_system_admin -->|if-tenant-api| bb_office_hub
     actor_system_admin -->|if-user-api| bb_office_hub
     actor_tenant_admin -->|if-user-api| bb_office_hub
@@ -150,7 +151,7 @@ id: actor-system-admin
 title: System admin
 type: person
 description: Manages tenants, users and system admins of the whole hub
-requires: if-tenant-api, if-user-api
+requires: if-tenant-api, if-user-api, if-admin-web
 :::
 ```
 

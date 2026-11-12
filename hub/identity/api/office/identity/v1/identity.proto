@@ -25,6 +25,13 @@ service IdentityService {
   // CreateStageLink returns a read-only link to the stage of one session. Any participant may
   // create one. The token of the link only allows SessionStreamService.Subscribe for that session.
   rpc CreateStageLink(CreateStageLinkRequest) returns (CreateStageLinkResponse);
+  // CreateAdminLink creates a link that opens the admin web view (if-admin-web) for the system
+  // admin who calls. The link holds a code that works once and expires after a few minutes. Only
+  // a system admin may call it. It belongs to no tenant. It is idempotent by command_id.
+  rpc CreateAdminLink(CreateAdminLinkRequest) returns (CreateAdminLinkResponse);
+  // ExchangeAdminLink swaps the code of an admin link for an access token of the key that created
+  // the link. The code works once. It needs no token.
+  rpc ExchangeAdminLink(ExchangeAdminLinkRequest) returns (ExchangeAdminLinkResponse);
 }
 
 message GetChallengeRequest {
@@ -50,6 +57,26 @@ message ExchangeChallengeResponse {
   google.protobuf.Timestamp expires_at = 2;
   // participant_id is the identity the key belongs to. It is also the participant ID in every
   // session.
+  string participant_id = 3;
+}
+
+message CreateAdminLinkRequest {
+  string command_id = 1;
+}
+
+message CreateAdminLinkResponse {
+  // url has the form <server>/admin/login?code=<code>.
+  string url = 1;
+  google.protobuf.Timestamp expires_at = 2;
+}
+
+message ExchangeAdminLinkRequest {
+  string code = 1;
+}
+
+message ExchangeAdminLinkResponse {
+  string access_token = 1;
+  google.protobuf.Timestamp expires_at = 2;
   string participant_id = 3;
 }
 

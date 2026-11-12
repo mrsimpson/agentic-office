@@ -1164,7 +1164,7 @@ func (x *UpdateMinutesResponse) GetResult() *CommandResult {
 	return nil
 }
 
-type ShowArtifactRequest struct {
+type FocusArtifactRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
 	CommandId     string                 `protobuf:"bytes,2,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
@@ -1174,20 +1174,20 @@ type ShowArtifactRequest struct {
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ShowArtifactRequest) Reset() {
-	*x = ShowArtifactRequest{}
+func (x *FocusArtifactRequest) Reset() {
+	*x = FocusArtifactRequest{}
 	mi := &file_office_sessioncommands_v1_commands_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ShowArtifactRequest) String() string {
+func (x *FocusArtifactRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ShowArtifactRequest) ProtoMessage() {}
+func (*FocusArtifactRequest) ProtoMessage() {}
 
-func (x *ShowArtifactRequest) ProtoReflect() protoreflect.Message {
+func (x *FocusArtifactRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_office_sessioncommands_v1_commands_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -1199,60 +1199,60 @@ func (x *ShowArtifactRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ShowArtifactRequest.ProtoReflect.Descriptor instead.
-func (*ShowArtifactRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use FocusArtifactRequest.ProtoReflect.Descriptor instead.
+func (*FocusArtifactRequest) Descriptor() ([]byte, []int) {
 	return file_office_sessioncommands_v1_commands_proto_rawDescGZIP(), []int{19}
 }
 
-func (x *ShowArtifactRequest) GetSessionId() string {
+func (x *FocusArtifactRequest) GetSessionId() string {
 	if x != nil {
 		return x.SessionId
 	}
 	return ""
 }
 
-func (x *ShowArtifactRequest) GetCommandId() string {
+func (x *FocusArtifactRequest) GetCommandId() string {
 	if x != nil {
 		return x.CommandId
 	}
 	return ""
 }
 
-func (x *ShowArtifactRequest) GetParticipantId() string {
+func (x *FocusArtifactRequest) GetParticipantId() string {
 	if x != nil {
 		return x.ParticipantId
 	}
 	return ""
 }
 
-func (x *ShowArtifactRequest) GetArtifactId() string {
+func (x *FocusArtifactRequest) GetArtifactId() string {
 	if x != nil {
 		return x.ArtifactId
 	}
 	return ""
 }
 
-type ShowArtifactResponse struct {
+type FocusArtifactResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Result        *CommandResult         `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ShowArtifactResponse) Reset() {
-	*x = ShowArtifactResponse{}
+func (x *FocusArtifactResponse) Reset() {
+	*x = FocusArtifactResponse{}
 	mi := &file_office_sessioncommands_v1_commands_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ShowArtifactResponse) String() string {
+func (x *FocusArtifactResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ShowArtifactResponse) ProtoMessage() {}
+func (*FocusArtifactResponse) ProtoMessage() {}
 
-func (x *ShowArtifactResponse) ProtoReflect() protoreflect.Message {
+func (x *FocusArtifactResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_office_sessioncommands_v1_commands_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -1264,12 +1264,12 @@ func (x *ShowArtifactResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ShowArtifactResponse.ProtoReflect.Descriptor instead.
-func (*ShowArtifactResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use FocusArtifactResponse.ProtoReflect.Descriptor instead.
+func (*FocusArtifactResponse) Descriptor() ([]byte, []int) {
 	return file_office_sessioncommands_v1_commands_proto_rawDescGZIP(), []int{20}
 }
 
-func (x *ShowArtifactResponse) GetResult() *CommandResult {
+func (x *FocusArtifactResponse) GetResult() *CommandResult {
 	if x != nil {
 		return x.Result
 	}
@@ -2027,16 +2027,16 @@ const file_office_sessioncommands_v1_commands_proto_rawDesc = "" +
 	"\x0eparticipant_id\x18\x03 \x01(\tR\rparticipantId\x12\x12\n" +
 	"\x04text\x18\x04 \x01(\tR\x04text\"Y\n" +
 	"\x15UpdateMinutesResponse\x12@\n" +
-	"\x06result\x18\x01 \x01(\v2(.office.sessioncommands.v1.CommandResultR\x06result\"\x9b\x01\n" +
-	"\x13ShowArtifactRequest\x12\x1d\n" +
+	"\x06result\x18\x01 \x01(\v2(.office.sessioncommands.v1.CommandResultR\x06result\"\x9c\x01\n" +
+	"\x14FocusArtifactRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x02 \x01(\tR\tcommandId\x12%\n" +
 	"\x0eparticipant_id\x18\x03 \x01(\tR\rparticipantId\x12\x1f\n" +
 	"\vartifact_id\x18\x04 \x01(\tR\n" +
-	"artifactId\"X\n" +
-	"\x14ShowArtifactResponse\x12@\n" +
+	"artifactId\"Y\n" +
+	"\x15FocusArtifactResponse\x12@\n" +
 	"\x06result\x18\x01 \x01(\v2(.office.sessioncommands.v1.CommandResultR\x06result\"x\n" +
 	"\x11EndSessionRequest\x12\x1d\n" +
 	"\n" +
@@ -2086,7 +2086,7 @@ const file_office_sessioncommands_v1_commands_proto_rawDesc = "" +
 	"\ttree_head\x18\x04 \x01(\v2'.office.sessionstream.v1.SignedTreeHeadR\btreeHead\"t\n" +
 	"\x10OfferLogResponse\x12\x1a\n" +
 	"\baccepted\x18\x01 \x01(\bR\baccepted\x12D\n" +
-	"\ttree_head\x18\x02 \x01(\v2'.office.sessionstream.v1.SignedTreeHeadR\btreeHead2\xea\r\n" +
+	"\ttree_head\x18\x02 \x01(\v2'.office.sessionstream.v1.SignedTreeHeadR\btreeHead2\xed\r\n" +
 	"\x16SessionCommandsService\x12W\n" +
 	"\x04Join\x12&.office.sessioncommands.v1.JoinRequest\x1a'.office.sessioncommands.v1.JoinResponse\x12Z\n" +
 	"\x05Leave\x12'.office.sessioncommands.v1.LeaveRequest\x1a(.office.sessioncommands.v1.LeaveResponse\x12x\n" +
@@ -2096,8 +2096,8 @@ const file_office_sessioncommands_v1_commands_proto_rawDesc = "" +
 	"\x05Pause\x12'.office.sessioncommands.v1.PauseRequest\x1a(.office.sessioncommands.v1.PauseResponse\x12]\n" +
 	"\x06Resume\x12(.office.sessioncommands.v1.ResumeRequest\x1a).office.sessioncommands.v1.ResumeResponse\x12f\n" +
 	"\tRaiseHand\x12+.office.sessioncommands.v1.RaiseHandRequest\x1a,.office.sessioncommands.v1.RaiseHandResponse\x12r\n" +
-	"\rUpdateMinutes\x12/.office.sessioncommands.v1.UpdateMinutesRequest\x1a0.office.sessioncommands.v1.UpdateMinutesResponse\x12o\n" +
-	"\fShowArtifact\x12..office.sessioncommands.v1.ShowArtifactRequest\x1a/.office.sessioncommands.v1.ShowArtifactResponse\x12i\n" +
+	"\rUpdateMinutes\x12/.office.sessioncommands.v1.UpdateMinutesRequest\x1a0.office.sessioncommands.v1.UpdateMinutesResponse\x12r\n" +
+	"\rFocusArtifact\x12/.office.sessioncommands.v1.FocusArtifactRequest\x1a0.office.sessioncommands.v1.FocusArtifactResponse\x12i\n" +
 	"\n" +
 	"EndSession\x12,.office.sessioncommands.v1.EndSessionRequest\x1a-.office.sessioncommands.v1.EndSessionResponse\x12l\n" +
 	"\vGetTreeHead\x12-.office.sessioncommands.v1.GetTreeHeadRequest\x1a..office.sessioncommands.v1.GetTreeHeadResponse\x12\x84\x01\n" +
@@ -2139,8 +2139,8 @@ var file_office_sessioncommands_v1_commands_proto_goTypes = []any{
 	(*RaiseHandResponse)(nil),           // 16: office.sessioncommands.v1.RaiseHandResponse
 	(*UpdateMinutesRequest)(nil),        // 17: office.sessioncommands.v1.UpdateMinutesRequest
 	(*UpdateMinutesResponse)(nil),       // 18: office.sessioncommands.v1.UpdateMinutesResponse
-	(*ShowArtifactRequest)(nil),         // 19: office.sessioncommands.v1.ShowArtifactRequest
-	(*ShowArtifactResponse)(nil),        // 20: office.sessioncommands.v1.ShowArtifactResponse
+	(*FocusArtifactRequest)(nil),        // 19: office.sessioncommands.v1.FocusArtifactRequest
+	(*FocusArtifactResponse)(nil),       // 20: office.sessioncommands.v1.FocusArtifactResponse
 	(*EndSessionRequest)(nil),           // 21: office.sessioncommands.v1.EndSessionRequest
 	(*EndSessionResponse)(nil),          // 22: office.sessioncommands.v1.EndSessionResponse
 	(*GetTreeHeadRequest)(nil),          // 23: office.sessioncommands.v1.GetTreeHeadRequest
@@ -2179,7 +2179,7 @@ var file_office_sessioncommands_v1_commands_proto_depIdxs = []int32{
 	0,  // 13: office.sessioncommands.v1.ResumeResponse.result:type_name -> office.sessioncommands.v1.CommandResult
 	0,  // 14: office.sessioncommands.v1.RaiseHandResponse.result:type_name -> office.sessioncommands.v1.CommandResult
 	0,  // 15: office.sessioncommands.v1.UpdateMinutesResponse.result:type_name -> office.sessioncommands.v1.CommandResult
-	0,  // 16: office.sessioncommands.v1.ShowArtifactResponse.result:type_name -> office.sessioncommands.v1.CommandResult
+	0,  // 16: office.sessioncommands.v1.FocusArtifactResponse.result:type_name -> office.sessioncommands.v1.CommandResult
 	0,  // 17: office.sessioncommands.v1.EndSessionResponse.result:type_name -> office.sessioncommands.v1.CommandResult
 	40, // 18: office.sessioncommands.v1.GetTreeHeadResponse.tree_head:type_name -> office.sessionstream.v1.SignedTreeHead
 	33, // 19: office.sessioncommands.v1.OfferLogRequest.events:type_name -> office.sessionstream.v1.Event
@@ -2194,7 +2194,7 @@ var file_office_sessioncommands_v1_commands_proto_depIdxs = []int32{
 	13, // 28: office.sessioncommands.v1.SessionCommandsService.Resume:input_type -> office.sessioncommands.v1.ResumeRequest
 	15, // 29: office.sessioncommands.v1.SessionCommandsService.RaiseHand:input_type -> office.sessioncommands.v1.RaiseHandRequest
 	17, // 30: office.sessioncommands.v1.SessionCommandsService.UpdateMinutes:input_type -> office.sessioncommands.v1.UpdateMinutesRequest
-	19, // 31: office.sessioncommands.v1.SessionCommandsService.ShowArtifact:input_type -> office.sessioncommands.v1.ShowArtifactRequest
+	19, // 31: office.sessioncommands.v1.SessionCommandsService.FocusArtifact:input_type -> office.sessioncommands.v1.FocusArtifactRequest
 	21, // 32: office.sessioncommands.v1.SessionCommandsService.EndSession:input_type -> office.sessioncommands.v1.EndSessionRequest
 	23, // 33: office.sessioncommands.v1.SessionCommandsService.GetTreeHead:input_type -> office.sessioncommands.v1.GetTreeHeadRequest
 	25, // 34: office.sessioncommands.v1.SessionCommandsService.GetConsistencyProof:input_type -> office.sessioncommands.v1.GetConsistencyProofRequest
@@ -2210,7 +2210,7 @@ var file_office_sessioncommands_v1_commands_proto_depIdxs = []int32{
 	14, // 44: office.sessioncommands.v1.SessionCommandsService.Resume:output_type -> office.sessioncommands.v1.ResumeResponse
 	16, // 45: office.sessioncommands.v1.SessionCommandsService.RaiseHand:output_type -> office.sessioncommands.v1.RaiseHandResponse
 	18, // 46: office.sessioncommands.v1.SessionCommandsService.UpdateMinutes:output_type -> office.sessioncommands.v1.UpdateMinutesResponse
-	20, // 47: office.sessioncommands.v1.SessionCommandsService.ShowArtifact:output_type -> office.sessioncommands.v1.ShowArtifactResponse
+	20, // 47: office.sessioncommands.v1.SessionCommandsService.FocusArtifact:output_type -> office.sessioncommands.v1.FocusArtifactResponse
 	22, // 48: office.sessioncommands.v1.SessionCommandsService.EndSession:output_type -> office.sessioncommands.v1.EndSessionResponse
 	24, // 49: office.sessioncommands.v1.SessionCommandsService.GetTreeHead:output_type -> office.sessioncommands.v1.GetTreeHeadResponse
 	26, // 50: office.sessioncommands.v1.SessionCommandsService.GetConsistencyProof:output_type -> office.sessioncommands.v1.GetConsistencyProofResponse

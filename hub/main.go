@@ -54,7 +54,11 @@ import (
 	"connectrpc.com/connect/v2/connecthttp"
 	"connectrpc.com/connect/v2/connectinprocess"
 
+	"github.com/mrsimpson/agentic-office/hub/admin"
+	adminweb "github.com/mrsimpson/agentic-office/hub/admin/web"
 	"github.com/mrsimpson/agentic-office/hub/archive"
+	"github.com/mrsimpson/agentic-office/hub/archive/api/archivev1connect"
+	"github.com/mrsimpson/agentic-office/hub/documents/api/documentv1connect"
 	"github.com/mrsimpson/agentic-office/hub/identity"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/identityv1connect"
@@ -209,8 +213,12 @@ func main() {
 	notev1connect.RegisterNoteServiceHandler(cs, noteMux{rts})
 	taskv1connect.RegisterTaskServiceHandler(cs, taskMux{rts})
 	slidesv1connect.RegisterSlidesServiceHandler(cs, slidesMux{rts})
+	documentv1connect.RegisterDocumentServiceHandler(cs, documentMux{rts})
+	archivev1connect.RegisterArchiveReadServiceHandler(cs, archiveReadMux{rts})
 	mux := http.NewServeMux()
 	connecthttp.Mount(mux, cs)
+	// The admin view asks the identity part in-process, with the token of the admin.
+	mux.Handle(adminweb.PathPrefix, admin.New(admin.Options{Identity: connectinprocess.New(cs)}))
 	// The stage subscribes in-process through the token check, with the token of the link.
 	mux.Handle(web.PathPrefix, stage.New(stage.Options{
 		Session: connectinprocess.New(cs),
@@ -224,7 +232,7 @@ func main() {
 			if err != nil {
 				return stage.StageLink{}, err
 			}
-			return stage.StageLink{SessionID: c.StageSessionID, Slides: rt.slides}, nil
+			return stage.StageLink{SessionID: c.StageSessionID, Slides: rt.slides, Artifacts: rt.archiveRead}, nil
 		},
 	}))
 

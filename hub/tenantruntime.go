@@ -10,7 +10,9 @@ import (
 
 	"connectrpc.com/connect/v2"
 
+	"github.com/mrsimpson/agentic-office/hub/archive"
 	"github.com/mrsimpson/agentic-office/hub/archive/storage"
+	"github.com/mrsimpson/agentic-office/hub/documents"
 	"github.com/mrsimpson/agentic-office/hub/identity/tokencheck"
 	"github.com/mrsimpson/agentic-office/hub/records"
 	"github.com/mrsimpson/agentic-office/hub/session"
@@ -22,13 +24,17 @@ import (
 // decks. They know nothing about tenants. Each reads and writes the repository of the tenant only,
 // so the data of two tenants never meets (concept-multi-tenancy).
 type tenantRuntime struct {
-	id       string
-	records  *records.Service
-	tasks    *tasks.Service
-	slides   *slides.Service
-	sessions *session.Service
-	stop     context.CancelFunc
-	done     chan struct{}
+	id      string
+	records *records.Service
+	tasks   *tasks.Service
+	slides  *slides.Service
+	// documents and archiveRead are the text documents of the tenant and the read interface of its
+	// repository (dec-artifacts).
+	documents   *documents.Service
+	archiveRead *archive.ReadService
+	sessions    *session.Service
+	stop        context.CancelFunc
+	done        chan struct{}
 }
 
 // runtimes holds the runtime of every tenant that has been used, and opens one on first use.
@@ -73,6 +79,8 @@ func (r *runtimes) get(ctx context.Context, tenant string) (*tenantRuntime, erro
 	}
 	logf("%d decisions, %d minutes, %d notes, %d local drafts, %d decks", nd, nm, nn, rt.tasks.Count(), rt.slides.Count())
 	rt.sessions = session.New(session.NewMemoryStore(), session.TokenCheck(), rt.records, r.signingKey)
+	rt.documents = documents.New(arch, rt.sessions)
+	rt.archiveRead = archive.NewReadService(arch)
 	if err := rt.sessions.UseArchive(ctx, session.ArchiveOptions{Archive: arch, Interval: r.archiveInterval,
 		RestoreWait: r.restoreWait, Logf: logf}); err != nil {
 		return nil, err

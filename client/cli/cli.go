@@ -86,7 +86,7 @@ func init() {
 		"signal addressed":          cmdAddressed,
 		"hand raise":                cmdRaiseHand,
 		"minutes update":            cmdMinutes,
-		"stage show":                cmdStageShow,
+		"stage focus":               cmdStageFocus,
 		"stage link":                cmdStageLink,
 		"slides render":             cmdSlidesRender,
 		"slides get":                cmdSlidesGet,
@@ -104,6 +104,11 @@ func init() {
 		"mcp":                       cmdMCP,
 		"agent run":                 cmdAgentRun,
 		"config show":               cmdConfigShow,
+		"admin link":                cmdAdminLink,
+		"document create":           cmdDocumentCreate,
+		"document change":           cmdDocumentChange,
+		"document get":              cmdDocumentGet,
+		"document list":             cmdDocumentList,
 	}
 }
 

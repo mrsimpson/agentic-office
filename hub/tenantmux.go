@@ -7,6 +7,10 @@ package main
 import (
 	"context"
 
+	archivev1 "github.com/mrsimpson/agentic-office/hub/archive/api"
+	"github.com/mrsimpson/agentic-office/hub/archive/api/archivev1connect"
+	documentv1 "github.com/mrsimpson/agentic-office/hub/documents/api"
+	"github.com/mrsimpson/agentic-office/hub/documents/api/documentv1connect"
 	decisionv1 "github.com/mrsimpson/agentic-office/hub/records/decision/api"
 	"github.com/mrsimpson/agentic-office/hub/records/decision/api/decisionv1connect"
 	minutesv1 "github.com/mrsimpson/agentic-office/hub/records/minutes/api"
@@ -101,12 +105,12 @@ func (m commandsMux) UpdateMinutes(ctx context.Context, req *commandsapi.UpdateM
 	return rt.sessions.UpdateMinutes(ctx, req)
 }
 
-func (m commandsMux) ShowArtifact(ctx context.Context, req *commandsapi.ShowArtifactRequest) (*commandsapi.ShowArtifactResponse, error) {
+func (m commandsMux) FocusArtifact(ctx context.Context, req *commandsapi.FocusArtifactRequest) (*commandsapi.FocusArtifactResponse, error) {
 	rt, err := m.forCall(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return rt.sessions.ShowArtifact(ctx, req)
+	return rt.sessions.FocusArtifact(ctx, req)
 }
 
 func (m commandsMux) EndSession(ctx context.Context, req *commandsapi.EndSessionRequest) (*commandsapi.EndSessionResponse, error) {
@@ -283,6 +287,46 @@ func (m slidesMux) GetDeck(ctx context.Context, req *slidesv1.GetDeckRequest) (*
 		return nil, err
 	}
 	return rt.slides.GetDeck(ctx, req)
+}
+
+type documentMux struct{ *runtimes }
+
+var _ documentv1connect.DocumentServiceHandler = documentMux{}
+
+func (m documentMux) CreateDocument(ctx context.Context, req *documentv1.CreateDocumentRequest) (*documentv1.CreateDocumentResponse, error) {
+	rt, err := m.forCall(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return rt.documents.CreateDocument(ctx, req)
+}
+
+func (m documentMux) ChangeDocument(ctx context.Context, req *documentv1.ChangeDocumentRequest) (*documentv1.ChangeDocumentResponse, error) {
+	rt, err := m.forCall(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return rt.documents.ChangeDocument(ctx, req)
+}
+
+type archiveReadMux struct{ *runtimes }
+
+var _ archivev1connect.ArchiveReadServiceHandler = archiveReadMux{}
+
+func (m archiveReadMux) ReadFile(ctx context.Context, req *archivev1.ReadFileRequest) (*archivev1.ReadFileResponse, error) {
+	rt, err := m.forCall(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return rt.archiveRead.ReadFile(ctx, req)
+}
+
+func (m archiveReadMux) ListFiles(ctx context.Context, req *archivev1.ListFilesRequest) (*archivev1.ListFilesResponse, error) {
+	rt, err := m.forCall(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return rt.archiveRead.ListFiles(ctx, req)
 }
 
 type streamMux struct{ *runtimes }

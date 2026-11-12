@@ -13,6 +13,8 @@ modules:
   - path: hub/records/note/api
   - path: hub/tasks/api
   - path: hub/slides/api
+  - path: hub/archive/api
+  - path: hub/documents/api
 lint:
   use:
     - STANDARD

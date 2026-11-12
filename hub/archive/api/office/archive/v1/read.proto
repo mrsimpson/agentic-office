@@ -1,0 +1,54 @@
+// Archive read (if-archive-read): read artifacts from the archive by their path
+// (dec-artifacts).
+//
+// An artifact is a Markdown or YAML file in a directory of the repository. The version of a file
+// identifies its content: a change names the version that its author read, and the hub refuses
+// the change when the file has another version by then.
+//
+// Every call needs an access token of a participant (see identity.proto). A stage link cannot
+// use this interface: the stage reads inside the hub. Nothing under the session logs can be read,
+// because they hold the original of sentences that are off the record (dec-off-the-record).
+syntax = "proto3";
+
+package office.archive.v1;
+
+option go_package = "github.com/mrsimpson/agentic-office/hub/archive/api;archivev1";
+
+service ArchiveReadService {
+  // ReadFile returns one file. The path has a directory and ends in .md, .yaml or .yml. An
+  // unknown file fails with not_found. A path that cannot be read fails with invalid_argument.
+  rpc ReadFile(ReadFileRequest) returns (ReadFileResponse);
+  // ListFiles returns the files of a directory and its subdirectories, ordered by path, without
+  // their content. A directory without files gives an empty list.
+  rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
+}
+
+message ReadFileRequest {
+  // path is relative to the root of the repository, with slashes, for example "notes/plan.md".
+  string path = 1;
+}
+
+message ReadFileResponse {
+  File file = 1;
+}
+
+message ListFilesRequest {
+  // dir is a directory of the repository, for example "notes".
+  string dir = 1;
+}
+
+message ListFilesResponse {
+  repeated FileInfo files = 1;
+}
+
+message File {
+  string path = 1;
+  bytes content = 2;
+  // version identifies the content. Two reads of an unchanged file give the same version.
+  string version = 3;
+}
+
+message FileInfo {
+  string path = 1;
+  string version = 2;
+}

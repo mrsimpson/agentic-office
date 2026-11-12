@@ -275,7 +275,7 @@ func TestSessionCommandsAreIdempotent(t *testing.T) {
 	resume := &sessioncommandsv1.ResumeRequest{SessionId: sid, CommandId: cmd(), ParticipantId: ada}
 	hand := &sessioncommandsv1.RaiseHandRequest{SessionId: sid, CommandId: cmd(), ParticipantId: bot, Topic: "budget"}
 	minutes := &sessioncommandsv1.UpdateMinutesRequest{SessionId: sid, CommandId: cmd(), ParticipantId: bot, Text: "- budget"}
-	show := &sessioncommandsv1.ShowArtifactRequest{SessionId: sid, CommandId: cmd(), ParticipantId: bot, ArtifactId: "slides/42"}
+	show := &sessioncommandsv1.FocusArtifactRequest{SessionId: sid, CommandId: cmd(), ParticipantId: bot, ArtifactId: "slides/42"}
 	leave := &sessioncommandsv1.LeaveRequest{SessionId: sid, CommandId: cmd(), ParticipantId: bot}
 	end := &sessioncommandsv1.EndSessionRequest{SessionId: sid, CommandId: cmd(), ParticipantId: ada}
 
@@ -316,8 +316,8 @@ func TestSessionCommandsAreIdempotent(t *testing.T) {
 			r, err := m.s(minutes.GetParticipantId()).UpdateMinutes(ctx, minutes)
 			return r.GetResult(), err
 		}},
-		{"show artifact", events.ArtifactShown, func(ctx context.Context) (*sessioncommandsv1.CommandResult, error) {
-			r, err := m.s(show.GetParticipantId()).ShowArtifact(ctx, show)
+		{"show artifact", events.ArtifactFocused, func(ctx context.Context) (*sessioncommandsv1.CommandResult, error) {
+			r, err := m.s(show.GetParticipantId()).FocusArtifact(ctx, show)
 			return r.GetResult(), err
 		}},
 		{"leave", events.ParticipantLeft, func(ctx context.Context) (*sessioncommandsv1.CommandResult, error) {
@@ -386,7 +386,7 @@ func TestSessionRejectsInvalidCommands(t *testing.T) {
 	wantCode(t, "utterance without text", err, connect.CodeInvalidArgument)
 	_, err = s.RaiseHand(ctx, &sessioncommandsv1.RaiseHandRequest{SessionId: sid, CommandId: cmd()})
 	wantCode(t, "raise hand without participant_id", err, connect.CodeInvalidArgument)
-	_, err = s.ShowArtifact(ctx, &sessioncommandsv1.ShowArtifactRequest{SessionId: sid, CommandId: cmd(), ParticipantId: ada})
+	_, err = s.FocusArtifact(ctx, &sessioncommandsv1.FocusArtifactRequest{SessionId: sid, CommandId: cmd(), ParticipantId: ada})
 	wantCode(t, "show artifact without artifact_id", err, connect.CodeInvalidArgument)
 	_, err = s.SubmitSignal(ctx, &sessioncommandsv1.SubmitSignalRequest{SessionId: sid, CommandId: cmd(), ParticipantId: ada})
 	wantCode(t, "signal without signal", err, connect.CodeInvalidArgument)

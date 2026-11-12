@@ -66,9 +66,9 @@ const (
 	// SessionCommandsServiceUpdateMinutesProcedure is the procedure name of the
 	// SessionCommandsService's UpdateMinutes RPC.
 	SessionCommandsServiceUpdateMinutesProcedure = "/office.sessioncommands.v1.SessionCommandsService/UpdateMinutes"
-	// SessionCommandsServiceShowArtifactProcedure is the procedure name of the SessionCommandsService's
-	// ShowArtifact RPC.
-	SessionCommandsServiceShowArtifactProcedure = "/office.sessioncommands.v1.SessionCommandsService/ShowArtifact"
+	// SessionCommandsServiceFocusArtifactProcedure is the procedure name of the
+	// SessionCommandsService's FocusArtifact RPC.
+	SessionCommandsServiceFocusArtifactProcedure = "/office.sessioncommands.v1.SessionCommandsService/FocusArtifact"
 	// SessionCommandsServiceEndSessionProcedure is the procedure name of the SessionCommandsService's
 	// EndSession RPC.
 	SessionCommandsServiceEndSessionProcedure = "/office.sessioncommands.v1.SessionCommandsService/EndSession"
@@ -153,11 +153,11 @@ var (
 			Procedure:  SessionCommandsServiceUpdateMinutesProcedure,
 		}
 	})
-	sessionCommandsServiceShowArtifactSpec = sync.OnceValue(func() connect.Spec {
+	sessionCommandsServiceFocusArtifactSpec = sync.OnceValue(func() connect.Spec {
 		return connect.Spec{
 			StreamType: connect.StreamTypeUnary,
-			Schema:     commandsapi.File_office_sessioncommands_v1_commands_proto.Services().ByName("SessionCommandsService").Methods().ByName("ShowArtifact"),
-			Procedure:  SessionCommandsServiceShowArtifactProcedure,
+			Schema:     commandsapi.File_office_sessioncommands_v1_commands_proto.Services().ByName("SessionCommandsService").Methods().ByName("FocusArtifact"),
+			Procedure:  SessionCommandsServiceFocusArtifactProcedure,
 		}
 	})
 	sessionCommandsServiceEndSessionSpec = sync.OnceValue(func() connect.Spec {
@@ -221,7 +221,7 @@ type SessionCommandsServiceClient interface {
 	Resume(context.Context, *commandsapi.ResumeRequest) (*commandsapi.ResumeResponse, error)
 	RaiseHand(context.Context, *commandsapi.RaiseHandRequest) (*commandsapi.RaiseHandResponse, error)
 	UpdateMinutes(context.Context, *commandsapi.UpdateMinutesRequest) (*commandsapi.UpdateMinutesResponse, error)
-	ShowArtifact(context.Context, *commandsapi.ShowArtifactRequest) (*commandsapi.ShowArtifactResponse, error)
+	FocusArtifact(context.Context, *commandsapi.FocusArtifactRequest) (*commandsapi.FocusArtifactResponse, error)
 	EndSession(context.Context, *commandsapi.EndSessionRequest) (*commandsapi.EndSessionResponse, error)
 	// GetTreeHead returns the signed tree head of the session log (dec-merkle-log): for the current
 	// log, or for its first tree_size events.
@@ -273,7 +273,7 @@ type SessionCommandsServiceHandler interface {
 	Resume(context.Context, *commandsapi.ResumeRequest) (*commandsapi.ResumeResponse, error)
 	RaiseHand(context.Context, *commandsapi.RaiseHandRequest) (*commandsapi.RaiseHandResponse, error)
 	UpdateMinutes(context.Context, *commandsapi.UpdateMinutesRequest) (*commandsapi.UpdateMinutesResponse, error)
-	ShowArtifact(context.Context, *commandsapi.ShowArtifactRequest) (*commandsapi.ShowArtifactResponse, error)
+	FocusArtifact(context.Context, *commandsapi.FocusArtifactRequest) (*commandsapi.FocusArtifactResponse, error)
 	EndSession(context.Context, *commandsapi.EndSessionRequest) (*commandsapi.EndSessionResponse, error)
 	// GetTreeHead returns the signed tree head of the session log (dec-merkle-log): for the current
 	// log, or for its first tree_size events.
@@ -315,7 +315,7 @@ func RegisterSessionCommandsServiceHandler(server *connect.Server, svc SessionCo
 		connect.Method{Spec: sessionCommandsServiceResumeSpec(), Handler: adapter.resume},
 		connect.Method{Spec: sessionCommandsServiceRaiseHandSpec(), Handler: adapter.raiseHand},
 		connect.Method{Spec: sessionCommandsServiceUpdateMinutesSpec(), Handler: adapter.updateMinutes},
-		connect.Method{Spec: sessionCommandsServiceShowArtifactSpec(), Handler: adapter.showArtifact},
+		connect.Method{Spec: sessionCommandsServiceFocusArtifactSpec(), Handler: adapter.focusArtifact},
 		connect.Method{Spec: sessionCommandsServiceEndSessionSpec(), Handler: adapter.endSession},
 		connect.Method{Spec: sessionCommandsServiceGetTreeHeadSpec(), Handler: adapter.getTreeHead},
 		connect.Method{Spec: sessionCommandsServiceGetConsistencyProofSpec(), Handler: adapter.getConsistencyProof},
@@ -364,8 +364,8 @@ func (UnimplementedSessionCommandsServiceHandler) UpdateMinutes(context.Context,
 	return nil, connect.NewError(connect.CodeUnimplemented, "office.sessioncommands.v1.SessionCommandsService.UpdateMinutes is not implemented")
 }
 
-func (UnimplementedSessionCommandsServiceHandler) ShowArtifact(context.Context, *commandsapi.ShowArtifactRequest) (*commandsapi.ShowArtifactResponse, error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, "office.sessioncommands.v1.SessionCommandsService.ShowArtifact is not implemented")
+func (UnimplementedSessionCommandsServiceHandler) FocusArtifact(context.Context, *commandsapi.FocusArtifactRequest) (*commandsapi.FocusArtifactResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "office.sessioncommands.v1.SessionCommandsService.FocusArtifact is not implemented")
 }
 
 func (UnimplementedSessionCommandsServiceHandler) EndSession(context.Context, *commandsapi.EndSessionRequest) (*commandsapi.EndSessionResponse, error) {
@@ -468,9 +468,9 @@ func (c *sessionCommandsServiceClient) UpdateMinutes(ctx context.Context, req *c
 	return &res, nil
 }
 
-func (c *sessionCommandsServiceClient) ShowArtifact(ctx context.Context, req *commandsapi.ShowArtifactRequest) (*commandsapi.ShowArtifactResponse, error) {
-	var res commandsapi.ShowArtifactResponse
-	if err := c.client.CallUnary(ctx, sessionCommandsServiceShowArtifactSpec(), req, &res); err != nil {
+func (c *sessionCommandsServiceClient) FocusArtifact(ctx context.Context, req *commandsapi.FocusArtifactRequest) (*commandsapi.FocusArtifactResponse, error) {
+	var res commandsapi.FocusArtifactResponse
+	if err := c.client.CallUnary(ctx, sessionCommandsServiceFocusArtifactSpec(), req, &res); err != nil {
 		return nil, err
 	}
 	return &res, nil
@@ -634,12 +634,12 @@ func (h sessionCommandsServiceHandler) updateMinutes(ctx context.Context, _ conn
 	return stream.Send(res)
 }
 
-func (h sessionCommandsServiceHandler) showArtifact(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
-	var req commandsapi.ShowArtifactRequest
+func (h sessionCommandsServiceHandler) focusArtifact(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req commandsapi.FocusArtifactRequest
 	if err := stream.Receive(&req); err != nil {
 		return err
 	}
-	res, err := h.svc.ShowArtifact(ctx, &req)
+	res, err := h.svc.FocusArtifact(ctx, &req)
 	if err != nil {
 		return err
 	}

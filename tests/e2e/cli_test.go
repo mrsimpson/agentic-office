@@ -101,17 +101,17 @@ func TestTwoCLIParticipants(t *testing.T) {
 	}
 	deckID := office(bot, "slides", "render", deck)["id"].(string)
 	office(bot, "hand", "raise", "--topic", "budget")
-	office(bot, "stage", "show", deckID)
+	office(bot, "stage", "focus", deckID)
 	office(bot, "minutes", "update", "Ada asked for the budget. Bot showed slides/1.")
 	waitFor(adaLog, "hand.raised of bot", func(ev *sessionstreamv1.Event) bool {
 		return ev.GetType() == events.HandRaised && ev.GetHandRaised().GetParticipantId() == "bot"
 	})
 	// Ada reads the shown ID from her log and loads the slides.
-	shown := waitFor(adaLog, "artifact.shown", func(ev *sessionstreamv1.Event) bool { return ev.GetType() == events.ArtifactShown })
-	if shown.GetArtifactShown().GetArtifactId() != "slides/1" {
-		t.Fatalf("shown artifact %q, want slides/1", shown.GetArtifactShown().GetArtifactId())
+	shown := waitFor(adaLog, "artifact.focused", func(ev *sessionstreamv1.Event) bool { return ev.GetType() == events.ArtifactFocused })
+	if shown.GetArtifactFocused().GetArtifactId() != "slides/1" {
+		t.Fatalf("shown artifact %q, want slides/1", shown.GetArtifactFocused().GetArtifactId())
 	}
-	html, errOut, code := contracttest.Run(t, "office", ada, "slides", "get", shown.GetArtifactShown().GetArtifactId())
+	html, errOut, code := contracttest.Run(t, "office", ada, "slides", "get", shown.GetArtifactFocused().GetArtifactId())
 	if code != 0 || !strings.Contains(html, "<h2>Costs</h2>") || !strings.Contains(html, "<li>Rent: 4,000 EUR</li>") {
 		t.Fatalf("slides get: exit %d, %q, %q", code, html, errOut)
 	}
@@ -125,8 +125,11 @@ func TestTwoCLIParticipants(t *testing.T) {
 	// The stage of the session, opened with the link from the CLI, shows the slides, the raised
 	// hand and the minutes, and then the end of the session.
 	stage := openStage(t, srv, office(ada, "stage", "link")["url"].(string))
-	stage.waitFor(t, "slides, hand and minutes on the stage", `<iframe`, `data-artifact="slides/1"`,
-		`data-participant="bot"`, `Ada asked for the budget.`)
+	stage.waitFor(t, "slides, hand and the minutes as a tab on the stage", `<iframe`, `data-artifact="slides/1"`,
+		`data-participant="bot"`, `data-artifact="minutes"`)
+	// The minutes are an artifact: focusing them shows their text.
+	office(bot, "stage", "focus", "minutes")
+	stage.waitFor(t, "the minutes on the stage", `Ada asked for the budget.`)
 	office(ada, "meeting", "end")
 	stage.waitFor(t, "the end on the stage", `data-status="ended"`, "event: end")
 

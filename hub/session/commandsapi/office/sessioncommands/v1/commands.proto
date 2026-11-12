@@ -36,7 +36,7 @@ service SessionCommandsService {
   rpc Resume(ResumeRequest) returns (ResumeResponse);
   rpc RaiseHand(RaiseHandRequest) returns (RaiseHandResponse);
   rpc UpdateMinutes(UpdateMinutesRequest) returns (UpdateMinutesResponse);
-  rpc ShowArtifact(ShowArtifactRequest) returns (ShowArtifactResponse);
+  rpc FocusArtifact(FocusArtifactRequest) returns (FocusArtifactResponse);
   rpc EndSession(EndSessionRequest) returns (EndSessionResponse);
 
   // GetTreeHead returns the signed tree head of the session log (dec-merkle-log): for the current
@@ -179,14 +179,14 @@ message UpdateMinutesResponse {
   CommandResult result = 1;
 }
 
-message ShowArtifactRequest {
+message FocusArtifactRequest {
   string session_id = 1;
   string command_id = 2;
   string participant_id = 3;
   string artifact_id = 4;
 }
 
-message ShowArtifactResponse {
+message FocusArtifactResponse {
   CommandResult result = 1;
 }
 

@@ -22,6 +22,7 @@ import (
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 
+	documentv1 "github.com/mrsimpson/agentic-office/hub/documents/api"
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
 	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
@@ -357,7 +358,7 @@ func TestStagePageNeedsStageLink(t *testing.T) {
 		u.EscapedPath() != "/stage/"+url.PathEscape(m.sid)+"/events" {
 		t.Errorf("data-events %q does not point to the event stream of the session", events)
 	}
-	for _, id := range []string{"status", "origin", "participants", "hands", "artifact", "minutes", "utterances"} {
+	for _, id := range []string{"status", "origin", "participants", "artifacts", "artifact", "artifactlog", "utterances"} {
 		if len(findAll(doc, withAttr("id", id))) != 1 {
 			t.Errorf("page has no region #%s", id)
 		}
@@ -477,9 +478,22 @@ func TestStageShowsTheSession(t *testing.T) {
 		ParticipantId: bot, Topic: "budget <b>numbers</b>"}); err != nil {
 		t.Fatal(err)
 	}
-	n = st.wait("hands", "hand of the bot", func(n *html.Node) bool { return participantEl(n, bot) != nil })
-	if got := text(participantEl(n, bot)); !strings.Contains(got, "Minute Bot agent: budget <b>numbers</b>") {
+	n = st.wait("participants", "hand of the bot", func(n *html.Node) bool {
+		el := participantEl(n, bot)
+		if el == nil {
+			return false
+		}
+		_, up := attr(el, "data-hand")
+		return up
+	})
+	if got := text(participantEl(n, bot)); !strings.Contains(got, "budget <b>numbers</b>") {
 		t.Errorf("raised hand: %q", got)
+	}
+	if hand, _ := attr(participantEl(n, bot), "data-hand"); hand != "1" {
+		t.Errorf("the hand is number %q in the queue, want 1", hand)
+	}
+	if counter := findAll(n, withAttr("data-hands", "1")); len(counter) != 1 {
+		t.Errorf("no counter of raised hands: %q", text(n))
 	}
 	if len(findAll(n, byTag("b"))) != 0 {
 		t.Errorf("the topic became HTML")
@@ -487,7 +501,7 @@ func TestStageShowsTheSession(t *testing.T) {
 
 	// The shown artifact is embedded in a sandboxed iframe with the content of the artifact.
 	art := render(t, m.actors[bot], budgetDeck())
-	if _, err := m.s(bot).ShowArtifact(m.ctx(), &sessioncommandsv1.ShowArtifactRequest{SessionId: m.sid, CommandId: coreapi.NewCommandID(),
+	if _, err := m.s(bot).FocusArtifact(m.ctx(), &sessioncommandsv1.FocusArtifactRequest{SessionId: m.sid, CommandId: coreapi.NewCommandID(),
 		ParticipantId: bot, ArtifactId: art.GetId()}); err != nil {
 		t.Fatal(err)
 	}
@@ -508,7 +522,6 @@ func TestStageShowsTheSession(t *testing.T) {
 		ParticipantId: bot, Text: "# Minutes\n- Ada opened the meeting"}); err != nil {
 		t.Fatal(err)
 	}
-	st.wait("minutes", "the minutes", func(n *html.Node) bool { return strings.Contains(text(n), "# Minutes - Ada opened the meeting") })
 
 	// Utterances; a off the record one disappears.
 	m.say(ada, "Welcome everyone")
@@ -525,7 +538,14 @@ func TestStageShowsTheSession(t *testing.T) {
 
 	// When the bot speaks, its hand goes down; agent contributions are marked.
 	m.say(bot, "The budget is on the stage.")
-	st.wait("hands", "no raised hand", func(n *html.Node) bool { return participantEl(n, bot) == nil })
+	st.wait("participants", "no raised hand", func(n *html.Node) bool {
+		el := participantEl(n, bot)
+		if el == nil {
+			return false
+		}
+		_, up := attr(el, "data-hand")
+		return !up && len(findAll(n, withAttr("data-hands", ""))) == 0
+	})
 	st.wait("utterances", "the bot's contribution", func(n *html.Node) bool {
 		return strings.Contains(text(n), "Minute Bot agent: The budget is on the stage.")
 	})
@@ -534,7 +554,7 @@ func TestStageShowsTheSession(t *testing.T) {
 	}
 
 	// An unknown artifact gives a note.
-	if _, err := m.s(bot).ShowArtifact(m.ctx(), &sessioncommandsv1.ShowArtifactRequest{SessionId: m.sid, CommandId: coreapi.NewCommandID(),
+	if _, err := m.s(bot).FocusArtifact(m.ctx(), &sessioncommandsv1.FocusArtifactRequest{SessionId: m.sid, CommandId: coreapi.NewCommandID(),
 		ParticipantId: bot, ArtifactId: "slides/999"}); err != nil {
 		t.Fatal(err)
 	}
@@ -543,7 +563,7 @@ func TestStageShowsTheSession(t *testing.T) {
 		t.Errorf("no note for the unknown artifact: %q", text(n))
 	}
 	// An artifact ID of a type that the stage does not know gives a note too.
-	if _, err := m.s(bot).ShowArtifact(m.ctx(), &sessioncommandsv1.ShowArtifactRequest{SessionId: m.sid, CommandId: coreapi.NewCommandID(),
+	if _, err := m.s(bot).FocusArtifact(m.ctx(), &sessioncommandsv1.FocusArtifactRequest{SessionId: m.sid, CommandId: coreapi.NewCommandID(),
 		ParticipantId: bot, ArtifactId: "plans/1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -580,7 +600,11 @@ func TestStageShowsTheSession(t *testing.T) {
 	}
 	again := openStage(t, m.srv, m.link)
 	again.wait("status", "ended", hasStatus("ended"))
-	again.wait("minutes", "the minutes", func(n *html.Node) bool { return strings.Contains(text(n), "Ada opened the meeting") })
+	again.wait("artifacts", "the minutes as the first tab", func(n *html.Node) bool {
+		tabs := findAll(n, withAttr("data-artifact", ""))
+		first, _ := attr(tabs[0], "data-artifact")
+		return len(tabs) >= 2 && first == "minutes"
+	})
 	again.waitEnd()
 }
 
@@ -612,7 +636,7 @@ func TestStageShowsDeckAfterRestart(t *testing.T) {
 	m := newStageMeetingOn(t, srv)
 	st := openStage(t, m.srv, m.link)
 	bot := m.joinAs("Minute Bot", sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_AGENT, false)
-	if _, err := m.s(bot).ShowArtifact(m.ctx(), &sessioncommandsv1.ShowArtifactRequest{SessionId: m.sid, CommandId: coreapi.NewCommandID(),
+	if _, err := m.s(bot).FocusArtifact(m.ctx(), &sessioncommandsv1.FocusArtifactRequest{SessionId: m.sid, CommandId: coreapi.NewCommandID(),
 		ParticipantId: bot, ArtifactId: deck.GetId()}); err != nil {
 		t.Fatal(err)
 	}
@@ -620,4 +644,148 @@ func TestStageShowsDeckAfterRestart(t *testing.T) {
 	if srcdoc, _ := attr(findAll(n, byTag("iframe"))[0], "srcdoc"); srcdoc != string(deck.GetContent()) {
 		t.Error("the stage does not show the stored deck")
 	}
+}
+
+// TestStageShowsDocuments: a document in focus is read from the archive by its path and shown as
+// formatted text in a sandboxed frame. It shows a change, lists the artifacts of the session with
+// the focused one marked, and gives a note for a path that cannot be read. Raw HTML of the author
+// does not reach the page.
+func TestStageShowsDocuments(t *testing.T) {
+	m := newStageMeeting(t)
+	st := openStage(t, m.srv, m.link)
+	bot := m.joinAs("Minute Bot", sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_AGENT, false)
+	a := m.actors[bot]
+	focus := func(path string) {
+		t.Helper()
+		if _, err := a.Commands.FocusArtifact(m.ctx(), &sessioncommandsv1.FocusArtifactRequest{SessionId: m.sid,
+			CommandId: coreapi.NewCommandID(), ParticipantId: bot, ArtifactId: path}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	srcdoc := func(n *html.Node) string {
+		frames := findAll(n, byTag("iframe"))
+		if len(frames) != 1 {
+			return ""
+		}
+		s, _ := attr(frames[0], "srcdoc")
+		return s
+	}
+
+	res, err := a.Document.CreateDocument(m.ctx(), &documentv1.CreateDocumentRequest{Path: "documents/plan.md",
+		Content: "# Budget\n\nHire **two** people.\n\n<script>alert(1)</script>\n", CommandId: coreapi.NewCommandID(), SessionId: m.sid})
+	if err != nil {
+		t.Fatal(err)
+	}
+	focus("documents/plan.md")
+	n := st.wait("artifact", "the document as formatted text", func(n *html.Node) bool {
+		return strings.Contains(srcdoc(n), "<h1>Budget</h1>")
+	})
+	doc := srcdoc(n)
+	if !strings.Contains(doc, "<strong>two</strong>") || strings.Contains(doc, "<script") {
+		t.Errorf("rendered document:\n%s", doc)
+	}
+	frame := findAll(n, byTag("iframe"))[0]
+	if sandbox, ok := attr(frame, "sandbox"); !ok || sandbox != "" {
+		t.Errorf("the frame has sandbox %q (%v), want an empty sandbox", sandbox, ok)
+	}
+	if id, _ := attr(frame, "data-artifact"); id != "documents/plan.md" {
+		t.Errorf("frame names %q", id)
+	}
+
+	// A change of the document in focus appears without a new focus.
+	if _, err := a.Document.ChangeDocument(m.ctx(), &documentv1.ChangeDocumentRequest{Path: "documents/plan.md", Content: "# Budget 2\n",
+		BaseVersion: res.GetDocument().GetVersion(), CommandId: coreapi.NewCommandID(), SessionId: m.sid}); err != nil {
+		t.Fatal(err)
+	}
+	st.wait("artifact", "the changed document", func(n *html.Node) bool { return strings.Contains(srcdoc(n), "<h1>Budget 2</h1>") })
+
+	// Tabs: the minutes first, then the documents in the order of the log; the one in focus is selected.
+	focus("documents/notes.md")
+	st.wait("artifacts", "three tabs, notes selected", func(n *html.Node) bool {
+		tabs := findAll(n, withAttr("data-artifact", ""))
+		if len(tabs) != 3 {
+			return false
+		}
+		want := []string{"minutes", "documents/plan.md", "documents/notes.md"}
+		for i, tab := range tabs {
+			p, _ := attr(tab, "data-artifact")
+			sel, _ := attr(tab, "aria-selected")
+			if p != want[i] || (sel == "true") != (i == 2) {
+				return false
+			}
+		}
+		return true
+	})
+
+	// The artifact log names who did what, newest first.
+	st.wait("artifactlog", "the log of the artifacts", func(n *html.Node) bool {
+		items := findAll(n, withAttr("data-log", ""))
+		if len(items) < 4 {
+			return false
+		}
+		first := text(items[0])
+		return strings.Contains(first, "Minute Bot") && strings.Contains(first, "focused") && strings.Contains(first, "documents/notes.md")
+	})
+
+	// The session logs cannot be shown.
+	focus("sessions/x/log.yaml")
+	n = st.wait("artifact", "a note for a path that cannot be read", func(n *html.Node) bool {
+		return len(findAll(n, byTag("iframe"))) == 0 && len(findAll(n, withAttr("data-artifact", "sessions/x/log.yaml"))) == 1
+	})
+	if !strings.Contains(text(n), "cannot show") {
+		t.Errorf("note: %q", text(n))
+	}
+}
+
+// TestStageShowsMinutesInTheMiddle: while no artifact is in focus, the minutes take the middle of
+// the stage. Until there are minutes, a placeholder asks for an agent that takes them. When an
+// artifact gets the focus, the minutes move to the side.
+func TestStageShowsMinutesInTheMiddle(t *testing.T) {
+	m := newStageMeeting(t)
+	st := openStage(t, m.srv, m.link)
+	bot := m.joinAs("Minute Bot", sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_AGENT, false)
+
+	n := st.wait("artifact", "the placeholder", func(n *html.Node) bool {
+		return len(findAll(n, withAttr("data-placeholder", "minutes"))) == 1
+	})
+	if !strings.Contains(text(n), "Ask an agent to join") {
+		t.Errorf("placeholder: %q", text(n))
+	}
+
+	if _, err := m.s(bot).UpdateMinutes(m.ctx(), &sessioncommandsv1.UpdateMinutesRequest{SessionId: m.sid, CommandId: coreapi.NewCommandID(),
+		ParticipantId: bot, Text: "# Weekly\n\n- Ada opened <b>the</b> meeting\n"}); err != nil {
+		t.Fatal(err)
+	}
+	n = st.wait("artifact", "the minutes in the middle", func(n *html.Node) bool {
+		return len(findAll(n, withAttr("data-minutes", ""))) == 1 && len(findAll(n, withAttr("data-placeholder", ""))) == 0
+	})
+	if len(findAll(n, byTag("h1"))) != 1 || len(findAll(n, byTag("li"))) != 1 || len(findAll(n, byTag("b"))) != 0 {
+		t.Errorf("the minutes are not formatted text without raw HTML: %s", text(n))
+	}
+
+	// An artifact in focus takes the middle; the minutes go to the side.
+	if _, err := m.actors[bot].Document.CreateDocument(m.ctx(), &documentv1.CreateDocumentRequest{Path: "documents/a.md", Content: "# A\n",
+		CommandId: coreapi.NewCommandID(), SessionId: m.sid}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.s(bot).FocusArtifact(m.ctx(), &sessioncommandsv1.FocusArtifactRequest{SessionId: m.sid, CommandId: coreapi.NewCommandID(),
+		ParticipantId: bot, ArtifactId: "documents/a.md"}); err != nil {
+		t.Fatal(err)
+	}
+	st.wait("artifact", "the document", func(n *html.Node) bool { return len(findAll(n, byTag("iframe"))) == 1 })
+	// The minutes are the first tab. Focusing them shows them again.
+	n = st.wait("artifacts", "the minutes as the first tab, the document selected", func(n *html.Node) bool {
+		tabs := findAll(n, withAttr("data-artifact", ""))
+		if len(tabs) != 2 {
+			return false
+		}
+		first, _ := attr(tabs[0], "data-artifact")
+		sel, _ := attr(tabs[1], "aria-selected")
+		return first == "minutes" && sel == "true"
+	})
+	if _, err := m.s(bot).FocusArtifact(m.ctx(), &sessioncommandsv1.FocusArtifactRequest{SessionId: m.sid, CommandId: coreapi.NewCommandID(),
+		ParticipantId: bot, ArtifactId: "minutes"}); err != nil {
+		t.Fatal(err)
+	}
+	st.wait("artifact", "the minutes again", func(n *html.Node) bool { return len(findAll(n, withAttr("data-minutes", ""))) == 1 })
 }

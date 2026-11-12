@@ -65,7 +65,7 @@ Event levels (guide values, configurable per participant):
 | `turn.end` | Change of speaker, about 1.5–2 s of silence |
 | `silence.long` | More than 5 s of silence |
 | `addressed` | A participant's name is mentioned |
-| `hand.raised`, `minutes.updated`, `artifact.shown` | Actions of participants |
+| `hand.raised`, `minutes.updated`, `artifact.focused` | Actions of participants |
 | `participant.joined/left/paused`, `session.ended` | Life cycle |
 
 The ears of a speaker submit `turn.end` for their own participant when the silence after the last

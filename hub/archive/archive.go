@@ -135,6 +135,11 @@ func (r *Repo) run(ctx context.Context, args ...string) (string, error) {
 
 // runInput runs git in the repository with stdin and returns its standard output.
 func (r *Repo) runInput(ctx context.Context, stdin []byte, args ...string) ([]byte, error) {
+	return r.runEnv(ctx, stdin, nil, args...)
+}
+
+// runEnv is runInput with more environment variables; they come last and win.
+func (r *Repo) runEnv(ctx context.Context, stdin []byte, env []string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, r.git, args...)
 	if stdin != nil {
 		cmd.Stdin = bytes.NewReader(stdin)
@@ -146,6 +151,7 @@ func (r *Repo) runInput(ctx context.Context, stdin []byte, args ...string) ([]by
 		"GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_TERMINAL_PROMPT=0",
 		"GIT_AUTHOR_NAME=office-hub", "GIT_AUTHOR_EMAIL=office-hub@localhost",
 		"GIT_COMMITTER_NAME=office-hub", "GIT_COMMITTER_EMAIL=office-hub@localhost")
+	cmd.Env = append(cmd.Env, env...)
 	var out, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &stderr
 	if err := cmd.Run(); err != nil {
@@ -190,8 +196,14 @@ func (r *Repo) Commit(ctx context.Context, c storage.Change) (string, error) {
 		}
 		seen[f.Path] = true
 	}
+	if a := c.Author; a != (storage.Author{}) && (a.Name == "" || a.Email == "") {
+		return "", errors.New("archive: an author needs a name and an email")
+	}
 	r.turn.take(c.Background)
 	defer r.turn.give()
+	if err := r.checkBases(ctx, c.Files); err != nil {
+		return "", err
+	}
 	paths := make([]string, 0, len(c.Files))
 	for _, f := range c.Files {
 		if err := writeFile(filepath.Join(r.dir, filepath.FromSlash(f.Path)), f.Data); err != nil {
@@ -210,7 +222,11 @@ func (r *Repo) Commit(ctx context.Context, c storage.Change) (string, error) {
 	} else if exitCode(err) != 1 {
 		return "", err
 	}
-	if _, err := r.run(ctx, "commit", "-q", "--no-verify", "-m", c.Message); err != nil {
+	var env []string
+	if a := c.Author; a != (storage.Author{}) {
+		env = []string{"GIT_AUTHOR_NAME=" + a.Name, "GIT_AUTHOR_EMAIL=" + a.Email}
+	}
+	if _, err := r.runEnv(ctx, nil, env, "commit", "-q", "--no-verify", "-m", c.Message); err != nil {
 		return "", err
 	}
 	id, err := r.head(ctx)
@@ -221,6 +237,24 @@ func (r *Repo) Commit(ctx context.Context, c storage.Change) (string, error) {
 		r.logf("archive: push of %s failed, the next push takes it along: %v", id, err)
 	}
 	return id, nil
+}
+
+// checkBases compares the Base of every file with its version in the current commit.
+func (r *Repo) checkBases(ctx context.Context, files []storage.File) error {
+	for _, f := range files {
+		if f.Base == "" {
+			continue
+		}
+		out, err := r.run(ctx, "rev-parse", "--verify", "-q", "HEAD:"+f.Path)
+		if err != nil && exitCode(err) != 1 && exitCode(err) != 128 {
+			return err
+		}
+		cur := strings.TrimSpace(out)
+		if (f.Base == storage.NoFile && cur != "") || (f.Base != storage.NoFile && f.Base != cur) {
+			return &storage.ConflictError{Path: f.Path, Current: cur}
+		}
+	}
+	return nil
 }
 
 // List implements storage.Archive.
@@ -271,7 +305,7 @@ func (r *Repo) Read(ctx context.Context, dir string) ([]storage.File, error) {
 		if len(f) != 3 || f[1] != "blob" {
 			continue
 		}
-		files = append(files, storage.File{Path: p})
+		files = append(files, storage.File{Path: p, Version: f[2]})
 		objects.WriteString(f[2] + "\n")
 	}
 	if len(files) == 0 {

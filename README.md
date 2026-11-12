@@ -141,6 +141,10 @@ hub/                      bb-office-hub: wiring of the hub (binary office-hub)
     api/                  if-task-api: contract and generated code
   slides/                 bb-slides: slide decks, input as YAML and output as HTML in the archive
     api/                  if-slides-api: contract and generated code
+  documents/              bb-documents: text documents as Markdown files in the archive
+    api/                  if-document-api: contract and generated code
+  admin/                  bb-admin: the admin view, rendered on the server
+    web/                  if-admin-web: addresses, pages and design of the admin view
   stage/                  bb-stage: renders the stage from the session stream
     web/                  if-stage-web: addresses, page, regions and event stream of the stage
 client/                   bb-participant-client: wiring of the client (binary office)
@@ -185,6 +189,8 @@ All interfaces are defined in Protobuf and served with Connect RPC (`dec-connect
 | Notes | `office.note.v1.NoteService` | unary |
 | Tasks | `office.task.v1.TaskService` | unary |
 | Slides | `office.slides.v1.SlidesService` | unary |
+| Documents | `office.document.v1.DocumentService` | unary |
+| Archive read | `office.archive.v1.ArchiveReadService` | unary |
 
 Rules that hold for all of them:
 
@@ -524,6 +530,58 @@ command_ids:
 Like the records, a task write waits for its commit. It goes before a waiting session write, so
 it waits at most for the one session write that is in progress (see [Archive](#archive)).
 
+### Admin view
+
+The admin view (`hub/admin`, `/admin/`) is a web page for the admins of the hub. It has the design
+of the stage, in dark and light, and no scripts (`dec-admin-web`). Today it shows the users with
+their keys, the tenants and the system admins (read only), and it creates users and adds and revokes
+keys. Only a system admin gets a link.
+
+```sh
+office admin link   # prints a link; it works once and expires after a few minutes
+```
+
+Open the link in a browser. The view swaps its code for an access token of your admin key, keeps it
+in a cookie that scripts cannot read (`office_admin`, one hour), and sends you to the list of keys.
+Every page asks the identity part with this token, so the view has exactly your rights. A used or
+expired link gives an error page. The pages are `/admin/keys`, `/admin/tenants` and
+`/admin/admins`.
+
+- **Register a key:** `Register key` opens a form with the user ID, the display name (needed for a
+  new user), the kind and the base64 public key that `office key show` prints. It calls
+  `CreateUser` for a new user and `AddKey` for a known one; a refusal shows its message on the
+  form, which keeps what you typed.
+- **Revoke a key:** `Revoke` next to a key opens a page that asks you to confirm. It calls
+  `RevokeKey`. A user keeps at least one key that works: the last key cannot be revoked.
+- Every form carries a token that is derived from your session, and the view refuses a post whose
+  `Origin` is another server. `office.identity.v1.IdentityService` has the calls behind the link:
+`CreateAdminLink` (only for a system admin, no tenant) and `ExchangeAdminLink` (needs no token).
+
+### Documents
+
+The documents part (`hub/documents`, `office.document.v1.DocumentService`) creates and changes
+text documents (`dec-artifacts`). The package comment in `hub/documents/doc.go` has the details. In
+short:
+
+- A document is a Markdown file `documents/<name>.md` in the archive. Its path is its identity.
+  Nothing else is a document: the hub refuses other paths and content over 1 MiB.
+- `CreateDocument` fails with `already_exists` when the path is taken. `ChangeDocument` needs the
+  `base_version` that the author read. When another change came first, it fails with `aborted` and
+  the message names the current version: read again and redo the change. Of two changes with the
+  same base, the first one wins.
+- The version is the Git object ID of the content. `office.archive.v1.ArchiveReadService` reads a
+  file (`ReadFile`) or lists a directory (`ListFiles`) with the versions. It reads Markdown and
+  YAML files only and never anything under `sessions/`, because the session logs hold the
+  original of sentences that are off the record. A stage link cannot call it; the stage reads
+  inside the hub, and only the paths that its session names.
+- The archive records the caller as the author of the commit.
+- A call may name a session (`--session`). The hub then appends `artifact.created` or
+  `artifact.changed` to its log. The caller must have joined the session.
+- A sentence that is off the record must not go into a document. The hub does not check this.
+
+The stage shows the artifact in focus (`stage focus documents/plan.md`) as formatted text and
+lists all artifacts that the log of the session names.
+
 ### Slides
 
 The slides part (`hub/slides`, `office.slides.v1.SlidesService`) renders slide decks and keeps
@@ -543,8 +601,9 @@ them. The package comment in `hub/slides/doc.go` has the details. In short:
 - `GetDeck` fetches a deck with its input and output by ID; an unknown ID fails with
   `not_found`. Any participant can fetch every deck. A stage link cannot use the slides
   interface: the stage renders on the hub.
-- **Artifact** is the general word for what the stage shows: `stage show` takes an ID with its
-  type in front. Today `slides/<n>` is the only type. The meeting session does not check that a
+- **Artifact** is the general word for what the stage shows: `stage focus` takes the ID of a deck, the
+  path of a document (see [Documents](#documents)) or `minutes`, the running minutes of the
+  session. The minutes are the first tab and in focus until another artifact gets the focus. The meeting session does not check that a
   shown artifact exists; the stage shows a note for an unknown ID.
 
 Every deck is two files in the archive, written in one commit: `slides/000001.yaml` holds the
@@ -895,7 +954,7 @@ LOG=$(office meeting join weekly)  # returns at once and prints the path of the 
 tail -f "$LOG" | grep --line-buffered '"type":"turn.end"\|"type":"addressed"'
 office say "I can summarize that."
 office hand raise --topic budget
-office stage show slides/42
+office stage focus slides/42
 office minutes update --file minutes.md
 office meeting leave               # or: office meeting end (for everyone)
 ```
@@ -940,11 +999,21 @@ session; `task update` changes the session only with an explicit `--session`. Wi
 `"duplicate"`), and `task list` prints `{"tasks": […], "nextPageToken": …}`. Without `--json`,
 `task list` prints the token of the next page on stderr.
 
+**Documents:**
+
+```sh
+V=$(office document create documents/plan.md --file plan.md --session weekly)   # prints the version
+office document get documents/plan.md                  # the content; --json adds the version
+office document change documents/plan.md --base "$V" --file plan.md   # "aborted" if it changed
+office document list                                    # the files of documents/
+office stage focus documents/plan.md
+```
+
 **Slides:**
 
 ```sh
 ID=$(office slides render deck.md)   # prints the deck ID, for example slides/42
-office stage show "$ID"
+office stage focus "$ID"
 office slides get "$ID" --out deck.html
 office slides get "$ID" --json      # {"deck": …}: the input and the output (content in base64)
 ```
@@ -1269,7 +1338,7 @@ tool names.
 | `signal_turn_end`, `signal_silence_long`, `signal_addressed` | `signal …` |
 | `hand_raise` (topic) | `hand raise` |
 | `minutes_update` (text or file) | `minutes update` |
-| `stage_show` (artifactId), `stage_link` | `stage show`, `stage link` |
+| `stage_focus` (artifactId), `stage_link` | `stage focus`, `stage link` |
 | `slides_render` (title and slides, markdown, or file) | `slides render` |
 | `slides_get` (id, out) | `slides get` |
 | `decision_record` (text, session), `decision_list` (afterId, limit, session) | `decision record`, `decision list` |

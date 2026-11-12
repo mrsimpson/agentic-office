@@ -144,13 +144,13 @@ func cmdMinutes(e *env, fs *flag.FlagSet) func([]string) error {
 	}
 }
 
-func cmdStageShow(e *env, fs *flag.FlagSet) func([]string) error {
+func cmdStageFocus(e *env, fs *flag.FlagSet) func([]string) error {
 	return func(args []string) error {
 		if len(args) != 1 {
-			return usagef("usage: office stage show <artifact-id>")
+			return usagef("usage: office stage focus <artifact-id>")
 		}
 		return e.sessionCommand(func(c coreapi.Client, sid string) (*sessioncommandsv1.CommandResult, error) {
-			return c.ShowArtifact(e.ctx, sid, args[0])
+			return c.FocusArtifact(e.ctx, sid, args[0])
 		})
 	}
 }
@@ -483,6 +483,156 @@ func cmdEvents(e *env, fs *flag.FlagSet) func([]string) error {
 		}
 		if more {
 			fmt.Fprintln(e.stderr, "more events: read again with --after", evs[len(evs)-1].GetId())
+		}
+		return nil
+	}
+}
+
+// Documents (if-document-api). The text is the positional text after the path, or --file.
+
+func cmdDocumentCreate(e *env, fs *flag.FlagSet) func([]string) error {
+	file := fs.String("file", "", "read the content from this file (- for stdin)")
+	return func(args []string) error {
+		if len(args) < 1 {
+			return usagef("usage: office document create <path> <text> | --file F")
+		}
+		text, err := e.readText(args[1:], *file)
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(text) == "" {
+			return usagef("usage: office document create <path> <text> | --file F")
+		}
+		c, err := e.client()
+		if err != nil {
+			return err
+		}
+		res, err := c.CreateDocument(e.ctx, args[0], text, e.session)
+		if err != nil {
+			return err
+		}
+		return e.printDocument(res.GetDocument().GetPath(), res.GetDocument().GetVersion(), res.GetDuplicate())
+	}
+}
+
+func cmdDocumentChange(e *env, fs *flag.FlagSet) func([]string) error {
+	file := fs.String("file", "", "read the content from this file (- for stdin)")
+	base := fs.String("base", "", "the version of the document that you read (required)")
+	return func(args []string) error {
+		if len(args) < 1 || *base == "" {
+			return usagef("usage: office document change <path> --base VERSION <text> | --file F")
+		}
+		text, err := e.readText(args[1:], *file)
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(text) == "" {
+			return usagef("usage: office document change <path> --base VERSION <text> | --file F")
+		}
+		c, err := e.client()
+		if err != nil {
+			return err
+		}
+		res, err := c.ChangeDocument(e.ctx, args[0], text, *base, e.session)
+		if err != nil {
+			return err
+		}
+		return e.printDocument(res.GetDocument().GetPath(), res.GetDocument().GetVersion(), res.GetDuplicate())
+	}
+}
+
+// printDocument prints the result of a create or a change: the version, or JSON.
+func (e *env) printDocument(path, version string, duplicate bool) error {
+	if e.json {
+		e.printJSON(map[string]any{"path": path, "version": version, "duplicate": duplicate})
+	} else {
+		fmt.Fprintln(e.stdout, version)
+	}
+	return nil
+}
+
+func cmdDocumentGet(e *env, fs *flag.FlagSet) func([]string) error {
+	out := fs.String("out", "", "write the content to this file (default: stdout)")
+	return func(args []string) error {
+		if len(args) != 1 {
+			return usagef("usage: office document get <path> [--out FILE]")
+		}
+		c, err := e.client()
+		if err != nil {
+			return err
+		}
+		f, err := c.ReadFile(e.ctx, args[0])
+		if err != nil {
+			return err
+		}
+		switch {
+		case *out != "":
+			if err := os.WriteFile(*out, f.GetContent(), 0o600); err != nil {
+				return err
+			}
+			if e.json {
+				e.printJSON(map[string]any{"path": f.GetPath(), "version": f.GetVersion(), "file": *out})
+			}
+		case e.json:
+			e.printJSON(map[string]any{"path": f.GetPath(), "version": f.GetVersion(), "content": string(f.GetContent())})
+		default:
+			_, err = e.stdout.Write(f.GetContent())
+			return err
+		}
+		return nil
+	}
+}
+
+func cmdDocumentList(e *env, fs *flag.FlagSet) func([]string) error {
+	return func(args []string) error {
+		dir := "documents"
+		switch len(args) {
+		case 1:
+			dir = args[0]
+		case 0:
+		default:
+			return usagef("usage: office document list [<dir>]")
+		}
+		c, err := e.client()
+		if err != nil {
+			return err
+		}
+		files, err := c.ListFiles(e.ctx, dir)
+		if err != nil {
+			return err
+		}
+		if e.json {
+			list := make([]map[string]any, 0, len(files))
+			for _, f := range files {
+				list = append(list, map[string]any{"path": f.GetPath(), "version": f.GetVersion()})
+			}
+			e.printJSON(map[string]any{"files": list})
+			return nil
+		}
+		for _, f := range files {
+			fmt.Fprintf(e.stdout, "%s\t%s\n", f.GetPath(), f.GetVersion())
+		}
+		return nil
+	}
+}
+
+func cmdAdminLink(e *env, fs *flag.FlagSet) func([]string) error {
+	return func(args []string) error {
+		if err := noArgs(args); err != nil {
+			return err
+		}
+		c, err := e.client()
+		if err != nil {
+			return err
+		}
+		res, err := c.CreateAdminLink(e.ctx)
+		if err != nil {
+			return err
+		}
+		if e.json {
+			e.printJSON(map[string]any{"url": res.GetUrl(), "expiresAt": res.GetExpiresAt().AsTime().Format(time.RFC3339)})
+		} else {
+			fmt.Fprintln(e.stdout, res.GetUrl())
 		}
 		return nil
 	}

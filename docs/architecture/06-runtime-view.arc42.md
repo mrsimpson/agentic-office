@@ -182,10 +182,90 @@ sequenceDiagram
     bb_cli->>bb_session: hand.raise
     bb_session-->>bb_stage: hand.raised
     Note over bb_session: the moderator gives the floor, event addressed
-    actor_agent->>bb_cli: office stage show slides/42
-    bb_cli->>bb_session: stage.show
-    bb_session-->>bb_stage: artifact.shown
+    actor_agent->>bb_cli: office stage focus slides/42
+    bb_cli->>bb_session: stage.focus
+    bb_session-->>bb_stage: artifact.focused
     bb_stage->>bb_slides: load deck slides/42
+```
+
+## Participant changes a document in a session
+
+A participant reads a document from the archive, changes it and sends the change with the version
+that they read and the ID of the session. The documents part writes one commit with the participant
+as author and tells the meeting session, which appends `artifact.changed`. When another change
+came first, the documents part refuses the change and gives the current version, and the participant
+reads again.
+
+```arc42
+:::runtime-scenario
+id: rs-document-change
+title: Participant changes a document in a session
+trigger: A participant sends a change of a document with the version they read
+involves: bb-documents, bb-archive, bb-session-service, bb-stage, bb-office-hub
+:::
+```
+
+```arc42
+:::diagram
+id: seq-document-change
+notation: mermaid-sequence
+scenario: rs-document-change
+aliases: bb_documents=bb-documents, bb_archive=bb-archive, bb_session=bb-session-service, bb_stage=bb-stage
+:::
+```
+
+```mermaid
+sequenceDiagram
+    participant bb_documents as Documents
+    participant bb_archive as Archive
+    participant bb_session as Meeting session
+    participant bb_stage as Stage
+    Note over bb_documents: change with base version and session ID
+    bb_documents->>bb_archive: commit, refused if the base is stale
+    bb_documents->>bb_session: artifact notice
+    bb_session-->>bb_stage: artifact.changed
+    bb_stage->>bb_archive: read the document by its path
+```
+
+## Admin opens the admin view
+
+An admin asks for a link with the CLI. The identity part creates a code that works once and returns
+the link. The admin opens it in a browser. The admin view swaps the code for an access token of the
+admin key, keeps it in a cookie and shows the page. Every page then asks the identity part with this
+token. A used, expired or unknown code gives an error page.
+
+```arc42
+:::runtime-scenario
+id: rs-admin-opens-view
+title: Admin opens the admin view
+trigger: An admin asks for an admin link
+involves: bb-cli, bb-client-core, bb-identity, bb-admin, bb-participant-client, bb-office-hub
+:::
+```
+
+```arc42
+:::diagram
+id: seq-admin-opens-view
+notation: mermaid-sequence
+scenario: rs-admin-opens-view
+aliases: actor_system_admin=actor-system-admin, bb_cli=bb-cli, bb_identity=bb-identity, bb_admin=bb-admin
+:::
+```
+
+```mermaid
+sequenceDiagram
+    participant actor_system_admin as System admin
+    participant bb_cli as office CLI
+    participant bb_identity as Identity
+    participant bb_admin as Admin view
+    actor_system_admin->>bb_cli: office admin link
+    bb_cli->>bb_identity: create admin link
+    bb_identity-->>bb_cli: link with a code that works once
+    actor_system_admin->>bb_admin: opens the link in a browser
+    bb_admin->>bb_identity: exchange the code
+    bb_identity-->>bb_admin: access token of the admin key
+    bb_admin->>bb_identity: list keys, with the token
+    bb_admin-->>actor_system_admin: page with the users and their keys
 ```
 
 ## Human marks a sentence off the record

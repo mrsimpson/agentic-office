@@ -160,7 +160,7 @@ func mcpJoined(t *testing.T, v map[string]any) (logPath, pid string, replicatorP
 // The tools of if-mcp. Names use "_" instead of "." (see README.md).
 var mcpTools = []string{"meeting_join", "meeting_log", "meeting_leave", "meeting_pause", "meeting_resume", "meeting_end",
 	"utterance_say", "utterance_off_the_record", "signal_turn_end", "signal_silence_long", "signal_addressed", "hand_raise",
-	"minutes_update", "stage_show", "stage_link", "slides_render", "slides_get", "decision_record", "decision_list", "minutes_get", "minutes_list", "note_add", "note_list",
+	"minutes_update", "stage_focus", "stage_link", "slides_render", "slides_get", "document_create", "document_change", "document_get", "document_list", "decision_record", "decision_list", "minutes_get", "minutes_list", "note_add", "note_list",
 	"task_create", "task_get", "task_list", "task_update", "session_import", "whoami"}
 
 // TestMCPToolsDescribeTheLog: the server offers every tool, and tells an agent how to follow
@@ -268,7 +268,7 @@ func TestMCPJoinAndCommands(t *testing.T) {
 	if ev.GetMinutesUpdated().GetText() != "line 1\nline 2\n" {
 		t.Fatalf("minutes from a file: %q", ev.GetMinutesUpdated().GetText())
 	}
-	do(events.ArtifactShown, "stage_show", map[string]any{"artifactId": "slides/42"})
+	do(events.ArtifactFocused, "stage_focus", map[string]any{"artifactId": "slides/42"})
 	do(events.ParticipantPaused, "meeting_pause", nil)
 	do(events.ParticipantResumed, "meeting_resume", nil)
 	do(events.TurnEnd, "signal_turn_end", map[string]any{"participant": "ada"})
@@ -483,7 +483,7 @@ func TestMCPErrors(t *testing.T) {
 		{"signal_addressed", map[string]any{"participant": "ada"}},
 		{"minutes_update", nil},
 		{"minutes_update", map[string]any{"text": "a", "file": "b"}},
-		{"stage_show", map[string]any{"artifactId": ""}},
+		{"stage_focus", map[string]any{"artifactId": ""}},
 		{"slides_render", nil},
 		{"slides_render", map[string]any{"markdown": "# t\n## s", "slides": []any{map[string]any{"title": "x"}}}},
 		{"slides_render", map[string]any{"markdown": "text before any slide"}},
@@ -758,4 +758,35 @@ func TestMCPTasks(t *testing.T) {
 	s.fails("not_found", "task_update", map[string]any{"ref": "github:owner/repo#1", "status": "done"})
 	s.fails("invalid_argument", "task_update", map[string]any{"ref": ref1, "title": " "})
 	s.fails("invalid_argument", "task_list", map[string]any{"pageToken": "bad"})
+}
+
+// TestMCPDocuments: document_create, document_change, document_get and document_list against the
+// real hub. A stale base version fails with aborted and says the current version.
+func TestMCPDocuments(t *testing.T) {
+	m := newMachine(t)
+	bot := m.user("bot", "Bot", "agent")
+	s := startMCP(t, bot)
+	v := s.ok("document_create", map[string]any{"path": "documents/notes.md", "content": "one"})
+	base, _ := v["version"].(string)
+	if v["path"] != "documents/notes.md" || base == "" || v["duplicate"] != false {
+		t.Fatalf("document_create: %v", v)
+	}
+	g := s.ok("document_get", map[string]any{"path": "documents/notes.md"})
+	if g["content"] != "one" || g["version"] != base {
+		t.Fatalf("document_get: %v", g)
+	}
+	c := s.ok("document_change", map[string]any{"path": "documents/notes.md", "content": "two", "baseVersion": base})
+	cur, _ := c["version"].(string)
+	if cur == "" || cur == base {
+		t.Fatalf("document_change: %v", c)
+	}
+	if msg := s.fails("aborted", "document_change", map[string]any{"path": "documents/notes.md", "content": "three", "baseVersion": base}); !strings.Contains(msg, cur) {
+		t.Fatalf("the error does not say the current version %s: %s", cur, msg)
+	}
+	s.fails("invalid_argument", "document_create", map[string]any{"path": "notes.md", "content": "x"})
+	s.fails("usage", "document_change", map[string]any{"path": "documents/notes.md", "content": "x"})
+	files, _ := s.ok("document_list", map[string]any{})["files"].([]any)
+	if len(files) != 1 {
+		t.Fatalf("document_list: %v", files)
+	}
 }
