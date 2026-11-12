@@ -489,8 +489,8 @@ path: hub/archive
 
 #### Archive storage
 
-The in-process interface of the archive: write a set of files as one commit, and read the files
-of a directory as they are in the current commit. Paths are relative to the repository. The archive
+The in-process interface of the archive: write a set of files as one commit, list the paths of a
+directory, and read the files of a directory (or one file) as they are in the current commit. Paths are relative to the repository. The archive
 keeps one git repository for each tenant, with a directory per kind of content, and one further
 repository for the hub itself, for the users, the tenants, the memberships and the system admins. A
 caller asks for the archive of a repository, and each repository has its own commit queue, so one

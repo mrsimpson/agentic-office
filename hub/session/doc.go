@@ -41,9 +41,17 @@
 //     originals of utterances that are off the record) and the signed tree head over exactly
 //     that log (ArchiveTreeHeadFile). The tree head comes from the state, which keeps the
 //     roots of the perfect subtrees, so a head costs O(log n) hashes and one signature per size.
-//   - Restore after a restart (dec-restore-from-peers, restore.go): UseArchive reads every
-//     stored log and its tree head back and verifies the log against the head with the hub
-//     key. A log that verifies is the start of its session (IDs, idempotency, participants);
+//   - Memory (dec-session-eviction, evictIdle): a session that has finished (session.ended, or a
+//     complete import), whose last event is in a successful commit of the archive, that no call
+//     reads (state.refs: open streams, event reads), that waits for no peer and that has no write
+//     due, leaves memory: the store forgets its log, the state with the Merkle leaves and the
+//     stored form of the writer are freed. A call that finds no log in memory reads the archive
+//     before it treats a session ID as new (lock, loadStored), verifies the log like the restore
+//     does and so gets the same events and the same signed tree head.
+//   - Restore after a restart (dec-restore-from-peers, restore.go): UseArchive reads the stored
+//     log and the tree head of every session that has not finished, one session at a time, and
+//     verifies the log against the head with the hub key. Finished sessions stay in the archive
+//     until a call needs them. A log that verifies is the start of its session (IDs, idempotency, participants);
 //     the next write appends to the stored lines. The events after the last write are lost.
 //     Every Subscribe response that carries the last event of the session has the signed head
 //     over the events up to it, so every peer holds a signed head over its whole copy. A peer

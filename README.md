@@ -206,9 +206,11 @@ Rules that hold for all of them:
 
 ### Meeting session
 
-The meeting session (`hub/session`) is implemented. It keeps its logs in memory and writes them
-to the archive in the background (see [Archive](#archive)). After a restart it reads them back
-and the peers fill in what the archive does not have yet (see
+The meeting session (`hub/session`) is implemented. It keeps the logs of the open sessions in
+memory and writes them to the archive in the background (see [Archive](#archive)). A session that
+has ended, is in the archive and is read by nobody leaves memory; the next call loads it from the
+archive with the same events and the same signed tree head (`dec-session-eviction`). After a restart
+it reads the open sessions back and the peers fill in what the archive does not have yet (see
 [Restore after a restart](#restore-after-a-restart)). The package comment in `hub/session/doc.go`
 has the details.
 In short:
@@ -357,9 +359,12 @@ members. The session IDs and the numbers of tasks and decks count in each tenant
 
 ### Restore after a restart
 
-When the hub starts, it restores every session from the archive (`dec-restore-from-peers`):
+When the hub starts, it restores every session that has not ended from the archive
+(`dec-restore-from-peers`). It reads one session at a time. A session that has ended, or an
+imported conversation that is complete, stays in the archive; the first call that needs it loads
+and checks it (`dec-session-eviction`).
 
-1. It reads `log.jsonl` and `tree-head.yaml` of every session and checks the log against the
+1. It reads `log.jsonl` and `tree-head.yaml` of every such session and checks the log against the
    head with its signing key (`merkle.VerifyEvents`). A log that verifies is the start of the
    session: the events keep their IDs, repeated command IDs still return their events, ended
    sessions stay ended, and the next write appends to the stored lines.
