@@ -41,6 +41,9 @@ type Options struct {
 	Archive storage.Archive
 	// Bootstrap names the first system admin. It is needed at the first start only.
 	Bootstrap *Bootstrap
+	// BootstrapErr is the error of a first system admin that could not be parsed. Only the first
+	// start fails with it: later starts ignore the flag, whatever it holds.
+	BootstrapErr error
 	// Logf logs notices of the start. Optional.
 	Logf func(format string, args ...any)
 	// TenantFreeServices are the names of the services, besides the user API, whose calls do
@@ -191,7 +194,7 @@ func (s *Service) Interceptor() connect.ServerInterceptor {
 					name = info.RequestHeader().Get(auth.TenantHeader)
 				}
 				if name == "" {
-					return invalid("name the tenant: send the header " + auth.TenantHeader)
+					return invalid("name the tenant of the call: send the header " + auth.TenantHeader + " (the office CLI: --tenant or OFFICE_TENANT)")
 				}
 				role, member := c.Member(name)
 				if !member {

@@ -643,7 +643,7 @@ hub has no file of admin keys. At the **first start**, when the hub repository h
 you name the first system admin with a user ID and a public key:
 
 1. Create a key pair on your device: `office key create` prints the public key.
-2. Start the hub with `-first-system-admin ada=<public key>`. The hub creates the user `ada` as a
+2. Start the hub with `-first-system-admin root=<public key>`. The hub creates the user `root` as a
    human and system admin. Without the flag, the first start fails.
 3. Authenticate with your key (`office whoami`). Your token may now create users and register their
    keys with `office admin user create` (see [Participant client](#participant-client-office-cli)).
@@ -728,7 +728,7 @@ docker run --rm -v office-hub:/data ghcr.io/mrsimpson/agentic-office/office-hub 
 docker run -d --name office-hub -p 8740:8740 -v office-hub:/data \
   ghcr.io/mrsimpson/agentic-office/office-hub \
   -data-dir /data -addr 0.0.0.0:8740 -signing-key /data/signing.key \
-  -first-system-admin ada=<public key of Ada> -tls-hosts hub.example.org
+  -first-system-admin root=<public key of root> -tls-hosts hub.example.org
 ```
 
 The default command is `-data-dir /data -addr 0.0.0.0:8740 -signing-key /data/signing.key`.
