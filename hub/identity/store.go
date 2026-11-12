@@ -23,6 +23,10 @@ type Bootstrap struct {
 // load reads the hub repository, checks the rules and, at the first start, creates the first
 // system admin. It fails when the repository breaks a rule: nobody gets rights by a manual edit.
 func (s *Service) load(ctx context.Context) error {
+	tenants, err := s.opts.Archive.Read(ctx, tenantsDir)
+	if err != nil {
+		return fmt.Errorf("read tenants: %w", err)
+	}
 	users, err := s.opts.Archive.Read(ctx, usersDir)
 	if err != nil {
 		return fmt.Errorf("read users: %w", err)
@@ -31,20 +35,23 @@ func (s *Service) load(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("read memberships: %w", err)
 	}
-	if len(users) == 0 && len(members) == 0 {
+	if len(users) == 0 && len(members) == 0 && len(tenants) == 0 {
 		return s.bootstrap(ctx)
 	}
 	if b := s.opts.Bootstrap; b != nil && s.opts.Logf != nil {
 		s.opts.Logf("the hub repository has users: the first system admin %s is ignored", b.UserID)
 	}
-	var ue, me []fileEntry
+	var te, ue, me []fileEntry
+	for _, f := range tenants {
+		te = append(te, fileEntry{path: f.Path, name: path.Base(f.Path), data: f.Data})
+	}
 	for _, f := range users {
 		ue = append(ue, fileEntry{path: f.Path, name: path.Base(f.Path), data: f.Data})
 	}
 	for _, f := range members {
 		me = append(me, fileEntry{path: f.Path, name: path.Base(f.Path), data: f.Data})
 	}
-	st, err := parseFiles(ue, me)
+	st, err := parseFiles(te, ue, me)
 	if err != nil {
 		return fmt.Errorf("hub repository: %w", err)
 	}

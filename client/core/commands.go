@@ -26,6 +26,7 @@ import (
 	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
 	"github.com/mrsimpson/agentic-office/hub/session/streamapi/events"
 	slidesv1 "github.com/mrsimpson/agentic-office/hub/slides/api"
+	tenantv1 "github.com/mrsimpson/agentic-office/hub/tenant/api"
 )
 
 // joinState is the content of the join state file.
@@ -346,6 +347,35 @@ func (c *hubClient) RevokeKey(ctx context.Context, keyID string) error {
 		_, err := c.users.RevokeKey(ctx, req)
 		return err
 	})
+}
+
+// CreateTenant creates a tenant with its first tenant admin. Only a system admin may call it.
+func (c *hubClient) CreateTenant(ctx context.Context, tenantID, displayName, firstAdminUserID string) error {
+	req := &tenantv1.CreateTenantRequest{CommandId: coreapi.NewCommandID(), TenantId: tenantID, DisplayName: displayName,
+		FirstAdminUserId: firstAdminUserID}
+	return retry(ctx, func() error {
+		_, err := c.tenants.CreateTenant(ctx, req)
+		return err
+	})
+}
+
+// RemoveTenant ends a tenant and its memberships. Only a system admin may call it.
+func (c *hubClient) RemoveTenant(ctx context.Context, tenantID string) error {
+	req := &tenantv1.RemoveTenantRequest{CommandId: coreapi.NewCommandID(), TenantId: tenantID}
+	return retry(ctx, func() error {
+		_, err := c.tenants.RemoveTenant(ctx, req)
+		return err
+	})
+}
+
+// ListTenants returns all tenants, also the removed ones. Only a system admin may call it.
+func (c *hubClient) ListTenants(ctx context.Context) ([]*tenantv1.Tenant, error) {
+	var res *tenantv1.ListTenantsResponse
+	err := retry(ctx, func() (err error) {
+		res, err = c.tenants.ListTenants(ctx, &tenantv1.ListTenantsRequest{})
+		return err
+	})
+	return res.GetTenants(), err
 }
 
 // RenderDeck renders a slide deck. The author is the caller.

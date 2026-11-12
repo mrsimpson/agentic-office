@@ -71,20 +71,29 @@ func (s *Service) change(ctx context.Context, c Caller, commandID string, req pr
 	} else if prev != nil {
 		return prev, nil
 	}
+	if err := s.mutate(ctx, message, apply); err != nil {
+		return nil, err
+	}
+	s.commands[commandID] = command{caller: c.ParticipantID, req: req, res: res}
+	return res, nil
+}
+
+// mutate applies apply to a copy of the state, checks the rules and writes the commit. The caller
+// holds s.mu.
+func (s *Service) mutate(ctx context.Context, message string, apply func(st *state, now time.Time) error) error {
 	now := time.Now().UTC().Truncate(time.Second)
 	next := s.st.clone()
 	if err := apply(next, now); err != nil {
-		return nil, err
+		return err
 	}
 	if err := next.validate(now); err != nil {
-		return nil, precondition(err.Error())
+		return precondition(err.Error())
 	}
 	if err := s.commit(ctx, next, message); err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err.Error())
+		return connect.NewError(connect.CodeInternal, err.Error())
 	}
 	s.dropUnusable(now)
-	s.commands[commandID] = command{caller: c.ParticipantID, req: req, res: res}
-	return res, nil
+	return nil
 }
 
 // dropUnusable ends the tokens and challenges of keys that cannot log in any more. The caller
@@ -316,6 +325,9 @@ func (s *Service) SetMembership(ctx context.Context, req *userv1.SetMembershipRe
 	res := &userv1.SetMembershipResponse{}
 	out, err := s.change(ctx, c, req.GetCommandId(), req, res, "System: set the membership of "+req.GetUserId()+" in "+req.GetTenantId(),
 		func(st *state, now time.Time) error {
+			if t := st.tenants[req.GetTenantId()]; t == nil || !t.active(now) {
+				return notFound("no such tenant")
+			}
 			u := st.users[req.GetUserId()]
 			if u == nil || !u.active(now) {
 				return notFound("no such active user")
