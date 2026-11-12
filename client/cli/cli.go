@@ -92,6 +92,7 @@ func init() {
 		"replicator run":           cmdReplicatorRun,
 		"mcp":                      cmdMCP,
 		"agent run":                cmdAgentRun,
+		"config show":              cmdConfigShow,
 	}
 }
 

@@ -357,3 +357,15 @@ title: Named-entity recognition (NER)
 definition: A model that marks the words of a text that name a person, an organisation or a place; it labels words and writes no text of its own (dec-ner-model)
 :::
 ```
+
+## Start directory
+
+The folder in which a user starts a command of the client, usually the folder of a project.
+
+```arc42
+:::glossary-term
+id: term-start-directory
+title: Start directory
+definition: The current folder when a user starts a command of the client; its folder .office holds the project file of the configuration and the vocabulary of the project (concept-client-configuration)
+:::
+```

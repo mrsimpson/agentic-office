@@ -51,9 +51,12 @@ type officeUser struct {
 	env []string
 }
 
+// userWithKey returns a user with this key. Its configuration folder is empty, so no user
+// configuration file of the host takes part.
 func (m *machine) userWithKey(keyFile string) *officeUser {
 	return &officeUser{m: m, key: keyFile, env: []string{"OFFICE_HUB=" + m.srv.URL, "OFFICE_CA_CERT=" + m.srv.CertFile,
-		"OFFICE_KEY=" + keyFile, "OFFICE_RUNTIME_DIR=" + m.runtime, "OFFICE_SESSION=", "OFFICE_JSON="}}
+		"OFFICE_KEY=" + keyFile, "OFFICE_RUNTIME_DIR=" + m.runtime, "OFFICE_SESSION=", "OFFICE_JSON=",
+		"XDG_CONFIG_HOME=" + m.t.TempDir()}}
 }
 
 // user creates a key with the CLI and registers it with the admin CLI.

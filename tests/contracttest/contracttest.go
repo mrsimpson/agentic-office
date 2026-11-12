@@ -404,10 +404,17 @@ func Run(t testing.TB, name string, env []string, args ...string) (string, strin
 // RunStdin is Run with a standard input.
 func RunStdin(t testing.TB, name string, env []string, stdin io.Reader, args ...string) (string, string, int) {
 	t.Helper()
+	return RunIn(t, "", name, env, stdin, args...)
+}
+
+// RunIn is RunStdin in the working directory dir ("" for the directory of the test).
+func RunIn(t testing.TB, dir, name string, env []string, stdin io.Reader, args ...string) (string, string, int) {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, Binary(t, name), args...)
 	cmd.Env = append(os.Environ(), env...)
+	cmd.Dir = dir
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr, cmd.Stdin = &out, &errb, stdin
 	err := cmd.Run()

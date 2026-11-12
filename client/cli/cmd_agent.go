@@ -46,9 +46,13 @@ const (
 	WakeDecisionModel = "decision-model"
 )
 
-// EnvDecideKey holds the key of the model's endpoint, so that it is not on the command
-// line.
+// EnvDecideKey is the default environment variable that holds the key of the model's endpoint,
+// so that the key is neither on the command line nor in a file. A configuration file can name
+// another variable (agent.wake.key-env).
 const EnvDecideKey = "OFFICE_DECIDE_KEY"
+
+// EnvSession is the environment variable of the session.
+const EnvSession = "OFFICE_SESSION"
 
 // RunAgent is the hook for the agent runner (client/agentrunner). The wiring of the participant
 // client (client/) sets it, so that the CLI does not depend on the runner.
@@ -60,51 +64,117 @@ type stringList []string
 func (s *stringList) String() string     { return strings.Join(*s, ",") }
 func (s *stringList) Set(v string) error { *s = append(*s, v); return nil }
 
+// agentFlags maps the flags of "office agent run" to the keys of the configuration files.
+var agentFlags = []struct{ flag, key string }{
+	{"session", keySession}, {"role", keyRole}, {"role-file", keyRoleFile}, {"allow", keyAllow},
+	{"cwd", keyCwd}, {"topic-task", keyTopicTask}, {"wake", keyStrategy}, {"decide-cmd", keyCommand},
+	{"decide-url", keyURL}, {"decide-model", keyModel}, {"decide-threshold", keyThreshold},
+	{"decide-timeout", keyTimeout},
+}
+
+// flagOf returns the flag of a key, with its dashes, or the key if it has no flag.
+func flagOf(key string) string {
+	for _, f := range agentFlags {
+		if f.key == key {
+			return "--" + f.flag
+		}
+	}
+	return key
+}
+
+// name names a key for an error: the flag if the value came from a flag, else the key and its
+// source.
+func (s settings) name(key string) string {
+	st, ok := s[key]
+	switch {
+	case !ok:
+		return flagOf(key) + " (" + key + ")"
+	case st.Source.Kind == sourceFlag:
+		return flagOf(key)
+	}
+	return key + " (" + st.Source.String() + ")"
+}
+
 // cmdAgentRun runs the agent runner: office agent run --session S [--role T | --role-file F]
 // [--allow PATTERN]... [--cwd DIR] [--wake turn-end|llm|decision-model]
 // [--decide-cmd CMD | --decide-url URL --decide-model M] [--decide-threshold P]
-// [--decide-timeout D] [--topic-task T] -- <harness command>.
+// [--decide-timeout D] [--topic-task T] -- <harness command>. Every option can also come from a
+// configuration file (concept-client-configuration).
 func cmdAgentRun(e *env, fs *flag.FlagSet) func([]string) error {
-	role := fs.String("role", "", "the role of the agent, in plain words")
-	roleFile := fs.String("role-file", "", "read the role from this file")
+	role := fs.String("role", "", "the role of the agent, in plain words (agent.role)")
+	roleFile := fs.String("role-file", "", "read the role from this file (agent.role-file)")
 	var allow stringList
-	fs.Var(&allow, "allow", "allow tool calls whose title matches this pattern (* is any text); repeatable; default: the office tools only")
-	cwd := fs.String("cwd", "", "working directory of the agent's session (default: the current directory)")
-	wake := fs.String("wake", WakeTurnEnd, "when to wake the agent: "+WakeTurnEnd+" (at each change of speaker), "+WakeLLM+" (a forwarding judge decides after each utterance) or "+WakeDecisionModel+" (a decision model decides after each utterance)")
-	decideCmd := fs.String("decide-cmd", "", "with --wake "+WakeLLM+": a shell command that reads the request as JSON on stdin and writes the answer as JSON on stdout")
-	decideURL := fs.String("decide-url", "", "with --wake "+WakeLLM+": base URL of an OpenAI-compatible API, for example http://127.0.0.1:11434/v1; with --wake "+WakeDecisionModel+": the full URL of a System One endpoint (key in "+EnvDecideKey+")")
-	decideModel := fs.String("decide-model", "", "the model name for --decide-url")
-	decideThreshold := fs.Float64("decide-threshold", 0.5, "with --wake "+WakeDecisionModel+": the probability from which an answer counts as yes")
-	decideTimeout := fs.Duration("decide-timeout", 10*time.Second, "after this time without an answer, a check of the model has failed")
-	topicTask := fs.String("topic-task", "", "the task of the role when a block of topics has ended (with --wake "+WakeLLM+" or "+WakeDecisionModel+")")
+	fs.Var(&allow, "allow", "allow tool calls whose title matches this pattern (* is any text); repeatable; default: the office tools only (agent.allow)")
+	cwd := fs.String("cwd", "", "working directory of the agent's session (default: the current directory) (agent.cwd)")
+	wake := fs.String("wake", WakeTurnEnd, "when to wake the agent: "+WakeTurnEnd+" (at each change of speaker), "+WakeLLM+" (a forwarding judge decides after each utterance) or "+WakeDecisionModel+" (a decision model decides after each utterance) (agent.wake.strategy)")
+	decideCmd := fs.String("decide-cmd", "", "with --wake "+WakeLLM+": a shell command that reads the request as JSON on stdin and writes the answer as JSON on stdout (agent.wake.command)")
+	decideURL := fs.String("decide-url", "", "with --wake "+WakeLLM+": base URL of an OpenAI-compatible API, for example http://127.0.0.1:11434/v1; with --wake "+WakeDecisionModel+": the full URL of a System One endpoint (key in "+EnvDecideKey+" or the variable that agent.wake.key-env names) (agent.wake.url)")
+	decideModel := fs.String("decide-model", "", "the model name for --decide-url (agent.wake.model)")
+	decideThreshold := fs.Float64("decide-threshold", 0.5, "with --wake "+WakeDecisionModel+": the probability from which an answer counts as yes (agent.wake.threshold)")
+	decideTimeout := fs.Duration("decide-timeout", 10*time.Second, "after this time without an answer, a check of the model has failed (agent.wake.timeout)")
+	topicTask := fs.String("topic-task", "", "the task of the role when a block of topics has ended (with --wake "+WakeLLM+" or "+WakeDecisionModel+") (agent.topic-task)")
 	return func(args []string) error {
-		if len(args) == 0 {
-			return usagef("no harness command: office agent run --session S -- <harness command>")
-		}
-		if e.session == "" {
-			return usagef("no session: pass --session or set OFFICE_SESSION")
-		}
-		if *role != "" && *roleFile != "" {
+		set := map[string]bool{}
+		fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
+		switch {
+		case set["role"] && set["role-file"]:
 			return usagef("give --role or --role-file, not both")
+		case set["decide-cmd"] && set["decide-url"]:
+			return usagef("give --decide-cmd or --decide-url, not both")
+		case set["decide-threshold"] && (*decideThreshold <= 0 || *decideThreshold > 1):
+			return usagef("--decide-threshold must be above 0 and at most 1")
+		case set["decide-timeout"] && *decideTimeout <= 0:
+			return usagef("--decide-timeout must be positive")
 		}
-		r := *role
-		if *roleFile != "" {
-			b, err := os.ReadFile(*roleFile)
+		if _, ok := wakeKeys[*wake]; set["wake"] && !ok {
+			return usagef("--wake must be %s, %s or %s", WakeTurnEnd, WakeLLM, WakeDecisionModel)
+		}
+		start, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		s, _, err := loadConfig(start)
+		if err != nil {
+			return err
+		}
+		if v := os.Getenv(EnvSession); v != "" {
+			s.apply(layer{src: source{Kind: sourceEnv, From: EnvSession}, values: map[string]any{keySession: v}})
+		}
+		flagValues := map[string]any{"session": e.session, "role": *role, "role-file": *roleFile,
+			"allow": []string(allow), "cwd": *cwd, "topic-task": *topicTask, "wake": *wake,
+			"decide-cmd": *decideCmd, "decide-url": *decideURL, "decide-model": *decideModel,
+			"decide-threshold": *decideThreshold, "decide-timeout": *decideTimeout}
+		for _, f := range agentFlags {
+			if set[f.flag] {
+				s.apply(layer{src: source{Kind: sourceFlag, From: "--" + f.flag}, values: map[string]any{f.key: flagValues[f.flag]}})
+			}
+		}
+		if len(args) > 0 {
+			s.apply(layer{src: source{Kind: sourceFlag, From: "the command after --"}, values: map[string]any{keyHarness: args}})
+		}
+		if err := checkWake(s); err != nil {
+			return err
+		}
+		harness := s.list(keyHarness)
+		if len(harness) == 0 {
+			return usagef("no harness command: office agent run --session S -- <harness command>, or set agent.harness in a configuration file")
+		}
+		session := s.str(keySession)
+		if session == "" {
+			return usagef("no session: pass --session, set %s or set agent.session in a configuration file", EnvSession)
+		}
+		r := s.str(keyRole)
+		if f := s.str(keyRoleFile); f != "" {
+			b, err := os.ReadFile(f)
 			if err != nil {
-				return usagef("role file: %v", err)
+				return usagef("role file of %s: %v", s.name(keyRoleFile), err)
 			}
 			r = string(b)
 		}
-		set := map[string]bool{}
-		fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
-		if err := checkWake(*wake, set, *decideCmd, *decideURL, *decideModel); err != nil {
-			return err
-		}
-		if *decideThreshold <= 0 || *decideThreshold > 1 {
-			return usagef("--decide-threshold must be above 0 and at most 1")
-		}
-		if *decideTimeout <= 0 {
-			return usagef("--decide-timeout must be positive")
+		keyEnv := s.str(keyKeyEnv)
+		key := os.Getenv(keyEnv)
+		if key == "" && s[keyKeyEnv].Source.Kind != sourceDefault && s.has(keyURL) {
+			return usagef("%s names the environment variable %s, which is not set", s.name(keyKeyEnv), keyEnv)
 		}
 		if RunAgent == nil {
 			return errors.New("this office binary has no agent runner")
@@ -113,49 +183,39 @@ func cmdAgentRun(e *env, fs *flag.FlagSet) func([]string) error {
 		if err != nil {
 			return err
 		}
-		return RunAgent(e.ctx, AgentOptions{Config: e.cfg, Session: e.session, Role: r, Harness: args,
-			Allow: allow, Cwd: *cwd, Office: office, Version: Version, Stderr: e.stderr,
-			Wake: *wake, DecideCommand: *decideCmd, DecideURL: *decideURL, DecideModel: *decideModel,
-			DecideKey: os.Getenv(EnvDecideKey), DecideThreshold: *decideThreshold, DecideTimeout: *decideTimeout,
-			TopicTask: *topicTask})
+		threshold, _ := s[keyThreshold].Value.(float64)
+		timeout, _ := s[keyTimeout].Value.(time.Duration)
+		return RunAgent(e.ctx, AgentOptions{Config: e.cfg, Session: session, Role: r, Harness: harness,
+			Allow: s.list(keyAllow), Cwd: s.str(keyCwd), Office: office, Version: Version, Stderr: e.stderr,
+			Wake: s.str(keyStrategy), DecideCommand: s.str(keyCommand), DecideURL: s.str(keyURL),
+			DecideModel: s.str(keyModel), DecideKey: key, DecideThreshold: threshold, DecideTimeout: timeout,
+			TopicTask: s.str(keyTopicTask)})
 	}
 }
 
-// checkWake checks that the flags of the model fit the wake strategy. set are the flags given.
-func checkWake(wake string, set map[string]bool, cmd, url, model string) error {
-	given := func(names ...string) string {
-		for _, n := range names {
-			if set[n] {
-				return "--" + n
-			}
+// checkWake checks that the settings of the model fit the wake strategy. A setting that does
+// not fit is an error when it comes from a flag. When it comes from a file, it is left out, so
+// that a flag such as --wake turn-end can override the strategy of a file.
+func checkWake(s settings) error {
+	strategy := s.str(keyStrategy)
+	for _, k := range s.unused() {
+		if s[k].Source.Kind == sourceFlag {
+			return usagef("%s does not go with the wake strategy %s of %s", flagOf(k), strategy, s.name(keyStrategy))
 		}
-		return ""
+		delete(s, k)
 	}
-	switch wake {
-	case WakeTurnEnd:
-		if f := given("decide-cmd", "decide-url", "decide-model", "decide-threshold", "decide-timeout"); f != "" {
-			return usagef("%s needs --wake %s or --wake %s", f, WakeLLM, WakeDecisionModel)
-		}
+	switch strategy {
 	case WakeLLM:
 		switch {
-		case cmd != "" && url != "":
-			return usagef("give --decide-cmd or --decide-url, not both")
-		case cmd == "" && url == "":
-			return usagef("--wake %s needs --decide-cmd or --decide-url", WakeLLM)
-		case url != "" && model == "":
-			return usagef("--decide-url needs --decide-model")
-		case set["decide-threshold"]:
-			return usagef("--decide-threshold needs --wake %s", WakeDecisionModel)
+		case !s.has(keyCommand) && !s.has(keyURL):
+			return usagef("the wake strategy %s of %s needs %s or %s", WakeLLM, s.name(keyStrategy), s.name(keyCommand), s.name(keyURL))
+		case s.has(keyURL) && !s.has(keyModel):
+			return usagef("%s needs %s", s.name(keyURL), s.name(keyModel))
 		}
 	case WakeDecisionModel:
-		switch {
-		case cmd != "":
-			return usagef("--wake %s takes --decide-url, not --decide-cmd", WakeDecisionModel)
-		case url == "" || model == "":
-			return usagef("--wake %s needs --decide-url and --decide-model", WakeDecisionModel)
+		if !s.has(keyURL) || !s.has(keyModel) {
+			return usagef("the wake strategy %s of %s needs %s and %s", WakeDecisionModel, s.name(keyStrategy), s.name(keyURL), s.name(keyModel))
 		}
-	default:
-		return usagef("--wake must be %s, %s or %s", WakeTurnEnd, WakeLLM, WakeDecisionModel)
 	}
 	return nil
 }
