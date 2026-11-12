@@ -7,6 +7,7 @@ modules:
   - path: hub/session/importapi
   - path: hub/identity/api
   - path: hub/identity/userapi
+  - path: hub/tenant/api
   - path: hub/records/decision/api
   - path: hub/records/minutes/api
   - path: hub/records/note/api

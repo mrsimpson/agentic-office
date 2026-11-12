@@ -16,9 +16,11 @@ import (
 
 // The hub repository holds the users and memberships as YAML files (dec-multi-tenancy):
 //
+//	system/tenants/<tenant>.yaml                one tenant
 //	system/users/<user>.yaml                    one user with its keys
 //	system/memberships/<tenant>/<user>.yaml     one membership
 const (
+	tenantsDir     = "system/tenants"
 	usersDir       = "system/users"
 	membershipsDir = "system/memberships"
 )
@@ -57,21 +59,32 @@ type membershipRecord struct {
 	History    []period   `yaml:"history,omitempty"`
 }
 
+type tenantRecord struct {
+	DisplayName string     `yaml:"display_name"`
+	ValidFrom   time.Time  `yaml:"valid_from"`
+	ValidUntil  *time.Time `yaml:"valid_until,omitempty"`
+}
+
 type memberKey struct{ tenant, user string }
 
 // state is all users and memberships of the hub. It is small, so every change works on a copy
 // and checks the rules for the whole state, the same rules as when the hub loads the repository.
 type state struct {
+	tenants map[string]*tenantRecord
 	users   map[string]*userRecord
 	members map[memberKey]*membershipRecord
 }
 
 func newState() *state {
-	return &state{users: map[string]*userRecord{}, members: map[memberKey]*membershipRecord{}}
+	return &state{tenants: map[string]*tenantRecord{}, users: map[string]*userRecord{}, members: map[memberKey]*membershipRecord{}}
 }
 
 func (u *userRecord) active(now time.Time) bool {
 	return !now.Before(u.ValidFrom) && (u.ValidUntil == nil || now.Before(*u.ValidUntil))
+}
+
+func (t *tenantRecord) active(now time.Time) bool {
+	return !now.Before(t.ValidFrom) && (t.ValidUntil == nil || now.Before(*t.ValidUntil))
 }
 
 func (m *membershipRecord) active(now time.Time) bool {
@@ -90,6 +103,10 @@ func (u *userRecord) activeKeys() int {
 
 func (st *state) clone() *state {
 	c := newState()
+	for id, t := range st.tenants {
+		ct := *t
+		c.tenants[id] = &ct
+	}
 	for id, u := range st.users {
 		cu := *u
 		cu.Keys = make([]*keyRecord, len(u.Keys))
@@ -169,10 +186,16 @@ func (st *state) validate(now time.Time) error {
 	if activeAdmins == 0 {
 		return fmt.Errorf("the hub needs at least one active system admin")
 	}
-	tenantAdmins, tenantMembers := map[string]int{}, map[string]int{}
+	tenantAdmins := map[string]int{}
+	for _, id := range sortedKeys(st.tenants) {
+		if !participantIDPattern.MatchString(id) {
+			return fmt.Errorf("tenant %q: the ID must be 1 to 64 letters, digits, '.', '_' or '-'", id)
+		}
+	}
 	for mk, m := range st.members {
-		if !participantIDPattern.MatchString(mk.tenant) {
-			return fmt.Errorf("membership of %s: the tenant ID %q is not valid", mk.user, mk.tenant)
+		t := st.tenants[mk.tenant]
+		if t == nil {
+			return fmt.Errorf("membership of %s in %s: there is no such tenant", mk.user, mk.tenant)
 		}
 		u := st.users[mk.user]
 		if u == nil {
@@ -184,20 +207,22 @@ func (st *state) validate(now time.Time) error {
 		if !m.active(now) {
 			continue
 		}
+		if !t.active(now) {
+			return fmt.Errorf("tenant %s is removed and %s is still a member", mk.tenant, mk.user)
+		}
 		if !u.active(now) {
 			return fmt.Errorf("user %s is removed and still a member of %s", mk.user, mk.tenant)
 		}
 		if u.SystemAdmin {
 			return fmt.Errorf("system admin %s cannot be a member of tenant %s: a system admin never is a tenant member", mk.user, mk.tenant)
 		}
-		tenantMembers[mk.tenant]++
 		if m.Role == roleTenantAdmin {
 			tenantAdmins[mk.tenant]++
 		}
 	}
-	for t := range tenantMembers {
-		if tenantAdmins[t] == 0 {
-			return fmt.Errorf("tenant %s needs at least one tenant admin", t)
+	for id, t := range st.tenants {
+		if t.active(now) && tenantAdmins[id] == 0 {
+			return fmt.Errorf("tenant %s needs at least one tenant admin", id)
 		}
 	}
 	return nil
@@ -215,6 +240,13 @@ func sortedKeys[V any](m map[string]V) []string {
 // files returns the YAML files of the state by path.
 func (st *state) files() (map[string][]byte, error) {
 	out := map[string][]byte{}
+	for id, t := range st.tenants {
+		b, err := marshal(t)
+		if err != nil {
+			return nil, err
+		}
+		out[tenantsDir+"/"+id+".yaml"] = b
+	}
 	for id, u := range st.users {
 		b, err := marshal(u)
 		if err != nil {
@@ -244,8 +276,16 @@ func marshal(v any) ([]byte, error) {
 
 // parseFiles builds the state from the files of the hub repository (the users and the
 // memberships directories).
-func parseFiles(users, memberships []fileEntry) (*state, error) {
+func parseFiles(tenants, users, memberships []fileEntry) (*state, error) {
 	st := newState()
+	for _, f := range tenants {
+		id := strings.TrimSuffix(f.name, ".yaml")
+		var t tenantRecord
+		if err := strictUnmarshal(f.data, &t); err != nil {
+			return nil, fmt.Errorf("%s: %w", f.path, err)
+		}
+		st.tenants[id] = &t
+	}
 	for _, f := range users {
 		id := strings.TrimSuffix(f.name, ".yaml")
 		var u userRecord

@@ -16,6 +16,7 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/session/streamapi/sessionstreamv1connect"
 	slidesv1 "github.com/mrsimpson/agentic-office/hub/slides/api"
 	taskv1 "github.com/mrsimpson/agentic-office/hub/tasks/api"
+	tenantv1 "github.com/mrsimpson/agentic-office/hub/tenant/api"
 )
 
 // Dial returns an authenticated client of the office hub for the key of cfg. It does not connect
@@ -106,6 +107,12 @@ type Client interface {
 	AddKey(ctx context.Context, userID string, publicKey []byte) (string, error)
 	// RevokeKey revokes a key by its key ID: an own key, or any key as a system admin.
 	RevokeKey(ctx context.Context, keyID string) error
+
+	// CreateTenant, RemoveTenant and ListTenants manage the tenants of the hub (if-tenant-api).
+	// Only a system admin may call them.
+	CreateTenant(ctx context.Context, tenantID, displayName, firstAdminUserID string) error
+	RemoveTenant(ctx context.Context, tenantID string) error
+	ListTenants(ctx context.Context) ([]*tenantv1.Tenant, error)
 
 	RenderDeck(ctx context.Context, req *slidesv1.RenderDeckRequest) (*slidesv1.RenderDeckResponse, error)
 	GetDeck(ctx context.Context, id string) (*slidesv1.Deck, error)

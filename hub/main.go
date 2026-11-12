@@ -67,6 +67,8 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/stage"
 	"github.com/mrsimpson/agentic-office/hub/tasks"
 	"github.com/mrsimpson/agentic-office/hub/tasks/api/taskv1connect"
+	"github.com/mrsimpson/agentic-office/hub/tenant"
+	"github.com/mrsimpson/agentic-office/hub/tenant/api/tenantv1connect"
 )
 
 func defaultDataDir() string {
@@ -212,6 +214,7 @@ func main() {
 	sessionimportv1connect.RegisterSessionImportServiceHandler(cs, sessions)
 	identityv1connect.RegisterIdentityServiceHandler(cs, ids)
 	userv1connect.RegisterUserServiceHandler(cs, ids)
+	tenantv1connect.RegisterTenantServiceHandler(cs, tenant.New(ids))
 	decisionv1connect.RegisterDecisionServiceHandler(cs, recs)
 	minutesv1connect.RegisterMinutesServiceHandler(cs, recs)
 	notev1connect.RegisterNoteServiceHandler(cs, recs)

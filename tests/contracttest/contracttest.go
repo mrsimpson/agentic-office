@@ -49,6 +49,7 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/session/streamapi/sessionstreamv1connect"
 	"github.com/mrsimpson/agentic-office/hub/slides/api/slidesv1connect"
 	taskv1connect "github.com/mrsimpson/agentic-office/hub/tasks/api/taskv1connect"
+	"github.com/mrsimpson/agentic-office/hub/tenant/api/tenantv1connect"
 )
 
 var (
@@ -379,6 +380,7 @@ type Clients struct {
 	Note     notev1connect.NoteServiceClient
 	Task     taskv1connect.TaskServiceClient
 	Slides   slidesv1connect.SlidesServiceClient
+	Tenant   tenantv1connect.TenantServiceClient
 }
 
 // NewClients returns clients for baseURL that use hc (nil: a new default client) and the
@@ -399,6 +401,7 @@ func NewClients(baseURL string, hc *http.Client, interceptors ...connect.ClientI
 		Note:     notev1connect.NewNoteServiceClient(c),
 		Task:     taskv1connect.NewTaskServiceClient(c),
 		Slides:   slidesv1connect.NewSlidesServiceClient(c),
+		Tenant:   tenantv1connect.NewTenantServiceClient(c),
 	}
 }
 

@@ -1,0 +1,59 @@
+// Tenant API (if-tenant-api): create, list and remove the tenants of the hub (concept-multi-tenancy,
+// dec-multi-tenancy).
+//
+// A tenant is one organisation. Creating a tenant names its first tenant admin; the system admin
+// does not become a member. Removing a tenant ends the tenant and all its memberships and keeps
+// the records, so a tenant ID is never used again. Only a system admin may call these procedures;
+// everyone else gets permission_denied. Users and memberships are managed with the user API.
+//
+// Every call needs an access token (see identity.proto). Every command carries a command_id that
+// the client creates (dec-idempotent-commands).
+syntax = "proto3";
+
+package office.tenant.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/mrsimpson/agentic-office/hub/tenant/api;tenantv1";
+
+service TenantService {
+  // CreateTenant creates a tenant with its first tenant admin, an active user who is no system
+  // admin. A tenant ID that exists or existed fails with already_exists.
+  rpc CreateTenant(CreateTenantRequest) returns (CreateTenantResponse);
+  // RemoveTenant ends a tenant and its memberships.
+  rpc RemoveTenant(RemoveTenantRequest) returns (RemoveTenantResponse);
+  // ListTenants returns all tenants, also the removed ones.
+  rpc ListTenants(ListTenantsRequest) returns (ListTenantsResponse);
+}
+
+message Tenant {
+  string tenant_id = 1;
+  string display_name = 2;
+  google.protobuf.Timestamp valid_from = 3;
+  // valid_until is empty while the tenant is active.
+  google.protobuf.Timestamp valid_until = 4;
+}
+
+message CreateTenantRequest {
+  string command_id = 1;
+  // tenant_id is 1 to 64 letters, digits, ".", "_" or "-", for example "acme".
+  string tenant_id = 2;
+  string display_name = 3;
+  // first_admin_user_id is the user who becomes the first tenant admin.
+  string first_admin_user_id = 4;
+}
+
+message CreateTenantResponse {}
+
+message RemoveTenantRequest {
+  string command_id = 1;
+  string tenant_id = 2;
+}
+
+message RemoveTenantResponse {}
+
+message ListTenantsRequest {}
+
+message ListTenantsResponse {
+  repeated Tenant tenants = 1;
+}

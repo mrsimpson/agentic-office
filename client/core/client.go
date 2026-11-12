@@ -25,6 +25,7 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/session/streamapi/sessionstreamv1connect"
 	"github.com/mrsimpson/agentic-office/hub/slides/api/slidesv1connect"
 	"github.com/mrsimpson/agentic-office/hub/tasks/api/taskv1connect"
+	"github.com/mrsimpson/agentic-office/hub/tenant/api/tenantv1connect"
 )
 
 // hubClient is the client of the office hub for one actor (one key). It implements
@@ -40,6 +41,7 @@ type hubClient struct {
 	sessionImport sessionimportv1connect.SessionImportServiceClient
 	identity      identityv1connect.IdentityServiceClient
 	users         userv1connect.UserServiceClient
+	tenants       tenantv1connect.TenantServiceClient
 	decision      decisionv1connect.DecisionServiceClient
 	minutes       minutesv1connect.MinutesServiceClient
 	note          notev1connect.NoteServiceClient
@@ -73,6 +75,7 @@ func Dial(cfg coreapi.Config) (coreapi.Client, error) {
 		sessionImport: sessionimportv1connect.NewSessionImportServiceClient(cc),
 		identity:      identityv1connect.NewIdentityServiceClient(cc),
 		users:         userv1connect.NewUserServiceClient(cc),
+		tenants:       tenantv1connect.NewTenantServiceClient(cc),
 		decision:      decisionv1connect.NewDecisionServiceClient(cc),
 		minutes:       minutesv1connect.NewMinutesServiceClient(cc),
 		note:          notev1connect.NewNoteServiceClient(cc),

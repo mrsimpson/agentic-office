@@ -19,6 +19,7 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	userv1 "github.com/mrsimpson/agentic-office/hub/identity/userapi"
 	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
+	tenantv1 "github.com/mrsimpson/agentic-office/hub/tenant/api"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
@@ -31,6 +32,13 @@ func setMember(t *testing.T, a *contracttest.Actor, tenant, user string, role us
 	t.Helper()
 	_, err := a.User.SetMembership(ctx10(t), &userv1.SetMembershipRequest{CommandId: coreapi.NewCommandID(),
 		TenantId: tenant, UserId: user, Role: role})
+	return err
+}
+
+func createTenant(t *testing.T, a *contracttest.Actor, id, firstAdmin string) error {
+	t.Helper()
+	_, err := a.Tenant.CreateTenant(ctx10(t), &tenantv1.CreateTenantRequest{CommandId: coreapi.NewCommandID(),
+		TenantId: id, DisplayName: strings.ToUpper(id), FirstAdminUserId: firstAdmin})
 	return err
 }
 
@@ -63,20 +71,22 @@ func TestMembershipRights(t *testing.T) {
 	cy := srv.Participant(t, "cy", "Cy", human)
 	dee := srv.Participant(t, "dee", "Dee", human)
 
-	wantCode(t, "first member as a plain member", setMember(t, admin, "acme", "ada", roleMember), connect.CodeFailedPrecondition)
+	wantCode(t, "membership in a tenant that does not exist", setMember(t, admin, "acme", "ada", roleAdmin), connect.CodeNotFound)
 	wantCode(t, "bad tenant ID", setMember(t, admin, "a b", "ada", roleAdmin), connect.CodeInvalidArgument)
-	wantCode(t, "membership of an unknown user", setMember(t, admin, "acme", "nobody", roleAdmin), connect.CodeNotFound)
 	wantCode(t, "membership without a role", setMember(t, admin, "acme", "ada", userv1.Role_ROLE_UNSPECIFIED), connect.CodeInvalidArgument)
 	wantCode(t, "membership set by a user who is no manager", setMember(t, bob, "acme", "bob", roleAdmin), connect.CodePermissionDenied)
-
-	if err := setMember(t, admin, "acme", "ada", roleAdmin); err != nil {
+	if err := createTenant(t, admin, "acme", "ada"); err != nil {
 		t.Fatal(err)
 	}
+	if err := createTenant(t, admin, "globex", "cy"); err != nil {
+		t.Fatal(err)
+	}
+	wantCode(t, "membership of an unknown user", setMember(t, admin, "acme", "nobody", roleMember), connect.CodeNotFound)
 	// Ada is tenant admin of acme: she manages acme but not another tenant.
 	if err := setMember(t, ada, "acme", "bob", roleMember); err != nil {
 		t.Fatalf("tenant admin adds a member: %v", err)
 	}
-	wantCode(t, "tenant admin manages another tenant", setMember(t, ada, "globex", "cy", roleAdmin), connect.CodePermissionDenied)
+	wantCode(t, "tenant admin manages another tenant", setMember(t, ada, "globex", "dee", roleMember), connect.CodePermissionDenied)
 	wantCode(t, "member adds a member", setMember(t, bob, "acme", "cy", roleMember), connect.CodePermissionDenied)
 	wantCode(t, "member removes a member", removeMember(t, bob, "acme", "ada"), connect.CodePermissionDenied)
 
@@ -137,10 +147,11 @@ func TestSystemAdminIsNeverMember(t *testing.T) {
 		return err
 	}
 
-	wantCode(t, "membership of a system admin", setMember(t, admin, "acme", contracttest.AdminID, roleAdmin), connect.CodeFailedPrecondition)
-	if err := setMember(t, admin, "acme", "ada", roleAdmin); err != nil {
+	wantCode(t, "tenant with a system admin as first admin", createTenant(t, admin, "acme", contracttest.AdminID), connect.CodeFailedPrecondition)
+	if err := createTenant(t, admin, "acme", "ada"); err != nil {
 		t.Fatal(err)
 	}
+	wantCode(t, "membership of a system admin", setMember(t, admin, "acme", contracttest.AdminID, roleMember), connect.CodeFailedPrecondition)
 	wantCode(t, "system admin role for a member", setAdmin(admin, "ada", true), connect.CodeFailedPrecondition)
 	wantCode(t, "system admin role for an agent", setAdmin(admin, "bot", true), connect.CodeFailedPrecondition)
 	wantCode(t, "system admin role set by a tenant admin", setAdmin(ada, "boss", true), connect.CodePermissionDenied)
@@ -170,7 +181,7 @@ func TestRemoveUserKeepsTheRecord(t *testing.T) {
 	admin := srv.Admin(t)
 	ada := srv.Participant(t, "ada", "Ada", human)
 	bob := srv.Participant(t, "bob", "Bob", human)
-	if err := setMember(t, admin, "acme", "ada", roleAdmin); err != nil {
+	if err := createTenant(t, admin, "acme", "ada"); err != nil {
 		t.Fatal(err)
 	}
 	if err := setMember(t, admin, "acme", "bob", roleMember); err != nil {
@@ -282,7 +293,7 @@ func TestFirstSystemAdmin(t *testing.T) {
 func TestHubRepositoryBreakingARuleStopsTheHub(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
-	if err := setMember(t, srv.Admin(t), "acme", "ada", roleAdmin); err != nil {
+	if err := createTenant(t, srv.Admin(t), "acme", "ada"); err != nil {
 		t.Fatal(err)
 	}
 	_ = ada
@@ -336,7 +347,7 @@ func TestUsersSurviveRestart(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
 	srv.Participant(t, "bob", "Bob", human)
-	if err := setMember(t, srv.Admin(t), "acme", "ada", roleAdmin); err != nil {
+	if err := createTenant(t, srv.Admin(t), "acme", "ada"); err != nil {
 		t.Fatal(err)
 	}
 	if err := setMember(t, ada, "acme", "bob", roleMember); err != nil {

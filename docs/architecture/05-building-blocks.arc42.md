@@ -35,6 +35,7 @@ flowchart LR
     bb_participant_client -->|if-slides-api| bb_office_hub
     bb_participant_client -->|if-auth-api| bb_office_hub
     bb_participant_client -->|if-user-api| bb_office_hub
+    bb_participant_client -->|if-tenant-api| bb_office_hub
     bb_participant_client -->|if-session-stream| bb_office_hub
 ```
 
@@ -91,7 +92,7 @@ flowchart LR
     bb_tasks -->|if-archive-storage| bb_archive
     bb_identity -->|if-archive-storage| bb_archive
     bb_tasks -->|if-token-check| bb_identity
-    bb_tenants -->|if-archive-storage| bb_archive
+    bb_tenants -->|if-tenant-roster| bb_identity
     bb_tenants -->|if-token-check| bb_identity
 ```
 
@@ -561,13 +562,31 @@ path: hub/identity/tokencheck
 :::
 ```
 
+#### Tenant roster
+
+Identity keeps the tenant records in the hub repository, next to the users and memberships, so it
+can check that a membership belongs to a tenant that exists. Tenants uses this in-process interface
+to create a tenant together with its first tenant admin, to end a tenant with all its memberships,
+and to list tenants. A tenant ID is never used again.
+
+```arc42
+:::interface
+id: if-tenant-roster
+title: Tenant roster
+provider: bb-identity
+protocol: In-process Go call
+path: hub/identity/roster
+:::
+```
+
 ### Tenants
 
 Knows the tenants and their members. A tenant is the unit of separation: its sessions, records,
 tasks and slides live only in the git repository of the tenant and are visible only to its members.
-It does not keep the memberships: Identity owns them. Creating a tenant creates its repository;
-removing a tenant asks Identity to remove its memberships. Synchronisation with remotes is not
-part of this stage.
+Only a system admin creates, lists and removes tenants. Tenants does not keep the tenant records or
+the memberships: Identity owns them and Tenants asks Identity through the tenant roster. Creating
+a tenant also creates its repository (`if-archive-storage`, from issue #107). Synchronisation with
+remotes is not part of this stage.
 
 ```arc42
 :::building-block
@@ -576,7 +595,7 @@ title: Tenants
 technology: Go
 parent: bb-office-hub
 implements: concept-multi-tenancy
-requires: if-token-check, if-archive-storage
+requires: if-token-check, if-tenant-roster
 path: hub/tenant
 :::
 ```
@@ -803,7 +822,7 @@ title: Client core
 technology: Go
 parent: bb-participant-client
 path: client/core
-requires: if-session-commands, if-session-stream, if-session-import, if-auth-api, if-user-api, if-decision-api, if-minutes-api, if-note-api, if-task-api, if-slides-api, if-local-log
+requires: if-session-commands, if-session-stream, if-session-import, if-auth-api, if-user-api, if-tenant-api, if-decision-api, if-minutes-api, if-note-api, if-task-api, if-slides-api, if-local-log
 :::
 ```
 
