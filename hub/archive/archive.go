@@ -249,7 +249,7 @@ func (r *Repo) Read(ctx context.Context, dir string) ([]storage.File, error) {
 		if len(f) != 3 || f[1] != "blob" {
 			continue
 		}
-		files = append(files, storage.File{Path: p})
+		files = append(files, storage.File{Path: p, Version: f[2]})
 		objects.WriteString(f[2] + "\n")
 	}
 	if len(files) == 0 {

@@ -1093,7 +1093,8 @@ tasks keep their interfaces and each has a schema; what they share is the path, 
 reference, the commit per change, the version check and the focus. The stage and the admin UI
 share one design for the artifact area. **Rejected:** schemas defined by the tenant (out of scope for now); one artifact in focus
 per participant (it breaks the shared screen); branches and proposals for changes (later, as a
-schema, if needed); files of any type (the stage cannot show them); one general write interface for all types (an agent should know what it writes). The stage reads an artifact straight from the archive by its path and renders it by its schema, and only
+schema, if needed); files of any type (the stage cannot show them); one general write interface for all types (an agent should know what it writes). The archive offers an interface to read artifacts by path (`if-archive-read`). The stage reads an artifact
+through it and renders it by its schema, and only
 paths that the log of its own session names. OPEN: which types the hub ships first (proposal: text
 document, slides, minutes); the exact events; how the stage learns the tenant of a session (#114).
 

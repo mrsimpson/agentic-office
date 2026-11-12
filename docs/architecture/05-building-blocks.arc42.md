@@ -478,7 +478,28 @@ id: bb-archive
 title: Archive
 technology: Go / local Git repository
 parent: bb-office-hub
+requires: if-token-check
 path: hub/archive
+:::
+```
+
+#### Archive read
+
+Read artifacts from the archive by their path (`dec-artifacts`): one file with its content and
+its version, or the list of the files of a directory with their versions. The caller needs the
+access token of a participant. A stage link cannot use it: the link is shown on the shared
+screen. The stage reads in-process, and only paths that the log of its own session names. Only
+Markdown and YAML files can be read. Nothing under the session logs can be read, because they
+hold the original of sentences that are off the record. OPEN: how a call names the tenant, once
+the archive keeps one repository per tenant (`dec-multi-tenancy`).
+
+```arc42
+:::interface
+id: if-archive-read
+title: Archive read
+provider: bb-archive
+protocol: Connect RPC, unary (dec-connect-rpc); in-process for the stage
+path: hub/archive/api
 :::
 ```
 
@@ -506,7 +527,7 @@ One web page per session, shown in the meeting by screen share. It shows the run
 raised hands, the shown artifact (a slide deck), and who is captured or paused. It marks an
 imported session with its source and the participant who imported it, and never shows it as
 live. It is only a view of the session log and has no logic of its own. It reads an artifact
-straight from the archive by its path and renders it by its schema (`dec-artifacts`); it reads
+straight from the archive (`if-archive-read`) by its path and renders it by its schema (`dec-artifacts`); it reads
 only paths that the log of its own session names.
 
 ```arc42
@@ -515,7 +536,7 @@ id: bb-stage
 title: Stage
 technology: Go, rendered by the hub / server-sent events
 parent: bb-office-hub
-requires: if-session-stream, if-slides-api, if-auth-api, if-archive-storage
+requires: if-session-stream, if-slides-api, if-auth-api, if-archive-read
 implements: concept-transparency
 path: hub/stage
 :::

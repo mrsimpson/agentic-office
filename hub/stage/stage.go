@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/mrsimpson/agentic-office/hub/archive/storage" // placeholder until the stage reads artifacts from the archive (dec-artifacts)
+	_ "github.com/mrsimpson/agentic-office/hub/archive/api" // placeholder until the stage reads artifacts from the archive (dec-artifacts)
 	"github.com/mrsimpson/agentic-office/hub/stage/web"
 
 	"connectrpc.com/connect/v2"

@@ -50,6 +50,7 @@ import (
 	"connectrpc.com/connect/v2/connectinprocess"
 
 	"github.com/mrsimpson/agentic-office/hub/archive"
+	"github.com/mrsimpson/agentic-office/hub/archive/api/archivev1connect"
 	"github.com/mrsimpson/agentic-office/hub/identity"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/identityv1connect"
@@ -215,6 +216,7 @@ func main() {
 	notev1connect.RegisterNoteServiceHandler(cs, recs)
 	taskv1connect.RegisterTaskServiceHandler(cs, tks)
 	slidesv1connect.RegisterSlidesServiceHandler(cs, decks)
+	archivev1connect.RegisterArchiveReadServiceHandler(cs, archive.NewReadService(arch))
 	mux := http.NewServeMux()
 	connecthttp.Mount(mux, cs)
 	// The stage subscribes in-process through the token check, with the token of the link.

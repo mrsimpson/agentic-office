@@ -53,6 +53,9 @@ type File struct {
 	// Path is relative to the root of the repository, with slashes (see CheckPath).
 	Path string
 	Data []byte
+	// Version identifies the content of the file (a Git object ID). Read sets it; Commit
+	// ignores it.
+	Version string
 }
 
 // CheckPath reports whether p is a valid path of a file in the archive: relative, clean, with
