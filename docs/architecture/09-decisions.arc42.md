@@ -1035,3 +1035,31 @@ date: 2026-11-12
 addresses: qg-usability, qg-confidentiality
 :::
 ```
+
+## Multi-tenancy in one hub
+
+**Context:** The hub has one archive repository, one signing key and one list of participants,
+and one admin file. A team can use it, but several organisations cannot share a hub.
+**Decision:** One hub serves several tenants. Users are global with one or more memberships; the
+role per tenant is `member` or `tenant admin`; a separate system admin role runs the hub. Each
+tenant has several named git repositories that its tenant admin registers. Each session, record,
+task and slide deck belongs to one repository. Authentication stays with Ed25519 key pairs
+(`dec-auth-keypair`); first contact for further users works through an invitation (issue #2).
+**Consequences:** Every interface of the hub needs a tenant, and the archive needs a repository in
+every call. The file of admin keys is removed. The user and tenant data of the hub is itself state
+that must survive a restart. **Rejected:** one hub per tenant (many processes to operate, no
+single user list); one repository per tenant (the maintainer wants several); users that belong to
+exactly one tenant (advisers and agents would need several accounts); OIDC (see `dec-auth-keypair`).
+OPEN: one signing key for the hub or one per tenant (`dec-hub-signing-key`). OPEN: remote of each
+repository and where its credentials are kept (#43). OPEN: where user, tenant and membership data
+is stored.
+
+```arc42
+:::decision
+id: dec-multi-tenancy
+title: One hub serves several tenants with several git repositories each
+status: proposed
+date: 2026-11-12
+addresses: qg-confidentiality
+:::
+```

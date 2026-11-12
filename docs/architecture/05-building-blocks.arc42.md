@@ -61,7 +61,7 @@ id: bb-office-hub-whitebox
 view: building-block
 notation: mermaid
 roots: bb-office-hub
-aliases: bb_office_hub=bb-office-hub, bb_archive=bb-archive, bb_identity=bb-identity, bb_records=bb-records, bb_session_service=bb-session-service, bb_slides=bb-slides, bb_stage=bb-stage, bb_tasks=bb-tasks
+aliases: bb_office_hub=bb-office-hub, bb_archive=bb-archive, bb_identity=bb-identity, bb_records=bb-records, bb_session_service=bb-session-service, bb_slides=bb-slides, bb_stage=bb-stage, bb_tasks=bb-tasks, bb_tenants=bb-tenants
 :::
 ```
 
@@ -75,6 +75,7 @@ flowchart LR
         bb_slides[Slides]
         bb_stage[Stage]
         bb_tasks[Tasks]
+        bb_tenants[Tenants]
     end
     bb_records -->|if-archive-storage| bb_archive
     bb_records -->|if-token-check| bb_identity
@@ -194,6 +195,41 @@ provider: bb-office-hub
 x-realized-by: bb-identity
 protocol: Connect RPC, unary (dec-connect-rpc)
 path: hub/identity/api
+:::
+```
+
+### User API
+
+Manage users and their keys: create a user, add a key, revoke a key, list users. Manage
+memberships: add a user to a tenant with the role `member` or `tenant admin`, change the role and
+remove the user. Name and remove system admins. Who may do what: a system admin everything; a
+tenant admin only memberships of their own tenant; everyone else only their own keys.
+
+```arc42
+:::interface
+id: if-user-api
+title: User API
+provider: bb-office-hub
+x-realized-by: bb-identity
+protocol: Connect RPC, unary (dec-connect-rpc)
+path: hub/identity/userapi
+:::
+```
+
+### Tenant API
+
+Create and remove tenants. Register, list and remove the git repositories of a tenant. Each
+repository has a name that is unique within its tenant. Who may do what: a system admin creates and
+removes tenants; a tenant admin manages the repositories of their own tenant; a member lists them.
+
+```arc42
+:::interface
+id: if-tenant-api
+title: Tenant API
+provider: bb-office-hub
+x-realized-by: bb-tenants
+protocol: Connect RPC, unary (dec-connect-rpc)
+path: hub/tenant/api
 :::
 ```
 
@@ -447,7 +483,9 @@ path: hub/archive
 #### Archive storage
 
 The in-process interface of the archive: write a set of files as one commit, and read the files
-of a directory as they are in the current commit. Paths are relative to the repository.
+of a directory as they are in the current commit. Paths are relative to the repository. Every call
+names the repository of a tenant it works on. (OPEN: how the archive learns of the repositories,
+see `dec-multi-tenancy`.)
 
 ```arc42
 :::interface
@@ -480,11 +518,14 @@ path: hub/stage
 
 ### Identity
 
-Knows all participants and their public keys. Each participant, human or agent, is its own actor
-with its own Ed25519 key pair. The client creates the key pair locally and sends only the public
+Knows all users (participants) and their public keys in one place for the whole hub. Each user,
+human or agent, is its own actor with its own Ed25519 key pair. A user can be a member of several
+tenants, with a role in each (`member` or `tenant admin`). A user can also be a system admin; this
+role replaces the file of admin keys. The client creates the key pair locally and sends only the public
 key. In the first stage, a new public key is registered by hand when we meet the person
 (issue #2 describes a real enrollment flow). Identity issues short-lived access tokens and creates
-read-only links for the stage.
+read-only links for the stage. The token check tells other parts of the hub who the caller is,
+whether they are a system admin and which tenants they belong to with which role.
 
 ```arc42
 :::building-block
@@ -508,6 +549,26 @@ title: Token check
 provider: bb-identity
 protocol: In-process Go call
 path: hub/identity/tokencheck
+:::
+```
+
+### Tenants
+
+Knows the tenants and their git repositories. A tenant is the unit of separation: its sessions,
+records, tasks and slides live only in the repositories of the tenant and are visible only to its
+members. A tenant has several repositories, each with a name that is unique in the tenant.
+(OPEN: remote of a repository and its credentials, see `dec-multi-tenancy`.)
+
+```arc42
+:::ignore W002 bb-tenants gets its required interfaces when its code exists; the epic adds them :::
+
+:::building-block
+id: bb-tenants
+title: Tenants
+technology: Go
+parent: bb-office-hub
+implements: concept-multi-tenancy
+path: hub/tenant
 :::
 ```
 

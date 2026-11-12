@@ -163,6 +163,9 @@ viewing the stage of one session.
 **Revocation.** Each participant can have several keys (several devices). An admin can remove a
 key; tokens bound to it stop working when they expire, at the latest.
 
+**Admins and tenants.** The role of a user in a tenant and the system admin role are described in
+`concept-multi-tenancy`.
+
 **Out of scope for the first stage:** acting on behalf of someone else (delegation), self-service
 enrollment (issue #2), encryption of stored data (OPEN).
 
@@ -170,6 +173,38 @@ enrollment (issue #2), encryption of stored data (OPEN).
 :::concept
 id: concept-identity
 title: Identity and access with local key pairs
+category: security
+:::
+```
+
+## Tenants, repositories and roles
+
+The hub serves several **tenants**. A tenant is the unit of separation: one group of people with
+its own git repositories. One hub, one user list, many tenants.
+
+**Users.** Users are global. Each user is a participant (`concept-identity`) and can be a member
+of several tenants. A membership has one role: `member` or `tenant admin`. Roles inside a session
+(moderator, minute taker) stay as in `concept-participant-model`; they are not tenant roles.
+
+**Admins.** There are two admin levels. A **system admin** runs the hub: creates tenants and
+users, names the first tenant admin of each tenant and other system admins. A **tenant admin** runs
+one tenant: registers its repositories and manages its members. A system admin is no member of a
+tenant by default and does not read its content. At least one system admin always exists; the
+first one is named when the hub starts. Every tenant has at least one tenant admin.
+
+**Repositories.** A tenant has several named git repositories. Each session, record, task and slide
+deck belongs to exactly one tenant and one repository of it. The archive writes to that
+repository only (`dec-yaml-git-storage`).
+
+**Separation.** Every call names a tenant and, where it matters, a repository. The hub checks the
+membership and the role of the caller (from the token) before it reads or writes. A caller who is
+no member gets the same answer as for something that does not exist. Tenants share no data, and
+the log of one session is never visible in another tenant.
+
+```arc42
+:::concept
+id: concept-multi-tenancy
+title: Tenants, repositories and roles
 category: security
 :::
 ```

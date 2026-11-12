@@ -117,6 +117,38 @@ requires: if-forwarding-judge
 :::
 ```
 
+## Tenant admin
+
+Runs one tenant: the group of people and the git repositories of one organisation. A tenant admin
+registers the repositories of the tenant, adds users to the tenant and removes them, and gives the
+tenant admin role to other members. Every tenant has at least one tenant admin.
+
+```arc42
+:::actor
+id: actor-tenant-admin
+title: Tenant admin
+type: person
+description: Manages the repositories and the members of one tenant
+requires: if-tenant-api, if-user-api
+:::
+```
+
+## System admin
+
+Runs the whole hub. A system admin creates and removes tenants, names the first tenant admin of a
+tenant, creates users and registers their keys, and names other system admins. A system admin does
+not read the contents of a tenant unless they are also a member of it.
+
+```arc42
+:::actor
+id: actor-system-admin
+title: System admin
+type: person
+description: Manages tenants, users and system admins of the whole hub
+requires: if-tenant-api, if-user-api
+:::
+```
+
 ## Meeting tool
 
 Zoom, Teams, Meet, Jitsi or any other tool. We do not integrate it. It only carries the screen
