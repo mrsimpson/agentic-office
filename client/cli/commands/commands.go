@@ -18,6 +18,15 @@ Keys and identity:
   key show                           print the public key and key ID
   whoami                             authenticate and print the participant ID
   admin user create <user> <public-key> --name N --kind human|agent
+  admin user list                    all users, also the removed ones (system admin)
+  admin user remove <user>           end a user and its memberships (system admin)
+  admin system-admin add <user>      make a human user a system admin (system admin)
+  admin system-admin remove <user>   take the role away (system admin)
+  admin tenant create <tenant> <first-tenant-admin> [--name N]   (system admin)
+  admin tenant list | remove <tenant>                            (system admin)
+  admin member set <tenant> <user> [--role member|tenant-admin]  (system admin, tenant admin)
+  admin member remove <tenant> <user>                            (system admin, tenant admin)
+  admin member list <tenant>                                     (system admin, member)
   admin key add <user> <public-key>
   admin key revoke <key-id>
 

@@ -763,8 +763,19 @@ the shared core in `client/core` (`dec-cli-and-mcp`). Run `office help` for all 
 office key create                  # creates <config>/agentic-office/client/key.pem, prints the public key
 # a system admin registers it:
 office admin user create ada <public-key> --name "Ada Lovelace" --kind human
+office admin tenant create acme ada --name "Acme Corp"     # ada is the first tenant admin
+office admin member set acme bob [--role member|tenant-admin]
+office admin member remove acme bob
+office admin member list acme
 office whoami                      # authenticates and prints "ada"
 ```
+
+Who may do what: a **system admin** creates, lists and removes users and tenants, names system
+admins and manages the members of any tenant. A **tenant admin** manages the members of the own
+tenant (`admin member set|remove`); a member lists them (`admin member list`). Everything else
+returns `permission_denied`, and a tenant that you are not a member of looks as if it did not
+exist (`not_found`). Removing a user, a membership or a tenant ends its validity and keeps the
+record.
 
 `office key show` prints the public key and key ID again. `office admin key add <user> <public-key>`
 adds a key to a user (your own, or any as a system admin). `office admin key revoke <key-id>`
@@ -780,6 +791,7 @@ Every command takes these flags. The environment variables set the defaults. `<c
 |---|---|---|
 | `--hub` | `OFFICE_HUB` | `https://127.0.0.1:8740` |
 | `--ca-cert` | `OFFICE_CA_CERT` | `<config>/agentic-office/client/hub.crt` if it exists (then only it is trusted), else the system roots |
+| `--tenant` | `OFFICE_TENANT` | none; the calls of the meeting, records, tasks and slides need it (see [Tenants](#tenants)) |
 | `--key` | `OFFICE_KEY` | `<config>/agentic-office/client/key.pem` |
 | `--runtime-dir` | `OFFICE_RUNTIME_DIR` | `$XDG_RUNTIME_DIR/agentic-office`, else `/tmp/agentic-office-<uid>` |
 | `--session` | `OFFICE_SESSION` | the only session this participant joined on this machine |
