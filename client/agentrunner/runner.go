@@ -291,8 +291,8 @@ func (r *runner) startCheck(ctx context.Context, checked chan<- check) {
 	if !r.checkDue || r.checking || r.d.ended || len(r.d.pending) == 0 {
 		return
 	}
-	req := r.decisionRequest()
-	last := req.New[len(req.New)-1].EventID
+	req := r.checkRequest()
+	last := req.new[len(req.new)-1].eventID
 	r.checkDue, r.checking = false, true
 	go func() {
 		v, err := r.wake.ask(ctx, req)

@@ -201,19 +201,20 @@ func TestAgentRunnerDecisionModelThreshold(t *testing.T) {
 }
 
 // TestAgentRunnerDecisionModelFallback: one failure does not wake the agent; the utterances wait
-// for the next change of speaker. After three failures in a row the runner switches to turn-end
-// and logs it once. It asks the model again (here at once, --decide-retry 0s) and switches back
-// when the model answers. Nothing is lost and nothing is sent twice.
+// for the next change of speaker. After three failures within five minutes, the runner switches
+// to turn-end and logs it once. It asks the model again at most once per change of speaker, at
+// the first utterance after it, and switches back when the model answers. Nothing is lost and
+// nothing is sent twice. The test needs no clock: the three failures come at once.
 func TestAgentRunnerDecisionModelFallback(t *testing.T) {
 	s1 := newSystemOne(t, false)
-	mt := newMeetingWithRunner(t, nil, "--wake", "decision-model", "--decide-url", s1.srv.URL, "--decide-model", "jev-latest",
-		"--decide-retry", "0s")
+	mt := newMeetingWithRunner(t, nil, "--wake", "decision-model", "--decide-url", s1.srv.URL, "--decide-model", "jev-latest")
 	failures := func(n int) {
 		t.Helper()
 		waitUntil(t, 20*time.Second, fmt.Sprintf("%d failures logged", n), func() bool {
 			return strings.Count(mt.runner.Stderr(), "the decision model failed (") == n
 		})
 	}
+	const again = "asking the decision model again\n"
 
 	// One failure: no wake-up until the change of speaker.
 	s1.setDown(true)
@@ -230,14 +231,14 @@ func TestAgentRunnerDecisionModelFallback(t *testing.T) {
 	}
 	waitPromptEnd(t, mt.rec, 2)
 
-	// Two more failures in a row: the runner switches to turn-end.
+	// Two more failures: the runner switches to turn-end. Until the next change of speaker, it
+	// does not ask the model.
 	mt.say(mt.ada, "Second.")
 	failures(2)
 	mt.say(mt.ada, "Third.")
 	failures(3)
-	mt.waitStderr("3 failures in a row: switching to turn-end, asking the decision model again in 0s")
+	mt.waitStderr("3 failures within 5m0s: switching to turn-end, asking the decision model again after the next change of speaker")
 	mt.say(mt.ada, "Fourth.")
-	mt.waitStderr("the decision model still fails (endpoint: 500")
 	mt.turnEnd(mt.ada)
 	ps = waitPrompt(t, mt.rec, 3)
 	for _, s := range []string{"Ada (human): Second.", "Ada (human): Third.", "Ada (human): Fourth."} {
@@ -245,14 +246,32 @@ func TestAgentRunnerDecisionModelFallback(t *testing.T) {
 			t.Fatalf("prompt 3 lacks %q:\n%s", s, ps[2])
 		}
 	}
+	if strings.Contains(mt.runner.Stderr(), again) {
+		t.Fatalf("the runner asked the model again before a change of speaker:\n%s", mt.runner.Stderr())
+	}
 	waitPromptEnd(t, mt.rec, 3)
+
+	// After the change of speaker, the first utterance asks the model again; it still fails. The
+	// next utterance does not ask it.
+	mt.say(mt.ada, "Fifth.")
+	mt.waitStderr("the decision model still fails (endpoint: 500")
+	mt.say(mt.ada, "Sixth.")
+	mt.turnEnd(mt.ada)
+	ps = waitPrompt(t, mt.rec, 4)
+	if !strings.Contains(ps[3], "Ada (human): Fifth.") || !strings.Contains(ps[3], "Ada (human): Sixth.") {
+		t.Fatalf("prompt 4:\n%s", ps[3])
+	}
+	if n := strings.Count(mt.runner.Stderr(), again); n != 1 {
+		t.Fatalf("the runner asked the model %d times within one turn, want once:\n%s", n, mt.runner.Stderr())
+	}
+	waitPromptEnd(t, mt.rec, 4)
 
 	// The model answers again: the runner switches back and wakes the agent without a turn.end.
 	s1.setDown(false)
 	mt.say(mt.ada, `Bot, please say "Back."`)
 	waitUtterance(t, mt.adaLog, "bot", "Back.")
 	mt.waitStderr("the decision model answers again: switching back from turn-end to decision-model")
-	waitPromptEnd(t, mt.rec, 4)
+	waitPromptEnd(t, mt.rec, 5)
 
 	// An answer outside the contract is one failure, not a switch.
 	mt.say(mt.ada, "s1 garbage")
@@ -261,7 +280,7 @@ func TestAgentRunnerDecisionModelFallback(t *testing.T) {
 		t.Errorf("the switch to turn-end is logged %d times, want once", n)
 	}
 	ps = promptTexts(contracttest.ReadACPRecords(t, mt.rec))
-	for _, s := range []string{"First.", "Second.", "Third.", "Fourth.", `please say "Back."`} {
+	for _, s := range []string{"First.", "Second.", "Third.", "Fourth.", "Fifth.", "Sixth.", `please say "Back."`} {
 		if n := count(ps, s); n != 1 {
 			t.Errorf("%q is in %d prompts, want 1", s, n)
 		}

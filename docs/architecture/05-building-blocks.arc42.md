@@ -657,10 +657,10 @@ path: client/agentrunner/acpclient
 :::
 ```
 
-### LLM judge
+### Forwarding judge
 
-The contract for an LLM judge that the user brings (`dec-byo-decision-model`), used by the wake
-strategy `llm`. After each utterance of another participant, and when that participant ends the
+The contract for a forwarding judge that the user brings (`dec-byo-decision-model`), used by
+the wake strategy `llm`: the runner forwards its question to a model or program, which judges. After each utterance of another participant, and when that participant ends the
 turn, the agent runner sends a request (`dec-wake-check-per-utterance`): the session, the agent
 and its role, the participants, the recent context, the new utterances that the agent has not
 got yet, and whether the speaker of the last new utterance has ended the turn. The judge answers
@@ -678,12 +678,12 @@ its JSON schema.
 
 ```arc42
 :::interface
-id: if-llm-judge
-title: LLM judge
+id: if-forwarding-judge
+title: Forwarding judge
 provider: bb-participant-client
 x-realized-by: bb-agent-runner
 protocol: OpenAI-compatible chat completions with JSON schema, or JSON on stdin and stdout of a command
-path: client/agentrunner/decision
+path: client/agentrunner/forwardingjudge
 :::
 ```
 
@@ -694,7 +694,7 @@ wake strategy `decision-model`: the System One API, which TypeSafe Jev offers an
 states to be compatible with. After each utterance of another participant, and when that
 participant ends the turn, the agent runner posts the model name, the state of the meeting and
 three questions to the endpoint that the user gives. The state holds the same facts as the
-request to an LLM judge: the agent and its role, the participants, earlier and new utterances,
+request to a forwarding judge: the agent and its role, the participants, earlier and new utterances,
 and whether the turn has ended. The questions:
 
 - `act` (yes or no): should the agent act now? The answer is a probability.
@@ -807,14 +807,14 @@ session and one agent key, it:
 - sends a first prompt with the role of the agent and the meeting;
 - decides with one wake strategy, chosen by the user at start, when to wake the agent
   (`dec-agent-runner-delivery`): `turn-end` wakes it at each change of speaker and says at start
-  that it does not notice a new topic within a monologue; `llm` asks an LLM judge and
+  that it does not notice a new topic within a monologue; `llm` asks a forwarding judge and
   `decision-model` asks a decision model after each utterance of another participant
   (`dec-wake-check-per-utterance`, `dec-byo-decision-model`), and they wake the agent when the
   model says it should act or a block of topics has ended;
 - falls back to `turn-end` when the model fails: a failed check wakes nobody, and the
-  utterances wait for the next change of speaker; after three failures in a row it works as
-  `turn-end`, asks the model again after a growing wait and switches back when the model
-  answers;
+  utterances wait for the next change of speaker; after three failures within five minutes it
+  works as `turn-end`, asks the model again at most once per change of speaker and switches back
+  when the model answers;
 - when it wakes the agent, sends what others said since its last delivery, with who said it and
   whether that participant is a human or an agent. It leaves out the agent's own utterances and
   sentences off the record. While the agent works, it queues what comes and sends it together
@@ -824,6 +824,14 @@ session and one agent key, it:
 The runner never speaks for the agent and judges nothing itself: the agent decides whether it is
 addressed and acts through the office tools. Whatever the harness writes as a reply is only
 logged.
+
+Inside the runner, the wake strategy is one seam that serves the runner as its consumer. The
+runner asks it what an utterance or a change of speaker means, hands it the pending utterances
+with their context in its own terms, and gets back its own verdict: wake, wait, or check with
+the model. The three strategies hide behind this seam. Only the strategies `llm` and
+`decision-model` know the external contracts, `if-forwarding-judge` and `if-decision-model`, and
+each maps the request and the verdict to its contract. The seam lies inside the runner, so it is
+no interface of the model.
 
 ```arc42
 :::building-block

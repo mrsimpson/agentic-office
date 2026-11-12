@@ -28,7 +28,7 @@ client runs on the computer of a participant, and the ears already use a speech 
 keep an agent in a meeting at a sensible cost, the client may want to ask a small model whether
 the agent should act. **Decision:** `con-no-intelligence` applies to the hub only. The
 participant client may contain models, generative or not, on the participant's side. The office
-ships no generative model; a user brings an LLM judge or a decision model
+ships no generative model; a user brings a forwarding judge or a decision model
 (`dec-byo-decision-model`). **Consequences:** The
 hub stays as it is. A model in the client can only change what the client of that participant
 does, never what the hub stores or how it decides. Tests of the client use test doubles of such
@@ -81,7 +81,7 @@ addresses: con-turn-based-agents, qg-usability
 notice when a speaker starts a new topic within a monologue, or talks about something that
 concerns the role of the agent. The end of a turn (`turn.end`) comes too late for that.
 **Decision:** After each utterance of another participant, the runner checks whether to wake the
-agent. An LLM judge or a decision model that the user brings makes the check
+agent. A forwarding judge or a decision model that the user brings makes the check
 (`dec-byo-decision-model`). When it says the agent should act, the runner sends the agent what others said since its last delivery,
 as one prompt. Each utterance says who spoke and whether that participant is a human or an
 agent. The agent decides by itself how to act: answer, raise its hand, or update the minutes
@@ -113,7 +113,7 @@ wake strategy, chosen by the user at the start of the runner, decides when to wa
 
 - `turn-end` (the default): at each change of speaker (`turn.end` of another participant). The
   runner says at start that it does not notice a new topic within a monologue.
-- `llm`: an LLM judge that the user brings decides after each utterance
+- `llm`: a forwarding judge that the user brings decides after each utterance
   (`dec-byo-decision-model`).
 - `decision-model`: a decision model that the user brings decides after each utterance
   (`dec-byo-decision-model`).
@@ -135,9 +135,10 @@ Each wake strategy is one exchangeable part of the runner. All other rules hold 
 - Graceful fallback: with `llm` or `decision-model`, a check that fails (an error, a time-out or
   an answer outside the contract) does not wake the agent. The utterances wait for the next
   change of speaker, as with `turn-end`; if that change has come already, the runner wakes the
-  agent now. After three failures in a row, the runner works as `turn-end` and logs this once.
-  It asks the model again after a wait that grows with each failure, and switches back, with a
-  log line, when the model answers.
+  agent now. After three failures within five minutes, with no answer between them, the runner
+  works as `turn-end` and logs this once. It asks the model again at most once per change of
+  speaker, at the first utterance after it, and switches back, with a log line, when the model
+  answers. The numbers are fixed; the user cannot change them.
 - When the runner wakes the agent, it sends all utterances of others since its last delivery as
   one prompt. One prompt runs at a time. While the agent works, the runner queues what comes
   and sends it together in one prompt afterwards. A change of speaker without new utterances of
@@ -173,7 +174,7 @@ addresses: qg-resumability, qg-usability, risk-retraction-leak, risk-agent-wakeu
 :::
 ```
 
-## An LLM judge or a decision model that the user brings
+## A forwarding judge or a decision model that the user brings
 
 **Context:** The runner checks after each utterance whether to wake the agent
 (`dec-wake-check-per-utterance`). Waking a harness with a large model for this costs time and
@@ -182,8 +183,9 @@ and cheaper. The hub must stay without intelligence (`con-no-intelligence`), and
 should not pick a model for its users. **Decision:** The user brings one of two kinds of model,
 each with its own interface:
 
-- An LLM judge (`if-llm-judge`, wake strategy `llm`): a general language model that judges by a
-  prompt. It is an OpenAI-compatible chat endpoint with structured output by JSON schema (for
+- A forwarding judge (`if-forwarding-judge`, wake strategy `llm`): a model or program to which
+  the runner forwards its question, typically a general language model that judges by a prompt.
+  It is an OpenAI-compatible chat endpoint with structured output by JSON schema (for
   example llama.cpp, Ollama or a hosted model), or a command that reads the request as JSON and
   writes the answer as JSON. It answers `act`, `addressed`, `topic_closed` and `reason`.
 - A decision model (`if-decision-model`, wake strategy `decision-model`): a small model made to
@@ -194,7 +196,9 @@ each with its own interface:
   at or above a threshold of the user counts as yes. There is no reason, so the runner logs the
   probabilities.
 
-With either kind, the runner wakes the agent when it should act. When a block of topics has
+Towards the runner, both kinds hide behind one wake strategy, with the runner's own request
+and verdict; only the strategy maps them to the external contract. With either kind, the runner
+wakes the agent when it should act. When a block of topics has
 ended, it wakes the agent with the task of the role for the end of a topic, for example to update
 the minutes or to record decisions. If the model fails, the runner falls back to the change of
 speaker (`dec-agent-runner-delivery`). Without a model, the wake strategy `turn-end` wakes the
@@ -206,12 +210,12 @@ System One API comes from one vendor, and another vendor states that it is compa
 (`risk-decision-model-api`). **Rejected:** a model built into the office; one fixed vendor API;
 one contract for both kinds (a chat model answers with booleans and a reason, a decision model
 with probabilities); reaching a decision model through the chat endpoint of a model router (it
-does not take the structured output that the LLM judge needs).
+does not take the structured output that the forwarding judge needs).
 
 ```arc42
 :::decision
 id: dec-byo-decision-model
-title: An LLM judge or a decision model that the user brings
+title: A forwarding judge or a decision model that the user brings
 status: accepted
 date: 2026-11-12
 addresses: con-no-intelligence, qg-performance, qg-usability, risk-agent-wakeups, risk-decision-model-api

@@ -1,7 +1,7 @@
-// Command decisiondouble is a test double of an LLM judge of the command kind (if-llm-judge,
-// --wake llm). It reads one request as JSON on stdin and writes one answer as JSON on
-// stdout. It calls no model. It follows fixed rules on the last new utterance, the one that the
-// runner checks:
+// Command forwardingjudgedouble is a test double of a forwarding judge of the command kind
+// (if-forwarding-judge, --wake llm). It reads one request as JSON on stdin and writes one answer as
+// JSON on stdout. It calls no model. It follows fixed rules on the last new utterance, the one that
+// the runner checks:
 //
 //   - "decider fail": exits with an error;
 //   - "decider slow": sleeps for a minute (the runner's time-out ends it);
@@ -86,6 +86,6 @@ func compact(b []byte) []byte {
 }
 
 func fail(err error) {
-	fmt.Fprintln(os.Stderr, "decisiondouble:", err)
+	fmt.Fprintln(os.Stderr, "forwardingjudgedouble:", err)
 	os.Exit(3)
 }

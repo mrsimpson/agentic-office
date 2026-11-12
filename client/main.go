@@ -35,7 +35,7 @@ func main() {
 			Harness: o.Harness, Allow: o.Allow, Cwd: o.Cwd, Office: o.Office, Version: o.Version, Stderr: o.Stderr,
 			Dial: core.Dial, NewReplicator: replicator.New, TopicTask: o.TopicTask,
 			Wake: agentrunner.Wake{Strategy: o.Wake, Command: o.DecideCommand, URL: o.DecideURL, Model: o.DecideModel,
-				APIKey: o.DecideKey, Threshold: o.DecideThreshold, Timeout: o.DecideTimeout, Retry: o.DecideRetry}})
+				APIKey: o.DecideKey, Threshold: o.DecideThreshold, Timeout: o.DecideTimeout}})
 	}
 	cli.CheckEars = func(ctx context.Context, o *cli.EarsOptions, progress func(string)) error {
 		cfg := earsConfig(*o)

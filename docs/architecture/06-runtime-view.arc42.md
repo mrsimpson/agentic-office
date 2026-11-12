@@ -426,7 +426,8 @@ ACP session with the office tools and sent a first prompt with the role.
 A human talks. Each sentence reaches the local log as `utterance.final`. The wake strategy that
 the user chose decides when to wake the agent (`dec-agent-runner-delivery`). With `llm` or
 `decision-model`, the runner checks after each utterance (`dec-wake-check-per-utterance`): it
-asks the LLM judge or the decision model whether the agent should act now, for example because
+asks the forwarding judge or the decision model whether the agent should act now, for example
+because
 the speaker addressed it, started a new topic within a monologue or talks about something that
 concerns the role of the agent (`dec-byo-decision-model`). If so, the runner collects what others said since its last
 delivery, leaves out the agent's own utterances and sentences off the record, and sends it as one
@@ -436,8 +437,8 @@ local log, also that of the runner, which leaves them out of the next prompt. If
 still busy, the runner queues what comes and sends it together afterwards. If the model is
 still busy with a check, the next check judges all new utterances together
 (`dec-agent-runner-delivery`). If a check fails, the utterances wait until the speaker ends the
-turn; after three failures in a row, the runner works as `turn-end` until the model answers
-again. With `turn-end`, the runner wakes the agent only when the speaker ends the turn. When the
+turn; after three failures within five minutes, the runner works as `turn-end` and asks the
+model again once after each change of speaker, until it answers. With `turn-end`, the runner wakes the agent only when the speaker ends the turn. When the
 session ends, the runner sends a last prompt with what is left
 and stops the harness.
 
@@ -455,7 +456,7 @@ involves: bb-agent-runner, bb-client-core, bb-replicator, bb-mcp, bb-cli, bb-ses
 id: seq-agent-runner-turn
 notation: mermaid-sequence
 scenario: rs-agent-runner-turn
-aliases: actor_human=actor-human, actor_agent=actor-agent, actor_llm_judge=actor-llm-judge, actor_decision_model=actor-decision-model, bb_cli=bb-cli, bb_session=bb-session-service, bb_replicator=bb-replicator, bb_agent_runner=bb-agent-runner, bb_mcp=bb-mcp
+aliases: actor_human=actor-human, actor_agent=actor-agent, actor_forwarding_judge=actor-forwarding-judge, actor_decision_model=actor-decision-model, bb_cli=bb-cli, bb_session=bb-session-service, bb_replicator=bb-replicator, bb_agent_runner=bb-agent-runner, bb_mcp=bb-mcp
 :::
 ```
 
@@ -466,7 +467,7 @@ sequenceDiagram
     participant bb_session as Meeting session
     participant bb_replicator as Log replicator
     participant bb_agent_runner as Agent runner
-    participant actor_llm_judge as LLM judge
+    participant actor_forwarding_judge as Forwarding judge
     participant actor_decision_model as Decision model
     participant actor_agent as Agent harness
     participant bb_mcp as MCP server
@@ -476,8 +477,8 @@ sequenceDiagram
     bb_replicator->>bb_replicator: append lines to the local log of the agent
     bb_agent_runner->>bb_replicator: read new lines
     alt wake strategy llm
-        bb_agent_runner->>actor_llm_judge: new utterances, context, role
-        actor_llm_judge-->>bb_agent_runner: act, addressed, topic_closed, reason
+        bb_agent_runner->>actor_forwarding_judge: new utterances, context, role
+        actor_forwarding_judge-->>bb_agent_runner: act, addressed, topic_closed, reason
     else wake strategy decision-model
         bb_agent_runner->>actor_decision_model: state of the meeting, questions
         actor_decision_model-->>bb_agent_runner: probabilities of act and topic_closed, addressed

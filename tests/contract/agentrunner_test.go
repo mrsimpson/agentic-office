@@ -208,7 +208,6 @@ func TestAgentRunnerErrors(t *testing.T) {
 		{"agent", "run", "--session", "s1", "--wake", "llm", "--decide-url", "http://x", "--", "true"},                                                                // no model name
 		{"agent", "run", "--session", "s1", "--wake", "llm", "--decide-cmd", "x", "--decide-threshold", "0.7", "--", "true"},                                          // threshold with llm
 		{"agent", "run", "--session", "s1", "--wake", "llm", "--decide-cmd", "x", "--decide-timeout", "0s", "--", "true"},                                             // no time-out
-		{"agent", "run", "--session", "s1", "--wake", "llm", "--decide-cmd", "x", "--decide-retry", "-1s", "--", "true"},                                              // negative retry
 		{"agent", "run", "--session", "s1", "--wake", "decision-model", "--decide-cmd", "x", "--", "true"},                                                            // a command
 		{"agent", "run", "--session", "s1", "--wake", "decision-model", "--decide-url", "http://x", "--", "true"},                                                     // no model name
 		{"agent", "run", "--session", "s1", "--wake", "decision-model", "--decide-url", "http://x", "--decide-model", "m", "--decide-threshold", "1.5", "--", "true"}, // threshold above 1

@@ -35,7 +35,6 @@ type AgentOptions struct {
 	DecideKey       string
 	DecideThreshold float64
 	DecideTimeout   time.Duration
-	DecideRetry     time.Duration
 	// TopicTask is the task of the role when a block of topics has ended.
 	TopicTask string
 }
@@ -64,20 +63,19 @@ func (s *stringList) Set(v string) error { *s = append(*s, v); return nil }
 // cmdAgentRun runs the agent runner: office agent run --session S [--role T | --role-file F]
 // [--allow PATTERN]... [--cwd DIR] [--wake turn-end|llm|decision-model]
 // [--decide-cmd CMD | --decide-url URL --decide-model M] [--decide-threshold P]
-// [--decide-timeout D] [--decide-retry D] [--topic-task T] -- <harness command>.
+// [--decide-timeout D] [--topic-task T] -- <harness command>.
 func cmdAgentRun(e *env, fs *flag.FlagSet) func([]string) error {
 	role := fs.String("role", "", "the role of the agent, in plain words")
 	roleFile := fs.String("role-file", "", "read the role from this file")
 	var allow stringList
 	fs.Var(&allow, "allow", "allow tool calls whose title matches this pattern (* is any text); repeatable; default: the office tools only")
 	cwd := fs.String("cwd", "", "working directory of the agent's session (default: the current directory)")
-	wake := fs.String("wake", WakeTurnEnd, "when to wake the agent: "+WakeTurnEnd+" (at each change of speaker), "+WakeLLM+" (an LLM judge decides after each utterance) or "+WakeDecisionModel+" (a decision model decides after each utterance)")
+	wake := fs.String("wake", WakeTurnEnd, "when to wake the agent: "+WakeTurnEnd+" (at each change of speaker), "+WakeLLM+" (a forwarding judge decides after each utterance) or "+WakeDecisionModel+" (a decision model decides after each utterance)")
 	decideCmd := fs.String("decide-cmd", "", "with --wake "+WakeLLM+": a shell command that reads the request as JSON on stdin and writes the answer as JSON on stdout")
 	decideURL := fs.String("decide-url", "", "with --wake "+WakeLLM+": base URL of an OpenAI-compatible API, for example http://127.0.0.1:11434/v1; with --wake "+WakeDecisionModel+": the full URL of a System One endpoint (key in "+EnvDecideKey+")")
 	decideModel := fs.String("decide-model", "", "the model name for --decide-url")
 	decideThreshold := fs.Float64("decide-threshold", 0.5, "with --wake "+WakeDecisionModel+": the probability from which an answer counts as yes")
 	decideTimeout := fs.Duration("decide-timeout", 10*time.Second, "after this time without an answer, a check of the model has failed")
-	decideRetry := fs.Duration("decide-retry", 30*time.Second, "after the switch to "+WakeTurnEnd+", wait this long before asking the model again; the wait doubles up to 5m")
 	topicTask := fs.String("topic-task", "", "the task of the role when a block of topics has ended (with --wake "+WakeLLM+" or "+WakeDecisionModel+")")
 	return func(args []string) error {
 		if len(args) == 0 {
@@ -108,9 +106,6 @@ func cmdAgentRun(e *env, fs *flag.FlagSet) func([]string) error {
 		if *decideTimeout <= 0 {
 			return usagef("--decide-timeout must be positive")
 		}
-		if *decideRetry < 0 {
-			return usagef("--decide-retry must not be negative")
-		}
 		if RunAgent == nil {
 			return errors.New("this office binary has no agent runner")
 		}
@@ -122,7 +117,7 @@ func cmdAgentRun(e *env, fs *flag.FlagSet) func([]string) error {
 			Allow: allow, Cwd: *cwd, Office: office, Version: Version, Stderr: e.stderr,
 			Wake: *wake, DecideCommand: *decideCmd, DecideURL: *decideURL, DecideModel: *decideModel,
 			DecideKey: os.Getenv(EnvDecideKey), DecideThreshold: *decideThreshold, DecideTimeout: *decideTimeout,
-			DecideRetry: *decideRetry, TopicTask: *topicTask})
+			TopicTask: *topicTask})
 	}
 }
 
@@ -138,7 +133,7 @@ func checkWake(wake string, set map[string]bool, cmd, url, model string) error {
 	}
 	switch wake {
 	case WakeTurnEnd:
-		if f := given("decide-cmd", "decide-url", "decide-model", "decide-threshold", "decide-timeout", "decide-retry"); f != "" {
+		if f := given("decide-cmd", "decide-url", "decide-model", "decide-threshold", "decide-timeout"); f != "" {
 			return usagef("%s needs --wake %s or --wake %s", f, WakeLLM, WakeDecisionModel)
 		}
 	case WakeLLM:

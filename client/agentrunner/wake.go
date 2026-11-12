@@ -5,15 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"time"
-
-	"github.com/mrsimpson/agentic-office/client/agentrunner/decision"
 )
 
 // The wake strategies (dec-agent-runner-delivery). The user chooses one with --wake.
 const (
 	// WakeTurnEnd wakes the agent at each change of speaker (turn.end of another participant).
 	WakeTurnEnd = "turn-end"
-	// WakeLLM asks an LLM judge after each utterance (if-llm-judge).
+	// WakeLLM asks a forwarding judge after each utterance (if-forwarding-judge).
 	WakeLLM = "llm"
 	// WakeDecisionModel asks a decision model after each utterance (if-decision-model).
 	WakeDecisionModel = "decision-model"
@@ -23,8 +21,9 @@ const (
 type Wake struct {
 	// Strategy is WakeTurnEnd, WakeLLM or WakeDecisionModel. Empty: WakeTurnEnd.
 	Strategy string
-	// Command is the LLM judge as a shell command (run with sh -c), for WakeLLM. It reads one
-	// decision.Request as JSON on stdin and writes one decision.Answer as JSON on stdout.
+	// Command is the forwarding judge as a shell command (run with sh -c), for WakeLLM. It reads
+	// one forwardingjudge.Request as JSON on stdin and writes one forwardingjudge.Answer as JSON
+	// on stdout.
 	Command string
 	// URL is, for WakeLLM, the base URL of an OpenAI-compatible API, for example
 	// http://127.0.0.1:11434/v1; the runner posts to URL + "/chat/completions". For
@@ -39,10 +38,6 @@ type Wake struct {
 	Threshold float64
 	// Timeout bounds one check. Zero means 10 s.
 	Timeout time.Duration
-	// Retry is the first wait before the runner asks a model again after it switched to
-	// turn-end. The wait doubles after each failure, up to five minutes or Retry if that is
-	// longer. Zero: ask again at the next utterance.
-	Retry time.Duration
 }
 
 // step is what a wake strategy asks of the runner.
@@ -62,8 +57,10 @@ type verdict struct {
 	note        string // the reason or the probabilities, for the log
 }
 
-// wakeStrategy decides when the runner wakes the agent (dec-agent-runner-delivery). The runner
-// chooses one at start. The runner keeps the rules that hold for all strategies: one prompt and
+// wakeStrategy is the one seam between the runner and the ways to decide when to wake the agent
+// (dec-agent-runner-delivery). The runner chooses one strategy at start and knows only this
+// interface and its own types (checkRequest, verdict, step); each strategy maps them to the
+// contract of its model. The runner keeps the rules that hold for all strategies: one prompt and
 // one check at a time, the queue, the order, off the record and the end of the session.
 type wakeStrategy interface {
 	// String describes the strategy for the log at start, without a key.
@@ -74,7 +71,7 @@ type wakeStrategy interface {
 	turnEnd(now time.Time) step
 	// ask asks the model about the pending utterances. Only a strategy that returns stepCheck
 	// is asked.
-	ask(ctx context.Context, req decision.Request) (verdict, error)
+	ask(ctx context.Context, req checkRequest) (verdict, error)
 	// answered takes the end of a check: the verdict or the error. turnEnded says whether the
 	// speaker of the last pending utterance has ended the turn by now. It returns stepWake or
 	// stepWait.
@@ -83,10 +80,6 @@ type wakeStrategy interface {
 
 // newWakeStrategy chooses the wake strategy of w.
 func newWakeStrategy(w Wake, logf func(string, ...any)) (wakeStrategy, error) {
-	retry := w.Retry
-	if retry < 0 {
-		return nil, errors.New("negative retry wait")
-	}
 	timeout := w.Timeout
 	if timeout <= 0 {
 		timeout = 10 * time.Second
@@ -100,13 +93,13 @@ func newWakeStrategy(w Wake, logf func(string, ...any)) (wakeStrategy, error) {
 	case WakeLLM:
 		switch {
 		case w.Command != "" && w.URL != "":
-			return nil, errors.New("give a command or a URL for the LLM judge, not both")
+			return nil, errors.New("give a command or a URL for the forwarding judge, not both")
 		case w.Command == "" && w.URL == "":
-			return nil, errors.New("the LLM judge needs a command or a URL")
+			return nil, errors.New("the forwarding judge needs a command or a URL")
 		case w.URL != "" && w.Model == "":
-			return nil, errors.New("the LLM judge needs a model name")
+			return nil, errors.New("the forwarding judge needs a model name")
 		}
-		return &llmWake{fallback: newFallback(WakeLLM, "LLM judge", timeout, retry, logf),
+		return &forwardingJudgeWake{fallback: newFallback(WakeLLM, "forwarding judge", timeout, logf),
 			command: w.Command, url: w.URL, model: w.Model, key: w.APIKey}, nil
 	case WakeDecisionModel:
 		switch {
@@ -122,7 +115,7 @@ func newWakeStrategy(w Wake, logf func(string, ...any)) (wakeStrategy, error) {
 		if th < 0 || th > 1 {
 			return nil, fmt.Errorf("threshold %v is not between 0 and 1", th)
 		}
-		return &decisionModelWake{fallback: newFallback(WakeDecisionModel, "decision model", timeout, retry, logf),
+		return &decisionModelWake{fallback: newFallback(WakeDecisionModel, "decision model", timeout, logf),
 			url: w.URL, model: w.Model, key: w.APIKey, threshold: th}, nil
 	}
 	return nil, fmt.Errorf("unknown wake strategy %q (want %s, %s or %s)", w.Strategy, WakeTurnEnd, WakeLLM, WakeDecisionModel)
@@ -136,16 +129,16 @@ func (turnEndWake) String() string {
 }
 func (turnEndWake) utterance(time.Time) step { return stepWait }
 func (turnEndWake) turnEnd(time.Time) step   { return stepWake }
-func (turnEndWake) ask(context.Context, decision.Request) (verdict, error) {
+func (turnEndWake) ask(context.Context, checkRequest) (verdict, error) {
 	return verdict{}, errors.New("the wake strategy " + WakeTurnEnd + " asks no model")
 }
 func (turnEndWake) answered(time.Time, verdict, error, bool) step { return stepWait }
 
-// failuresToSwitch is how many failed checks in a row make a model strategy switch to turn-end.
-const failuresToSwitch = 3
-
-// maxRetry is the longest wait before a model is asked again, unless Wake.Retry is longer.
-const maxRetry = 5 * time.Minute
+// failuresToSwitch failures within failureWindow make a model strategy switch to turn-end.
+const (
+	failuresToSwitch = 3
+	failureWindow    = 5 * time.Minute
+)
 
 // fallback is the part that the model strategies share (dec-agent-runner-delivery): they check
 // each utterance with a model, and fall back to turn-end when the model fails.
@@ -153,33 +146,33 @@ const maxRetry = 5 * time.Minute
 //   - One failure (an error, a time-out or an answer outside the contract) does not wake the
 //     agent. The pending utterances wait for the next turn.end of another participant; if that
 //     turn.end has come already, the agent is woken now.
-//   - After failuresToSwitch failures in a row, the strategy works as turn-end and logs it once.
-//     It asks the model again at an utterance after a wait that doubles after each failure, and
-//     switches back with a log line when the model answers.
+//   - After failuresToSwitch failures within failureWindow, with no answer between them, the
+//     strategy works as turn-end and logs it once. It asks the model again at most once per
+//     change of speaker: at the first utterance after a turn.end. When the model answers, it
+//     switches back with a log line.
+//
+// There is no timer: only the window for counting failures reads the clock.
 type fallback struct {
 	name     string // the name of the strategy
 	label    string // the model, in words
 	timeout  time.Duration
-	retry    time.Duration
 	logf     func(string, ...any)
-	failures int  // failed checks in a row
-	switched bool // switched to turn-end
-	unjudged bool // the last check failed; the pending utterances wait for a turn.end
-	wait     time.Duration
-	next     time.Time // with switched: when to ask the model again
+	failures []time.Time // the failed checks since the last answer, within failureWindow
+	switched bool        // switched to turn-end
+	probe    bool        // with switched: the next utterance may ask the model again
+	unjudged bool        // the last check failed; the pending utterances wait for a turn.end
 }
 
-func newFallback(name, label string, timeout, retry time.Duration, logf func(string, ...any)) fallback {
-	return fallback{name: name, label: label, timeout: timeout, retry: retry, logf: logf}
+func newFallback(name, label string, timeout time.Duration, logf func(string, ...any)) fallback {
+	return fallback{name: name, label: label, timeout: timeout, logf: logf}
 }
 
-func (f *fallback) utterance(now time.Time) step {
+func (f *fallback) utterance(time.Time) step {
 	if f.switched {
-		if now.Before(f.next) {
+		if !f.probe {
 			return stepWait
 		}
-		// One probe per wait: utterances that come during the probe wait for its end.
-		f.next = now.Add(f.wait)
+		f.probe = false
 		f.logf("asking the %s again", f.label)
 	}
 	// The check judges all pending utterances, also those of a failed check.
@@ -188,7 +181,11 @@ func (f *fallback) utterance(now time.Time) step {
 }
 
 func (f *fallback) turnEnd(time.Time) step {
-	if f.switched || f.unjudged {
+	if f.switched {
+		f.probe = true
+		return stepWake
+	}
+	if f.unjudged {
 		return stepWake
 	}
 	return stepCheck
@@ -196,18 +193,20 @@ func (f *fallback) turnEnd(time.Time) step {
 
 func (f *fallback) answered(now time.Time, v verdict, err error, turnEnded bool) step {
 	if err != nil {
-		f.failures++
+		kept := f.failures[:0]
+		for _, t := range f.failures {
+			if now.Sub(t) < failureWindow {
+				kept = append(kept, t)
+			}
+		}
+		f.failures = append(kept, now)
 		switch {
 		case f.switched:
-			f.wait = min(2*f.wait, max(maxRetry, f.retry))
-			f.next = now.Add(f.wait)
-			f.logf("the %s still fails (%v); asking it again in %s", f.label, err, f.wait)
-		case f.failures >= failuresToSwitch:
-			f.switched = true
-			f.wait = f.retry
-			f.next = now.Add(f.wait)
-			f.logf("the %s failed (%v); %d failures in a row: switching to %s, asking the %s again in %s",
-				f.label, err, f.failures, WakeTurnEnd, f.label, f.wait)
+			f.logf("the %s still fails (%v); asking it again after the next change of speaker", f.label, err)
+		case len(f.failures) >= failuresToSwitch:
+			f.switched, f.probe = true, false
+			f.logf("the %s failed (%v); %d failures within %s: switching to %s, asking the %s again after the next change of speaker",
+				f.label, err, len(f.failures), failureWindow, WakeTurnEnd, f.label)
 		default:
 			f.logf("the %s failed (%v); the utterances wait for the next change of speaker", f.label, err)
 		}
@@ -220,7 +219,7 @@ func (f *fallback) answered(now time.Time, v verdict, err error, turnEnded bool)
 	if f.switched {
 		f.logf("the %s answers again: switching back from %s to %s", f.label, WakeTurnEnd, f.name)
 	}
-	f.failures, f.switched, f.unjudged = 0, false, false
+	f.failures, f.switched, f.probe, f.unjudged = nil, false, false, false
 	if v.act || v.topicClosed {
 		return stepWake
 	}

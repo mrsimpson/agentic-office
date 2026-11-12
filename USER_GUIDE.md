@@ -436,11 +436,12 @@ the agent, with `--wake`:
 | `--wake` | The runner wakes the agent | You need |
 | --- | --- | --- |
 | `turn-end` (the default) | at each change of speaker: when someone else ends their turn | nothing |
-| `llm` | when an **LLM judge** says so, after each sentence of someone else | a general language model, for example a small one in Ollama |
+| `llm` | when a **forwarding judge** says so, after each sentence of someone else | a general language model, for example a small one in Ollama, or your own program |
 | `decision-model` | when a **decision model** says so, after each sentence of someone else | a key for a decision model, for example TypeSafe Jev or Cloudflare Clef |
 
-The office ships no model; you bring it. An LLM judge is a general language model that judges by
-a prompt. A decision model is a small model made for such questions; it answers with
+The office ships no model; you bring it. A forwarding judge is the model or program to which the
+runner forwards its question, for example a general language model; it answers with yes or no
+and a reason. A decision model is a small model made for such questions; it answers with
 probabilities.
 
 **With `turn-end`**, the runner says at start that it does not notice a new topic within a
@@ -463,10 +464,10 @@ within `--decide-timeout` (default `10s`), or an answer the runner cannot read.
 
 - After one failure, the runner does not wake the agent. The sentences wait until the speaker
   ends the turn.
-- After three failures in a row, the runner works as with `turn-end` and says so once on its
-  terminal. It asks the model again after `--decide-retry` (default `30s`), then after twice
-  that wait, up to five minutes. When the model answers again, the runner switches back and says
-  so.
+- After three failures within five minutes, the runner works as with `turn-end` and says so
+  once on its terminal. It then wakes the agent at each change of speaker, and asks the model
+  again once after each change of speaker, at the next sentence. When the model answers again,
+  the runner switches back and says so.
 
 When you speak, the ears end your turn after a short silence: 1.8 seconds by default. Change it
 with `office meeting join --turn-silence 2.5s`. Text that you type with `office say` does not end
@@ -510,10 +511,10 @@ speaker address (a participant or nobody). A probability at or above `--decide-t
 questions. The runner prints the probabilities on its terminal, for example
 `act 0.93, topic_closed 0.10, addressed kiro-bot (0.80)`.
 
-### Bring an LLM judge
+### Bring a forwarding judge
 
-An LLM judge gets a short request about the meeting and answers with JSON. Use `--wake llm` and
-connect it in one of two ways.
+The runner forwards a short request about the meeting to the forwarding judge, which answers
+with JSON. Use `--wake llm` and connect it in one of two ways.
 
 **A server with an OpenAI-compatible API.** It must support structured output with a JSON
 schema (`response_format` of type `json_schema`). Give the base URL that ends in `/v1` with
@@ -569,8 +570,8 @@ writes the answer as JSON to its standard output:
 `act` (wake the agent now) and `topic_closed` (a topic has ended) must be there. `addressed` and
 `reason` may be empty. [`README.md`](README.md), section "Agent runner", has the details.
 
-**Where the model runs matters.** An LLM judge or a decision model gets the text of the meeting,
-as the agent's own model does. A hosted model sends this text to its provider. A local model keeps it on your
+**Where the model runs matters.** A forwarding judge or a decision model gets the text of the
+meeting, as the agent's own model does. A hosted model sends this text to its provider. A local model keeps it on your
 computer. Sentences off the record are never sent.
 
 ### Without the runner: the tools only
@@ -690,7 +691,7 @@ scripts/try-local.sh tail bot                        # what the agent reads; sto
 | `SIGILL: illegal instruction` | A client built on another computer uses CPU features yours lacks. Use the pre-built client, or build with `WHISPER_NATIVE=OFF`. |
 | `office: the harness stopped …` or `ACP session/new: …` | The harness ended or refused the session. Run its command alone (for example `opencode acp`) and read its error. Often it needs a login first: log in with the harness itself. |
 | The agent never speaks | Read the runner's terminal. Does it wake the agent (`waking the agent with …`)? With `--wake turn-end` (the default), or after the model failed, it wakes the agent only when your turn ends: pause for a moment, or run `office signal turn-end` after typed text. Does the runner reject tools that the agent needs (`permission rejected`)? Allow them with `--allow`. |
-| `the LLM judge failed (…)` or `the decision model failed (…)` | The sentences wait for the end of the turn; after three failures the runner switches to `turn-end`. For `--wake llm`, check `--decide-url` (it ends in `/v1`), `--decide-model` and `OFFICE_DECIDE_KEY`, and that the server supports structured output with a JSON schema. For `--wake decision-model`, check the full URL of the endpoint, the model and the key. A slow model needs a larger `--decide-timeout`. |
+| `the forwarding judge failed (…)` or `the decision model failed (…)` | The sentences wait for the end of the turn; after three failures the runner switches to `turn-end`. For `--wake llm`, check `--decide-url` (it ends in `/v1`), `--decide-model` and `OFFICE_DECIDE_KEY`, and that the server supports structured output with a JSON schema. For `--wake decision-model`, check the full URL of the endpoint, the model and the key. A slow model needs a larger `--decide-timeout`. |
 | `the trial is running already` | Run `scripts/try-local.sh down`, then `up` again. |
 | `Apple's container needs a DNS domain` | Do the one-time setup in [Try everything on one computer](#5-try-everything-on-one-computer). |
 | Apple's `container` hangs: `container exec`, `logs` or `system stop` do not return, or the port takes connections but answers nothing | Stop the `container` services with launchd, then start them again: `launchctl list \| awk '/com\.apple\.container\./ {print $3}' \| while read s; do launchctl bootout "gui/$(id -u)/$s"; done`, then `container system start`. If that does not help, restart the Mac. |

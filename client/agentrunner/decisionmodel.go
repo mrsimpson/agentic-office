@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mrsimpson/agentic-office/client/agentrunner/decision"
 	"github.com/mrsimpson/agentic-office/client/agentrunner/systemone"
 )
 
@@ -55,7 +54,7 @@ func questions(st systemone.State) map[string]systemone.Question {
 }
 
 // ask asks the decision model.
-func (w *decisionModelWake) ask(ctx context.Context, req decision.Request) (verdict, error) {
+func (w *decisionModelWake) ask(ctx context.Context, req checkRequest) (verdict, error) {
 	st := stateOf(req)
 	sr := systemone.Request{Model: w.model, State: st, Questions: questions(st)}
 	if err := sr.Validate(); err != nil {
@@ -107,22 +106,22 @@ func probabilities(p map[string]float64) string {
 	return "; " + strings.Join(parts, ", ")
 }
 
-// stateOf turns the request of a check into the state of the System One API.
-func stateOf(req decision.Request) systemone.State {
-	part := func(p decision.Participant) systemone.Participant {
-		return systemone.Participant{ParticipantID: p.ParticipantID, Name: p.Name, Kind: p.Kind}
+// stateOf maps the request of a check to the state of the System One API.
+func stateOf(req checkRequest) systemone.State {
+	part := func(p person) systemone.Participant {
+		return systemone.Participant{ParticipantID: p.id, Name: p.name, Kind: p.kind}
 	}
-	utt := func(us []decision.Utterance) []systemone.Utterance {
+	utt := func(us []spoken) []systemone.Utterance {
 		out := make([]systemone.Utterance, len(us))
 		for i, u := range us {
-			out[i] = systemone.Utterance{EventID: u.EventID, ParticipantID: u.ParticipantID, Name: u.Name, Kind: u.Kind, Text: u.Text}
+			out[i] = systemone.Utterance{EventID: u.eventID, ParticipantID: u.who.id, Name: u.who.name, Kind: u.who.kind, Text: u.text}
 		}
 		return out
 	}
-	st := systemone.State{Session: req.Session, Agent: part(req.Agent), Role: req.Role,
-		Participants: make([]systemone.Participant, len(req.Participants)),
-		Earlier:      utt(req.Context), New: utt(req.New), TurnEnded: req.TurnEnded}
-	for i, p := range req.Participants {
+	st := systemone.State{Session: req.session, Agent: part(req.agent), Role: req.role,
+		Participants: make([]systemone.Participant, len(req.participants)),
+		Earlier:      utt(req.earlier), New: utt(req.new), TurnEnded: req.turnEnded}
+	for i, p := range req.participants {
 		st.Participants[i] = part(p)
 	}
 	return st

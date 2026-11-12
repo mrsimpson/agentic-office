@@ -158,11 +158,11 @@ client/                   bb-participant-client: wiring of the client (binary of
     audio/                if-audio-in: microphone recorder and WAV input, 20 ms frames at 16 kHz
   agentrunner/            bb-agent-runner: keeps an agent in a meeting over ACP
     acpclient/            if-acp-client: client side of the Agent Client Protocol
-    decision/             if-llm-judge: request, answer and JSON schema of an LLM judge
+    forwardingjudge/      if-forwarding-judge: request, answer and JSON schema of a forwarding judge
     systemone/            if-decision-model: request, state, questions and answers of the System One API
 tests/                    external actors: may use interfaces only
   acpdouble/              test double of an ACP agent harness (no model)
-  decisiondouble/         test double of an LLM judge, command kind (no model)
+  forwardingjudgedouble/  test double of a forwarding judge, command kind (no model)
   architecture/           architecture test
   contracttest/           harness for black-box contract tests
   contract/               contract tests, one file per building block
@@ -1213,8 +1213,8 @@ Everything after `--` is the harness command. Flags:
 - `--cwd DIR`: the working directory of the agent's session (default: the current directory).
 - `--wake turn-end|llm|decision-model` (default `turn-end`): the wake strategy, that is when the
   runner wakes the agent (see below).
-- `--decide-cmd`, `--decide-url`, `--decide-model`, `--decide-threshold`, `--decide-timeout`,
-  `--decide-retry`: the model of `--wake llm` or `--wake decision-model` (see below).
+- `--decide-cmd`, `--decide-url`, `--decide-model`, `--decide-threshold`, `--decide-timeout`: the
+  model of `--wake llm` or `--wake decision-model` (see below).
 - `--topic-task TEXT`: the task of the role when a model says that a block of topics has ended.
 - The common flags and `OFFICE_*` variables of the CLI (key, hub, certificate, runtime directory).
 
@@ -1289,10 +1289,14 @@ Waking a harness with a large model costs time and money. You choose when the ru
 | `--wake` | When the runner wakes the agent | Flags |
 | --- | --- | --- |
 | `turn-end` (default) | at each change of speaker (`turn.end` of another participant) | none |
-| `llm` | when an **LLM judge** that you bring says so, after each utterance | `--decide-cmd CMD`, or `--decide-url URL --decide-model M` |
+| `llm` | when a **forwarding judge** that you bring says so, after each utterance | `--decide-cmd CMD`, or `--decide-url URL --decide-model M` |
 | `decision-model` | when a **decision model** that you bring says so, after each utterance | `--decide-url URL --decide-model M`, `--decide-threshold P` |
 
-The office ships no model. All model flags:
+A forwarding judge is a model or program that you bring and to which the runner forwards its
+question, for example a general language model behind an OpenAI-compatible chat endpoint. It
+answers in the JSON contract of the forwarding judge. A decision model is a small model made to
+answer questions about a state with probabilities, through the System One API. The office ships
+no model. All model flags:
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
@@ -1301,7 +1305,6 @@ The office ships no model. All model flags:
 | `--decide-model M` | | the model name for `--decide-url` |
 | `--decide-threshold P` | `0.5` | `decision-model`: a probability at or above `P` counts as yes |
 | `--decide-timeout D` | `10s` | after this time without an answer, the check has failed |
-| `--decide-retry D` | `30s` | after the switch to `turn-end`, wait this long before the runner asks the model again; the wait doubles after each failure, up to `5m`. `0s`: ask again at the next utterance. |
 
 `OFFICE_DECIDE_KEY`, if set, goes to the endpoint as `Authorization: Bearer <key>`; it is never
 logged. The runner refuses model flags with `--wake turn-end`, and `--decide-threshold` with
@@ -1340,14 +1343,16 @@ agent stay and go out with the next wake-up.
 - One failure does not wake the agent. The utterances wait for the next change of speaker, as
   with `turn-end`. If the speaker has ended the turn already, the runner wakes the agent now.
   The next check that works judges all waiting utterances.
-- After three failures in a row, the runner switches to `turn-end` and logs it once
-  (`… 3 failures in a row: switching to turn-end …`). It asks the model again at an utterance
-  after `--decide-retry`, then after twice that wait, up to five minutes. When the model answers,
-  it switches back and logs it (`… answers again: switching back from turn-end to …`).
+- After three failures within five minutes, with no answer between them, the runner switches to
+  `turn-end` and logs it once (`… 3 failures within 5m0s: switching to turn-end …`). It then
+  wakes the agent at each change of speaker. It asks the model again at most once per change of
+  speaker: at the first utterance after it. When the model answers, it switches back and logs it
+  (`… answers again: switching back from turn-end to …`). There is no timer and no flag for
+  this.
 - No utterance is lost and none is sent twice.
 
-**The LLM judge** (`--wake llm`, `if-llm-judge`, `client/agentrunner/decision`). With
-`--decide-url`, the runner posts to `URL/chat/completions` with a system message, the request as
+**The forwarding judge** (`--wake llm`, `if-forwarding-judge`,
+`client/agentrunner/forwardingjudge`). With `--decide-url`, the runner posts to `URL/chat/completions` with a system message, the request as
 the user message, `temperature` 0 and `response_format` of type `json_schema` (strict). The
 answer is the content of the first choice. The request (snake_case JSON):
 
@@ -1377,8 +1382,8 @@ record are never in a request. The answer:
 (`https://api.typesafe.ai/v1/systemone`, models `jev-latest` and `jev-1.14.0`) and Cloudflare
 Clef (`https://api.cloudflare.com/client/v4/accounts/<account id>/ai/run/@cf/cloudflare/clef`,
 models `clef` and `clef-flash`; Cloudflare states that it is compatible with the Jev API). The
-runner posts the model, the state of the meeting (the same facts as the request of the LLM judge;
-`context` is called `earlier`) and three questions:
+runner posts the model, the state of the meeting (the same facts as the request of the
+forwarding judge; `context` is called `earlier`) and three questions:
 
 ```json
 {"model": "jev-1.14.0",
@@ -1458,9 +1463,9 @@ through its interfaces:
   steps, the MCP server and its key, the permission rule and `--allow`, the role file, usage
   errors, a harness that stops, that the harness stops with the runner, and the last prompt.
   `agentrunner_wake_test.go` checks the wake strategy `turn-end` (a wake-up at `turn.end`),
-  queueing while the agent works, and sentences off the record. `agentrunner_decision_test.go`
-  checks `--wake llm` with the LLM judge double `tests/decisiondouble`
-  (`contracttest.DecisionDouble`; it judges the last new utterance by fixed rules and records each
+  queueing while the agent works, and sentences off the record. `agentrunner_forwardingjudge_test.go`
+  checks `--wake llm` with the forwarding judge double `tests/forwardingjudgedouble`
+  (`contracttest.ForwardingJudgeDouble`; it judges the last new utterance by fixed rules and records each
   request) and a fake OpenAI-compatible endpoint: a check per utterance, a wake-up in the middle
   of a monologue, no wake-up, `topic_closed`, queueing while a check runs, and the fallback on
   error, time-out and a bad answer. `agentrunner_systemone_test.go` checks `--wake

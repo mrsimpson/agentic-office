@@ -81,10 +81,11 @@ Agent runner (keeps an agent in the meeting over the Agent Client Protocol; see 
                                      "opencode acp") and wake it when the meeting may concern it
       [--wake turn-end|llm|decision-model] [--topic-task T]
                                      when to wake the agent: at each change of speaker
-                                     (turn-end, the default), or after each utterance as an
-                                     LLM judge (llm) or a decision model (decision-model) says
+                                     (turn-end, the default), or after each utterance as a
+                                     forwarding judge (llm) or a decision model
+                                     (decision-model) says
       [--decide-cmd CMD | --decide-url URL --decide-model M] [--decide-threshold P]
-      [--decide-timeout D] [--decide-retry D]
+      [--decide-timeout D]
                                      the model you bring for llm or decision-model (key in
                                      OFFICE_DECIDE_KEY); when it fails, the runner falls
                                      back to turn-end

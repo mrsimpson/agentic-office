@@ -2,8 +2,8 @@ package contract
 
 // Contract tests of what the agent runner delivers to the agent, and when
 // (dec-wake-check-per-utterance, dec-agent-runner-delivery). This file covers the wake strategy
-// turn-end, the default: the runner wakes the agent at each change of speaker. The harness is the ACP test
-// double from tests/acpdouble. The tests wait for records and log lines, never for time.
+// turn-end, the default: the runner wakes the agent at each change of speaker. The harness is the
+// ACP test double from tests/acpdouble. The tests wait for records and log lines, never for time.
 
 import (
 	"fmt"

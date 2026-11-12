@@ -11,13 +11,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mrsimpson/agentic-office/client/agentrunner/decision"
+	"github.com/mrsimpson/agentic-office/client/agentrunner/forwardingjudge"
 )
 
-// llmWake asks an LLM judge after each utterance (--wake llm, if-llm-judge): a command, or an
-// OpenAI-compatible chat endpoint with structured output by JSON schema. It falls back to
-// turn-end when the judge fails.
-type llmWake struct {
+// forwardingJudgeWake asks a forwarding judge after each utterance (--wake llm,
+// if-forwarding-judge): a command, or an OpenAI-compatible chat endpoint with structured output by
+// JSON schema. It falls back to turn-end when the judge fails.
+type forwardingJudgeWake struct {
 	fallback
 	command string
 	url     string
@@ -25,7 +25,7 @@ type llmWake struct {
 	key     string
 }
 
-func (w *llmWake) String() string {
+func (w *forwardingJudgeWake) String() string {
 	how := "command " + w.command
 	if w.command == "" {
 		how = fmt.Sprintf("endpoint %s, model %s", w.url, w.model)
@@ -33,9 +33,9 @@ func (w *llmWake) String() string {
 	return "wake strategy " + WakeLLM + ": " + how + "; it is asked after each utterance of another participant"
 }
 
-// ask asks the LLM judge.
-func (w *llmWake) ask(ctx context.Context, req decision.Request) (verdict, error) {
-	in, err := json.Marshal(req)
+// ask asks the forwarding judge.
+func (w *forwardingJudgeWake) ask(ctx context.Context, req checkRequest) (verdict, error) {
+	in, err := json.Marshal(judgeRequest(req))
 	if err != nil {
 		return verdict{}, err
 	}
@@ -48,14 +48,14 @@ func (w *llmWake) ask(ctx context.Context, req decision.Request) (verdict, error
 	if err != nil {
 		return verdict{}, err
 	}
-	a, err := decision.ParseAnswer(out)
+	a, err := forwardingjudge.ParseAnswer(out)
 	if err != nil {
 		return verdict{}, err
 	}
 	return verdict{act: a.Act, topicClosed: a.TopicClosed, addressed: a.Addressed, note: oneLine(a.Reason, 200)}, nil
 }
 
-func (w *llmWake) runCommand(ctx context.Context, in []byte) ([]byte, error) {
+func (w *forwardingJudgeWake) runCommand(ctx context.Context, in []byte) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "sh", "-c", w.command)
 	cmd.Stdin = bytes.NewReader(in)
 	var stderr bytes.Buffer
@@ -68,7 +68,8 @@ func (w *llmWake) runCommand(ctx context.Context, in []byte) ([]byte, error) {
 	return out, nil
 }
 
-// systemPrompt tells an LLM judge behind a chat endpoint what to decide. A command gets only the request.
+// systemPrompt tells a forwarding judge behind a chat endpoint what to decide. A command gets only
+// the request.
 const systemPrompt = `You decide for an agent in a meeting whether it should act now. The user message is a JSON request: the session, the agent (participant_id, name, kind) and its role, the participants, earlier utterances as context, the new utterances that the agent has not got yet, and whether the speaker of the last new utterance has ended their turn (turn_ended). You are asked after each utterance, so the speaker may still be speaking.
 
 Answer with JSON only:
@@ -77,7 +78,7 @@ Answer with JSON only:
 - topic_closed: true if the participants closed a topic or a block of topics, or the speaker moved on to a new topic, for example "agreed, next point".
 - reason: a short reason.`
 
-func (w *llmWake) callEndpoint(ctx context.Context, in []byte) ([]byte, error) {
+func (w *forwardingJudgeWake) callEndpoint(ctx context.Context, in []byte) ([]byte, error) {
 	body, err := json.Marshal(map[string]any{
 		"model": w.model,
 		"messages": []map[string]string{
@@ -90,7 +91,7 @@ func (w *llmWake) callEndpoint(ctx context.Context, in []byte) ([]byte, error) {
 			"json_schema": map[string]any{
 				"name":   "decision",
 				"strict": true,
-				"schema": json.RawMessage(decision.AnswerSchema),
+				"schema": json.RawMessage(forwardingjudge.AnswerSchema),
 			},
 		},
 	})
@@ -127,3 +128,24 @@ func (w *llmWake) callEndpoint(ctx context.Context, in []byte) ([]byte, error) {
 
 // contextSize is how many earlier utterances a request carries at most.
 const contextSize = 20
+
+// judgeRequest maps the request of a check to the contract of the forwarding judge.
+func judgeRequest(req checkRequest) forwardingjudge.Request {
+	part := func(p person) forwardingjudge.Participant {
+		return forwardingjudge.Participant{ParticipantID: p.id, Name: p.name, Kind: p.kind}
+	}
+	utt := func(us []spoken) []forwardingjudge.Utterance {
+		out := make([]forwardingjudge.Utterance, len(us))
+		for i, u := range us {
+			out[i] = forwardingjudge.Utterance{EventID: u.eventID, ParticipantID: u.who.id, Name: u.who.name, Kind: u.who.kind, Text: u.text}
+		}
+		return out
+	}
+	fr := forwardingjudge.Request{Session: req.session, Agent: part(req.agent), Role: req.role,
+		Participants: make([]forwardingjudge.Participant, len(req.participants)),
+		Context:      utt(req.earlier), New: utt(req.new), TurnEnded: req.turnEnded}
+	for i, p := range req.participants {
+		fr.Participants[i] = part(p)
+	}
+	return fr
+}

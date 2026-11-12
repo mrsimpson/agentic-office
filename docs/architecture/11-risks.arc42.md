@@ -83,7 +83,7 @@ lag behind a fast meeting. The check itself also runs for every utterance.
 id: risk-agent-wakeups
 title: Checking and waking the agent per utterance is slow and costly
 severity: medium
-mitigation: A small, fast LLM judge or decision model that the user brings makes the check and wakes the agent only when it should act (dec-byo-decision-model); a model that fails falls back to the change of speaker instead of waking the agent at every utterance, and queued utterances go out together in one prompt (dec-agent-runner-delivery)
+mitigation: A small, fast forwarding judge or decision model that the user brings makes the check and wakes the agent only when it should act (dec-byo-decision-model); a model that fails falls back to the change of speaker instead of waking the agent at every utterance and is asked again at most once per change of speaker, and queued utterances go out together in one prompt (dec-agent-runner-delivery)
 :::
 ```
 
