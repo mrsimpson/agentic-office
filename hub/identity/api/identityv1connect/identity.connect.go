@@ -2,7 +2,7 @@
 //
 // Every participant has its own Ed25519 key pair, created locally. Only the public key is sent.
 // A client gets a challenge, signs it with its private key and receives a short-lived access token
-// bound to its key. Keys are registered by hand by an admin in the first stage.
+// bound to its key. A system admin registers users and keys with the user API (if-user-api).
 //
 // Every call to the office hub, except GetChallenge and ExchangeChallenge, carries the token in
 // the header "Authorization: Bearer <token>". A call without a valid token fails with
@@ -44,11 +44,6 @@ const (
 	// IdentityServiceCreateStageLinkProcedure is the procedure name of the IdentityService's
 	// CreateStageLink RPC.
 	IdentityServiceCreateStageLinkProcedure = "/office.identity.v1.IdentityService/CreateStageLink"
-	// IdentityServiceRegisterKeyProcedure is the procedure name of the IdentityService's RegisterKey
-	// RPC.
-	IdentityServiceRegisterKeyProcedure = "/office.identity.v1.IdentityService/RegisterKey"
-	// IdentityServiceRevokeKeyProcedure is the procedure name of the IdentityService's RevokeKey RPC.
-	IdentityServiceRevokeKeyProcedure = "/office.identity.v1.IdentityService/RevokeKey"
 )
 
 var (
@@ -73,20 +68,6 @@ var (
 			Procedure:  IdentityServiceCreateStageLinkProcedure,
 		}
 	})
-	identityServiceRegisterKeySpec = sync.OnceValue(func() connect.Spec {
-		return connect.Spec{
-			StreamType: connect.StreamTypeUnary,
-			Schema:     api.File_office_identity_v1_identity_proto.Services().ByName("IdentityService").Methods().ByName("RegisterKey"),
-			Procedure:  IdentityServiceRegisterKeyProcedure,
-		}
-	})
-	identityServiceRevokeKeySpec = sync.OnceValue(func() connect.Spec {
-		return connect.Spec{
-			StreamType: connect.StreamTypeUnary,
-			Schema:     api.File_office_identity_v1_identity_proto.Services().ByName("IdentityService").Methods().ByName("RevokeKey"),
-			Procedure:  IdentityServiceRevokeKeyProcedure,
-		}
-	})
 )
 
 // IdentityServiceClient is a client for the office.identity.v1.IdentityService service.
@@ -99,9 +80,6 @@ type IdentityServiceClient interface {
 	// CreateStageLink returns a read-only link to the stage of one session. Any participant may
 	// create one. The token of the link only allows SessionStreamService.Subscribe for that session.
 	CreateStageLink(context.Context, *api.CreateStageLinkRequest) (*api.CreateStageLinkResponse, error)
-	// Admin commands. Only a token of an admin key may call them.
-	RegisterKey(context.Context, *api.RegisterKeyRequest) (*api.RegisterKeyResponse, error)
-	RevokeKey(context.Context, *api.RevokeKeyRequest) (*api.RevokeKeyResponse, error)
 }
 
 // NewIdentityServiceClient constructs a client for the office.identity.v1.IdentityService service.
@@ -120,9 +98,6 @@ type IdentityServiceHandler interface {
 	// CreateStageLink returns a read-only link to the stage of one session. Any participant may
 	// create one. The token of the link only allows SessionStreamService.Subscribe for that session.
 	CreateStageLink(context.Context, *api.CreateStageLinkRequest) (*api.CreateStageLinkResponse, error)
-	// Admin commands. Only a token of an admin key may call them.
-	RegisterKey(context.Context, *api.RegisterKeyRequest) (*api.RegisterKeyResponse, error)
-	RevokeKey(context.Context, *api.RevokeKeyRequest) (*api.RevokeKeyResponse, error)
 }
 
 // RegisterIdentityServiceHandler registers svc as the office.identity.v1.IdentityService
@@ -133,8 +108,6 @@ func RegisterIdentityServiceHandler(server *connect.Server, svc IdentityServiceH
 		connect.Method{Spec: identityServiceGetChallengeSpec(), Handler: adapter.getChallenge},
 		connect.Method{Spec: identityServiceExchangeChallengeSpec(), Handler: adapter.exchangeChallenge},
 		connect.Method{Spec: identityServiceCreateStageLinkSpec(), Handler: adapter.createStageLink},
-		connect.Method{Spec: identityServiceRegisterKeySpec(), Handler: adapter.registerKey},
-		connect.Method{Spec: identityServiceRevokeKeySpec(), Handler: adapter.revokeKey},
 	)
 }
 
@@ -151,14 +124,6 @@ func (UnimplementedIdentityServiceHandler) ExchangeChallenge(context.Context, *a
 
 func (UnimplementedIdentityServiceHandler) CreateStageLink(context.Context, *api.CreateStageLinkRequest) (*api.CreateStageLinkResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, "office.identity.v1.IdentityService.CreateStageLink is not implemented")
-}
-
-func (UnimplementedIdentityServiceHandler) RegisterKey(context.Context, *api.RegisterKeyRequest) (*api.RegisterKeyResponse, error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, "office.identity.v1.IdentityService.RegisterKey is not implemented")
-}
-
-func (UnimplementedIdentityServiceHandler) RevokeKey(context.Context, *api.RevokeKeyRequest) (*api.RevokeKeyResponse, error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, "office.identity.v1.IdentityService.RevokeKey is not implemented")
 }
 
 type identityServiceClient struct {
@@ -184,22 +149,6 @@ func (c *identityServiceClient) ExchangeChallenge(ctx context.Context, req *api.
 func (c *identityServiceClient) CreateStageLink(ctx context.Context, req *api.CreateStageLinkRequest) (*api.CreateStageLinkResponse, error) {
 	var res api.CreateStageLinkResponse
 	if err := c.client.CallUnary(ctx, identityServiceCreateStageLinkSpec(), req, &res); err != nil {
-		return nil, err
-	}
-	return &res, nil
-}
-
-func (c *identityServiceClient) RegisterKey(ctx context.Context, req *api.RegisterKeyRequest) (*api.RegisterKeyResponse, error) {
-	var res api.RegisterKeyResponse
-	if err := c.client.CallUnary(ctx, identityServiceRegisterKeySpec(), req, &res); err != nil {
-		return nil, err
-	}
-	return &res, nil
-}
-
-func (c *identityServiceClient) RevokeKey(ctx context.Context, req *api.RevokeKeyRequest) (*api.RevokeKeyResponse, error) {
-	var res api.RevokeKeyResponse
-	if err := c.client.CallUnary(ctx, identityServiceRevokeKeySpec(), req, &res); err != nil {
 		return nil, err
 	}
 	return &res, nil
@@ -237,30 +186,6 @@ func (h identityServiceHandler) createStageLink(ctx context.Context, _ connect.S
 		return err
 	}
 	res, err := h.svc.CreateStageLink(ctx, &req)
-	if err != nil {
-		return err
-	}
-	return stream.Send(res)
-}
-
-func (h identityServiceHandler) registerKey(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
-	var req api.RegisterKeyRequest
-	if err := stream.Receive(&req); err != nil {
-		return err
-	}
-	res, err := h.svc.RegisterKey(ctx, &req)
-	if err != nil {
-		return err
-	}
-	return stream.Send(res)
-}
-
-func (h identityServiceHandler) revokeKey(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
-	var req api.RevokeKeyRequest
-	if err := stream.Receive(&req); err != nil {
-		return err
-	}
-	res, err := h.svc.RevokeKey(ctx, &req)
 	if err != nil {
 		return err
 	}

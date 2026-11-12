@@ -67,7 +67,7 @@ func (m *machine) user(pid, name, kind string) *officeUser {
 	if k["created"] != true {
 		m.t.Fatalf("key create: %v", k)
 	}
-	m.admin.ok("admin", "key", "register", pid, k["publicKey"].(string), "--name", name, "--kind", kind)
+	m.admin.ok("admin", "user", "create", pid, k["publicKey"].(string), "--name", name, "--kind", kind)
 	return u
 }
 
@@ -243,7 +243,7 @@ func TestCLIKeysAndAdmin(t *testing.T) {
 	if _, code := u.call("whoami"); code != 1 {
 		t.Fatalf("whoami before registration: exit %d", code)
 	}
-	reg := m.admin.ok("admin", "key", "register", "ada", k["publicKey"].(string), "--name", "Ada", "--kind", "human")
+	reg := m.admin.ok("admin", "user", "create", "ada", k["publicKey"].(string), "--name", "Ada", "--kind", "human")
 	if reg["keyId"] != k["keyId"] {
 		t.Fatalf("register: %v", reg)
 	}
@@ -253,10 +253,17 @@ func TestCLIKeysAndAdmin(t *testing.T) {
 	if out, _, code := u.run("whoami"); code != 0 || strings.TrimSpace(out) != "ada" {
 		t.Fatalf("whoami (text): exit %d, %q", code, out)
 	}
-	// Only admins may register keys.
-	u.fails(1, "permission_denied", "admin", "key", "register", "eve", k["publicKey"].(string), "--name", "Eve", "--kind", "human")
-	u.fails(2, "usage", "admin", "key", "register", "eve", "not-a-key")
+	// Only a system admin may create users.
+	u.fails(1, "permission_denied", "admin", "user", "create", "eve", k["publicKey"].(string), "--name", "Eve", "--kind", "human")
+	u.fails(2, "usage", "admin", "user", "create", "eve", "not-a-key")
 
+	// The last key of a user cannot be revoked; with a second key it can.
+	m.admin.fails(1, "failed_precondition", "admin", "key", "revoke", k["keyId"].(string))
+	second, err := auth.NewKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.admin.ok("admin", "key", "add", "ada", auth.FormatPublicKey(auth.PublicKey(second)))
 	m.admin.ok("admin", "key", "revoke", k["keyId"].(string))
 	if _, code := u.call("whoami"); code != 1 {
 		t.Fatalf("whoami after revoke: exit %d", code)

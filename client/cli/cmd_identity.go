@@ -6,6 +6,7 @@ import (
 
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
+	userv1 "github.com/mrsimpson/agentic-office/hub/identity/userapi"
 )
 
 func (e *env) printKey(path string, pub []byte, created bool) {
@@ -86,12 +87,12 @@ func parseKind(s string) (identityv1.ActorKind, error) {
 	return 0, usagef("--kind must be human or agent, not %q", s)
 }
 
-func cmdAdminRegister(e *env, fs *flag.FlagSet) func([]string) error {
-	name := fs.String("name", "", "display name (required for a new participant)")
-	kind := fs.String("kind", "", "human or agent (required for a new participant)")
+func cmdAdminUserCreate(e *env, fs *flag.FlagSet) func([]string) error {
+	name := fs.String("name", "", "display name (required)")
+	kind := fs.String("kind", "", "human or agent (required)")
 	return func(args []string) error {
 		if len(args) != 2 {
-			return usagef("usage: office admin key register <participant> <public-key> [--name N] [--kind human|agent]")
+			return usagef("usage: office admin user create <user> <public-key> --name N --kind human|agent")
 		}
 		k, err := parseKind(*kind)
 		if err != nil {
@@ -105,14 +106,40 @@ func cmdAdminRegister(e *env, fs *flag.FlagSet) func([]string) error {
 		if err != nil {
 			return err
 		}
-		res, err := c.RegisterKey(e.ctx, &identityv1.RegisterKeyRequest{ParticipantId: args[0], DisplayName: *name, Kind: k, PublicKey: pub})
+		res, err := c.CreateUser(e.ctx, &userv1.CreateUserRequest{UserId: args[0], DisplayName: *name, Kind: k, PublicKey: pub})
 		if err != nil {
 			return err
 		}
 		if e.json {
-			e.printJSON(map[string]any{"participantId": args[0], "keyId": res.GetKeyId()})
+			e.printJSON(map[string]any{"userId": args[0], "keyId": res.GetKeyId()})
 		} else {
-			fmt.Fprintf(e.stdout, "registered %s for %s\n", res.GetKeyId(), args[0])
+			fmt.Fprintf(e.stdout, "created user %s with key %s\n", args[0], res.GetKeyId())
+		}
+		return nil
+	}
+}
+
+func cmdAdminKeyAdd(e *env, fs *flag.FlagSet) func([]string) error {
+	return func(args []string) error {
+		if len(args) != 2 {
+			return usagef("usage: office admin key add <user> <public-key>")
+		}
+		pub, err := auth.ParsePublicKey(args[1])
+		if err != nil {
+			return usagef("%v", err)
+		}
+		c, err := e.client()
+		if err != nil {
+			return err
+		}
+		keyID, err := c.AddKey(e.ctx, args[0], pub)
+		if err != nil {
+			return err
+		}
+		if e.json {
+			e.printJSON(map[string]any{"userId": args[0], "keyId": keyID})
+		} else {
+			fmt.Fprintf(e.stdout, "added key %s to %s\n", keyID, args[0])
 		}
 		return nil
 	}

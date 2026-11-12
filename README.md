@@ -385,16 +385,18 @@ the details. In short:
 
 - Every actor (each human device, each agent) has its own Ed25519 key pair, created locally with
   `hub/identity/api/auth`. Only the public key goes to the hub.
-- An admin registers a public key for a participant with `RegisterKey`. The admin chooses the
-  participant ID, for example `ada`. A participant can have several keys. `RevokeKey` removes a
-  key; its tokens stop working at once.
+- A system admin creates a user with `CreateUser` and its first key. The system admin chooses the
+  user ID, for example `ada`; it is also the participant ID in every session. A user can have
+  several keys (`AddKey`). `RevokeKey` removes a key; its tokens stop working at once. A system
+  admin or the tenant admin assigns users to tenants (`SetMembership`); a system admin is never a
+  tenant member. See the user API (`hub/identity/userapi`).
 - A client gets a challenge (`GetChallenge`), signs it and exchanges it for an access token
   (`ExchangeChallenge`). The token lives 15 minutes (`-token-ttl`). `auth.TokenSource` does this
   and renews the token before it expires; `auth.Bearer` attaches it to every Connect call.
 - `CreateStageLink` returns a read-only link `https://<hub>/stage/<session>?token=<token>`
   for one session. Its token only allows `Subscribe` for that session. It lives 24 hours
   (`-stage-link-ttl`). Open it in a browser to see the stage (below).
-- Registered keys are stored in `<data-dir>/identity.json`. Tokens are kept in memory only, so
+- Users, keys and memberships are YAML files in the hub repository (`system/` in the archive). Tokens are kept in memory only, so
   clients authenticate again after a restart of the hub.
 
 ### Records: decisions, minutes and notes
@@ -576,10 +578,8 @@ All files of the hub are in its data directory (`-data-dir`), by default
 
 | File | What it is |
 |---|---|
-| `admins` | Admin keys. You write it by hand. |
-| `identity.json` | Registered participants and keys. The hub writes it. |
 | `tls.crt`, `tls.key` | TLS certificate and key. The hub creates a self-signed pair if neither exists. |
-| `archive/` | The Git repository of the archive (`-archive-dir`): sessions, decisions, minutes, notes, tasks and slide decks. The hub creates it and commits into it. See [Archive](#archive). |
+| `archive/` | The Git repository of the archive (`-archive-dir`): users and memberships (`system/`), sessions, decisions, minutes, notes, tasks and slide decks. The hub creates it and commits into it. See [Archive](#archive). |
 
 Flags of the hub (`bin/office-hub -h` lists them all):
 
@@ -592,7 +592,7 @@ Flags of the hub (`bin/office-hub -h` lists them all):
 | `-restore-wait` | `10s` | After a restart, how long a restored session that has not ended waits for a peer to fill in (see [Restore](#restore-after-a-restart)) |
 | `-tls-cert`, `-tls-key`, `-tls-hosts` | see [TLS](#tls-and-your-own-certificate) | TLS certificate |
 | `-signing-key` | none, required | Key file that signs tree heads (see [Signing key](#signing-key)) |
-| `-admins` | `<data-dir>/admins` | Admin keys |
+| `-first-system-admin` | none | `ID=PUBLIC_KEY` of the first system admin. Needed at the first start, ignored later (see [First system admin](#first-system-admin)) |
 | `-public-url` | `https://<listen address>` | Base URL in stage links |
 | `-token-ttl`, `-stage-link-ttl` | `15m`, `24h` | Lifetime of access tokens and stage links |
 
@@ -616,24 +616,23 @@ bin/office-hub keygen /etc/office/hub-signing.key
   then no longer verify against `GetHubKey`.
 - How clients pin the public key is still open (#41).
 
-### First admin
+### First system admin
 
-An admin is a key in the `admins` file. Only admin keys may call `RegisterKey` and `RevokeKey`.
-Each line has a participant ID, the public key (base64 of the 32 raw bytes, see `hub/identity/api/auth`) and
-an optional display name:
-
-```
-# participant  public key                                     display name
-ada            hGs7aXk0n1V6lH1d3mFzWQ0bX2j7zv8nq3C4oD5pE6A=  Ada Lovelace
-```
+A system admin runs the hub: creates users, registers keys and names other system admins. The
+hub has no file of admin keys. At the **first start**, when the hub repository has no users yet,
+you name the first system admin with a user ID and a public key:
 
 1. Create a key pair on your device: `office key create` prints the public key.
-2. Write the public key into `admins` on the hub host.
-3. Start or restart the hub. It reads the file at start.
-4. Authenticate with your key; your token may now register the keys of the other participants
-   with `office admin key register` (see [Participant client](#participant-client-office-cli)).
+2. Start the hub with `-first-system-admin ada=<public key>`. The hub creates the user `ada` as a
+   human and system admin. Without the flag, the first start fails.
+3. Authenticate with your key (`office whoami`). Your token may now create users and register their
+   keys with `office admin user create` (see [Participant client](#participant-client-office-cli)).
 
-To remove an admin, delete the line and restart. Admin keys cannot be revoked through the API.
+At later starts the hub ignores the flag. More system admins come from the user API
+(`SetSystemAdmin`). The hub always keeps at least one.
+
+**A system admin is never a member of a tenant**, and a member is never made a system admin.
+If you administer the hub and also work in a tenant, use two users with two different keys.
 
 ### TLS and your own certificate
 
@@ -706,11 +705,10 @@ Run the hub:
 ```sh
 docker volume create office-hub
 docker run --rm -v office-hub:/data ghcr.io/mrsimpson/agentic-office/office-hub keygen /data/signing.key
-docker run --rm -v office-hub:/data --entrypoint sh ghcr.io/mrsimpson/agentic-office/office-hub \
-  -c 'echo "ada <public key of Ada> Ada" > /data/admins'
 docker run -d --name office-hub -p 8740:8740 -v office-hub:/data \
   ghcr.io/mrsimpson/agentic-office/office-hub \
-  -data-dir /data -addr 0.0.0.0:8740 -signing-key /data/signing.key -tls-hosts hub.example.org
+  -data-dir /data -addr 0.0.0.0:8740 -signing-key /data/signing.key \
+  -first-system-admin ada=<public key of Ada> -tls-hosts hub.example.org
 ```
 
 The default command is `-data-dir /data -addr 0.0.0.0:8740 -signing-key /data/signing.key`.
@@ -743,13 +741,15 @@ the shared core in `client/core` (`dec-cli-and-mcp`). Run `office help` for all 
 
 ```sh
 office key create                  # creates <config>/agentic-office/client/key.pem, prints the public key
-# an admin registers it:
-office admin key register ada <public-key> --name "Ada Lovelace" --kind human
+# a system admin registers it:
+office admin user create ada <public-key> --name "Ada Lovelace" --kind human
 office whoami                      # authenticates and prints "ada"
 ```
 
-`office key show` prints the public key and key ID again. `office admin key revoke <key-id>`
-removes a key. Only admin keys may register and revoke (see [First admin](#first-admin)).
+`office key show` prints the public key and key ID again. `office admin key add <user> <public-key>`
+adds a key to a user (your own, or any as a system admin). `office admin key revoke <key-id>`
+revokes a key; the last key of a user cannot be revoked. Only a system admin creates users (see
+[First system admin](#first-system-admin)).
 
 ### Configuration
 
@@ -1529,7 +1529,7 @@ through its interfaces:
 
 - A contract test starts the block with `tests/contracttest` (as a real process, or as a fake that
   follows the same contract) and uses only its interfaces. `contracttest.StartHub` starts
-  `office-hub` with TLS, an admin key and a signing key file (`-signing-key`); `StartHubIn`
+  `office-hub` with TLS, a first system admin and a signing key file (`-signing-key`); `StartHubIn`
   restarts it with the same file. `Hub.Participant` registers a key for a test
   participant and returns authenticated clients. It never imports the package that
   implements the block.

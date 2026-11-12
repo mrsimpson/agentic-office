@@ -5,6 +5,8 @@
 // logs in memory, signs their tree heads with the signing key and writes them to the archive (a local Git
 // repository; the push is mocked). The records (decisions, minutes and notes), the tasks (local
 // drafts) and the slide decks are files in the archive too.
+// The users, keys and memberships are files in the archive too (system/); at the first start the
+// operator names the first system admin with -first-system-admin ID=PUBLIC_KEY.
 //
 // The operator gives the hub its signing key at start (dec-hub-signing-key): -signing-key FILE is
 // required, and the hub does not start without a valid key. Create a key file once with
@@ -15,8 +17,6 @@
 //
 // Files in the data directory (-data-dir):
 //
-//	admins       admin keys, written by hand (see identity.LoadAdmins)
-//	identity.json registered participants and keys, written by the server
 //	tls.crt      TLS certificate; created self-signed if neither it nor tls.key exists
 //	tls.key      TLS private key
 //	archive/     Git repository of the archive (-archive-dir); the meeting session writes its logs
@@ -53,6 +53,7 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/identity"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/identityv1connect"
+	"github.com/mrsimpson/agentic-office/hub/identity/userapi/userv1connect"
 	"github.com/mrsimpson/agentic-office/hub/records"
 	"github.com/mrsimpson/agentic-office/hub/records/decision/api/decisionv1connect"
 	"github.com/mrsimpson/agentic-office/hub/records/minutes/api/minutesv1connect"
@@ -110,7 +111,7 @@ func main() {
 	hostname, _ := os.Hostname()
 	tlsHosts := flag.String("tls-hosts", "localhost,127.0.0.1,::1,"+hostname, "host names and IPs of a new self-signed certificate")
 	signingKeyFile := flag.String("signing-key", "", "Ed25519 key file that signs tree heads of session logs (PEM); required, "+keygenHint)
-	adminsFile := flag.String("admins", "", "admin key file; default <data-dir>/admins")
+	firstAdmin := flag.String("first-system-admin", "", "ID=PUBLIC_KEY of the first system admin; needed at the first start, ignored later")
 	publicURL := flag.String("public-url", "", "base URL of the server in stage links; default https://<listen address>")
 	tokenTTL := flag.Duration("token-ttl", 15*time.Minute, "lifetime of access tokens")
 	stageTTL := flag.Duration("stage-link-ttl", 24*time.Hour, "lifetime of stage links")
@@ -148,14 +149,6 @@ func main() {
 	}
 	log.Printf("signing key of tree heads %s", auth.FormatPublicKey(auth.PublicKey(signingKey)))
 
-	admins, err := identity.LoadAdmins(or(*adminsFile, "admins"))
-	if err != nil {
-		log.Fatal(err)
-	}
-	if len(admins) == 0 {
-		log.Printf("no admin keys in %s: nobody can register keys", or(*adminsFile, "admins"))
-	}
-
 	ln, err := net.Listen("tcp", *addr)
 	if err != nil {
 		log.Fatal(err)
@@ -163,19 +156,27 @@ func main() {
 	if *publicURL == "" {
 		*publicURL = "https://" + ln.Addr().String()
 	}
-	ids, err := identity.New(identity.Options{TokenTTL: *tokenTTL, StageLinkTTL: *stageTTL, PublicURL: *publicURL,
-		StateFile: filepath.Join(*dataDir, "identity.json"), Admins: admins,
-		StageProcedures: []string{sessionstreamv1connect.SessionStreamServiceSubscribeProcedure}})
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	// The archive (dec-yaml-git-storage): a local Git repository; the push is mocked (#43).
 	arch, err := archive.Open(context.Background(), archive.Options{Dir: or(*archiveDir, "archive"), Push: archive.NoPush{}})
 	if err != nil {
 		log.Fatal(err)
 	}
 	log.Printf("archive %s, sessions written every %s and when they end; push mocked", arch.Dir(), *archiveInterval)
+	var bootstrap *identity.Bootstrap
+	if *firstAdmin != "" {
+		if bootstrap, err = identity.ParseBootstrap(*firstAdmin); err != nil {
+			log.Fatalf("-first-system-admin: %v", err)
+		}
+	}
+	// Users, keys and memberships live in the hub repository (dec-multi-tenancy); the hub does
+	// not start when the repository breaks a rule.
+	ids, err := identity.New(context.Background(), identity.Options{TokenTTL: *tokenTTL, StageLinkTTL: *stageTTL,
+		PublicURL: *publicURL, Archive: arch, Bootstrap: bootstrap, Logf: log.Printf,
+		StageProcedures: []string{sessionstreamv1connect.SessionStreamServiceSubscribeProcedure}})
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	// Decisions, minutes and notes: YAML files in the archive, read once at the start.
 	recs, err := records.Open(context.Background(), arch)
 	if err != nil {
@@ -210,6 +211,7 @@ func main() {
 	sessionstreamv1connect.RegisterSessionStreamServiceHandler(cs, sessions)
 	sessionimportv1connect.RegisterSessionImportServiceHandler(cs, sessions)
 	identityv1connect.RegisterIdentityServiceHandler(cs, ids)
+	userv1connect.RegisterUserServiceHandler(cs, ids)
 	decisionv1connect.RegisterDecisionServiceHandler(cs, recs)
 	minutesv1connect.RegisterMinutesServiceHandler(cs, recs)
 	notev1connect.RegisterNoteServiceHandler(cs, recs)

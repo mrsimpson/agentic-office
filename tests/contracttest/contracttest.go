@@ -39,6 +39,8 @@ import (
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	identityv1connect "github.com/mrsimpson/agentic-office/hub/identity/api/identityv1connect"
+	userv1 "github.com/mrsimpson/agentic-office/hub/identity/userapi"
+	"github.com/mrsimpson/agentic-office/hub/identity/userapi/userv1connect"
 	decisionv1connect "github.com/mrsimpson/agentic-office/hub/records/decision/api/decisionv1connect"
 	minutesv1connect "github.com/mrsimpson/agentic-office/hub/records/minutes/api/minutesv1connect"
 	notev1connect "github.com/mrsimpson/agentic-office/hub/records/note/api/notev1connect"
@@ -216,10 +218,10 @@ func (p *Process) WaitStderr(t testing.TB, re *regexp.Regexp, timeout time.Durat
 
 var listening = regexp.MustCompile(`listening on (https://\S+)`)
 
-// AdminID is the participant ID of the admin that StartHub creates.
+// AdminID is the user ID of the first system admin that StartHub names.
 const AdminID = "admin"
 
-// Server is a running office-hub with TLS and an admin key.
+// Hub is a running office-hub with TLS and a first system admin.
 type Hub struct {
 	*Process
 	URL string
@@ -227,7 +229,7 @@ type Hub struct {
 	DataDir string
 	// CertFile is the self-signed TLS certificate of the server. Clients trust it.
 	CertFile string
-	// AdminKey is the private key of the admin (participant AdminID).
+	// AdminKey is the private key of the first system admin (user AdminID).
 	AdminKey ed25519.PrivateKey
 	// SigningKeyFile is the signing key file that the hub gets with -signing-key.
 	SigningKeyFile string
@@ -238,16 +240,12 @@ type Hub struct {
 func SigningKeyFile(dir string) string { return filepath.Join(dir, "test-signing.key") }
 
 // StartHub starts office-hub on a free port and waits until it listens. It creates a data
-// directory with an admin key and a signing key file (SigningKeyFile). args are extra flags, for example "-token-ttl", "2s".
+// directory with a key for the first system admin (AdminID) and a signing key file (SigningKeyFile). args are extra flags, for example "-token-ttl", "2s".
 func StartHub(t testing.TB, env []string, args ...string) *Hub {
 	t.Helper()
 	dir := t.TempDir()
 	key, err := auth.NewKey()
 	if err != nil {
-		t.Fatal(err)
-	}
-	line := AdminID + " " + auth.FormatPublicKey(auth.PublicKey(key)) + " Test Admin\n"
-	if err := os.WriteFile(filepath.Join(dir, "admins"), []byte(line), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	signing, err := auth.NewKey()
@@ -261,12 +259,13 @@ func StartHub(t testing.TB, env []string, args ...string) *Hub {
 }
 
 // StartHubIn starts office-hub with an existing data directory, for example to restart a
-// server. adminKey is the key of AdminID in the admin file of dir. The hub gets the signing key
+// server. adminKey is the key of the first system admin AdminID, who was named at the first start. The hub gets the signing key
 // file of dir (SigningKeyFile), so a restart signs with the same key.
 func StartHubIn(t testing.TB, dir string, adminKey ed25519.PrivateKey, env []string, args ...string) *Hub {
 	t.Helper()
 	p := Start(t, "office-hub", env, append([]string{"-addr", "127.0.0.1:0", "-data-dir", dir,
-		"-signing-key", SigningKeyFile(dir)}, args...)...)
+		"-signing-key", SigningKeyFile(dir),
+		"-first-system-admin", AdminID + "=" + auth.FormatPublicKey(auth.PublicKey(adminKey))}, args...)...)
 	// Stop the hub gracefully first, so it ends its last write to the archive before the data
 	// directory is removed. Start's cleanup kills it if it does not stop in time.
 	t.Cleanup(func() { _, _ = p.Stop(10 * time.Second) })
@@ -320,25 +319,44 @@ func (s *Hub) WithKey(t testing.TB, key ed25519.PrivateKey) *Actor {
 	return a
 }
 
-// Admin returns the admin actor.
+// Admin returns the actor of the first system admin.
 func (s *Hub) Admin(t testing.TB) *Actor { return s.WithKey(t, s.AdminKey) }
 
-// RegisterKey registers key for a participant as the admin and returns the key ID.
+// RegisterKey registers key for a participant as the system admin and returns the key ID. A new
+// user is created; a known user gets the key as a further key.
 func (s *Hub) RegisterKey(t testing.TB, participantID, displayName string, kind identityv1.ActorKind, key ed25519.PrivateKey) string {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	res, err := s.Admin(t).Identity.RegisterKey(ctx, &identityv1.RegisterKeyRequest{CommandId: coreapi.NewCommandID(),
-		ParticipantId: participantID, DisplayName: displayName, Kind: kind, PublicKey: auth.PublicKey(key)})
+	admin := s.Admin(t)
+	if displayName == "" {
+		// A further key of a known user.
+		added, err := admin.User.AddKey(ctx, &userv1.AddKeyRequest{CommandId: coreapi.NewCommandID(),
+			UserId: participantID, PublicKey: auth.PublicKey(key)})
+		if err != nil {
+			t.Fatalf("add a key to %s: %v", participantID, err)
+		}
+		return added.GetKeyId()
+	}
+	res, err := admin.User.CreateUser(ctx, &userv1.CreateUserRequest{CommandId: coreapi.NewCommandID(),
+		UserId: participantID, DisplayName: displayName, Kind: kind, PublicKey: auth.PublicKey(key)})
+	if connect.CodeOf(err) == connect.CodeAlreadyExists {
+		added, err := admin.User.AddKey(ctx, &userv1.AddKeyRequest{CommandId: coreapi.NewCommandID(),
+			UserId: participantID, PublicKey: auth.PublicKey(key)})
+		if err != nil {
+			t.Fatalf("add a key to %s: %v", participantID, err)
+		}
+		return added.GetKeyId()
+	}
 	if err != nil {
-		t.Fatalf("register key of %s: %v", participantID, err)
+		t.Fatalf("create user %s: %v", participantID, err)
 	}
 	return res.GetKeyId()
 }
 
 // Participant registers a new key for a participant and returns the authenticated actor. The
-// participant is created if it is new; participantID can be called several times (several
-// keys of one participant).
+// user is created if it is new; participantID can be called several times (several keys of one
+// user).
 func (s *Hub) Participant(t testing.TB, participantID, displayName string, kind identityv1.ActorKind) *Actor {
 	t.Helper()
 	key, err := auth.NewKey()
@@ -355,6 +373,7 @@ type Clients struct {
 	Stream   sessionstreamv1connect.SessionStreamServiceClient
 	Import   sessionimportv1connect.SessionImportServiceClient
 	Identity identityv1connect.IdentityServiceClient
+	User     userv1connect.UserServiceClient
 	Decision decisionv1connect.DecisionServiceClient
 	Minutes  minutesv1connect.MinutesServiceClient
 	Note     notev1connect.NoteServiceClient
@@ -374,6 +393,7 @@ func NewClients(baseURL string, hc *http.Client, interceptors ...connect.ClientI
 		Stream:   sessionstreamv1connect.NewSessionStreamServiceClient(c),
 		Import:   sessionimportv1connect.NewSessionImportServiceClient(c),
 		Identity: identityv1connect.NewIdentityServiceClient(c),
+		User:     userv1connect.NewUserServiceClient(c),
 		Decision: decisionv1connect.NewDecisionServiceClient(c),
 		Minutes:  minutesv1connect.NewMinutesServiceClient(c),
 		Note:     notev1connect.NewNoteServiceClient(c),

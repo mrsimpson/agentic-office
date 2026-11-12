@@ -34,6 +34,7 @@ flowchart LR
     bb_participant_client -->|if-task-api| bb_office_hub
     bb_participant_client -->|if-slides-api| bb_office_hub
     bb_participant_client -->|if-auth-api| bb_office_hub
+    bb_participant_client -->|if-user-api| bb_office_hub
     bb_participant_client -->|if-session-stream| bb_office_hub
 ```
 
@@ -802,7 +803,7 @@ title: Client core
 technology: Go
 parent: bb-participant-client
 path: client/core
-requires: if-session-commands, if-session-stream, if-session-import, if-auth-api, if-decision-api, if-minutes-api, if-note-api, if-task-api, if-slides-api, if-local-log
+requires: if-session-commands, if-session-stream, if-session-import, if-auth-api, if-user-api, if-decision-api, if-minutes-api, if-note-api, if-task-api, if-slides-api, if-local-log
 :::
 ```
 
@@ -844,7 +845,7 @@ id: bb-cli
 title: office CLI
 technology: Go, single binary
 parent: bb-participant-client
-requires: if-client-core, if-replication, if-local-log, if-session-commands, if-session-stream, if-slides-api, if-auth-api
+requires: if-client-core, if-replication, if-local-log, if-session-commands, if-session-stream, if-slides-api, if-auth-api, if-user-api
 implements: concept-read-file-write-tools, concept-client-configuration
 path: client/cli
 :::

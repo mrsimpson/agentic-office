@@ -17,7 +17,8 @@ Keys and identity:
   key create                         create a key pair (if there is none) and print the public key
   key show                           print the public key and key ID
   whoami                             authenticate and print the participant ID
-  admin key register <participant> <public-key> [--name N] [--kind human|agent]
+  admin user create <user> <public-key> --name N --kind human|agent
+  admin key add <user> <public-key>
   admin key revoke <key-id>
 
 Meeting:

@@ -120,17 +120,18 @@ On the server. `CFG` is where the programs keep their files: `~/.config/agentic-
 CFG="$([ "$(uname)" = Darwin ] && echo "$HOME/Library/Application Support" || echo "${XDG_CONFIG_HOME:-$HOME/.config}")/agentic-office"
 office-hub keygen ~/office-hub/signing.key           # once; keep the file safe and back it up
 mkdir -p "$CFG/hub"
-echo "ada <your public key> Ada" > "$CFG/hub/admins"
 office-hub -signing-key ~/office-hub/signing.key -addr 0.0.0.0:8740 \
-  -tls-hosts hub.example.org -public-url https://hub.example.org:8740
+  -first-system-admin ada=<your public key> -tls-hosts hub.example.org -public-url https://hub.example.org:8740
 ```
 
 - The data of the hub lives in `$CFG/hub` (`-data-dir` changes it): the
-  registered keys, the TLS certificate and the archive with all sessions and records.
+  users and keys, the TLS certificate and the archive with all sessions and records.
 - On the first start, the hub creates a self-signed TLS certificate for the names in
   `-tls-hosts`, in `tls.crt`. To use your own certificate, see "TLS and your own certificate" in
   [`README.md`](README.md).
-- The hub reads `admins` at start. After you change it, restart the hub.
+- `-first-system-admin` names the first system admin at the first start. The hub ignores it later.
+  A system admin is never a member of a tenant: if you also work in a tenant, use a second user
+  with another key.
 - To keep the hub running, start it as a service of your system, for example with systemd or
   launchd.
 
@@ -142,10 +143,9 @@ With Docker or Podman (`podman` instead of `docker`):
 H=ghcr.io/mrsimpson/agentic-office/office-hub
 docker volume create office-hub
 docker run --rm -v office-hub:/data $H keygen /data/signing.key
-docker run --rm -v office-hub:/data --entrypoint sh $H -c 'echo "ada <your public key> Ada" > /data/admins'
 docker run -d --name office-hub --restart unless-stopped -p 8740:8740 -v office-hub:/data $H \
   -data-dir /data -addr 0.0.0.0:8740 -signing-key /data/signing.key \
-  -tls-hosts hub.example.org -public-url https://hub.example.org:8740
+  -first-system-admin ada=<your public key> -tls-hosts hub.example.org -public-url https://hub.example.org:8740
 docker cp office-hub:/data/tls.crt hub.crt
 ```
 
@@ -165,11 +165,12 @@ Each participant sends you their public key (see [Join a meeting](#3-join-a-meet
 register it from your computer:
 
 ```sh
-office admin key register grace <public key> --name "Grace Hopper" --kind human
-office admin key register minutes-bot <public key> --name "Minute Bot" --kind agent
+office admin user create grace <public key> --name "Grace Hopper" --kind human
+office admin user create minutes-bot <public key> --name "Minute Bot" --kind agent
 ```
 
-`office admin key revoke <key-id>` removes a key again.
+`office admin key add <user> <public key>` adds a further key to a user. `office admin key revoke <key-id>` revokes a key.
+The last key of a user cannot be revoked.
 
 ## 3. Join a meeting
 
@@ -323,9 +324,9 @@ Each `key create` prints a public key. Send them to your admin, who registers ea
 agent (see [Register a participant](#register-a-participant)):
 
 ```sh
-office admin key register claude-bot <public key> --name "Claude" --kind agent
-office admin key register opencode-bot <public key> --name "opencode" --kind agent
-office admin key register kiro-bot <public key> --name "Kiro" --kind agent
+office admin user create claude-bot <public key> --name "Claude" --kind agent
+office admin user create opencode-bot <public key> --name "opencode" --kind agent
+office admin user create kiro-bot <public key> --name "Kiro" --kind agent
 ```
 
 If you are the admin yourself, on the same computer, this does both steps at once:
@@ -333,7 +334,7 @@ If you are the admin yourself, on the same computer, this does both steps at onc
 ```sh
 for a in claude opencode kiro; do
   PUB=$(office key create --key "$CFG/agents/$a/key.pem" | awk '/^public key:/{print $3}')
-  office admin key register "$a-bot" "$PUB" --name "$a" --kind agent
+  office admin user create "$a-bot" "$PUB" --name "$a" --kind agent
 done
 ```
 

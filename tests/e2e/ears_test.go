@@ -122,7 +122,7 @@ func (m *meeting) user(pid, kind, server string) []string {
 	m.t.Helper()
 	env := m.envFor(filepath.Join(m.t.TempDir(), pid+".pem"), server)
 	k := m.office(env, "key", "create")
-	m.office(m.admin, "admin", "key", "register", pid, k["publicKey"].(string), "--name", pid, "--kind", kind)
+	m.office(m.admin, "admin", "user", "create", pid, k["publicKey"].(string), "--name", pid, "--kind", kind)
 	return env
 }
 
