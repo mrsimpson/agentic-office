@@ -123,7 +123,7 @@ definition: A later listening mode for several speakers at one microphone, with 
 ## Artifact
 
 The general word for what the stage shows. An artifact is a path in the repository of the
-tenant and names its schema (`dec-artifacts`, proposed). Today the stage shows slide decks only.
+tenant and names its schema (`dec-artifacts`). Today the stage shows slide decks only.
 
 ```arc42
 :::glossary-term

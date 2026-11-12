@@ -171,6 +171,17 @@ office admin key register minutes-bot <public key> --name "Minute Bot" --kind ag
 
 `office admin key revoke <key-id>` removes a key again.
 
+You can do the same in the browser. The admin view lists all users and keys, registers a key with
+a form and revokes a key after a confirmation:
+
+```sh
+office admin link
+```
+
+The command prints a link. Open it in a browser within a few minutes: the link works once. The
+page then stays open for one hour. After that, or if you see `Admin link not valid` or `Session
+ended`, run `office admin link` again. Only admins get a link.
+
 ## 3. Join a meeting
 
 ### Set up once
@@ -275,13 +286,41 @@ Without a microphone, join with `office meeting join weekly` and write instead o
 
 ### Show the stage
 
-The stage shows the meeting: who is captured, the latest sentences, raised hands, the slides or document in focus and the
-minutes. One person creates a link, opens it in a browser and shares the window in your meeting
-tool (Zoom, Teams, Meet, Jitsi):
+The stage shows the meeting in two columns:
+
+- **Left:** the artifact in focus, large. The **minutes** are the first artifact: they are in
+  focus until someone focuses another artifact. Until there are minutes, the stage asks you to
+  bring in an agent that takes them (see [Bring in an agent](#4-bring-in-an-agent)). When a session
+  has more than one artifact, tabs appear above, with the minutes first. Below is a log of who
+  created, changed or focused which artifact.
+- **Right:** the participants with their capture status (captured, paused, not captured), agents
+  marked as agents, and a hand with a number for everyone who raised their hand, in the order they
+  raised it. Below it is the transcript of the latest sentences.
+
+The stage is dark or light, as your computer is set. One person creates a link, opens it in a
+browser and shares the window in your meeting tool (Zoom, Teams, Meet, Jitsi):
 
 ```sh
 office stage link --session weekly
 ```
+
+### Work on documents
+
+Anyone in the meeting, human or agent, can write a text document. A document is a Markdown file
+under `documents/`. You can show it on the stage:
+
+```sh
+office document create documents/plan.md --file plan.md --session weekly   # prints its version
+office stage focus documents/plan.md              # the stage shows it; `stage focus minutes` goes back
+office document get documents/plan.md             # read it
+office document change documents/plan.md --base <version> --file plan.md   # replace it
+office document list
+```
+
+A change names the version that you read (`--base`). If someone else changed the document in the
+meantime, the change fails with `aborted` and tells you the current version: read the document
+again and redo your change. Your name is recorded as the author of every change. Never put a
+sentence that is off the record into a document.
 
 ### More things you can do
 
@@ -736,6 +775,8 @@ scripts/try-local.sh tail bot                        # what the agent reads; sto
 | `certificate signed by unknown authority` or `certificate is not standards compliant` | The client lacks the certificate of the hub. Copy `tls.crt` to `$CFG/client/hub.crt` (on macOS `~/Library/Application Support/agentic-office/client/hub.crt`), or set `OFFICE_CA_CERT`. |
 | `certificate is valid for …, not …` or `cannot validate certificate for …` | The name or address in `OFFICE_HUB` is not in the certificate. Delete `tls.crt` and `tls.key` in the data directory of the hub and start it with this name in `-tls-hosts`. Then give the participants the new `tls.crt`. |
 | `public key is not registered: ask an admin to register SHA256:…` | Send your public key to your admin (`office key show` prints it). Check with `office whoami`. |
+| `Admin link not valid` or `Session ended` in the admin view | The link works once and for a few minutes, and the page for one hour. Run `office admin link` again. Only admin keys get a link (`permission_denied` otherwise). |
+| `the document has changed since you read it` (`aborted`) | Someone changed the document first. Read it again with `office document get` and redo your change with the new version in `--base`. |
 | `no audio recorder found` | Install `ffmpeg` (macOS) or `pulseaudio-utils` (Linux), or set `OFFICE_MIC_COMMAND` (see [`README.md`](README.md)). |
 | The model download fails | Check your network, or download the models elsewhere and set `OFFICE_MODEL_URL` to a mirror. |
 | `SIGILL: illegal instruction` | A client built on another computer uses CPU features yours lacks. Use the pre-built client, or build with `WHISPER_NATIVE=OFF`. |

@@ -1103,7 +1103,7 @@ document, slides, minutes); the exact events; how the stage learns the tenant of
 :::decision
 id: dec-artifacts
 title: Artifacts: a path, a schema and a focus
-status: proposed
+status: accepted
 date: 2026-11-12
 addresses: qg-usability
 :::
@@ -1130,7 +1130,7 @@ memberships follow with `dec-multi-tenancy`.
 :::decision
 id: dec-admin-web
 title: The admin view is a server-rendered page behind a one-time link
-status: proposed
+status: accepted
 date: 2026-11-12
 addresses: qg-usability
 :::
