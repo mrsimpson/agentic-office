@@ -1073,19 +1073,28 @@ addresses: qg-confidentiality
 **Context:** Humans and agents work together in one session. They create notes, slide decks,
 documents and changes to documents. The stage shows one artifact, chosen by the type in front of
 its ID. Only slide decks work; the types so far were illustrations (`dec-records-per-type`).
-**Decision:** An artifact belongs to a path in the git repository of the tenant. The path is its
-identity. The artifact names its schema inside itself, and the hub ships the schemas. A schema
-decides how the hub checks the artifact and how the stage renders it. An artifact without a
-schema is shown as plain text. Every participant may create and change artifacts. A session
-refers to several artifacts and exactly one has the focus; people normally discuss the artifact
-in focus. The archive stores every change of an artifact in one commit. The rule for off the
-record applies when an artifact is created, not when it is shown. **Consequences:** The stage
-chooses its renderer by the schema and no longer by a fixed prefix. The session log needs events
-for shown, created, changed and focused artifacts. The stage and the admin UI can share one
-design for the artifact area. **Rejected:** schemas defined by the tenant (out of scope for now);
-one artifact in focus per participant (it breaks the shared screen). OPEN: which types the hub
-ships first; how a change to a document is modelled (a commit, a proposal or a comment); how this
-fits `dec-records-per-type`, which gives every type its own interface (#114).
+**Decision:** An artifact is a file in the git repository of the tenant. Its path is its
+identity. Two kinds of file are artifacts: text (Markdown) and data (YAML). The hub refuses
+other files. The file names its schema inside itself (in the front matter of a Markdown file, in
+a key of a YAML file), and the hub ships the schemas. A schema decides how the hub checks the
+artifact and how the stage renders it. A Markdown file without a schema is shown as plain text.
+Something that lives in another system, such as a task, is a small YAML artifact that holds the
+URL of the real thing; the hub resolves it through an API later. Every participant may create and
+change artifacts. A change always applies to the head of the repository; there are no branches or
+proposals. A change names the version that its author read, and the hub refuses it when the
+artifact has changed since. A session refers to several artifacts and exactly one has the focus.
+Every participant may set the focus. People normally discuss the artifact in focus; the session
+log carries the discussion. The archive stores every change of an artifact in one commit. The rule
+for off the record applies when an artifact is created, not when it is shown. **Consequences:**
+The stage chooses its renderer by the schema and no longer by a fixed prefix. The session log
+needs events for created, changed and focused artifacts. Decisions, minutes, notes, slides and
+tasks become schemas, and a command such as the deterministic rendering of slides becomes a
+generator that writes an artifact. The stage and the admin UI share one design for the artifact
+area. **Rejected:** schemas defined by the tenant (out of scope for now); one artifact in focus
+per participant (it breaks the shared screen); branches and proposals for changes (later, as a
+schema, if needed); files of any type (the stage cannot show them). OPEN: which schemas the hub
+ships first (proposal: text, slides, minutes); whether this replaces the interfaces of
+`dec-records-per-type` for decisions, minutes, notes and slides (#114); the exact events.
 
 ```arc42
 :::decision
