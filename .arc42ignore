@@ -11,10 +11,15 @@ go.mod
 go.sum
 docs
 tests
-# Build and delivery: the CI workflows and the container build.
+# Build and delivery: the CI workflows, the container build and the release automation
+# (release-please writes CHANGELOG.md and version.txt in its release pull request).
 .github
 Dockerfile
 .dockerignore
+release-please-config.json
+.release-please-manifest.json
+CHANGELOG.md
+version.txt
 # User documentation and scripts for trying the office locally.
 USER_GUIDE.md
 scripts
