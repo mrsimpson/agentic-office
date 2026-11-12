@@ -369,3 +369,51 @@ title: Start directory
 definition: The current folder when a user starts a command of the client; its folder .office holds the project file of the configuration and the vocabulary of the project (concept-client-configuration)
 :::
 ```
+
+## Tenant
+
+The unit of separation in the hub.
+
+```arc42
+:::glossary-term
+id: term-tenant
+title: Tenant
+definition: An organisation with its own git repository; its data is visible only to its members
+:::
+```
+
+## Tenant admin
+
+The person who runs one tenant.
+
+```arc42
+:::glossary-term
+id: term-tenant-admin
+title: Tenant admin
+definition: A member of a tenant who manages its members
+:::
+```
+
+## System admin
+
+The person who runs the whole hub.
+
+```arc42
+:::glossary-term
+id: term-system-admin
+title: System admin
+definition: A user who runs the whole hub: tenants, users and other system admins
+:::
+```
+
+## Repository
+
+The one local git repository of a tenant.
+
+```arc42
+:::glossary-term
+id: term-repository
+title: Repository
+definition: The local git repository of a tenant, with a directory for each kind of content
+:::
+```

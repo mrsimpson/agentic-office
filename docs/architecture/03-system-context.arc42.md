@@ -13,7 +13,7 @@ that a user brings. The meeting tool only carries the shared stage.
 id: context-overview
 view: context
 notation: mermaid
-aliases: actor_agent=actor-agent, actor_decision_model=actor-decision-model, actor_forwarding_judge=actor-forwarding-judge, actor_human=actor-human, actor_meeting_tool=actor-meeting-tool, bb_office_hub=bb-office-hub, bb_participant_client=bb-participant-client
+aliases: actor_agent=actor-agent, actor_decision_model=actor-decision-model, actor_forwarding_judge=actor-forwarding-judge, actor_human=actor-human, actor_meeting_tool=actor-meeting-tool, actor_system_admin=actor-system-admin, actor_tenant_admin=actor-tenant-admin, bb_office_hub=bb-office-hub, bb_participant_client=bb-participant-client
 :::
 ```
 
@@ -24,6 +24,8 @@ flowchart LR
     actor_forwarding_judge([Forwarding judge])
     actor_human([Human participant])
     actor_meeting_tool([Meeting tool])
+    actor_system_admin([System admin])
+    actor_tenant_admin([Tenant admin])
     subgraph office [Agentic Office]
         bb_office_hub[Office hub]
         bb_participant_client[Participant client]
@@ -39,6 +41,9 @@ flowchart LR
     actor_human -->|if-local-log| bb_participant_client
     actor_human -->|if-stage-web| bb_office_hub
     actor_meeting_tool -->|if-stage-web| bb_office_hub
+    actor_system_admin -->|if-tenant-api| bb_office_hub
+    actor_system_admin -->|if-user-api| bb_office_hub
+    actor_tenant_admin -->|if-user-api| bb_office_hub
 ```
 
 ## Human participant
@@ -114,6 +119,38 @@ title: Forwarding judge
 type: system
 description: Optional, brought by the user; answers after each utterance whether the agent should act and whether a topic has ended, with a reason
 requires: if-forwarding-judge
+:::
+```
+
+## Tenant admin
+
+Runs one tenant: the group of people of one organisation and the git repository where the tenant
+keeps its information. A tenant admin adds users to the tenant and removes them, and gives the
+tenant admin role to other members. Every tenant has at least one tenant admin.
+
+```arc42
+:::actor
+id: actor-tenant-admin
+title: Tenant admin
+type: person
+description: Manages the members of one tenant
+requires: if-user-api
+:::
+```
+
+## System admin
+
+Runs the whole hub. A system admin creates and removes tenants, names the first tenant admin of a
+tenant, creates users and registers their keys, and names other system admins. A system admin does
+not read the contents of a tenant unless they are also a member of it.
+
+```arc42
+:::actor
+id: actor-system-admin
+title: System admin
+type: person
+description: Manages tenants, users and system admins of the whole hub
+requires: if-tenant-api, if-user-api
 :::
 ```
 

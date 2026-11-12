@@ -163,6 +163,9 @@ viewing the stage of one session.
 **Revocation.** Each participant can have several keys (several devices). An admin can remove a
 key; tokens bound to it stop working when they expire, at the latest.
 
+**Admins and tenants.** The role of a user in a tenant and the system admin role are described in
+`concept-multi-tenancy`.
+
 **Out of scope for the first stage:** acting on behalf of someone else (delegation), self-service
 enrollment (issue #2), encryption of stored data (OPEN).
 
@@ -170,6 +173,43 @@ enrollment (issue #2), encryption of stored data (OPEN).
 :::concept
 id: concept-identity
 title: Identity and access with local key pairs
+category: security
+:::
+```
+
+## Tenants, repository and roles
+
+The hub serves several **tenants**. A tenant is the unit of separation: one organisation, with
+one git repository where it keeps all its information. One hub, one user list, many tenants.
+
+**Users.** Users are global and registered at the hub first (name and keys); this is step one. The
+hub keeps them in its own git repository, together with the list of tenants and system admins. A
+tenant admin or system admin then assigns the user to a tenant (step two). A user can be a member
+of several tenants. A membership has one role: `member` or `tenant admin`, and the tenant keeps it
+in its repository. Roles inside a session (moderator, minute taker) stay as in
+`concept-participant-model`; they are not tenant roles.
+
+**Admins.** There are two admin levels. A **system admin** runs the hub: creates tenants and
+users, names the first tenant admin of each tenant and other system admins. A **tenant admin** runs
+one tenant: manages its members. A system admin is no member of a tenant by default and does not
+read its content. At least one system admin always exists; the first one is named when the hub
+starts. Every tenant has at least one tenant admin.
+
+**Repository.** A tenant has exactly one local git repository, with a directory for each kind of
+content (sessions, records, tasks, slides, members). Every session, record, task and slide deck
+belongs to exactly one tenant. The archive writes to the repository of that tenant only
+(`dec-yaml-git-storage`). Later, a repository can be synchronised with 0..n remotes; this is out of
+scope for now.
+
+**Separation.** Every call names a tenant. The hub checks the membership and the role of the
+caller (from the token) before it reads or writes. A caller who is no member gets the same answer
+as for something that does not exist. Tenants share no data, and the log of one session is never
+visible in another tenant.
+
+```arc42
+:::concept
+id: concept-multi-tenancy
+title: Tenants, repository and roles
 category: security
 :::
 ```
