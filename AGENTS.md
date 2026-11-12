@@ -44,8 +44,18 @@ Guidance for agents working in this repository.
   before you push, and `make e2e-all` when you change the ears, the session log, the archive or
   the restore. Enable auto-merge on the pull request: it merges when the required CI checks
   (`.github/workflows/ci.yml`) pass. Never push to `main` directly.
-- Only the maintainer creates release tags (`v<major>.<minor>.<patch>` on `main`). A tag publishes
-  the container images (`.github/workflows/release.yml`).
+- Write commit messages and pull request titles as **Conventional Commits**:
+  `<type>(<scope>): <summary>`, with the type `feat`, `fix`, `perf`, `revert`, `docs`,
+  `refactor`, `test`, `build`, `ci` or `chore`. The pull request title becomes the commit message
+  on `main` (squash merge), and `.github/workflows/pr-title.yml` checks it. A breaking change has
+  `!` after the type (`feat!: ...`) or a footer `BREAKING CHANGE: ...`.
+- The version follows **Semantic Versioning** and comes from these commits. Nobody creates a tag by
+  hand. `.github/workflows/release-please.yml` keeps one release pull request open, with the next
+  version and the CHANGELOG. The maintainer merges it when a release should go out; that creates the
+  tag `v<major>.<minor>.<patch>` and the GitHub release, and `.github/workflows/release.yml` publishes
+  the container images and the binaries. Below 1.0 a breaking change raises the minor version, and
+  `feat` and `fix` raise the patch version. The first release is set to 0.1.0 with `release-as` in
+  `release-please-config.json`: remove that line when the release pull request of 0.1.0 is merged.
 - When you hit a problem during implementation (a bug, a gap in the architecture, a blocked
   dependency), open a new issue yourself: describe the problem, what you tried, and what you need.
   Link it to the issue you were working on. Then continue with other work if you can.

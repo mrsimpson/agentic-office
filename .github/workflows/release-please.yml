@@ -1,0 +1,41 @@
+# Semantic versioning from conventional commits (see AGENTS.md).
+#
+# On every push to main, release-please reads the commits since the last release and keeps one
+# release pull request open: it holds the next version and the CHANGELOG. The maintainer merges it
+# when a release should go out. Merging creates the tag and the GitHub release, and this workflow
+# then starts release.yml on the new tag, which builds and publishes the images and the binaries.
+#
+# A tag that GITHUB_TOKEN creates does not start other workflows, so the build is started on
+# purpose with workflow_dispatch (that event is allowed). A tag that someone pushes by hand still
+# starts release.yml by itself.
+name: Release PR
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: Release PR
+    runs-on: ubuntu-latest
+    steps:
+      - id: rp
+        uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+      - name: Start the release build for the new tag
+        if: ${{ steps.rp.outputs.release_created == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.rp.outputs.tag_name }}
+        run: gh workflow run release.yml --ref "$TAG" --repo "$GITHUB_REPOSITORY"
