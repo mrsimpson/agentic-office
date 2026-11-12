@@ -175,3 +175,18 @@ severity: medium
 mitigation: An imported session is marked by its first event, with its source and the participant who imported it; imported speakers have marked IDs; the signature over an imported log only proves who imported it and that it has not changed (dec-session-import); the stage names the source of an imported session and never shows it as live
 :::
 ```
+
+## Memory grows with all sessions of all tenants
+
+The session log stays in memory after it is archived, and the restore loads every session at start.
+With several tenants, memory grows with the sum of all sessions, and one busy tenant can take the
+memory of the others. Issue #113 tracks the work. The maintainer accepts the risk until it is done.
+
+```arc42
+:::risk
+id: risk-session-memory
+title: Memory grows with all sessions of all tenants
+severity: medium
+mitigation: Take ended sessions that nobody follows out of memory and load them from the archive on demand; restore only open sessions at start (#113)
+:::
+```

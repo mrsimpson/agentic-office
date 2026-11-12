@@ -185,20 +185,39 @@ one git repository where it keeps all its information. One hub, one user list, m
 **Users.** Users are global and registered at the hub first (name and keys); this is step one. The
 hub keeps them in its own git repository, together with the list of tenants and system admins. A
 tenant admin or system admin then assigns the user to a tenant (step two). A user can be a member
-of several tenants. A membership has one role: `member` or `tenant admin`, and the tenant keeps it
-in its repository. Roles inside a session (moderator, minute taker) stay as in
+of several tenants. A membership has one role: `member` or `tenant admin`. Identity keeps the memberships in the hub
+repository, so a key and a membership are each kept in one place. A membership names the user ID
+and never a key, so rotating a key touches no membership. Roles inside a session (moderator, minute taker) stay as in
 `concept-participant-model`; they are not tenant roles.
 
 **Admins.** There are two admin levels. A **system admin** runs the hub: creates tenants and
 users, names the first tenant admin of each tenant and other system admins. A **tenant admin** runs
-one tenant: manages its members. A system admin is no member of a tenant by default and does not
-read its content. At least one system admin always exists; the first one is named when the hub
-starts. Every tenant has at least one tenant admin.
+one tenant: manages its members. A system admin never reads the content of a tenant: a system admin is
+never a member of a tenant, and a member of a tenant is never a system admin. Identity refuses
+both. A person who does both uses two users with two different keys; a key belongs to one user
+only. At least one system admin always exists. The operator names the first one at the first start
+of the hub, when the hub repository does not exist yet, by passing the ID and the public key of
+that user. The hub refuses to start without them at the first start and ignores them later. There
+is no file of admin keys. Every tenant has at least one tenant admin.
+
+**Rules for changes.** Identity is the only writer of users, keys, memberships and system admins.
+It refuses a change when: the caller may not make it (a tenant admin changes only the memberships
+of their own tenant; a user adds and revokes only their own keys); the tenant or user does not
+exist; the change would leave a tenant without a tenant admin or the hub without a system admin.
+Users, memberships and tenants have a validity period. Removing one ends its period and keeps its
+record, so the ID stays taken and is never used again: a new user cannot inherit old memberships,
+and the history shows who was a member when. Ending a user ends its memberships in the same
+commit. A call is checked against the periods that are valid at the time of the call. A period that starts or ends in the future, for example a guest who has access until a date, would fit the same fields but is out of scope for now. Identity checks the same rules
+when it loads the hub repository at start and refuses to start on a violation, for example after
+a manual edit. **Key rotation:** a user adds the new key with the old one and then revokes the old
+one; tokens bound to the old key expire after about 15 minutes at the latest. A compromised key is
+revoked by a system admin and stops working in all tenants.
 
 **Repository.** A tenant has exactly one local git repository, with a directory for each kind of
-content (sessions, records, tasks, slides, members). Every session, record, task and slide deck
+content (sessions, records, tasks, slides). Every session, record, task and slide deck
 belongs to exactly one tenant. The archive writes to the repository of that tenant only
-(`dec-yaml-git-storage`). Later, a repository can be synchronised with 0..n remotes; this is out of
+(`dec-yaml-git-storage`). The hub repository has a fixed place and a reserved name that no tenant
+can take; neither is configurable. Later, a repository can be synchronised with 0..n remotes; this is out of
 scope for now.
 
 **Separation.** Every call names a tenant. The hub checks the membership and the role of the

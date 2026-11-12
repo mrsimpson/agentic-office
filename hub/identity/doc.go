@@ -30,3 +30,7 @@
 // key_id is NotFound; registering a revoked key again, or revoking a key of the admin file, is
 // FailedPrecondition.
 package identity
+
+// The blank import states the required interface if-archive-storage (dec-multi-tenancy) until the
+// first code that keeps users in the hub repository uses it.
+import _ "github.com/mrsimpson/agentic-office/hub/archive/storage"
