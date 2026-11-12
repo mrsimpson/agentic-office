@@ -44,8 +44,7 @@ Guidance for agents working in this repository.
   before you push, and `make e2e-all` when you change the ears, the session log, the archive or
   the restore. Enable auto-merge on the pull request: it merges when the required CI checks
   (`.github/workflows/ci.yml`) pass. Never push to `main` directly.
-- Only the maintainer creates release tags (`v<major>.<minor>.<patch>` on `main`). A tag publishes
-  the container images (`.github/workflows/release.yml`).
+- Use Conventional Commits.
 - When you hit a problem during implementation (a bug, a gap in the architecture, a blocked
   dependency), open a new issue yourself: describe the problem, what you tried, and what you need.
   Link it to the issue you were working on. Then continue with other work if you can.
