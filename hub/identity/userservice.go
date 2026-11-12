@@ -132,7 +132,7 @@ func (s *Service) CreateUser(ctx context.Context, req *userv1.CreateUserRequest)
 		return nil, err
 	}
 	res := &userv1.CreateUserResponse{KeyId: auth.KeyID(req.GetPublicKey())}
-	out, err := s.change(ctx, c, req.GetCommandId(), req, res, "Create user "+req.GetUserId(), func(st *state, now time.Time) error {
+	out, err := s.change(ctx, c, req.GetCommandId(), req, res, "System: create user "+req.GetUserId(), func(st *state, now time.Time) error {
 		if st.users[req.GetUserId()] != nil {
 			return alreadyExists("user " + req.GetUserId() + " exists or was removed: a user ID is never used again")
 		}
@@ -152,7 +152,7 @@ func (s *Service) RemoveUser(ctx context.Context, req *userv1.RemoveUserRequest)
 		return nil, err
 	}
 	res := &userv1.RemoveUserResponse{}
-	out, err := s.change(ctx, c, req.GetCommandId(), req, res, "Remove user "+req.GetUserId(), func(st *state, now time.Time) error {
+	out, err := s.change(ctx, c, req.GetCommandId(), req, res, "System: remove user "+req.GetUserId(), func(st *state, now time.Time) error {
 		u := st.users[req.GetUserId()]
 		if u == nil {
 			return notFound("no such user")
@@ -202,7 +202,7 @@ func (s *Service) SetSystemAdmin(ctx context.Context, req *userv1.SetSystemAdmin
 		return nil, err
 	}
 	res := &userv1.SetSystemAdminResponse{}
-	out, err := s.change(ctx, c, req.GetCommandId(), req, res, "Set system admin of "+req.GetUserId(), func(st *state, now time.Time) error {
+	out, err := s.change(ctx, c, req.GetCommandId(), req, res, "System: set system admin of "+req.GetUserId(), func(st *state, now time.Time) error {
 		u := st.users[req.GetUserId()]
 		if u == nil || !u.active(now) {
 			return notFound("no such active user")
@@ -228,7 +228,7 @@ func (s *Service) AddKey(ctx context.Context, req *userv1.AddKeyRequest) (*userv
 		return nil, err
 	}
 	res := &userv1.AddKeyResponse{KeyId: auth.KeyID(req.GetPublicKey())}
-	out, err := s.change(ctx, c, req.GetCommandId(), req, res, "Add a key to "+req.GetUserId(), func(st *state, now time.Time) error {
+	out, err := s.change(ctx, c, req.GetCommandId(), req, res, "System: add a key to "+req.GetUserId(), func(st *state, now time.Time) error {
 		u := st.users[req.GetUserId()]
 		if u == nil || !u.active(now) {
 			return notFound("no such active user")
@@ -261,7 +261,7 @@ func (s *Service) RevokeKey(ctx context.Context, req *userv1.RevokeKeyRequest) (
 		return nil, err
 	}
 	res := &userv1.RevokeKeyResponse{}
-	out, err := s.change(ctx, c, req.GetCommandId(), req, res, "Revoke key "+req.GetKeyId(), func(st *state, now time.Time) error {
+	out, err := s.change(ctx, c, req.GetCommandId(), req, res, "System: revoke key "+req.GetKeyId(), func(st *state, now time.Time) error {
 		for id, u := range st.users {
 			for _, k := range u.Keys {
 				if k.KeyID != req.GetKeyId() {
@@ -314,7 +314,7 @@ func (s *Service) SetMembership(ctx context.Context, req *userv1.SetMembershipRe
 		return nil, err
 	}
 	res := &userv1.SetMembershipResponse{}
-	out, err := s.change(ctx, c, req.GetCommandId(), req, res, "Set the membership of "+req.GetUserId()+" in "+req.GetTenantId(),
+	out, err := s.change(ctx, c, req.GetCommandId(), req, res, "System: set the membership of "+req.GetUserId()+" in "+req.GetTenantId(),
 		func(st *state, now time.Time) error {
 			u := st.users[req.GetUserId()]
 			if u == nil || !u.active(now) {
@@ -346,7 +346,7 @@ func (s *Service) RemoveMembership(ctx context.Context, req *userv1.RemoveMember
 		return nil, err
 	}
 	res := &userv1.RemoveMembershipResponse{}
-	out, err := s.change(ctx, c, req.GetCommandId(), req, res, "End the membership of "+req.GetUserId()+" in "+req.GetTenantId(),
+	out, err := s.change(ctx, c, req.GetCommandId(), req, res, "System: end the membership of "+req.GetUserId()+" in "+req.GetTenantId(),
 		func(st *state, now time.Time) error {
 			m := st.members[memberKey{req.GetTenantId(), req.GetUserId()}]
 			if m == nil || !m.active(now) {

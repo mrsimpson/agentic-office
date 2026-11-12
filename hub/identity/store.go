@@ -74,7 +74,7 @@ func (s *Service) bootstrap(ctx context.Context) error {
 	st.users[b.UserID] = &userRecord{DisplayName: b.UserID, Kind: kindName(identityv1.ActorKind_ACTOR_KIND_HUMAN),
 		SystemAdmin: true, ValidFrom: now,
 		Keys: []*keyRecord{{KeyID: auth.KeyID(b.PublicKey), PublicKey: auth.FormatPublicKey(b.PublicKey)}}}
-	if err := s.commit(ctx, st, "Create the first system admin "+b.UserID); err != nil {
+	if err := s.commit(ctx, st, "System: create the first system admin "+b.UserID); err != nil {
 		return err
 	}
 	if s.opts.Logf != nil {

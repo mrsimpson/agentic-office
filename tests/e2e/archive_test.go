@@ -42,6 +42,8 @@ func slowGit(t *testing.T, d time.Duration) (string, string) {
 	}
 	logFile := filepath.Join(dir, "commits.log")
 	script := fmt.Sprintf(`#!/bin/sh
+# The commits of Identity (message "System: …") are not slowed and not counted.
+case "$*" in *" -m System:"*) exec %[2]q "$@";; esac
 if [ "$1" = commit ]; then
   kind=record
   case "$*" in *" -m Sessions:"*) kind=session;; esac
