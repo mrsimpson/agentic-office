@@ -25,7 +25,7 @@ const PathPrefix = "/stage/"
 // Regions are the regions of the page. Each region is an element with this ID. Every event of the
 // event stream is named after one and carries its inner HTML; the stream sends a region again only
 // when its HTML changed.
-var Regions = []string{"status", "origin", "participants", "hands", "artifact", "minutes", "utterances"}
+var Regions = []string{"status", "origin", "participants", "hands", "artifact", "artifacts", "minutes", "utterances"}
 
 // ErrorPage is the page for a missing, unknown, expired or wrong token. It shows no session
 // data. Fields: Title, Message, Status.
@@ -40,7 +40,7 @@ const Script = `(function () {
   var main = document.getElementById("stage");
   var status = document.getElementById("status");
   var es = new EventSource(main.getAttribute("data-events"));
-  ["status", "origin", "participants", "hands", "artifact", "minutes", "utterances"].forEach(function (name) {
+  ["status", "origin", "participants", "hands", "artifact", "artifacts", "minutes", "utterances"].forEach(function (name) {
     es.addEventListener(name, function (e) { document.getElementById(name).innerHTML = e.data; });
   });
   es.addEventListener("end", function () { es.close(); });
@@ -93,8 +93,14 @@ li { padding: 0.35rem 0; }
 .avatar.agent { border-radius: 0.55rem; background: #f5b84b22; color: var(--warn); }
 .name { font-weight: 650; }
 .hands li { margin-bottom: 0.5rem; padding: 0.7rem 0.9rem; border-radius: 12px; background: var(--accent-soft); border: 1px solid var(--accent); }
+section:empty { display: none; }
 #artifact { padding: 0; overflow: hidden; }
-#artifact iframe { display: block; width: 100%; height: 62vh; border: 0; background: #fff; }
+.art-head { display: flex; justify-content: space-between; gap: 1rem; padding: 0.6rem 1.2rem; border-bottom: 1px solid var(--line); }
+.art-id { color: var(--muted); font-size: 0.8rem; font-weight: 600; letter-spacing: 0.05em; }
+.chips { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.chip { padding: 0.25rem 0.8rem; border-radius: 99px; background: var(--raised); border: 1px solid var(--line); color: var(--muted); font-size: 0.85rem; }
+.chip.focused { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+#artifact iframe { display: block; width: 100%; height: 50vh; border: 0; background: #fff; }
 #artifact .note, #artifact .empty { padding: 1rem 1.2rem; }
 .minutes-text { white-space: pre-wrap; max-height: 40vh; overflow: auto; }
 .utterances li { display: flex; gap: 0.7rem; align-items: flex-start; }
@@ -120,6 +126,7 @@ var Page = template.Must(template.New("page").Parse(`<!DOCTYPE html>
 <main id="stage" class="stage" data-events="{{.Events}}">
 <div class="left">
 <section id="artifact" aria-label="Shown artifact">{{.Regions.artifact}}</section>
+<section id="artifacts" aria-label="Artifacts of the session">{{.Regions.artifacts}}</section>
 <section id="utterances" aria-live="polite">{{.Regions.utterances}}</section>
 </div>
 <div class="right">
@@ -161,9 +168,15 @@ The office did not see this conversation happen. The hub's signature proves who 
 {{range .Hands}}<li data-participant="{{.Participant.ID}}">✋ {{template "name" .Participant}}{{if .Topic}}: <span class="topic">{{.Topic}}</span>{{end}}</li>
 {{end}}</ol>{{else}}<p class="empty">No raised hands.</p>{{end}}{{end}}
 
-{{define "artifact"}}{{with .Artifact}}{{if .Content}}<iframe title="{{.ID}}" data-artifact="{{.ID}}" sandbox="" referrerpolicy="no-referrer" srcdoc="{{.Content}}"></iframe>
+{{define "artifact"}}{{with .Artifact}}{{if .ID}}<div class="art-head"><span class="eyebrow">Now showing</span><span class="art-id">{{.ID}}</span></div>
+{{end}}{{if .Content}}<iframe title="{{.ID}}" data-artifact="{{.ID}}" sandbox="" referrerpolicy="no-referrer" srcdoc="{{.Content}}"></iframe>
 {{else if .ID}}<p class="note" data-artifact="{{.ID}}">{{.Note}}</p>
 {{else}}<p class="empty">Nothing is shown.</p>{{end}}{{end}}{{end}}
+
+{{define "artifacts"}}{{if gt (len .Artifacts) 1}}<h2>Artifacts</h2>
+<ul class="chips">
+{{range .Artifacts}}<li class="chip{{if .Focused}} focused{{end}}" data-artifact="{{.Path}}">{{.Path}}</li>
+{{end}}</ul>{{end}}{{end}}
 
 {{define "minutes"}}<h2>Minutes</h2>
 {{if .Minutes}}<div class="minutes-text">{{.Minutes}}</div>{{else}}<p class="empty">No minutes yet.</p>{{end}}{{end}}

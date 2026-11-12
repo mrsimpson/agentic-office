@@ -208,6 +208,7 @@ func main() {
 	archDone := make(chan struct{})
 	go func() { sessions.RunArchive(archCtx); close(archDone) }()
 
+	archiveRead := archive.NewReadService(arch)
 	cs := connect.NewServer(ids.Interceptor())
 	sessioncommandsv1connect.RegisterSessionCommandsServiceHandler(cs, sessions)
 	sessionstreamv1connect.RegisterSessionStreamServiceHandler(cs, sessions)
@@ -219,7 +220,7 @@ func main() {
 	taskv1connect.RegisterTaskServiceHandler(cs, tks)
 	slidesv1connect.RegisterSlidesServiceHandler(cs, decks)
 	documentv1connect.RegisterDocumentServiceHandler(cs, documents.New(arch, sessions))
-	archivev1connect.RegisterArchiveReadServiceHandler(cs, archive.NewReadService(arch))
+	archivev1connect.RegisterArchiveReadServiceHandler(cs, archiveRead)
 	mux := http.NewServeMux()
 	connecthttp.Mount(mux, cs)
 	// The stage subscribes in-process through the token check, with the token of the link.
@@ -229,7 +230,8 @@ func main() {
 			c, err := ids.CheckToken(token)
 			return c.StageSessionID, err
 		},
-		Slides: decks,
+		Slides:    decks,
+		Artifacts: archiveRead,
 	}))
 
 	p := new(http.Protocols)

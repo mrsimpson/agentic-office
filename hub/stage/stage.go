@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/mrsimpson/agentic-office/hub/archive/api" // placeholder until the stage reads artifacts from the archive (dec-artifacts)
 	"github.com/mrsimpson/agentic-office/hub/stage/web"
 
 	"connectrpc.com/connect/v2"
@@ -39,6 +38,9 @@ type Options struct {
 	// Slides loads shown decks (artifact IDs "slides/<n>"). Nil means the stage shows a note
 	// instead.
 	Slides Slides
+	// Artifacts reads artifacts by their path (if-archive-read). Nil means the stage shows a note
+	// instead.
+	Artifacts Artifacts
 	// KeepAlive is the interval of comments on an idle event stream. Default 15 seconds.
 	KeepAlive time.Duration
 }
@@ -204,7 +206,7 @@ func (h *Handler) events(w http.ResponseWriter, r *http.Request, sid, token stri
 	for {
 		select {
 		case ev := <-evs:
-			v.apply(ctx, ev, h.opts.Slides)
+			v.apply(ev)
 			if !pending {
 				pending = true
 				timer.Reset(coalesce)
@@ -212,9 +214,11 @@ func (h *Handler) events(w http.ResponseWriter, r *http.Request, sid, token stri
 		case <-timer.C:
 			pending = false
 			v.live = true
+			v.refresh(ctx, h.opts.Slides, h.opts.Artifacts)
 			send()
 		case err := <-errc:
 			v.live = true
+			v.refresh(ctx, h.opts.Slides, h.opts.Artifacts)
 			switch {
 			case errors.Is(err, io.EOF):
 				// The stream ends after session.ended.

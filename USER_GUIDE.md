@@ -275,7 +275,7 @@ Without a microphone, join with `office meeting join weekly` and write instead o
 
 ### Show the stage
 
-The stage shows the meeting: who is captured, the latest sentences, raised hands, slides and the
+The stage shows the meeting: who is captured, the latest sentences, raised hands, the slides or document in focus and the
 minutes. One person creates a link, opens it in a browser and shares the window in your meeting
 tool (Zoom, Teams, Meet, Jitsi):
 
@@ -297,7 +297,7 @@ office meeting end
 ## 4. Bring in an agent
 
 An agent is a participant like you. It follows the meeting and acts through tools: it can keep
-the minutes, record decisions, raise its hand, show slides and speak. Several agents can take
+the minutes, record decisions, raise its hand, write documents, show slides and speak. Several agents can take
 part in the same meeting, for example Claude Code, opencode and Kiro next to each other. The
 **agent runner** (`office agent run`) keeps each one in the meeting, so that people can talk to
 it in plain words. Each agent needs:

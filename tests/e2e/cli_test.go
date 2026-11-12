@@ -100,7 +100,7 @@ func TestTwoCLIParticipants(t *testing.T) {
 	}
 	deckID := office(bot, "slides", "render", deck)["id"].(string)
 	office(bot, "hand", "raise", "--topic", "budget")
-	office(bot, "stage", "show", deckID)
+	office(bot, "stage", "focus", deckID)
 	office(bot, "minutes", "update", "Ada asked for the budget. Bot showed slides/1.")
 	waitFor(adaLog, "hand.raised of bot", func(ev *sessionstreamv1.Event) bool {
 		return ev.GetType() == events.HandRaised && ev.GetHandRaised().GetParticipantId() == "bot"

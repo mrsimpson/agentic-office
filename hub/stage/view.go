@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"html/template"
+	"path"
 	"slices"
 	"strings"
 	"time"
@@ -24,6 +25,9 @@ type view struct {
 	byID         map[string]*participantView
 	hands        []handView // in the order they were raised
 	artifact     artifactView
+	focus        string           // path or ID of the artifact in focus
+	entries      []*artifactEntry // the artifacts of the session in the order they first appeared
+	loaded       string           // focus and version of the artifact that v.artifact holds
 	minutes      string
 	utterances   []*utteranceView // in log order
 	byEvent      map[uint32]*utteranceView
@@ -86,6 +90,7 @@ type handView struct {
 
 type artifactView struct {
 	ID        string
+	Kind      string // "slides", "document", "data" or "file"
 	MediaType string
 	Content   string // the HTML document, embedded in a sandboxed iframe
 	Note      string // why the artifact cannot be shown
@@ -121,7 +126,7 @@ func (v *view) lowerHand(id string) {
 }
 
 // apply updates the view with one event. decks loads a shown deck.
-func (v *view) apply(ctx context.Context, ev *sessionstreamv1.Event, decks Slides) {
+func (v *view) apply(ev *sessionstreamv1.Event) {
 	switch p := ev.GetPayload().(type) {
 	case *sessionstreamv1.Event_ParticipantJoined:
 		j := p.ParticipantJoined
@@ -164,7 +169,12 @@ func (v *view) apply(ctx context.Context, ev *sessionstreamv1.Event, decks Slide
 	case *sessionstreamv1.Event_MinutesUpdated:
 		v.minutes = p.MinutesUpdated.GetText()
 	case *sessionstreamv1.Event_ArtifactFocused:
-		v.artifact = loadArtifact(ctx, p.ArtifactFocused.GetArtifactId(), decks)
+		v.focus = p.ArtifactFocused.GetArtifactId()
+		v.entry(v.focus)
+	case *sessionstreamv1.Event_ArtifactCreated:
+		v.entry(p.ArtifactCreated.GetPath()).version = p.ArtifactCreated.GetVersion()
+	case *sessionstreamv1.Event_ArtifactChanged:
+		v.entry(p.ArtifactChanged.GetPath()).version = p.ArtifactChanged.GetVersion()
 	case *sessionstreamv1.Event_SessionImported:
 		v.imported = &importView{Source: p.SessionImported.GetSource(), Title: p.SessionImported.GetTitle(),
 			By: ev.GetActorParticipantId()}
@@ -178,14 +188,58 @@ func (v *view) apply(ctx context.Context, ev *sessionstreamv1.Event, decks Slide
 	}
 }
 
+// artifactEntry is an artifact that the log of the session names.
+type artifactEntry struct {
+	Path    string
+	version string // of the last created or changed event; empty if there is none
+	v       *view
+}
+
+// Focused reports whether the artifact is the one in focus.
+func (e *artifactEntry) Focused() bool { return e.Path == e.v.focus }
+
+// entry returns the entry of a path and adds it when the log names the path for the first time.
+func (v *view) entry(p string) *artifactEntry {
+	for _, e := range v.entries {
+		if e.Path == p {
+			return e
+		}
+	}
+	e := &artifactEntry{Path: p, v: v}
+	v.entries = append(v.entries, e)
+	return e
+}
+
+// Artifacts returns the artifacts of the session.
+func (v *view) Artifacts() []*artifactEntry { return v.entries }
+
+// refresh loads the artifact in focus when it is another one or has changed since it was loaded.
+// Loading happens here, once per batch of events, and not for every event: a reconnect replays
+// the whole log.
+func (v *view) refresh(ctx context.Context, decks Slides, files Artifacts) {
+	if v.focus == "" {
+		return
+	}
+	key := v.focus + "@" + v.entry(v.focus).version
+	if key == v.loaded {
+		return
+	}
+	v.loaded = key
+	v.artifact = loadArtifact(ctx, v.focus, decks, files)
+}
+
 // slidesPrefix starts the artifact ID of a deck, for example "slides/42".
 const slidesPrefix = "slides/"
 
 // loadArtifact loads a shown artifact. The part of its ID before the first slash names its type;
 // the stage shows decks of the slides interface and gives a note for every other ID.
-func loadArtifact(ctx context.Context, id string, decks Slides) artifactView {
-	av := artifactView{ID: id}
+func loadArtifact(ctx context.Context, id string, decks Slides, files Artifacts) artifactView {
+	av := artifactView{ID: id, Kind: "slides"}
 	if !strings.HasPrefix(id, slidesPrefix) {
+		if p := path.Ext(id); p == ".md" || p == ".yaml" || p == ".yml" {
+			return loadFile(ctx, id, files)
+		}
+		av.Kind = ""
 		av.Note = "The stage cannot show the artifact " + id + "."
 		return av
 	}

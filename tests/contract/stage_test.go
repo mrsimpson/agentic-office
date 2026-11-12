@@ -22,6 +22,7 @@ import (
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 
+	documentv1 "github.com/mrsimpson/agentic-office/hub/documents/api"
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
 	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
@@ -357,7 +358,7 @@ func TestStagePageNeedsStageLink(t *testing.T) {
 		u.EscapedPath() != "/stage/"+url.PathEscape(m.sid)+"/events" {
 		t.Errorf("data-events %q does not point to the event stream of the session", events)
 	}
-	for _, id := range []string{"status", "origin", "participants", "hands", "artifact", "minutes", "utterances"} {
+	for _, id := range []string{"status", "origin", "participants", "hands", "artifact", "artifacts", "minutes", "utterances"} {
 		if len(findAll(doc, withAttr("id", id))) != 1 {
 			t.Errorf("page has no region #%s", id)
 		}
@@ -619,5 +620,89 @@ func TestStageShowsDeckAfterRestart(t *testing.T) {
 	n := st.wait("artifact", "iframe of "+deck.GetId(), func(n *html.Node) bool { return len(findAll(n, byTag("iframe"))) == 1 })
 	if srcdoc, _ := attr(findAll(n, byTag("iframe"))[0], "srcdoc"); srcdoc != string(deck.GetContent()) {
 		t.Error("the stage does not show the stored deck")
+	}
+}
+
+// TestStageShowsDocuments: a document in focus is read from the archive by its path and shown as
+// formatted text in a sandboxed frame. It shows a change, lists the artifacts of the session with
+// the focused one marked, and gives a note for a path that cannot be read. Raw HTML of the author
+// does not reach the page.
+func TestStageShowsDocuments(t *testing.T) {
+	m := newStageMeeting(t)
+	st := openStage(t, m.srv, m.link)
+	bot := m.joinAs("Minute Bot", sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_AGENT, false)
+	a := m.actors[bot]
+	focus := func(path string) {
+		t.Helper()
+		if _, err := a.Commands.FocusArtifact(m.ctx(), &sessioncommandsv1.FocusArtifactRequest{SessionId: m.sid,
+			CommandId: coreapi.NewCommandID(), ParticipantId: bot, ArtifactId: path}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	srcdoc := func(n *html.Node) string {
+		frames := findAll(n, byTag("iframe"))
+		if len(frames) != 1 {
+			return ""
+		}
+		s, _ := attr(frames[0], "srcdoc")
+		return s
+	}
+
+	res, err := a.Document.CreateDocument(m.ctx(), &documentv1.CreateDocumentRequest{Path: "documents/plan.md",
+		Content: "# Budget\n\nHire **two** people.\n\n<script>alert(1)</script>\n", CommandId: coreapi.NewCommandID(), SessionId: m.sid})
+	if err != nil {
+		t.Fatal(err)
+	}
+	focus("documents/plan.md")
+	n := st.wait("artifact", "the document as formatted text", func(n *html.Node) bool {
+		return strings.Contains(srcdoc(n), "<h1>Budget</h1>")
+	})
+	doc := srcdoc(n)
+	if !strings.Contains(doc, "<strong>two</strong>") || strings.Contains(doc, "<script") {
+		t.Errorf("rendered document:\n%s", doc)
+	}
+	frame := findAll(n, byTag("iframe"))[0]
+	if sandbox, ok := attr(frame, "sandbox"); !ok || sandbox != "" {
+		t.Errorf("the frame has sandbox %q (%v), want an empty sandbox", sandbox, ok)
+	}
+	if id, _ := attr(frame, "data-artifact"); id != "documents/plan.md" {
+		t.Errorf("frame names %q", id)
+	}
+
+	// A change of the document in focus appears without a new focus.
+	if _, err := a.Document.ChangeDocument(m.ctx(), &documentv1.ChangeDocumentRequest{Path: "documents/plan.md", Content: "# Budget 2\n",
+		BaseVersion: res.GetDocument().GetVersion(), CommandId: coreapi.NewCommandID(), SessionId: m.sid}); err != nil {
+		t.Fatal(err)
+	}
+	st.wait("artifact", "the changed document", func(n *html.Node) bool { return strings.Contains(srcdoc(n), "<h1>Budget 2</h1>") })
+
+	// Two artifacts: the list marks the one in focus.
+	if _, err := a.Document.CreateDocument(m.ctx(), &documentv1.CreateDocumentRequest{Path: "documents/notes.md", Content: "Notes",
+		CommandId: coreapi.NewCommandID(), SessionId: m.sid}); err != nil {
+		t.Fatal(err)
+	}
+	focus("documents/notes.md")
+	st.wait("artifacts", "two artifacts, notes in focus", func(n *html.Node) bool {
+		chips := findAll(n, withAttr("data-artifact", ""))
+		if len(chips) != 2 {
+			return false
+		}
+		for _, c := range chips {
+			p, _ := attr(c, "data-artifact")
+			cls, _ := attr(c, "class")
+			if (p == "documents/notes.md") != strings.Contains(cls, "focused") {
+				return false
+			}
+		}
+		return true
+	})
+
+	// The session logs cannot be shown.
+	focus("sessions/x/log.yaml")
+	n = st.wait("artifact", "a note for a path that cannot be read", func(n *html.Node) bool {
+		return len(findAll(n, byTag("iframe"))) == 0 && len(findAll(n, withAttr("data-artifact", "sessions/x/log.yaml"))) == 1
+	})
+	if !strings.Contains(text(n), "cannot show") {
+		t.Errorf("note: %q", text(n))
 	}
 }
