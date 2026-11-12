@@ -180,7 +180,7 @@ mitigation: An imported session is marked by its first event, with its source an
 
 The session log stays in memory after it is archived, and the restore loads every session at start.
 With several tenants, memory grows with the sum of all sessions, and one busy tenant can take the
-memory of the others. Issue #113 tracks the work.
+memory of the others. Issue #113 tracks the work. The maintainer accepts the risk until it is done.
 
 ```arc42
 :::risk

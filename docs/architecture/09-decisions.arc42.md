@@ -1086,7 +1086,7 @@ everything in memory and buying more memory (cost grows with every tenant).
 :::decision
 id: dec-session-eviction
 title: Ended sessions leave memory and load on demand
-status: proposed
+status: accepted
 date: 2026-11-12
 addresses: risk-session-memory
 :::
