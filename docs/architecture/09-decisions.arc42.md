@@ -1064,7 +1064,7 @@ signing key later.
 :::decision
 id: dec-multi-tenancy
 title: One hub serves several tenants, each with one git repository
-status: proposed
+status: accepted
 date: 2026-11-12
 addresses: qg-confidentiality
 :::
