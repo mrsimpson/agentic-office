@@ -10,9 +10,6 @@
 # never run on the release pull request, and release.yml would not start on the tag. The App is
 # configured with the variable VERSION_BUMPER_APPID and the private key in VERSION_BUMPER_SECRET.
 # It needs write access to contents, pull requests and issues (release-please sets labels).
-#
-# The first release is set to 0.1.0 with "release-as" in release-please-config.json. Remove that
-# line when the release pull request of 0.1.0 is merged, or every release would be 0.1.0.
 name: Release PR
 
 on:
