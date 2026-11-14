@@ -726,10 +726,13 @@ valid for 820 days, because macOS and the browsers on it reject TLS server certi
 valid for more than 825 days. The hub warns at start when its certificate is valid for longer;
 delete `tls.crt` and `tls.key` and restart to get a new one.
 
-Clients trust it by its file: copy `tls.crt` to the client (`<config>/agentic-office/client/hub.crt`
-or `OFFICE_CA_CERT`). With a certificate file, the client trusts only the certificates in it, not
-the system roots, and checks them itself on every system (`auth.TLSConfig`, `auth.HTTPClient`;
-or `curl --cacert`).
+Clients trust it by its certificate. The easy way is `office hub add <name> https://<host>:8740`:
+it reads the certificate, shows the SHA-256 fingerprint that the hub logged, and stores the
+certificate when you confirm (see [Hub profiles](#hub-profiles)). You can also copy `tls.crt` to
+the client by hand (`ca-cert` in a profile or in `config.yaml`, `OFFICE_CA_CERT`, or
+`<config>/agentic-office/client/hub.crt`). With a certificate file, the client trusts only the
+certificates in it, not the system roots, and checks them itself on every system
+(`auth.TLSConfig`, `auth.HTTPClient`; or `curl --cacert`).
 
 To use your own certificate, for example from your CA or Let's Encrypt:
 
@@ -804,9 +807,9 @@ replicator in the background that writes the local log.
 
 ```sh
 docker run -d --name bot -v bot-home:/home/office \
-  -e OFFICE_HUB=https://hub.example.org:8740 -e OFFICE_CA_CERT=/home/office/hub.crt \
   --entrypoint sleep ghcr.io/mrsimpson/agentic-office/office infinity
-docker cp hub.crt bot:/home/office/hub.crt # the hub's TLS certificate (<data-dir>/tls.crt)
+docker exec bot office hub add main https://hub.example.org:8740 --tenant acme --default \
+  --fingerprint <sha256 from the log of the hub>   # stores the certificate and the profile
 docker exec bot office key create          # register the printed public key on the hub
 docker exec bot office meeting join weekly # prints the path of the local log
 docker exec bot office say "Hello"
@@ -834,6 +837,9 @@ office admin member list acme
 office whoami                      # authenticates and prints "ada"
 ```
 
+Before `office whoami` can work, the client needs the address and the certificate of the hub:
+run `office hub add <name> <url> --default` once (see [Hub profiles](#hub-profiles)).
+
 Who may do what: a **system admin** creates, lists and removes users and tenants, names system
 admins and manages the members of any tenant. A **tenant admin** manages the members of the own
 tenant (`admin member set|remove`); a member lists them (`admin member list`). Everything else
@@ -851,30 +857,39 @@ revokes a key; the last key of a user cannot be revoked. Only a system admin cre
 Every command takes these flags. The environment variables set the defaults. `<config>` is
 `~/.config` on Linux (or `$XDG_CONFIG_HOME`) and `~/Library/Application Support` on macOS.
 
-| Flag | Variable | Default |
-|---|---|---|
-| `--hub` | `OFFICE_HUB` | `https://127.0.0.1:8740` |
-| `--ca-cert` | `OFFICE_CA_CERT` | `<config>/agentic-office/client/hub.crt` if it exists (then only it is trusted), else the system roots |
-| `--tenant` | `OFFICE_TENANT` | none; the calls of the meeting, records, tasks and slides need it (see [Tenants](#tenants)) |
-| `--key` | `OFFICE_KEY` | `<config>/agentic-office/client/key.pem` |
-| `--runtime-dir` | `OFFICE_RUNTIME_DIR` | `$XDG_RUNTIME_DIR/agentic-office`, else `/tmp/agentic-office-<uid>` |
-| `--session` | `OFFICE_SESSION` | the only session this participant joined on this machine |
-| `--json` | `OFFICE_JSON=1` | off |
+| Flag | Variable | File key | Default |
+|---|---|---|---|
+| `--hub-profile` | `OFFICE_HUB_PROFILE` | `hub-profile` | none; names a [hub profile](#hub-profiles) that sets the four values below |
+| `--hub` | `OFFICE_HUB` | `hub` | `https://127.0.0.1:8740` |
+| `--ca-cert` | `OFFICE_CA_CERT` | `ca-cert` | `<config>/agentic-office/client/hub.crt` if it exists (then only it is trusted), else the system roots |
+| `--tenant` | `OFFICE_TENANT` | `tenant` | none; the calls of the meeting, records, tasks and slides need it (see [Tenants](#tenants)) |
+| `--key` | `OFFICE_KEY` | `key` | `<config>/agentic-office/client/key.pem` |
+| `--runtime-dir` | `OFFICE_RUNTIME_DIR` | | `$XDG_RUNTIME_DIR/agentic-office`, else `/tmp/agentic-office-<uid>` |
+| `--session` | `OFFICE_SESSION` | `agent.session` (only `office agent run`) | the only session this participant joined on this machine |
+| `--json` | `OFFICE_JSON=1` | | off |
 
-For a self-signed hub, copy its `tls.crt` to `<config>/agentic-office/client/hub.crt`.
+You can set `hub`, `tenant`, `ca-cert`, `key` and `hub-profile` in the configuration files (see
+[Configuration files](#configuration-files)). The easiest way to set up a hub is `office hub add`
+(see [Hub profiles](#hub-profiles)); it stores the certificate of a self-signed hub for you.
 Several participants on one machine (for example a human and an agent) use one key file each.
+
+An environment variable that is set but empty means: no tenant (`OFFICE_TENANT=`), the system
+roots (`OFFICE_CA_CERT=`) or no hub profile (`OFFICE_HUB_PROFILE=`). An empty `OFFICE_HUB` or
+`OFFICE_KEY` counts as not set. The same holds for an empty flag value.
 
 ### Configuration files
 
-The options of `office agent run` can live in YAML files (`concept-client-configuration`,
-`dec-client-config-file`). Other commands will follow; for now only the section `agent` exists.
+The connection to a hub and the options of `office agent run` can live in YAML files
+(`concept-client-configuration`, `dec-client-config-file`). The connection keys (`hub`, `tenant`,
+`ca-cert`, `key`, `hub-profile` and the mapping `hubs`) are at the top level. The options of the
+agent runner are in the section `agent`. Other commands will follow.
 
 | Order (low to high) | Source |
 |---|---|
 | 1 | the defaults of the client |
 | 2 | the user file `<config>/agentic-office/client/config.yaml`, next to the key |
 | 3 | the project file `.office/config.yaml` in the start directory (the current directory) |
-| 4 | environment variables (`OFFICE_SESSION`) |
+| 4 | environment variables (`OFFICE_HUB`, `OFFICE_HUB_PROFILE`, `OFFICE_TENANT`, `OFFICE_CA_CERT`, `OFFICE_KEY`, `OFFICE_SESSION`) |
 | 5 | command-line flags, and the harness command after `--` |
 
 A higher source overrides a lower one key by key. A few keys exclude each other: `role` and
@@ -883,6 +898,7 @@ from a lower source no longer counts.
 
 ```yaml
 # .office/config.yaml: the minute taker of this project
+hub-profile: acme                   # the connection: a profile of the user file, see Hub profiles
 agent:
   session: standup
   harness: [opencode, acp]          # used when there is no command after --
@@ -900,6 +916,12 @@ agent:
 
 | Key | Flag | Default |
 |---|---|---|
+| `hub` | `--hub` (`OFFICE_HUB`) | `https://127.0.0.1:8740` |
+| `tenant` | `--tenant` (`OFFICE_TENANT`) | none |
+| `ca-cert` | `--ca-cert` (`OFFICE_CA_CERT`) | `<config>/agentic-office/client/hub.crt` if it exists |
+| `key` | `--key` (`OFFICE_KEY`) | `<config>/agentic-office/client/key.pem` |
+| `hub-profile` | `--hub-profile` (`OFFICE_HUB_PROFILE`) | none |
+| `hubs.<name>.hub`, `.tenant`, `.ca-cert`, `.key` | | a hub profile, see [Hub profiles](#hub-profiles) |
 | `agent.session` | `--session` (`OFFICE_SESSION`) | |
 | `agent.harness` | the command after `--` | |
 | `agent.role` | `--role` | |
@@ -918,34 +940,88 @@ agent:
 Rules:
 
 - **No secrets in a file.** `key-env` names the environment variable that holds the key of the
-  model; the file never holds the key. So you can check a project file in. When `key-env` is set
-  in a file, the variable must be set.
+  model; the file never holds the key. `key` is the path of a key file, never the key. So you can
+  check a project file in. When `key-env` is set in a file, the variable must be set.
 - **Strict.** An unknown key or a wrong type stops the command with exit code 2 and names the
   file, the line and the key, for example
   `configuration file /work/.office/config.yaml, line 4: unknown key agent.wake.api-key`. A
   `wake` setting that does not fit the `strategy` of the same file is an error too.
-- **Paths.** A relative `role-file` or `cwd` in the project file is relative to the start
-  directory; in the user file, relative to `<config>/agentic-office/client`. A relative path in a
-  flag is relative to the current directory.
+- **Paths.** A relative `ca-cert`, `key`, `role-file` or `cwd` in the project file is relative to
+  the start directory; in the user file, relative to `<config>/agentic-office/client`. A relative
+  path in a flag is relative to the current directory.
 - **Strategy from a flag.** When a flag changes the wake strategy (for example `--wake
   turn-end`), the `wake` settings of a file that do not fit it are left out. A flag that does not
   fit the strategy is an error.
 
 `office config show` prints the effective settings of the files, the defaults and the
-environment, with the source of each value, and whether the key variable is set (never the key).
-Flags are not part of it; they override what it shows. With `--json`:
+environment, with the source of each value, the active hub profile, and whether the key variable
+is set (never the key). The flags of the connection (`--hub-profile`, `--hub`, `--tenant`,
+`--ca-cert`, `--key`) are part of it; the other flags are not, they override what it shows. With
+`--json`:
 
 ```json
 {"files":[{"kind":"user","path":"/home/ada/.config/agentic-office/client/config.yaml","found":true},
   {"kind":"project","path":"/work/.office/config.yaml","found":true}],
- "settings":[{"key":"agent.session","value":"standup","source":"project","from":"/work/.office/config.yaml"},
+ "profile":"acme",
+ "settings":[{"key":"hub","value":"https://hub.acme.example:8740","source":"profile","profile":"acme","from":"/home/ada/.config/agentic-office/client/config.yaml"},
+  {"key":"agent.session","value":"standup","source":"project","from":"/work/.office/config.yaml"},
   {"key":"agent.wake.threshold","value":0.7,"unused":true,"source":"user","from":"/home/ada/.config/agentic-office/client/config.yaml"},
   {"key":"agent.wake.timeout","value":"10s","source":"default"}],
  "keySet":true}
 ```
 
-`source` is `default`, `user`, `project` or `env`; `unused` marks a `wake` setting that the
-effective strategy does not use.
+`source` is `default`, `user`, `project`, `env`, `flag` or `profile`; for `profile`, `profile` is
+the name of the profile and `from` the file that defines the value. `profile` is `null` when no
+profile is active. `unused` marks a `wake` setting that the effective strategy does not use.
+
+### Hub profiles
+
+A hub profile is a named set of the four connection values: the address of the hub, the tenant,
+the certificate of the hub and, if you want, the path of the private key. One client can hold
+several profiles and work with several hubs. A profile never holds a secret; the private key
+stays in its file.
+
+```yaml
+# <config>/agentic-office/client/config.yaml
+hub-profile: acme                   # the default profile (optional)
+hubs:
+  acme:
+    hub: https://hub.acme.example:8740
+    tenant: acme
+    ca-cert: hubs/acme.crt          # relative to this folder; leave it out for a public CA
+  lab:
+    hub: https://lab.example.org:8740
+    tenant: research
+    key: /home/ada/.config/agentic-office/lab/key.pem   # optional: another key for this hub
+```
+
+Commands, all `--json` capable:
+
+| Command | What it does |
+|---|---|
+| `office hub add <name> <url> [--tenant T] [--key FILE] [--default] [--fingerprint F]` | Reads the certificate of the hub, shows its SHA-256 fingerprint and asks you to confirm it. Compare the fingerprint with the one in the log of the hub. With `--fingerprint` (hexadecimal, with or without colons or a `sha256:` prefix), the command compares instead of asking, so it works in scripts; a wrong fingerprint writes nothing. The command stores the certificate in `<config>/agentic-office/client/hubs/<name>.crt` and writes the profile to the user file, keeping its comments. A hub with a certificate from a certificate authority that this computer trusts needs no stored certificate and no question. A profile of the same name is replaced. `--default` sets `hub-profile`. |
+| `office hub list` | The profiles of the user file and the project file. The active profile has a star. |
+| `office hub remove <name>` | Removes the profile from the user file, clears `hub-profile` if it names this profile, and deletes the certificate that `hub add` stored. A profile of the project file you edit by hand. |
+
+How the settings combine:
+
+- **Choose a profile** with `--hub-profile`, `OFFICE_HUB_PROFILE` or the key `hub-profile` in a
+  file. The highest source that chooses a profile wins. An empty choice (`--hub-profile ""` or
+  `OFFICE_HUB_PROFILE=`) means no profile. A profile that does not exist is an error (exit
+  code 2) that lists the known profiles.
+- **Profiles of both files merge.** A profile of the user file and one of the project file with
+  the same name are merged key by key; the project file overrides single keys. Every profile
+  needs a `hub` address after the merge.
+- **A profile is a whole hub.** It sets the hub, the tenant and the certificate: a value that the
+  profile leaves out is empty (no tenant, the system roots; the default `hub.crt` is not used).
+  The key is the exception: a profile without a `key` uses the key that is set without a
+  profile (`key`, `--key`, `OFFICE_KEY` or the default `key.pem`).
+- **Single values override a profile.** The profile that a source chooses gives its values at the
+  level of that source. A `hub`, `tenant`, `ca-cert` or `key` of the same or a higher source
+  overrides them, for example `--tenant research` on top of a profile. A `hub` in the project
+  file overrides a profile that the user file chooses, and a profile that the project file
+  chooses overrides a `hub` of the user file.
+- `office config show` shows the active profile and where each value comes from.
 
 ### Join a meeting and read the log
 
@@ -1667,8 +1743,12 @@ through its interfaces:
   `office agent run` and `office config show` with a temporary configuration folder
   (`XDG_CONFIG_HOME`) and start directory (`contracttest.RunIn`, `contracttest.StartIn`): the user
   file alone, the project file over it, environment and flags over both, the key from the variable
-  that `key-env` names, errors with file, line and key, and the output of `config show`. The
-  helpers of the contract and end-to-end tests point `XDG_CONFIG_HOME` to an empty folder, so a
+  that `key-env` names, errors with file, line and key, and the output of `config show`.
+  `tests/contract/hub_profile_test.go` checks the connection keys and the hub profiles with the
+  same setup: `office hub add` (fingerprint from the log of the hub, confirmation, a wrong
+  fingerprint, a certificate of a trusted authority), `hub list` and `hub remove`, the order of
+  the layers with profiles, and the errors. `tests/e2e/hubprofile_test.go` works with two hubs
+  from one client through profiles. The helpers of the contract and end-to-end tests point `XDG_CONFIG_HOME` to an empty folder, so a
   user file of the host never takes part. No real harness and no model run in the
   tests.
 - `tests/contract/cli_test.go` and `replicator_test.go` run the real `office` binary and check

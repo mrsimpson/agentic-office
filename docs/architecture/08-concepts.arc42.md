@@ -348,7 +348,17 @@ key itself. So a project file can be checked in, and a key stays where it was be
 **Transparency.** A command shows the effective settings and the source of each value, without
 any key.
 
-**Scope.** First the agent runner. The address of the hub, the options of the ears and other
+**The connection to a hub.** The files also hold the connection: the address of the hub, the
+tenant, the certificate of the hub and the path of the private key, as single settings and as
+named hub profiles (`dec-hub-profiles`). A profile is a named set of these four values, so one
+client can work with several hubs. A participant chooses a profile in a file, with an environment
+variable or with a command-line option; single settings of the same or a higher source override the
+values of the profile. A command of the client adds a profile: it reads the certificate of the hub,
+shows its fingerprint, asks the participant to compare it with the fingerprint in the log of the
+hub, and only then stores the certificate. A hub with a certificate from a trusted authority needs
+no stored certificate. A profile never holds a secret: the private key stays in its file.
+
+**Scope.** The agent runner and the connection to a hub. The options of the ears and other
 commands follow as further sections. OPEN: which other commands get a section, and when.
 
 ```arc42
