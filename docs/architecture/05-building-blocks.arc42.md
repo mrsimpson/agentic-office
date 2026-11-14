@@ -425,6 +425,23 @@ path: hub/stage/web
 :::
 ```
 
+### Health check
+
+A plain address for container platforms and load balancers: `GET /healthz` answers 200 and `ok`
+when the hub serves requests. It needs no token and no cookie, reads no state and has no side
+effects. It answers on the TLS port of the hub, so it shows that the handshake and the HTTP server
+work, not only that the port is open.
+
+```arc42
+:::interface
+id: if-health
+title: Health check
+provider: bb-office-hub
+protocol: HTTPS (GET /healthz)
+path: hub/health
+:::
+```
+
 ### Meeting session
 
 Manages sessions and their participants. Accepts utterances from the ears and actions from

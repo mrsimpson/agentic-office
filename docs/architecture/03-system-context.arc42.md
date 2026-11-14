@@ -13,13 +13,14 @@ that a user brings. The meeting tool only carries the shared stage.
 id: context-overview
 view: context
 notation: mermaid
-aliases: actor_agent=actor-agent, actor_decision_model=actor-decision-model, actor_forwarding_judge=actor-forwarding-judge, actor_human=actor-human, actor_meeting_tool=actor-meeting-tool, actor_system_admin=actor-system-admin, actor_tenant_admin=actor-tenant-admin, bb_office_hub=bb-office-hub, bb_participant_client=bb-participant-client
+aliases: actor_agent=actor-agent, actor_container_platform=actor-container-platform, actor_decision_model=actor-decision-model, actor_forwarding_judge=actor-forwarding-judge, actor_human=actor-human, actor_meeting_tool=actor-meeting-tool, actor_system_admin=actor-system-admin, actor_tenant_admin=actor-tenant-admin, bb_office_hub=bb-office-hub, bb_participant_client=bb-participant-client
 :::
 ```
 
 ```mermaid
 flowchart LR
     actor_agent([Agent])
+    actor_container_platform([Container platform])
     actor_decision_model([Decision model])
     actor_forwarding_judge([Forwarding judge])
     actor_human([Human participant])
@@ -34,6 +35,7 @@ flowchart LR
     actor_agent -->|if-cli| bb_participant_client
     actor_agent -->|if-local-log| bb_participant_client
     actor_agent -->|if-acp-client| bb_participant_client
+    actor_container_platform -->|if-health| bb_office_hub
     actor_decision_model -->|if-decision-model| bb_participant_client
     actor_forwarding_judge -->|if-forwarding-judge| bb_participant_client
     actor_human -->|if-cli| bb_participant_client
@@ -152,6 +154,21 @@ title: System admin
 type: person
 description: Manages tenants, users and system admins of the whole hub
 requires: if-tenant-api, if-user-api, if-admin-web
+:::
+```
+
+## Container platform
+
+Kubernetes, Docker, a load balancer or any other platform that runs the hub and decides from a
+plain check whether to send it traffic or restart it. It only asks the health check.
+
+```arc42
+:::actor
+id: actor-container-platform
+title: Container platform
+type: system
+description: Runs the hub and asks its health check; no integration
+requires: if-health
 :::
 ```
 
