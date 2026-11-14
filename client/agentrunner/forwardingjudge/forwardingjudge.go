@@ -10,6 +10,13 @@
 //   - an OpenAI-compatible chat endpoint: the runner sends the Request as the user message and
 //     asks for structured output with AnswerSchema (response_format of type json_schema).
 //
+// With an endpoint, the runner posts to <URL>/chat/completions a system message, the request as
+// the user message, temperature 0 and a response_format of type json_schema (strict). The answer
+// is the content of the first choice. In the request, "new" are the utterances of others that the
+// agent has not got yet (the last one is the one just said) and "context" are up to 20 earlier
+// utterances, the agent's own included. Sentences off the record are never in a request. In the
+// answer, "act" and "topic_closed" must be there; "addressed" and "reason" may be empty.
+//
 // All names in the JSON use snake_case.
 package forwardingjudge
 
