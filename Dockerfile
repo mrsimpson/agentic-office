@@ -3,7 +3,7 @@
 #   hub     the office hub (office-hub)
 #   office  the client CLI and MCP server (office), for agents that run in containers
 # Both build natively per platform (linux/amd64, linux/arm64), because the client links
-# whisper.cpp through cgo. See README.md, "Container images".
+# whisper.cpp through cgo. See USER_GUIDE.md, "Container images".
 
 FROM golang:1.27-trixie AS build
 RUN apt-get update && apt-get install -y --no-install-recommends cmake \

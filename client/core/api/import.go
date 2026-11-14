@@ -15,7 +15,7 @@ import (
 )
 
 // This file is the import of conversations (dec-import-format, if-session-import). The format is
-// documented in README.md, section "Import a conversation".
+// documented in "office help import-format".
 
 // Conversation is a conversation in the import format: one JSON document.
 type Conversation struct {

@@ -1,8 +1,14 @@
 # User guide
 
 This guide shows how a team uses the agentic office: how to get the software, run a hub, join
-meetings as a human with a headset, and bring in agents. For the architecture and every command
-in detail, see [`README.md`](README.md).
+meetings as a human with a headset, and bring in agents.
+
+The commands explain themselves. `office help` lists them, `office <command> --help` shows the
+purpose, the flags with their defaults and an example, and `office help <topic>` explains a topic
+(`config`, `json`, `import-format`, `deck-format`, `ears`). `office-hub -h` does the same for the
+hub. This guide does not repeat flag tables: it shows what to do, and in which order. Developers
+find how to build and test the office in [`README.md`](README.md); the architecture is in
+[`docs/architecture/`](docs/architecture/).
 
 The office has two programs:
 
@@ -89,8 +95,21 @@ make third_party/whisper.cpp whisper build
 ```
 
 The programs are then in `bin/office` and `bin/office-hub`. This build is optimised for the CPU of
-your computer. To copy the client to other computers, build it with
-`make whisper build WHISPER_NATIVE=OFF`.
+your computer, and can stop with `SIGILL` (illegal instruction) on another CPU. To copy the client
+to other computers, build it with `make whisper build WHISPER_NATIVE=OFF`: it needs x86-64 with
+AVX2, or any ARMv8 CPU. The release binaries and the container images are built this way.
+
+### Container images
+
+Every release tag (`v1.2.3`) publishes two images for `linux/amd64` and `linux/arm64`:
+
+| Image | Content |
+|---|---|
+| `ghcr.io/mrsimpson/agentic-office/office-hub` | The hub. Data, keys and the archive live in the volume `/data` |
+| `ghcr.io/mrsimpson/agentic-office/office` | The client CLI and MCP server, for agents that run in containers |
+
+The tags are the version (`1.2.3`), the minor version (`1.2`), `latest` and `sha-<commit>`. You can
+build them yourself with `docker build --target hub .` or `docker build --target office .`.
 
 ## 2. Run a hub
 
@@ -135,8 +154,11 @@ office-hub -signing-key ~/office-hub/signing.key -addr 0.0.0.0:8740 \
 - The data of the hub lives in `$CFG/hub` (`-data-dir` changes it): the
   users and keys, the TLS certificate and the archive with all sessions and records.
 - On the first start, the hub creates a self-signed TLS certificate for the names in
-  `-tls-hosts`, in `tls.crt`. To use your own certificate, see "TLS and your own certificate" in
-  [`README.md`](README.md).
+  `-tls-hosts`, in `tls.crt`. To use your own certificate, see
+  [Use your own certificate](#use-your-own-certificate).
+- `office-hub -h` lists every flag with its default and says what the hub keeps in its data
+  directory: the certificate, the hub repository with the users, tenants and memberships, and one
+  Git repository for each tenant. The hub needs the `git` command line tool.
 - `-first-system-admin` names the first system admin at the first start. The hub ignores it later.
   A system admin is never a member of a tenant: if you also work in a tenant, use a second user
   with another key.
@@ -159,12 +181,90 @@ docker cp office-hub:/data/tls.crt hub.crt
 
 The last command copies the certificate; the participants usually do not need the file (see below). `--restart unless-stopped` starts
 the hub again after a restart of the server. When you pass flags to the image, pass all of them,
-as in the example.
+as in the example (the default command is `-data-dir /data -addr 0.0.0.0:8740 -signing-key
+/data/signing.key`).
 
 **Health check.** For a container platform (Kubernetes, a load balancer), the hub answers
 `GET /healthz` with `200` and `ok` on its TLS port. It needs no login and reads no data. The
 platform has to accept the self-signed certificate: the Kubernetes probe `httpGet` with
 `scheme: HTTPS` does.
+
+### The signing key
+
+The hub signs the tree heads of the meeting logs. A tree head is a short proof that a log has not
+changed. You give the hub the signing key at every start with `-signing-key FILE`. The hub never
+creates a signing key by itself, and it does not start without the flag, or if the file is
+missing, broken or readable by others.
+
+- `office-hub keygen FILE` creates the file once. It writes the private key with mode 0600, prints
+  the public key and refuses to overwrite an existing file.
+- The hub logs the public key at start: `signing key of tree heads …`.
+- Keep the file with your other secrets and back it up. Start the hub with the same file every
+  time. If you replace it, tree heads that were signed with the old key no longer verify.
+- How clients pin the public key of the hub is still open (issue #41).
+
+### Use your own certificate
+
+With a certificate from your own authority or from Let's Encrypt, clients need no stored
+certificate. Start the hub with the files and its public address:
+
+```sh
+office-hub -tls-cert /etc/office/fullchain.pem -tls-key /etc/office/privkey.pem \
+  -public-url https://office.example.org:8740 -signing-key … -addr 0.0.0.0:8740
+```
+
+- The certificate file is PEM and may hold the whole chain. The key file is PEM (PKCS #8, PKCS #1
+  or SEC 1). Or put both into the data directory as `tls.crt` and `tls.key`: the hub never
+  overwrites existing files.
+- Participants then trust the system roots: they use `office hub add` without a stored
+  certificate (see [Set up once](#set-up-once)), or give no certificate file.
+- `-public-url` is the address in stage links. It defaults to `https://<listen address>`.
+- The hub reads the certificate at start. Restart it after you renew the certificate.
+
+The self-signed certificate of the hub is valid for 820 days, because macOS and the browsers on
+it reject server certificates that are valid for more than 825 days. The hub warns at start when
+its certificate is valid for longer. Delete `tls.crt` and `tls.key` and restart to get a new one.
+A client with a certificate file trusts only the certificates in that file, not the system roots.
+
+### When the hub restarts
+
+Stop the hub with SIGINT or SIGTERM (Ctrl+C, `systemctl stop`, `docker stop`). It then writes every
+changed session to the archive once more. The hub writes the sessions that changed every 30
+seconds while they run (`-archive-interval`), and at once when a session ends.
+
+- **After a clean stop** the hub starts again without a wait. Sessions that have not ended are
+  back with all their events.
+- **After a crash** the events after the last write are lost on the hub, but the participants have
+  them, and their clients fill them in by themselves. Until a participant has done so, for at
+  most `-restore-wait` (10 seconds), commands of a session that has not ended fail with
+  `unavailable`. Repeat the command; nothing is lost or stored twice.
+- Users, keys, tenants and memberships are files in the hub repository and survive. Access
+  tokens do not: clients sign in again.
+- A known gap (issue #47): a session that the hub never wrote to the archive is unknown after a
+  crash until a participant offers a whole copy of its log.
+
+### Call the hub directly
+
+Every interface of the hub is a Protobuf contract served with Connect RPC, which is plain HTTP
+with JSON. You can call any command with `curl`, for example to test the hub from a script:
+
+```sh
+curl --cacert "$CFG/hub/tls.crt" \
+  -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN" -H 'Office-Tenant: acme' \
+  -d '{"sessionId":"demo","commandId":"…"}' \
+  https://hub.example.org:8740/office.sessioncommands.v1.SessionCommandsService/Join
+```
+
+- Every call carries an access token (`Authorization: Bearer`), except `GetChallenge` and
+  `ExchangeChallenge`, which give you one: sign the challenge with your key. A token lives 15
+  minutes (`-token-ttl`). The Go package `hub/identity/api/auth` does this for you.
+- Every call about meetings, records, tasks, slides and the stage names its tenant in the header
+  `Office-Tenant`.
+- Every command carries a `command_id` that the client creates, a UUIDv7. A repeated command
+  returns the stored result with `duplicate` set.
+- Every event has an `id` that grows by one inside a session, and a `type` in dotted form.
+- The contracts and their rules live with the part of the hub that provides them: the `.proto`
+  files and the package comments below `hub/`. [`README.md`](README.md) says where to find them.
 
 ### Give the participants the fingerprint
 
@@ -189,6 +289,14 @@ office admin user create minutes-bot <public key> --name "Minute Bot" --kind age
 office admin tenant create acme grace --name "Acme Corp"          # grace is the first tenant admin
 office admin member set acme minutes-bot                          # the tenant admin may do this too
 ```
+
+Who may do what: a **system admin** creates, lists and removes users and tenants, names system
+admins and manages the members of any tenant. A **tenant admin** manages the members of the own
+tenant (`admin member set` and `remove`); a member lists them (`admin member list`). Everything
+else fails with `permission_denied`. A tenant that you are not a member of looks as if it did not
+exist (`not_found`), even to a system admin. Every call about meetings, records, tasks and slides
+names its tenant: the client sends the tenant of the hub profile, of `--tenant` or of
+`OFFICE_TENANT`.
 
 `office admin member set <tenant> <user> --role tenant-admin` makes a member a tenant admin.
 `office admin member remove <tenant> <user>` ends a membership, and `office admin member list <tenant>`
@@ -280,7 +388,32 @@ and `--key` still override single values of the profile, for example `--tenant o
 member of several tenants. `office config show` shows the active profile and where each value
 comes from. `office hub remove lab` removes a profile and its stored certificate. Profiles never
 hold a secret; the private key stays a file. A profile can name another key file with `key:` in
-`config.yaml`. See the README for all keys ("Configuration files", "Hub profiles").
+`config.yaml`.
+
+A profile is a whole hub. It sets the hub, the tenant and the certificate: a value that the
+profile leaves out is empty (no tenant, the system roots). The key is the exception: a profile
+without a `key` uses the key that is set without a profile. If a profile of the user file and one
+of the project file have the same name, they merge key by key.
+
+### Settings in files
+
+You can keep settings in two YAML files instead of flags and variables: your **user file**,
+`config.yaml` in `$CFG/client` next to your key, for what holds for all your projects; and the
+**project file**, `.office/config.yaml` in the folder where you start the commands, for what
+belongs to the project, which you can check in. Each source overrides the one before it, key by
+key: the defaults, the user file, the project file, the environment variables, the flags.
+
+- The files never hold a secret. A key is the path of a key file, never the key itself.
+- The files are strict. A typo stops the command with exit code 2 and names the file, the line and
+  the key, for example `configuration file /work/.office/config.yaml, line 4: unknown key
+  agent.wake.api-key`.
+- A relative path in the project file is relative to the folder where you start the command; in
+  the user file, relative to `$CFG/client`.
+- `office config show` prints what the client will use and where each value comes from.
+
+`office help config` lists all flags, variables, keys and rules. The options of the agent runner
+are in the section `agent` of the same files (see
+[Start an agent with a configuration file](#start-an-agent-with-a-configuration-file)).
 
 ### The speech models
 
@@ -304,8 +437,15 @@ office models download --language english
 ```
 
 To use a certain model, name it: `--model small`, `--model large-v3-turbo`, or a path to a file.
+You can also set `OFFICE_WHISPER_MODEL`, a name or a file; `--model` and `--fast` win over it. Use a
+multilingual model, not a `.en` model: those only know English. `--language auto` lets Whisper
+detect the language.
 
-They are stored in `~/.local/share/agentic-office/models/` (or `$XDG_DATA_HOME/agentic-office/models/`).
+The models are stored in `~/.local/share/agentic-office/models/` (or
+`$XDG_DATA_HOME/agentic-office/models/`). The client checks the SHA-256 of each download. If your
+network blocks the download, fetch the files elsewhere and set `OFFICE_MODEL_URL` to a mirror that
+holds them; `office help models download` names the files. `make models` fetches `small` and the
+VAD model for developers.
 
 ### Teach the client your words
 
@@ -349,9 +489,61 @@ office meeting join weekly --mic
 - `p` pauses and resumes the microphone. `o` marks your last sentence as off the record: the
   others then see a placeholder instead of the text. `q` leaves.
 - On macOS, the system asks once whether your terminal may use the microphone.
+- A sentence ends after a short silence (500 ms). When you stay silent for longer after your last
+  sentence (1.8 seconds), the ears end your turn: agents that wait for the end of a turn wake up
+  then. While you are paused, nothing is transcribed and no turn ends.
+- When the network drops, the ears keep transcribing and send the sentences in order when the
+  network is back. Sentences that are still waiting when you quit are lost; the client says how
+  many.
+- `--wav FILE` plays a WAV file in real time instead of the microphone. This is how you try the
+  ears without a headset.
+- Before you join, the client checks the models, the WAV file and the recorder. If something is
+  missing, the join fails and you do not join. The client needs a recorder program that runs as
+  your user; it tries `parec`, `arecord`, `rec` and, on macOS, `ffmpeg`. To use another one, set
+  `OFFICE_MIC_COMMAND`.
+
+`office help ears` lists every flag and variable of the ears.
 
 Without a microphone, join with `office meeting join weekly` and write instead of speaking:
-`office say "I agree"`.
+`office say "I agree"`. `office meeting view` shows your own sentences with their status.
+
+### Read the log and act from a shell
+
+`office meeting join` starts a small program in the background, the **replicator**. It copies the
+meeting into a **local log**, a file on your computer, and `join` prints its path. Each line of the
+file is one event as JSON. People and agents follow this file instead of asking the hub again and
+again:
+
+```sh
+LOG=$(office meeting join weekly)     # returns at once and prints the path of the local log
+tail -f "$LOG" | grep --line-buffered '"type":"turn.end"\|"type":"addressed"'
+office say "I can summarize that."
+office meeting leave                  # or: office meeting end (for everyone)
+```
+
+- The file is `<runtime directory>/<session>/<participant>.jsonl`. The runtime directory is
+  `$XDG_RUNTIME_DIR/agentic-office`, else `/tmp/agentic-office-<uid>`, and private to you. Nobody
+  can change a line: marking a sentence off the record adds a new line.
+- `join` starts the replicator **detached** and returns as soon as the file is open. This suits
+  agents whose shell ends after each command. The replicator stops after the meeting ended or
+  after you left. If the hub is not reachable, it keeps trying and reconnects by itself.
+- `office meeting join weekly --foreground` stays and prints the path. The replicator then stops
+  when `join` ends, also when it is killed. Use it when you run the command as a background task.
+- Run `office meeting join` again to restart a replicator that was killed; it resumes the file.
+  After a crash it cuts an incomplete last line and goes on after the last complete one.
+- The local logs stay until the runtime directory is cleaned, at logout for `$XDG_RUNTIME_DIR`.
+  How long they should be kept is still open.
+- To read events from the hub instead of a file, for example to fill a gap or when you cannot
+  follow a file: `office meeting events --after 41 --limit 20`.
+
+**Off the record.** What is said stays said. You can mark **your own** sentence off the record
+(`office utterance off-the-record 42`, or `--last`; with the microphone, press `o`). Everyone who
+reads the session later gets a placeholder: the same event ID, `"offTheRecord": true`, no text.
+The stage hides it. Agents must not use such a sentence anywhere, and nobody should put it into
+minutes, decisions, notes or documents; the hub does not check this.
+
+Other commands for the meeting: `meeting pause` and `meeting resume`, `signal turn-end`,
+`signal silence-long` and `signal addressed` for agents and scripts, `hand raise`.
 
 ### Show the stage
 
@@ -373,6 +565,10 @@ browser and shares the window in your meeting tool (Zoom, Teams, Meet, Jitsi):
 office stage link --session weekly
 ```
 
+The link is read only and works for 24 hours (`-stage-link-ttl` of the hub), for this one session.
+Sentences that are off the record are not shown. A hand stays raised until its participant speaks,
+raises it again or leaves.
+
 ### Work on documents
 
 Anyone in the meeting, human or agent, can write a text document. A document is a Markdown file
@@ -391,16 +587,75 @@ meantime, the change fails with `aborted` and tells you the current version: rea
 again and redo your change. Your name is recorded as the author of every change. Never put a
 sentence that is off the record into a document.
 
-### More things you can do
+### Record decisions, notes and tasks
 
 ```sh
 office hand raise --topic "Budget"
+office minutes update --file minutes.md                # the running minutes, shown on the stage
 office decision record "We rent the new office from January."
-office task create "Send the numbers to the bank" --assignee grace
+office decision record --session weekly --file decision.md
+office note add "Ask the bank about the loan."
+office task create "Send the numbers to the bank" --assignee grace --session weekly
+office task list --status open,in_progress --assignee grace
+office task update local:1 --status done
+office decision list --after 10 --limit 20
 office meeting end
 ```
 
-`office help` lists all commands. [`README.md`](README.md) describes each one.
+- The running minutes belong to the session. `office meeting end` stores the text of the last
+  update as the minutes of the session. Read them later with `office minutes show weekly` or
+  `office minutes list`.
+- A decision or a note is linked to a session only with `--session`.
+- For now a task is a local draft in the hub. Its reference, for example `local:42`, is opaque:
+  keep it and pass it back. The statuses are `open`, `in_progress`, `done` and `cancelled`. Any
+  participant may read and change every task. With `--session ""` or `--assignee ""` you remove
+  the session or the assignee.
+- The list commands show the oldest first, at most 100 at a time (`--limit`, at most 1000). `task
+  list` prints the token of the next page on stderr; pass it as `--page-token`.
+
+### Show slides
+
+Write a deck in Markdown, have the hub render it and show it on the stage:
+
+```sh
+cat > deck.md <<'EOF'
+# Budget 2027
+## Plan
+- Hire two people
+- Open an office in Lyon
+Say the numbers slowly.
+## Questions
+EOF
+ID=$(office slides render deck.md)     # prints the deck ID, for example slides/42
+office stage focus "$ID"
+office slides get "$ID" --out deck.html
+```
+
+`# ` is the deck title, `## ` starts a slide, `- ` is a bullet, and other text is the notes of the
+slide, which are hidden. The result is one HTML page with large black text on white, for a screen
+share. The same deck always gives the same page. `office help deck-format` describes the JSON form
+and the details.
+
+### Bring in an old conversation
+
+You can import a conversation from another tool, for example a chat export or a meeting
+transcript, as a session of its own. Convert it to the import format first (`office help
+import-format` shows it), then:
+
+```sh
+office session import design.json --session design-review
+office meeting join design-review       # then write minutes, record decisions and tasks, end it
+```
+
+The session is marked as imported: its log starts with the source and the importer, the stage says
+so and shows "Imported" instead of "Live", and the imported speakers are marked. The office did not
+see the conversation happen, and the signatures of the log only prove who imported it, not that
+the speakers said it. If the import stops halfway, the session stays incomplete: import again into
+a new session.
+
+### Find out more
+
+`office help` lists all commands. `office <command> --help` explains one.
 
 ## 4. Bring in an agent
 
@@ -508,8 +763,14 @@ OFFICE_KEY="$CFG/agents/kiro/key.pem" office agent run --session weekly --role-f
   -- kiro-cli acp
 ```
 
-The runner prints what it does on its terminal, each line starting with `office agent:`: each
-wake-up, each tool call, each permission and what the agent wrote in its chat.
+The runner prints what it does on its terminal, each line starting with `office agent:`: the
+session, the wake strategy, each wake-up, each tool call, each permission decision, each decision
+of a model with its reason or its probabilities, and what the agent wrote in its chat.
+
+**When the runner stops.** After the meeting ended, it sends a last prompt, lets the agent finish
+its work and stops. It also stops when the agent itself leaves the meeting, on Ctrl+C or SIGTERM,
+and when the harness stops by itself, which is an error (exit code 1). It then stops the harness:
+it closes its input, then sends SIGTERM and at last SIGKILL to its process group.
 
 **What the agent may do.** The harness asks the runner before it uses a tool. By default the
 runner allows the office tools and rejects everything else, for example shell commands or edits
@@ -517,6 +778,12 @@ of files. To allow more, give patterns of tool titles with `--allow` (`*` is any
 patterns replace the default, so include the office tools, for example
 `--allow '*office*' --allow 'read*'`. `--allow '*'` allows everything. A harness that does not
 ask, because its own settings allow a tool, follows its own settings.
+
+More exactly, the runner offers the harness no file system and no terminal of its own. By default it
+allows the call of an office tool, such as `mcp__office__utterance_say`, unless its kind is
+`execute`, `edit`, `delete` or `move`, and rejects every other call. With `--allow` it allows
+exactly the calls whose title matches one of the patterns; case does not matter. Configure the
+harness itself for what it may do without asking.
 
 `--cwd DIR` sets the folder of the agent's session; the default is the current folder.
 
@@ -583,6 +850,40 @@ within `--decide-timeout` (default `10s`), or an answer the runner cannot read.
 When you speak, the ears end your turn after a short silence: 1.8 seconds by default. Change it
 with `office meeting join --turn-silence 2.5s`. Text that you type with `office say` does not end
 your turn: run `office signal turn-end` when you are done.
+
+### What the agent receives
+
+When the runner wakes the agent, it sends everything that others said since the last time, oldest
+first, one sentence per line: the event ID, the name, whether the speaker is a human or an agent,
+and the text. Then it says whose turn has ended, or that the speaker may still be speaking, so
+the agent should raise its hand or write instead of interrupting. For example:
+
+```text
+New in the meeting "weekly" since my last message (event ID, speaker, human or agent, text):
+
+[41] Ada (human): We start with the budget.
+[42] Ada (human): Bot, what did we decide last week?
+
+The speaker may still be speaking. Do not interrupt: raise your hand or write instead, unless the speaker asked you to answer now.
+
+The model of the runner thinks that the speaker addressed: bot.
+
+Decide yourself whether someone addressed you or whether your role asks you to contribute now.
+If not, do nothing and end your turn. To speak, call utterance_say.
+```
+
+- The agent never gets its own sentences, its own end of turn, or sentences that are off the
+  record. A sentence that went off the record before it was sent is never sent. If it was
+  sent already, the runner wakes the agent as soon as it is free, names the event and says that
+  it is off the record.
+- One prompt runs at a time. While the agent works, what comes waits and goes out together in
+  one prompt when the agent ends its turn. An end of turn without new sentences wakes nobody.
+- With a model, the prompt also says whom the speaker addressed and, when a block of topics has
+  ended, gives the task for that (`--topic-task`; the default is to update the minutes and record
+  the decisions and tasks of the block, if the role asks for it).
+- After the meeting ended, the last prompt carries what is left and asks the agent to finish the
+  work of its role, for example the minutes, decisions or tasks, **without speaking**: a new
+  sentence would open the session again.
 
 ### Bring a decision model
 
@@ -679,7 +980,14 @@ writes the answer as JSON to its standard output:
 ```
 
 `act` (wake the agent now) and `topic_closed` (a topic has ended) must be there. `addressed` and
-`reason` may be empty. [`README.md`](README.md), section "Agent runner", has the details.
+`reason` may be empty. With a server, the runner sends the same request as the user message of a
+chat completion, with temperature 0 and a strict JSON schema for the answer.
+
+**How often the runner asks.** With `llm` or `decision-model`, the runner asks after each sentence of
+another participant, and once more when that participant ends the turn. One check runs at a time:
+sentences that come meanwhile wait, and the next check gets all of them. A check also runs while
+the agent works; a wake-up then waits until the agent is free. The runner wakes the agent when the
+answer says that the agent should act, or that a topic has closed.
 
 **Where the model runs matters.** A forwarding judge or a decision model gets the text of the
 meeting, as the agent's own model does. A hosted model sends this text to its provider. A local model keeps it on your
@@ -733,15 +1041,23 @@ other.
 A typo stops the command and names the file, the line and the key, for example
 `line 6: unknown key agent.wake.modell`. To see what the runner will use and where each value
 comes from, run `office config show` in the same folder. It shows whether the key variable is
-set, but never the key. The README lists all keys.
+set, but never the key. `office help config` lists all keys.
+
+Relative paths in the project file, such as `role-file`, are relative to the folder where you
+start the command. A flag that changes the wake strategy, for example `--wake turn-end`, leaves out
+the `wake` settings of the files that do not fit it. Keys that exclude each other are `role` and
+`role-file`, and `wake.command` and `wake.url`: when a higher source sets one, the other one from a
+lower source no longer counts.
 
 ### Without the runner: the tools only
 
 A harness can also use the office directly as an MCP server, without the runner. Then the agent
 must keep reading new events itself, and it stops listening when its turn ends. This suits short
-jobs, for example writing the minutes after a meeting. Add `office mcp` as an MCP server in the
-agent's folder. In a configuration file, write absolute paths: no `~` and no `$HOME`. The
-`cat <<EOF` in the Kiro example fills them in for you.
+jobs, for example writing the minutes after a meeting. `office mcp` is a local MCP server on
+standard input and output. It takes the same flags and `OFFICE_*` variables as the CLI, and
+`--session` sets the default session of the tools. The key must exist and be registered first.
+Add `office mcp` as an MCP server in the agent's folder. In a configuration file, write absolute
+paths: no `~` and no `$HOME`. The `cat <<EOF` in the Kiro example fills them in for you.
 
 ```sh
 # Claude Code
@@ -766,6 +1082,21 @@ cat > .kiro/settings/mcp.json <<EOF
 EOF
 ```
 
+A client that reads a JSON configuration, for example `.mcp.json`, takes the same:
+
+```json
+{
+  "mcpServers": {
+    "office": {
+      "command": "/path/to/office",
+      "args": ["mcp"],
+      "env": { "OFFICE_KEY": "/home/me/.config/agentic-office/agent/key.pem",
+               "OFFICE_HUB_PROFILE": "main" }
+    }
+  }
+}
+```
+
 Then start the harness (`claude`, `opencode` or `kiro-cli chat`) and tell the agent what to do,
 for example:
 
@@ -775,6 +1106,41 @@ for example:
 
 The tools do not wait for new events by themselves: the agent calls `meeting_events` again and
 again. If it stops in between, tell it to keep listening.
+
+**The tools.** Their names use `_` where the CLI uses a space: `meeting_join` is `meeting join`.
+
+| Tool | CLI command |
+|---|---|
+| `meeting_join`, `meeting_log`, `meeting_events` | `meeting join`, `meeting log`, `meeting events` |
+| `meeting_leave`, `meeting_pause`, `meeting_resume`, `meeting_end` | `meeting leave`, `pause`, `resume`, `end` |
+| `utterance_say`, `utterance_off_the_record` | `say`, `utterance off-the-record` |
+| `signal_turn_end`, `signal_silence_long`, `signal_addressed` | `signal …` |
+| `hand_raise`, `minutes_update` | `hand raise`, `minutes update` |
+| `stage_focus`, `stage_link` | `stage focus`, `stage link` |
+| `slides_render`, `slides_get` | `slides render`, `slides get` |
+| `decision_record`, `decision_list`, `note_add`, `note_list` | `decision …`, `note …` |
+| `minutes_get`, `minutes_list` | `minutes show`, `minutes list` |
+| `task_create`, `task_get`, `task_list`, `task_update` | `task …` |
+| `session_import`, `whoami` | `session import`, `whoami` |
+
+Session tools take an optional `session`; the default is `--session`, `OFFICE_SESSION`, or the
+only session this participant joined from this machine. Each tool returns one JSON object, as
+text and as structured content, in the same shape as the `--json` output of the CLI (see below).
+Errors set `isError` and return `{"error":{"code","message"}}`. Not offered are the key and admin
+commands (set up the key with the CLI), the gateway view and the ears (an agent has no
+microphone), and a tool that waits for new events: the agent reads the log file.
+
+**The log.** `meeting_join` returns `logPath`. The replicator runs inside the MCP process, so the
+replication lives as long as that process: it stops when the client closes the connection, when
+the process ends, when you leave, and after the meeting ended. Call `meeting_join` again to
+restart it. If `office meeting join` already runs a replicator for the same participant,
+`meeting_join` reuses it. The description of `meeting_join` explains the file and the event types
+to the agent. The agent can follow the file, for example:
+
+```sh
+tail -n +1 -f "$LOG" | grep --line-buffered '"type":"turn.end"\|"type":"addressed"'
+jq -c 'select(.id > 41 and (.type == "utterance.final" or .type == "addressed"))' "$LOG"
+```
 
 An agent that works in a shell can also read the local copy of the meeting log and act with the
 same commands as a human:
@@ -787,8 +1153,34 @@ tail -f "$LOG" | grep '"utterance.final"\|"turn.end"'
 
 `meeting join` prints the path of the log. Each line is one event as JSON.
 
-An agent that runs in a container uses the image `ghcr.io/mrsimpson/agentic-office/office`.
-See "Container images" in [`README.md`](README.md).
+### Read results in scripts: `--json`
+
+With `--json` (or `OFFICE_JSON=1`), a command prints exactly one JSON object on one line on
+standard output, also when it fails, so a script can pipe it to `jq`. The field names are
+camelCase. An event has the same form as its line in the local log. On failure the object is
+`{"error": {"code": "permission_denied", "message": "…"}}`: the code is the code of the hub or one
+of `usage`, `no_key`, `no_session` and `error`. The exit code is 0 for success, 1 for an error and
+2 for a wrong call. `office help json` has the details, and the help of each command names its
+result.
+
+### Run an agent in a container
+
+An agent that runs in a container uses the image `ghcr.io/mrsimpson/agentic-office/office`. Keep
+the container running, because `meeting join` starts a replicator in the background that writes
+the local log:
+
+```sh
+docker run -d --name bot -v bot-home:/home/office \
+  --entrypoint sleep ghcr.io/mrsimpson/agentic-office/office infinity
+docker exec bot office hub add main https://hub.example.org:8740 --tenant acme --default \
+  --fingerprint <sha256 from the log of the hub>   # stores the certificate and the profile
+docker exec bot office key create          # register the printed public key on the hub
+docker exec bot office meeting join weekly # prints the path of the local log
+docker exec bot office say "Hello"
+```
+
+The client image has no microphone recorder and no Whisper models. To transcribe, mount the models
+and set `OFFICE_WHISPER_MODEL` and `OFFICE_VAD_MODEL`, or use `--wav`.
 
 ## 5. Try everything on one computer
 
@@ -854,12 +1246,14 @@ scripts/try-local.sh tail bot                        # what the agent reads; sto
 | `public key is not registered: ask an admin to register SHA256:…` | Send your public key to your admin (`office key show` prints it). Check with `office whoami`. |
 | `Admin link not valid` or `Session ended` in the admin view | The link works once and for a few minutes, and the page for one hour. Run `office admin link` again. Only system admins get a link (`permission_denied` otherwise). |
 | `the document has changed since you read it` (`aborted`) | Someone changed the document first. Read it again with `office document get` and redo your change with the new version in `--base`. |
-| `no audio recorder found` | Install `ffmpeg` (macOS) or `pulseaudio-utils` (Linux), or set `OFFICE_MIC_COMMAND` (see [`README.md`](README.md)). |
+| `no audio recorder found` | Install `ffmpeg` (macOS) or `pulseaudio-utils` (Linux), or set `OFFICE_MIC_COMMAND` (see `office help ears`). |
 | The model download fails | Check your network, or download the models elsewhere and set `OFFICE_MODEL_URL` to a mirror. |
 | `SIGILL: illegal instruction` | A client built on another computer uses CPU features yours lacks. Use the pre-built client, or build with `WHISPER_NATIVE=OFF`. |
 | `office: the harness stopped …` or `ACP session/new: …` | The harness ended or refused the session. Run its command alone (for example `opencode acp`) and read its error. Often it needs a login first: log in with the harness itself. |
 | The agent never speaks | Read the runner's terminal. Does it wake the agent (`waking the agent with …`)? With `--wake turn-end` (the default), or after the model failed, it wakes the agent only when your turn ends: pause for a moment, or run `office signal turn-end` after typed text. Does the runner reject tools that the agent needs (`permission rejected`)? Allow them with `--allow`. |
 | `the forwarding judge failed (…)` or `the decision model failed (…)` | The sentences wait for the end of the turn; after three failures the runner switches to `turn-end`. For `--wake llm`, check `--decide-url` (it ends in `/v1`), `--decide-model` and `OFFICE_DECIDE_KEY`, and that the server supports structured output with a JSON schema. For `--wake decision-model`, check the full URL of the endpoint, the model and the key. A slow model needs a larger `--decide-timeout`. |
+| A command fails with `unavailable` after the hub restarted | The hub waits for the participants to fill in the events after its last write, for at most `-restore-wait` (10 seconds by default). Repeat the command: it is safe, nothing is stored twice. |
+| `configuration file …, line N: unknown key …` | A typo in `config.yaml` or `.office/config.yaml`. The message names the file, the line and the key. `office help config` lists the keys. |
 | `the trial is running already` | Run `scripts/try-local.sh down`, then `up` again. |
 | `Apple's container needs a DNS domain` | Do the one-time setup in [Try everything on one computer](#5-try-everything-on-one-computer). |
 | Apple's `container` hangs: `container exec`, `logs` or `system stop` do not return, or the port takes connections but answers nothing | Stop the `container` services with launchd, then start them again: `launchctl list \| awk '/com\.apple\.container\./ {print $3}' \| while read s; do launchctl bootout "gui/$(id -u)/$s"; done`, then `container system start`. If that does not help, restart the Mac. |

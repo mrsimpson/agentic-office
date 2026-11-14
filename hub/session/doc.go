@@ -80,6 +80,19 @@
 //     page. The state knows the importer and whether the import runs; while it runs, every session
 //     command fails with FailedPrecondition. import.completed wakes the archive writer like
 //     session.ended. After the import the session is like any other.
+//   - Check a stored session: logfile.UnmarshalLines and logfile.UnmarshalTreeHead read the two
+//     files, and merkle.VerifyEvents(events, head, hubKey) checks them (the hub key comes from
+//     GetHubKey). "git log -- sessions/<name>/log.jsonl" in the repository of the tenant lists
+//     the writes of a session; every commit extends the log of the one before. The file
+//     sessions/+state.yaml says whether the archive is complete: "complete: true" when the hub
+//     stopped after a last write of every session, false from the next start on. No session name
+//     starts with "+".
+//   - The imported log proves which participant imported it and that it has not changed since;
+//     the signed tree heads do not prove that the imported speakers said it.
+//   - Open points (#47): a session that the hub never wrote to the archive is unknown after a
+//     crash until a peer offers a whole copy, and a new join before that starts a new log; a peer
+//     that comes back only after the wait has a copy that forks; the CLI and the MCP server do
+//     not repeat a command that fails with Unavailable by themselves.
 //   - Subscribe closes the stream after it has sent session.ended. It ends the stream with
 //     Unauthenticated when the token of the caller expires or is revoked.
 package session

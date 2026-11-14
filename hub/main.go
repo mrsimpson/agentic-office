@@ -18,7 +18,9 @@
 //
 //	office-hub keygen FILE
 //
-// It refuses to overwrite an existing file.
+// It refuses to overwrite an existing file. Replacing the key later is a deliberate act: heads
+// signed with the old key then no longer verify against GetHubKey. How clients pin the public key
+// of the hub is still open (#41).
 //
 // Files in the data directory (-data-dir):
 //
@@ -37,6 +39,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"net"
@@ -90,8 +93,12 @@ const keygenHint = "create one with: office-hub keygen FILE"
 // keygen writes a new signing key to the file in args and prints its public key. It refuses to
 // overwrite an existing file.
 func keygen(args []string) {
+	if len(args) == 1 && isHelpFlag(args[0]) {
+		fmt.Print(keygenHelp)
+		return
+	}
 	if len(args) != 1 || strings.HasPrefix(args[0], "-") {
-		fmt.Fprintln(os.Stderr, "usage: office-hub keygen FILE")
+		fmt.Fprint(os.Stderr, keygenHelp)
 		os.Exit(2)
 	}
 	key, err := auth.NewKey()
@@ -107,24 +114,123 @@ func keygen(args []string) {
 	fmt.Printf("signing key: %s\npublic key:  %s\n", args[0], auth.FormatPublicKey(auth.PublicKey(key)))
 }
 
+// The flags are package variables so that the help can list them before the hub starts.
+var (
+	addr            = flag.String("addr", "127.0.0.1:8740", "listen address (port 0 picks a free port)")
+	dataDir         = flag.String("data-dir", defaultDataDir(), "data directory: the TLS certificate and the Git repositories of the hub and the tenants; <config>/agentic-office/hub by default, where <config> is ~/.config or $XDG_CONFIG_HOME on Linux and ~/Library/Application Support on macOS")
+	certFile        = flag.String("tls-cert", "", "TLS certificate (PEM, may include the chain); default <data-dir>/tls.crt")
+	keyFile         = flag.String("tls-key", "", "TLS private key (PEM); default <data-dir>/tls.key")
+	tlsHosts        = flag.String("tls-hosts", "localhost,127.0.0.1,::1,"+osHostname(), "host names and IPs of a new self-signed certificate; participants must reach the hub by one of them")
+	signingKeyFile  = flag.String("signing-key", "", "Ed25519 key file that signs tree heads of session logs (PEM); required, "+keygenHint)
+	firstAdmin      = flag.String("first-system-admin", "", "ID=PUBLIC_KEY of the first system admin; needed at the first start, ignored later")
+	publicURL       = flag.String("public-url", "", "base URL of the hub in stage links; default https://<listen address>")
+	tokenTTL        = flag.Duration("token-ttl", 15*time.Minute, "lifetime of access tokens; clients sign in again before they expire")
+	stageTTL        = flag.Duration("stage-link-ttl", 24*time.Hour, "lifetime of stage links (read-only links to the stage of one session)")
+	archiveInterval = flag.Duration("archive-interval", 30*time.Second, "time between two writes of changed sessions to the archive; sessions are also written when they end. Keep it above the usual commit time")
+	restoreWait     = flag.Duration("restore-wait", 10*time.Second, "after a restart, how long a restored session that has not ended waits for a peer to fill in the events after the last write to the archive")
+)
+
+func osHostname() string {
+	h, _ := os.Hostname()
+	return h
+}
+
+func isHelpFlag(a string) bool { return a == "-h" || a == "--help" || a == "-help" || a == "help" }
+
+// keygenHelp is the help of "office-hub keygen".
+const keygenHelp = `office-hub keygen: create the signing key of the hub
+
+usage: office-hub keygen FILE
+
+The hub signs the tree heads of the session logs with an Ed25519 key that you, the operator,
+give it at every start with -signing-key FILE. The hub never creates a signing key by itself.
+keygen writes the private key as PEM (PKCS #8) with mode 0600 and prints the public key. It
+refuses to overwrite an existing file. The hub logs the public key at start ("signing key of tree
+heads ..."). Keep the file with your other secrets and back it up: without it, old tree heads
+cannot be checked against the hub key, and replacing it is a deliberate act.
+
+Example:
+  office-hub keygen ~/office-hub/signing.key
+`
+
+// hubHelp is the text before the flags in the help of "office-hub".
+const hubHelp = `office-hub: the hub of the agentic office
+
+usage:
+  office-hub -signing-key FILE [flags]     run the hub
+  office-hub keygen FILE                   create the signing key file (once)
+  office-hub help                          print this help
+
+The hub orders the meetings, keeps the archive and serves the stage. It speaks only TLS and needs
+an access token for every call. Run it once per team, on a computer that all participants can
+reach on one port (default 8740). The user guide shows the whole setup.
+
+First start: the hub needs a signing key and the first system admin, who runs the hub.
+  office-hub keygen ~/office-hub/signing.key
+  office key create                                  # on your own computer: prints the public key
+  office-hub -signing-key ~/office-hub/signing.key -addr 0.0.0.0:8740 \
+    -first-system-admin root=<public key> -tls-hosts hub.example.org \
+    -public-url https://hub.example.org:8740
+
+- -first-system-admin creates the user (here root) as a human and system admin when the hub
+  repository has no users yet. Without the flag, the first start fails. Later starts ignore it.
+  A system admin is never a member of a tenant: use a second user for your work in a tenant.
+- -signing-key is required. The hub does not start if the file is missing, broken or readable by
+  others. Start the hub with the same file every time, so tree heads signed before a restart
+  still verify.
+- TLS: if neither tls.crt nor tls.key exists, the hub creates a self-signed certificate for the
+  names of -tls-hosts (valid for 820 days, because macOS and browsers reject longer ones), and
+  logs its SHA-256 fingerprint. Participants compare that fingerprint with "office hub add". To
+  use your own certificate, pass -tls-cert and -tls-key (PEM, the certificate may hold the whole
+  chain; the key is PKCS #8, PKCS #1 or SEC 1), or put both files into the data directory. The
+  hub never overwrites existing files, and reads the certificate at start: restart it after you
+  renew the certificate. With a certificate from a public authority, give clients no
+  certificate file.
+- The hub needs the "git" command line tool in PATH; its archive is Git repositories. It runs git
+  without your system and global git configuration.
+- GET /healthz answers 200 and "ok" without a login, for a container probe.
+
+Files in the data directory (-data-dir):
+  tls.crt, tls.key       TLS certificate and key
+  repos/hub/             the hub repository: users, tenants and memberships (the hub is the only writer)
+  repos/tenants/<id>/    the Git repository of one tenant: sessions, decisions, minutes, notes,
+                         tasks and slide decks; it stays when the tenant is removed
+
+The hub writes the sessions that changed every -archive-interval and when a session ends, and
+once more when it stops (SIGINT or SIGTERM). After a restart it restores the sessions that have
+not ended from the archive; the participants fill in the events after the last write, and until
+then, for at most -restore-wait, commands of such a session fail with "unavailable".
+
+Flags:
+`
+
+// hubExample is the text after the flags in the help of "office-hub".
+const hubExample = `
+Example, the same hub as a container (the image has the default command
+-data-dir /data -addr 0.0.0.0:8740 -signing-key /data/signing.key; pass all flags or none):
+  docker run -d --name office-hub -p 8740:8740 -v office-hub:/data \
+    ghcr.io/mrsimpson/agentic-office/office-hub \
+    -data-dir /data -addr 0.0.0.0:8740 -signing-key /data/signing.key \
+    -first-system-admin root=<public key>
+`
+
+func printHubHelp(w io.Writer) {
+	fmt.Fprint(w, hubHelp)
+	flag.CommandLine.SetOutput(w)
+	flag.PrintDefaults()
+	fmt.Fprint(w, hubExample)
+}
+
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "keygen" {
 		keygen(os.Args[2:])
 		return
 	}
-	addr := flag.String("addr", "127.0.0.1:8740", "listen address (port 0 picks a free port)")
-	dataDir := flag.String("data-dir", defaultDataDir(), "directory for admin keys, registered keys, the archive and the TLS certificate")
-	certFile := flag.String("tls-cert", "", "TLS certificate (PEM, may include the chain); default <data-dir>/tls.crt")
-	keyFile := flag.String("tls-key", "", "TLS private key (PEM); default <data-dir>/tls.key")
-	hostname, _ := os.Hostname()
-	tlsHosts := flag.String("tls-hosts", "localhost,127.0.0.1,::1,"+hostname, "host names and IPs of a new self-signed certificate")
-	signingKeyFile := flag.String("signing-key", "", "Ed25519 key file that signs tree heads of session logs (PEM); required, "+keygenHint)
-	firstAdmin := flag.String("first-system-admin", "", "ID=PUBLIC_KEY of the first system admin; needed at the first start, ignored later")
-	publicURL := flag.String("public-url", "", "base URL of the server in stage links; default https://<listen address>")
-	tokenTTL := flag.Duration("token-ttl", 15*time.Minute, "lifetime of access tokens")
-	stageTTL := flag.Duration("stage-link-ttl", 24*time.Hour, "lifetime of stage links")
-	archiveInterval := flag.Duration("archive-interval", 30*time.Second, "time between two writes of changed sessions to the archive; sessions are also written when they end")
-	restoreWait := flag.Duration("restore-wait", 10*time.Second, "after a restart, how long a restored session that has not ended waits for a peer to fill in the events after the last write to the archive")
+	if len(os.Args) == 2 && isHelpFlag(os.Args[1]) {
+		printHubHelp(os.Stdout)
+		return
+	}
+	flag.Usage = func() { printHubHelp(os.Stderr) }
 	flag.Parse()
 	or := func(v, def string) string {
 		if v != "" {

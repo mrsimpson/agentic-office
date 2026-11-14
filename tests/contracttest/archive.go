@@ -44,7 +44,7 @@ var safeName = regexp.MustCompile(`^[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}$`)
 
 // ArchivedSessionDir returns the directory of a session in the archive, relative to the
 // repository: sessions/<name>, where <name> is the session ID if it is safe as a file name, else
-// "=" plus its base64url form (README, Hub setup).
+// "=" plus its base64url form (package session, ArchiveName).
 func ArchivedSessionDir(sessionID string) string {
 	if safeName.MatchString(sessionID) {
 		return "sessions/" + sessionID

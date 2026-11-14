@@ -2,7 +2,7 @@
 // replicator ("office replicator run", started by "office meeting join"), the ears
 // ("office meeting join --mic" or "--wav"), the MCP server ("office mcp", client/mcp) and the
 // agent runner ("office agent run", client/agentrunner). See
-// client/cli and README.md.
+// client/cli, "office help" and USER_GUIDE.md.
 //
 // The ears link whisper.cpp through cgo; build with "make build" (see README.md).
 package main

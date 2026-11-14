@@ -11,7 +11,7 @@ import (
 )
 
 // cmdImport imports a conversation as a new session (dec-session-import). The file is in the
-// import format of the client core (dec-import-format, README.md); "-" reads stdin.
+// import format of the client core (dec-import-format, "office help import-format"); "-" reads stdin.
 func cmdImport(e *env, fs *flag.FlagSet) func([]string) error {
 	return func(args []string) error {
 		if len(args) != 1 {

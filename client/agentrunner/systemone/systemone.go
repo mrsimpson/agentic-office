@@ -16,6 +16,34 @@
 // A noul answer is a probability between 0 and 1. A choice answer names one criterion. The
 // response may come bare or wrapped in an envelope {"result": …, "success": true}, as the
 // Cloudflare REST API sends it. All names in the JSON use snake_case.
+//
+// A request (the state has the facts of the forwarding judge's request, and "context" is called
+// "earlier"):
+//
+//	{"model": "jev-1.14.0",
+//	 "state": {"session": "weekly", "agent": {…}, "role": "…", "participants": […],
+//	           "earlier": […], "new": […], "turn_ended": false},
+//	 "questions": {
+//	   "act": {"type": "noul", "instructions": "… Yes if a speaker addressed the agent …"},
+//	   "topic_closed": {"type": "noul", "instructions": "Yes if the participants closed a topic …"},
+//	   "addressed": {"type": "choice", "instructions": "Whom did the speaker of the last new utterance address?",
+//	                 "criteria": {"ada": "Ada", "bot": "Bot", "nobody": "no one in particular"}}}}
+//
+// The answer:
+//
+//	{"model": "jev-1.14.0",
+//	 "answers": {"act": {"type": "noul", "noul": 0.93},
+//	             "topic_closed": {"type": "noul", "noul": 0.1},
+//	             "addressed": {"type": "choice", "choice": "bot", "confidence": 0.8,
+//	                           "probabilities": {"ada": 0.1, "bot": 0.8, "nobody": 0.1}}},
+//	 "usage": {…}}
+//
+// A noul at or above the threshold of the runner (--decide-threshold) counts as yes. Every
+// question must have an answer of its type: a noul between 0 and 1, a choice that is one of the
+// criteria. There is no reason; the runner logs the probabilities. Known endpoints: TypeSafe Jev
+// (https://api.typesafe.ai/v1/systemone, models jev-latest and jev-1.14.0) and Cloudflare Clef
+// (https://api.cloudflare.com/client/v4/accounts/<account id>/ai/run/@cf/cloudflare/clef, models
+// clef and clef-flash).
 package systemone
 
 import (
