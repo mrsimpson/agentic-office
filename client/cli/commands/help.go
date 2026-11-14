@@ -1,0 +1,564 @@
+package commands
+
+import (
+	"sort"
+	"strings"
+)
+
+// Help is the help of one command: what "office <command> --help" and "office help <command>"
+// print, together with the flags of the command. Every command has a purpose, a synopsis and at
+// least one example. A contract test checks this for every name of Names.
+type Help struct {
+	// Name is the command as typed, one to three words, for example "meeting join".
+	Name string
+	// Group is the heading of the command in "office help".
+	Group string
+	// Summary is one line: what the command does.
+	Summary string
+	// Usage is the synopsis after "office ", with the arguments and the main flags.
+	Usage string
+	// Details are paragraphs of plain text: rules, defaults, who may call it, the form of --json.
+	Details string
+	// Examples are shell lines, each a complete command. A line may end in a comment.
+	Examples []string
+}
+
+// Groups of the commands, in the order of "office help".
+const (
+	groupKeys     = "Keys and identity"
+	groupAdmin    = "Administration (system admin or tenant admin)"
+	groupHubs     = "Hubs and configuration"
+	groupMeeting  = "Meeting"
+	groupEars     = "Speech and vocabulary"
+	groupStage    = "Stage, slides and documents"
+	groupRecords  = "Decisions, notes, minutes and tasks"
+	groupImport   = "Import"
+	groupAgents   = "Agents"
+	groupInternal = "Other"
+)
+
+// Names returns the names of all commands that have help, sorted.
+func Names() []string {
+	names := make([]string, 0, len(helpTable))
+	for _, h := range helpTable {
+		names = append(names, h.Name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// Lookup returns the help of a command.
+func Lookup(name string) (Help, bool) {
+	for _, h := range helpTable {
+		if h.Name == name {
+			return h, true
+		}
+	}
+	return Help{}, false
+}
+
+// Overview is what "office help" prints: every command with its purpose, grouped, and where to
+// find more.
+func Overview() string {
+	var b strings.Builder
+	b.WriteString("usage: office <command> [flags]\n")
+	b.WriteString("\nThe office client for humans and agents. Every command explains itself:\n")
+	b.WriteString("  office <command> --help        purpose, arguments, flags and an example\n")
+	b.WriteString("  office help <command>          the same\n")
+	b.WriteString("  office help <topic>            a topic: " + strings.Join(TopicNames(), ", ") + "\n")
+	var groups []string
+	byGroup := map[string][]Help{}
+	for _, h := range helpTable {
+		if _, ok := byGroup[h.Group]; !ok {
+			groups = append(groups, h.Group)
+		}
+		byGroup[h.Group] = append(byGroup[h.Group], h)
+	}
+	sort.Slice(groups, func(i, j int) bool { return groupRank(groups[i]) < groupRank(groups[j]) })
+	for _, g := range groups {
+		hs := byGroup[g]
+		sort.Slice(hs, func(i, j int) bool { return hs[i].Name < hs[j].Name })
+		b.WriteString("\n" + g + ":\n")
+		for _, h := range hs {
+			b.WriteString("  " + h.Name + strings.Repeat(" ", max(1, 27-len(h.Name))) + h.Summary + "\n")
+		}
+	}
+	b.WriteString("\nThe user guide (USER_GUIDE.md in the repository) shows how to set up a hub, join a\n")
+	b.WriteString("meeting and bring in an agent.\n")
+	b.WriteString("\nExit codes: 0 success, 1 error, 2 usage error. \"office help json\" describes --json.\n")
+	return b.String()
+}
+
+func groupRank(g string) int {
+	for i, x := range []string{groupKeys, groupHubs, groupMeeting, groupEars, groupStage, groupRecords, groupImport,
+		groupAgents, groupAdmin, groupInternal} {
+		if x == g {
+			return i
+		}
+	}
+	return 99
+}
+
+// helpTable has the help of every command of the CLI, in no order.
+var helpTable = buildHelp([]Help{
+	// Keys and identity.
+	{Name: "key create", Group: groupKeys, Summary: "create a key pair and print the public key",
+		Usage: "key create",
+		Details: `Creates the private key of this participant if there is none, and prints the public key.
+An existing key is never changed.
+The key file is <config>/agentic-office/client/key.pem, or the file of --key (OFFICE_KEY).
+<config> is ~/.config on Linux (or $XDG_CONFIG_HOME) and ~/Library/Application Support on
+macOS. The private key never leaves your computer. Send the public key to an admin, who
+registers it. Several participants on one computer, for example a human and an agent, use
+one key file each.`,
+		Examples: []string{"office key create", "office key create --key ~/agents/bot/key.pem   # a key for an agent"}},
+	{Name: "key show", Group: groupKeys, Summary: "print the public key and the key ID",
+		Usage:    "key show",
+		Details:  "Prints the public key and the key ID of the key file again, for example to send it to an admin.",
+		Examples: []string{"office key show"}},
+	{Name: "whoami", Group: groupKeys, Summary: "authenticate and print your participant ID",
+		Usage: "whoami",
+		Details: `Signs in to the hub with your key and prints the participant ID that the hub knows you by.
+It fails with an error that names what is missing: the key file, the hub address or its
+certificate (see "office hub add"), or the registration of your public key.`,
+		Examples: []string{"office whoami", "office whoami --hub-profile lab   # the same, at the hub of the profile lab"}},
+
+	// Administration.
+	{Name: "admin user create", Group: groupAdmin, Summary: "register a user with its first public key",
+		Usage: "admin user create <user> <public-key> --name NAME --kind human|agent",
+		Details: `Only a system admin creates users. The user ID, for example "ada", is also the participant
+ID in every session. Registering a user does not give access to a tenant: add the user with
+"office admin member set". A system admin is never a member of a tenant, so use another user
+for your work in a tenant. Removing a user ends its validity and keeps the record, so an ID
+is never used again.`,
+		Examples: []string{`office admin user create ada "$PUBLIC_KEY" --name "Ada Lovelace" --kind human`}},
+	{Name: "admin user list", Group: groupAdmin, Summary: "list all users, also the removed ones",
+		Usage: "admin user list", Details: "Only a system admin may call it.", Examples: []string{"office admin user list"}},
+	{Name: "admin user remove", Group: groupAdmin, Summary: "end a user and its memberships",
+		Usage:    "admin user remove <user>",
+		Details:  "Only a system admin may call it. The record stays; the user ID is never used again.",
+		Examples: []string{"office admin user remove ada"}},
+	{Name: "admin system-admin add", Group: groupAdmin, Summary: "make a human user a system admin",
+		Usage: "admin system-admin add <user>",
+		Details: `Only a system admin may call it. The first system admin comes from the hub flag
+-first-system-admin at the first start of the hub. A system admin is never a member of a
+tenant.`,
+		Examples: []string{"office admin system-admin add root2"}},
+	{Name: "admin system-admin remove", Group: groupAdmin, Summary: "take the system admin role away",
+		Usage:    "admin system-admin remove <user>",
+		Details:  "Only a system admin may call it. The hub always keeps at least one system admin.",
+		Examples: []string{"office admin system-admin remove root2"}},
+	{Name: "admin tenant create", Group: groupAdmin, Summary: "create a tenant and name its first tenant admin",
+		Usage: "admin tenant create <tenant> <first-tenant-admin> [--name NAME]",
+		Details: `Only a system admin may call it. A tenant is one organisation with its own repository: its
+sessions, decisions, minutes, notes, tasks and slide decks are visible only to its members.
+The first tenant admin must be a user who is not a system admin. --name is the display name
+(default: the tenant ID).`,
+		Examples: []string{`office admin tenant create acme ada --name "Acme Corp"`}},
+	{Name: "admin tenant list", Group: groupAdmin, Summary: "list the tenants",
+		Usage: "admin tenant list", Details: "Only a system admin may call it.", Examples: []string{"office admin tenant list"}},
+	{Name: "admin tenant remove", Group: groupAdmin, Summary: "end a tenant",
+		Usage: "admin tenant remove <tenant>",
+		Details: `Only a system admin may call it. The record and the repository of the tenant stay; the tenant
+ends its validity.`,
+		Examples: []string{"office admin tenant remove acme"}},
+	{Name: "admin member set", Group: groupAdmin, Summary: "add a user to a tenant or change its role",
+		Usage: "admin member set <tenant> <user> [--role member|tenant-admin]",
+		Details: `A system admin or a tenant admin of the tenant may call it. The default role is member. A
+tenant always keeps at least one tenant admin. A system admin cannot be a member.`,
+		Examples: []string{"office admin member set acme bob", "office admin member set acme bob --role tenant-admin"}},
+	{Name: "admin member remove", Group: groupAdmin, Summary: "end the membership of a user in a tenant",
+		Usage:    "admin member remove <tenant> <user>",
+		Details:  "A system admin or a tenant admin of the tenant may call it. The record stays.",
+		Examples: []string{"office admin member remove acme bob"}},
+	{Name: "admin member list", Group: groupAdmin, Summary: "list the members of a tenant",
+		Usage:    "admin member list <tenant>",
+		Details:  "A system admin or a member of the tenant may call it. A tenant that you are not a member of looks as if it did not exist (not_found).",
+		Examples: []string{"office admin member list acme"}},
+	{Name: "admin key add", Group: groupAdmin, Summary: "add a public key to a user",
+		Usage:    "admin key add <user> <public-key>",
+		Details:  "You may add a key to yourself; a system admin may add a key to any user. A user can have several keys.",
+		Examples: []string{`office admin key add ada "$PUBLIC_KEY"`}},
+	{Name: "admin key revoke", Group: groupAdmin, Summary: "revoke a key; its tokens stop working at once",
+		Usage:    "admin key revoke <key-id>",
+		Details:  "The key ID is the one that \"office key show\" prints. The last key of a user cannot be revoked.",
+		Examples: []string{"office admin key revoke SHA256:abc123"}},
+	{Name: "admin link", Group: groupAdmin, Summary: "print a link that opens the admin view in a browser",
+		Usage: "admin link",
+		Details: `Only a system admin gets a link. The link works once and expires after a few minutes. The view
+then keeps you signed in for one hour in a cookie that scripts cannot read. It shows the users
+with their keys, the tenants and the system admins (read only), registers keys and revokes
+them after a confirmation. Every page asks the hub with your rights.`,
+		Examples: []string{"office admin link"}},
+
+	// Hubs and configuration.
+	{Name: "hub add", Group: groupHubs, Summary: "add a hub profile and trust the certificate of the hub",
+		Usage: "hub add <name> <url> [--tenant T] [--key FILE] [--default] [--fingerprint F]",
+		Details: `Reads the certificate of the hub, shows its SHA-256 fingerprint and asks you to confirm it.
+Compare the fingerprint with the one in the log of the hub. With --fingerprint (hexadecimal,
+with or without colons or a "sha256:" prefix) the command compares instead of asking, so it
+works in scripts; a wrong fingerprint writes nothing. The command stores the certificate in
+<config>/agentic-office/client/hubs/<name>.crt and writes the profile to the user file
+config.yaml, keeping its comments. A hub with a certificate from an authority that this
+computer trusts needs no stored certificate and no question. A profile of the same name is
+replaced. --default makes it the profile that is used when you name none.`,
+		Examples: []string{"office hub add main https://hub.example.org:8740 --tenant acme --default",
+			"office hub add lab https://lab.example.org:8740 --tenant research --fingerprint 3f:9a:...   # in a script"}},
+	{Name: "hub list", Group: groupHubs, Summary: "list the hub profiles",
+		Usage:    "hub list",
+		Details:  "Lists the profiles of the user file and the project file. The active profile has a star.",
+		Examples: []string{"office hub list"}},
+	{Name: "hub remove", Group: groupHubs, Summary: "remove a hub profile and its stored certificate",
+		Usage: "hub remove <name>",
+		Details: `Removes the profile from the user file, clears hub-profile if it names this profile, and
+deletes the certificate that "hub add" stored. A profile of the project file you edit by hand.`,
+		Examples: []string{"office hub remove lab"}},
+	{Name: "config show", Group: groupHubs, Summary: "show the effective settings and where each comes from",
+		Usage: "config show",
+		Details: `Prints the settings of the configuration files, the defaults and the environment, with the
+source of each value, the active hub profile, and whether the key variable of the decision
+model is set (never the key). The flags of the connection (--hub-profile, --hub, --tenant,
+--ca-cert, --key) are part of it; the other flags override what it shows. Run it in the folder
+where you start your commands, because the project file .office/config.yaml counts.
+"office help config" describes the files, the order and the keys.
+
+--json prints {"files": [{"kind", "path", "found"}], "profile", "settings": [{"key", "value",
+"source", "from", "profile", "unused"}], "keySet"}. "source" is default, user, project, env,
+flag or profile; "profile" is null when no profile is active; "unused" marks a wake setting
+that the effective strategy does not use.`,
+		Examples: []string{"office config show", "office config show --json"}},
+
+	// Meeting.
+	{Name: "meeting join", Group: groupMeeting, Summary: "join a meeting, start the local log and print its path",
+		Usage: "meeting join <session> [--name N] [--foreground] [--mic | --wav FILE] [ears flags]",
+		Details: `Joins the session (it exists as soon as someone joins), starts the log replicator and prints
+the path of your local log: <runtime dir>/<session>/<participant>.jsonl, one compact JSON line
+per event, append-only. A participant joins once; joining again, also from a second device,
+returns the first join. A restarted client is the same participant.
+
+The replicator is its own process. By default it runs detached and join returns at once, which
+suits agents whose shell ends after each command. It stops after session.ended or when you
+leave. With --foreground, join stays, the replicator is its child and stops when join ends;
+use it when the caller runs the command as a background task. Run join again to restart a
+replicator that was killed; it resumes the file. There is at most one replicator per session
+and participant. The runtime directory also holds the join state, the PID of the replicator
+and its output. It is cleaned at logout for $XDG_RUNTIME_DIR.
+
+With --mic or --wav FILE the client joins as captured: the ears transcribe your own speech
+locally with Whisper and the gateway view shows each sentence. Only text leaves your computer.
+Use a headset. A missing speech model is downloaded once; before join, the ears check the
+models, the WAV file or the recorder, and if something is missing you do not join. "office help
+ears" lists the flags and variables of the ears.`,
+		Examples: []string{`LOG=$(office meeting join weekly)   # prints the path of the local log`,
+			"office meeting join weekly --mic --language english", "office meeting join weekly --foreground &"}},
+	{Name: "meeting log", Group: groupMeeting, Summary: "print the path of the local log",
+		Usage:    "meeting log",
+		Details:  "Prints the path of the local log of the session that you joined on this machine. Without --json it prints the path only; --json adds the session, the participant and whether a replicator runs.",
+		Examples: []string{`tail -f "$(office meeting log)" | grep --line-buffered '"type":"turn.end"'`}},
+	{Name: "meeting view", Group: groupMeeting, Summary: "gateway view of your own utterances",
+		Usage: "meeting view",
+		Details: `Shows your own utterances with their status (final, sent, off_the_record) and whether you are
+paused, as a filtered view of the local log. It prints one line per change and ends with the
+session. Keys: p pauses or resumes, o marks the last sent sentence off the record, q quits.
+With --json it prints one object per change, for example
+{"utterance":{"eventId":12,"commandId":"...","text":"...","status":"sent"}}, {"paused":true}
+and {"ended":true}.`,
+		Examples: []string{"office meeting view"}},
+	{Name: "meeting events", Group: groupMeeting, Summary: "read events after a cursor from the hub",
+		Usage: "meeting events [--after N] [--limit N]",
+		Details: `Reads the events after the event ID N (default 0) from the hub, in the line format of the local
+log. Event IDs grow by one without gaps. Use it to fill a gap in a copy, or poll it when you
+cannot follow a file. A sentence that is off the record comes as a placeholder: the same ID,
+"offTheRecord": true, no text. --json prints {"events": [...], "more": bool}.`,
+		Examples: []string{"office meeting events --session design-review --after 41 --limit 20",
+			`office meeting events --session design-review | jq -c 'select(.type == "utterance.final")'`}},
+	{Name: "meeting leave", Group: groupMeeting, Summary: "leave the meeting",
+		Usage: "meeting leave", Details: "The replicator of your local log stops after you left.", Examples: []string{"office meeting leave"}},
+	{Name: "meeting pause", Group: groupMeeting, Summary: "pause your transcription",
+		Usage:    "meeting pause",
+		Details:  "Tells the others that you are not captured for now. With --mic you can press p in the view instead.",
+		Examples: []string{"office meeting pause"}},
+	{Name: "meeting resume", Group: groupMeeting, Summary: "resume your transcription",
+		Usage: "meeting resume", Details: "The counterpart of \"meeting pause\".", Examples: []string{"office meeting resume"}},
+	{Name: "meeting end", Group: groupMeeting, Summary: "end the meeting for everyone",
+		Usage: "meeting end",
+		Details: `Stores the running minutes as the minutes of the session and writes session.ended. Every new
+command after that fails with failed_precondition. Use "meeting leave" to leave alone.`,
+		Examples: []string{"office meeting end"}},
+	{Name: "say", Group: groupMeeting, Summary: "submit a typed utterance",
+		Usage: "say <text>",
+		Details: `Typed text does not end your turn. Run "office signal turn-end" when you are done, so that
+agents that wait for the end of a turn wake up.`,
+		Examples: []string{`office say "I can summarize that."`}},
+	{Name: "utterance off-the-record", Group: groupMeeting, Summary: "mark one of your sentences off the record",
+		Usage: "utterance off-the-record <event-id> | --last",
+		Details: `You can mark only your own sentence; the hub checks that you are the speaker. The log gets a
+new utterance.off_the_record line. Everyone who reads the session later gets a placeholder
+instead of the text, and the stage hides it. Agents must not use such a sentence anywhere.`,
+		Examples: []string{"office utterance off-the-record 42", "office utterance off-the-record --last"}},
+	{Name: "signal turn-end", Group: groupMeeting, Summary: "tell the meeting that a turn has ended",
+		Usage:    "signal turn-end [--participant P]",
+		Details:  "With --mic the ears send turn.end for you. After typed text, send it yourself. --participant defaults to you.",
+		Examples: []string{"office signal turn-end"}},
+	{Name: "signal silence-long", Group: groupMeeting, Summary: "tell the meeting that it was silent for a long time",
+		Usage:    "signal silence-long --duration D",
+		Details:  "D is a duration such as 10s. The ears do not send it, because they hear only your own participant.",
+		Examples: []string{"office signal silence-long --duration 30s"}},
+	{Name: "signal addressed", Group: groupMeeting, Summary: "tell the meeting that a speaker addressed someone",
+		Usage:    "signal addressed --participant P --utterance ID",
+		Details:  "P is the participant whose name was mentioned; ID is the event ID of the utterance.",
+		Examples: []string{"office signal addressed --participant bot --utterance 42"}},
+	{Name: "hand raise", Group: groupMeeting, Summary: "raise your hand",
+		Usage: "hand raise [--topic T]",
+		Details: `The hand stays raised until you speak, raise it again (the new topic replaces the old one) or
+leave. The stage shows the raised hands in the order they went up.`,
+		Examples: []string{`office hand raise --topic "Budget"`}},
+	{Name: "minutes update", Group: groupMeeting, Summary: "write the running minutes of the meeting",
+		Usage: "minutes update <text> | --file F",
+		Details: `The running minutes are the first artifact on the stage. "meeting end" stores the text of the
+last update as the minutes of the session, with the participant who wrote it as the author.
+--file - reads stdin.`,
+		Examples: []string{"office minutes update --file minutes.md"}},
+
+	// Speech and vocabulary.
+	{Name: "models list", Group: groupEars, Summary: "list the speech models and the one that join would use",
+		Usage: "models list [--language L] [--fast] [--model NAME|FILE]",
+		Details: `Shows the catalogue of Whisper models by name, what is downloaded, and which model "meeting
+join" would use for the same flags.
+
+  small                  490 MB   fast, all languages; real time on a CPU
+  large-v3-turbo         1.6 GB   accurate, all languages; needs a GPU for live use
+  large-v3-turbo-german  1.6 GB   accurate, fine-tuned for German (primeline, Apache-2.0); needs a GPU
+
+The ears choose the model in this order: 1. --model NAME|FILE; 2. --fast (small); 3.
+OFFICE_WHISPER_MODEL, a name or a file; 4. the best model for --language: large-v3-turbo-german
+for German, large-v3-turbo for every other language. If the build of the client has no GPU
+support, the ears take small instead and say so on stderr. Only the macOS build for Apple
+silicon (Metal) counts as a GPU build; OFFICE_WHISPER_GPU=1 or 0 overrides this, for example for
+an own build with CUDA. Use a multilingual model, not a ".en" model: those only know English.
+
+--language takes a code or an English name, such as de, german, en or english, or auto (Whisper
+detects the language). The default is OFFICE_WHISPER_LANGUAGE, else de. Models are stored in
+~/.local/share/agentic-office/models (or $XDG_DATA_HOME/agentic-office/models).
+
+--json prints {"models": [...], "selected", "language", "note"}.`,
+		Examples: []string{"office models list --language english", "office models list --fast"}},
+	{Name: "models download", Group: groupEars, Summary: "download the speech model and the VAD model ahead of time",
+		Usage: "models download [--language L] [--fast] [<name>]",
+		Details: `The first "meeting join --mic" or "--wav" downloads a missing model of the catalogue and the
+Silero VAD model into the model directory and checks their SHA-256. This command does the same
+ahead of time, for example before the first meeting. Without a name it takes the model that
+join would use. OFFICE_MODEL_URL sets a mirror: the files are then read from <mirror>/<file>,
+for example <mirror>/ggml-large-v3-turbo-german.bin and <mirror>/ggml-silero-v6.2.0.bin. A model
+file that you choose with a flag or a variable is never downloaded.`,
+		Examples: []string{"office models download --language german", "office models download large-v3-turbo"}},
+	{Name: "vocabulary extract", Group: groupEars, Summary: "write .office/vocabulary.txt from the documents of a project",
+		Usage: "vocabulary extract [DIR] [--out FILE] [--max N] [--no-model] [--force]",
+		Details: `Reads the Markdown and text files of DIR (default: the current directory; .md, .markdown,
+.txt, .rst, .adoc; also in subdirectories, but not in hidden ones, node_modules or vendor) and
+writes the terms that Whisper often misspells: names of persons, organisations and places
+(found by a named-entity model for German, English and eight more languages), CamelCase words,
+acronyms and words of headings. Code blocks, inline code, links and HTML are skipped. Each
+occurrence scores: 3 for a name of the model, 2 for CamelCase or an acronym, 1 for a word of a
+heading; the terms are ranked by score, then by first occurrence.
+
+The model is distilbert-base-multilingual-cased-ner-hrl (AFL-3.0). The client runs it in plain
+Go and downloads it on first use (about 540 MB, SHA-256 pinned, from the source or
+OFFICE_MODEL_URL). It labels words and writes no text. It is slow: about 60 to 100 words per
+second on 4 CPUs. --no-model uses the rules only: fast, no download. The command does not
+replace a file that it did not write (it knows its files by the first line) unless you pass
+--force. Check the file after the run: the most important terms belong at the top, because only
+about 30 fit into the prompt of Whisper.
+
+--json prints {"file", "documents", "model", "terms": [{"term", "score", "sources"}]}.`,
+		Examples: []string{"office vocabulary extract docs/", "office vocabulary extract --no-model --max 50"}},
+
+	// Stage, slides and documents.
+	{Name: "stage focus", Group: groupStage, Summary: "show an artifact on the stage",
+		Usage: "stage focus <artifact-id>",
+		Details: `An artifact is what the stage shows large: the ID of a slide deck (slides/42), the path of a
+document (documents/plan.md) or "minutes", the running minutes of the session. The minutes
+are in focus until another artifact gets the focus. The hub does not check that the artifact
+exists; the stage shows a note for an unknown ID.`,
+		Examples: []string{"office stage focus slides/42", "office stage focus documents/plan.md", "office stage focus minutes"}},
+	{Name: "stage link", Group: groupStage, Summary: "create a read-only link to the stage of a session",
+		Usage: "stage link",
+		Details: `Prints https://<hub>/stage/<session>?token=... for one session. The link is read only and
+lives 24 hours (hub flag -stage-link-ttl). Open it in a browser and share that window in your
+meeting tool. The stage belongs to the tenant of the user who creates the link.`,
+		Examples: []string{"office stage link --session weekly"}},
+	{Name: "slides render", Group: groupStage, Summary: "render a slide deck and print its ID",
+		Usage: "slides render <deck.json | deck.md>",
+		Details: `The hub renders the deck into one self-contained HTML document for a screen share and prints
+its ID, for example slides/42, which "stage focus" takes. The same deck always gives the same
+output. "office help deck-format" describes the files. --json prints {"id", "mediaType",
+"duplicate"}.`,
+		Examples: []string{`ID=$(office slides render deck.md)`, `office stage focus "$ID"`}},
+	{Name: "slides get", Group: groupStage, Summary: "fetch a rendered deck",
+		Usage:    "slides get <id> [--out FILE]",
+		Details:  "Prints the rendered HTML, or writes it to FILE. --json prints {\"deck\": ...} with the input and the output (the content in base64).",
+		Examples: []string{"office slides get slides/42 --out deck.html"}},
+	{Name: "document create", Group: groupStage, Summary: "create a text document",
+		Usage: "document create <path> <text> | --file F",
+		Details: `A document is a Markdown file "documents/<name>.md" in the archive; its path is its identity.
+The hub refuses other paths and content over 1 MiB, and it fails with already_exists when the
+path is taken. --session links the change to a session: the log then gets artifact.created, and
+you must have joined it. Prints the version of the document. Never put a sentence that is off
+the record into a document; the hub does not check this.`,
+		Examples: []string{"V=$(office document create documents/plan.md --file plan.md --session weekly)"}},
+	{Name: "document change", Group: groupStage, Summary: "replace a text document",
+		Usage: "document change <path> --base VERSION <text> | --file F",
+		Details: `--base is the version that you read. If someone changed the document in the meantime, the
+change fails with "aborted" and names the current version: read the document again and redo
+your change. Of two changes with the same base, the first one wins. Your name is recorded as
+the author of the change. --session links the change to a session (artifact.changed).`,
+		Examples: []string{`office document change documents/plan.md --base "$V" --file plan.md`}},
+	{Name: "document get", Group: groupStage, Summary: "read a text document",
+		Usage:    "document get <path> [--out FILE]",
+		Details:  "Prints the content, or writes it to FILE. --json prints the path, the version and the content.",
+		Examples: []string{"office document get documents/plan.md"}},
+	{Name: "document list", Group: groupStage, Summary: "list the files of a directory of the archive",
+		Usage: "document list [<dir>]",
+		Details: `The default directory is documents. The archive read interface lists Markdown and YAML files
+only, and never anything under sessions/, because the session logs keep the original of
+sentences that are off the record.`,
+		Examples: []string{"office document list"}},
+
+	// Decisions, notes, minutes and tasks.
+	{Name: "decision record", Group: groupRecords, Summary: "record a decision",
+		Usage: "decision record <text> | --file F [--session S]",
+		Details: `The decision gets the author and kind from your key. It is linked to a session only with an
+explicit --session. Never put a sentence that is off the record into a record; the hub does not
+check this. --json prints {"decision": ..., "duplicate": ...}.`,
+		Examples: []string{`office decision record "We ship on Friday."`, "office decision record --session weekly --file decision.md"}},
+	{Name: "decision list", Group: groupRecords, Summary: "list recorded decisions",
+		Usage: "decision list [--after N] [--limit N] [--session S]",
+		Details: `Oldest first, after the record ID N, at most --limit records (default 100, at most 1000). To
+read the next page, pass the ID of the last record. --json prints {"decisions": [...]}.`,
+		Examples: []string{"office decision list --after 10 --limit 20"}},
+	{Name: "note add", Group: groupRecords, Summary: "add a note",
+		Usage:    "note add <text> | --file F [--session S]",
+		Details:  "Like a decision, a note is linked to a session only with an explicit --session. --json prints {\"note\": ..., \"duplicate\": ...}.",
+		Examples: []string{`office note add "Ask the bank about the loan."`}},
+	{Name: "note list", Group: groupRecords, Summary: "list notes",
+		Usage:    "note list [--after N] [--limit N] [--session S]",
+		Details:  "Paging as for \"decision list\". --json prints {\"notes\": [...]}.",
+		Examples: []string{"office note list --session weekly"}},
+	{Name: "minutes show", Group: groupRecords, Summary: "show the minutes stored when a session ended",
+		Usage: "minutes show [<session>]",
+		Details: `Prints the text of the newest stored minutes of the session (default: --session), or fails
+with not_found. --json prints {"minutes": ...}.`,
+		Examples: []string{"office minutes show weekly"}},
+	{Name: "minutes list", Group: groupRecords, Summary: "list stored minutes",
+		Usage:    "minutes list [--after N] [--limit N] [--session S]",
+		Details:  "Paging as for \"decision list\". --json prints {\"minutes\": [...]}.",
+		Examples: []string{"office minutes list"}},
+	{Name: "task create", Group: groupRecords, Summary: "create a task",
+		Usage: "task create <title> [--description D | --description-file F] [--assignee P] [--status S] [--session S]",
+		Details: `For now every task is a local draft of the hub. Its ref, for example local:42, is opaque: keep
+it and pass it back. Statuses are open (the default), in_progress (or in-progress), done and
+cancelled. The hub checks neither the assignee nor the session. Any participant may read and
+change every task. --json prints {"task": ..., "duplicate": ...}.`,
+		Examples: []string{`office task create "Write the release notes" --assignee bot --session weekly`}},
+	{Name: "task get", Group: groupRecords, Summary: "show one task",
+		Usage: "task get <ref>", Details: "--json prints {\"task\": ...}.", Examples: []string{"office task get local:1"}},
+	{Name: "task list", Group: groupRecords, Summary: "list tasks",
+		Usage: "task list [--status S[,S]] [--assignee P] [--session S] [--limit N] [--page-token T]",
+		Details: `Oldest first, at most --limit tasks (default 100, at most 1000). If more tasks match, the
+token of the next page is printed on stderr (--json: "nextPageToken"); pass it as --page-token.
+--json prints {"tasks": [...], "nextPageToken": ...}.`,
+		Examples: []string{"office task list --status open,in_progress --assignee bot"}},
+	{Name: "task update", Group: groupRecords, Summary: "change a task",
+		Usage: "task update <ref> [--title T] [--description D | --description-file F] [--assignee P] [--status S] [--session S]",
+		Details: `Only the fields that you set change. An empty assignee or session removes it. An update that
+changes nothing makes no new revision. --json prints {"task": ..., "duplicate": ...}.`,
+		Examples: []string{"office task update local:1 --status done", `office task update local:1 --assignee "" --session ""`}},
+
+	// Import.
+	{Name: "session import", Group: groupImport, Summary: "import a conversation as a new, marked session",
+		Usage: "session import <conversation.json | -> [--session S]",
+		Details: `Imports a whole conversation from another tool (a chat export, a meeting transcript, an agent
+conversation) as a new session and prints its ID. Without --session it creates the ID
+(import-<uuid>); "-" reads stdin. The client sends the conversation in pages of 500 utterances;
+if it stops halfway, the session stays incomplete: import again into a new session. Every error
+in the file is a usage error (exit code 2) and nothing is imported. The log starts with
+session.imported, then participant.joined (imported: true) for each speaker, then one
+utterance.final per message, and ends with import.completed. The signed tree heads prove
+which participant imported the log and that it has not changed since; they do not prove that the
+speakers said it. After the import the session is a normal session: join, write minutes, end it.
+"office help import-format" describes the file. --json prints {"sessionId", "pages",
+"firstEventId", "lastEventId", "participants", "utterances", "treeHead"}.`,
+		Examples: []string{"office session import design.json --session design-review"}},
+
+	// Agents.
+	{Name: "mcp", Group: groupAgents, Summary: "run the MCP server on stdin and stdout",
+		Usage: "mcp [--session S]",
+		Details: `An MCP client starts this command. It offers the features of the CLI as tools for agents that
+use MCP instead of a shell. It takes the same flags and OFFICE_* variables as the CLI;
+--session sets the default session of the tools. The key must exist and be registered first.
+Tool names use "_" where the CLI uses a space or a dot, for example meeting_join, utterance_say
+and task_create; the tools return the same JSON as "--json". Not offered: key and admin
+commands, the gateway view and the ears. meeting_join runs the log replicator inside the MCP
+process: it stops when the client closes the connection, when you leave or after session.ended;
+call meeting_join again to restart it. The tool descriptions explain the log file and the
+event types to the agent.`,
+		Examples: []string{`claude mcp add office -e OFFICE_KEY="$HOME/.config/agentic-office/agent/key.pem" -- office mcp`}},
+	{Name: "agent run", Group: groupAgents, Summary: "keep an agent in a meeting and wake it when it is needed",
+		Usage: "agent run --session S [--role T | --role-file F] [--allow PATTERN]... [--cwd DIR] [wake flags] -- <harness command>",
+		Details: `Claude Code, opencode and Kiro work in turns: they finish a turn and wait. The runner starts the
+harness (the program after "--") as an Agent Client Protocol (ACP) agent, hands it the office
+tools of this meeting, tells it its role and wakes it. It joins the session with this key
+(use the key of the agent: OFFICE_KEY or --key), stops after session.ended once the agent
+finished its last work, after the agent's own leave, on SIGINT or SIGTERM, or when the harness
+stops (an error). It logs to stderr, each line starting with "office agent:".
+
+Every flag and the harness command can also come from the configuration file (keys agent.* and
+agent.wake.*); with a project file, "office agent run" alone is enough. "office help config"
+lists the keys.
+
+--wake chooses when the runner wakes the agent. turn-end (the default) wakes it at each change
+of speaker. llm asks a forwarding judge that you bring after each utterance of another
+participant: --decide-cmd CMD (a shell command that reads the request as JSON on stdin and
+writes the answer as JSON on stdout), or --decide-url URL --decide-model M (the base URL of an
+OpenAI-compatible API that ends in /v1; the runner appends /chat/completions). decision-model
+asks a decision model of the System One API: --decide-url is the full URL of the endpoint,
+nothing is appended; a probability at or above --decide-threshold (default 0.5) counts as yes.
+A key in OFFICE_DECIDE_KEY (or the variable that agent.wake.key-env names) goes to the endpoint
+as a bearer token and is never logged. The runner refuses model flags with turn-end. When the
+model fails (error, time-out after --decide-timeout, an answer outside the contract), the
+runner falls back to turn-end.
+
+Permission: the runner offers the harness no file system and no terminal. By default it allows
+a call of an office tool unless its kind is execute, edit, delete or move, and rejects every
+other call. With --allow it allows exactly the calls whose title matches one of the patterns
+(* is any text, case is ignored; --allow '*' allows everything).
+
+Harness commands: opencode acp; kiro-cli acp; npx -y @agentclientprotocol/claude-agent-acp (the
+ACP adapter of Claude Code; needs Node.js). Log in with the harness itself first: the runner does
+not authenticate a harness.`,
+		Examples: []string{`office agent run --session weekly --role "You keep the minutes." -- opencode acp`,
+			"office agent run --session weekly --role-file minutes.md --wake llm --decide-url http://127.0.0.1:11434/v1 --decide-model qwen3:4b -- kiro-cli acp"}},
+
+	// Other.
+	{Name: "replicator run", Group: groupInternal, Summary: "run the log replicator (started by meeting join)",
+		Usage: "replicator run --session S --participant P --log FILE [--pid-file FILE] [--parent-pid N] [--ready-fd N]",
+		Details: `The process that "meeting join" starts to copy the session stream into the local log. It holds
+a lock on the log file, so there is at most one per session and participant. After a crash it
+cuts an incomplete last line and resumes after the last complete line; after a network drop it
+reconnects with a backoff. You do not need to run it yourself.`,
+		Examples: []string{"office replicator run --session weekly --participant ada --log ./ada.jsonl"}},
+	{Name: "version", Group: groupInternal, Summary: "print the version",
+		Usage: "version", Details: "Prints the version of this build.", Examples: []string{"office version"}},
+	{Name: "help", Group: groupInternal, Summary: "print this help, the help of a command or a topic",
+		Usage:    "help [<command> | <topic>]",
+		Details:  "Without an argument it lists all commands. \"office help <command>\" is the same as \"office <command> --help\".",
+		Examples: []string{"office help", "office help meeting join", "office help config"}},
+})
+
+func buildHelp(hs []Help) map[string]Help {
+	m := make(map[string]Help, len(hs))
+	for _, h := range hs {
+		m[h.Name] = h
+	}
+	return m
+}

@@ -113,6 +113,22 @@ func init() {
 		"document get":              cmdDocumentGet,
 		"document list":             cmdDocumentList,
 	}
+	checkHelp()
+}
+
+// checkHelp stops the start when a command has no help (client/cli/commands/help.go), or help
+// exists for a command that does not exist. Every command must explain itself.
+func checkHelp() {
+	for name := range commandTable {
+		if _, ok := commands.Lookup(name); !ok {
+			panic("office: the command " + name + " has no help text in client/cli/commands/help.go")
+		}
+	}
+	for _, name := range commands.Names() {
+		if _, ok := commandTable[name]; !ok && name != "help" && name != "version" {
+			panic("office: help text for the unknown command " + name + " in client/cli/commands/help.go")
+		}
+	}
 }
 
 // usageError is a wrong call. It exits with commands.ExitUsage.
@@ -134,16 +150,31 @@ func Run(args []string, stdout, stderr io.Writer) int {
 // RunContext runs the CLI with a context and stdin.
 func RunContext(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprint(stderr, commands.Usage)
+		fmt.Fprint(stderr, commands.Overview())
 		return commands.ExitUsage
+	}
+	if (args[0] == "version" || args[0] == "help") && len(args) == 2 && isHelpFlag(args[1]) {
+		printHelp(stdout, args[0], nil)
+		return commands.ExitOK
 	}
 	switch args[0] {
 	case "version", "--version":
 		fmt.Fprintln(stdout, Version)
 		return commands.ExitOK
-	case "help", "-h", "--help":
-		fmt.Fprint(stdout, commands.Usage)
+	case "-h", "--help":
+		fmt.Fprint(stdout, commands.Overview())
 		return commands.ExitOK
+	case "help":
+		if len(args) == 1 {
+			fmt.Fprint(stdout, commands.Overview())
+			return commands.ExitOK
+		}
+		if t, ok := commands.Topic(strings.Join(args[1:], " ")); ok {
+			fmt.Fprint(stdout, t)
+			return commands.ExitOK
+		}
+		// "office help meeting join" is "office meeting join --help".
+		return RunContext(ctx, append(append([]string{}, args[1:]...), "--help"), stdin, stdout, stderr)
 	}
 	name, rest := "", args
 	for n := 3; n >= 1; n-- {
@@ -163,7 +194,7 @@ func RunContext(ctx context.Context, args []string, stdin io.Reader, stdout, std
 			}
 		}
 		if !e.json {
-			fmt.Fprintf(stderr, "office: unknown command %q\n\n%s", strings.Join(args, " "), commands.Usage)
+			fmt.Fprintf(stderr, "office: unknown command %q\n\n%s", strings.Join(args, " "), commands.Overview())
 			return commands.ExitUsage
 		}
 		return e.fail(usagef("unknown command %q (see \"office help\")", strings.Join(args, " ")))
@@ -187,9 +218,7 @@ func RunContext(ctx context.Context, args []string, stdin io.Reader, stdout, std
 	runCmd := commandTable[name](e, fs)
 	pos, err := parseInterspersed(fs, rest)
 	if errors.Is(err, flag.ErrHelp) {
-		fmt.Fprintf(stdout, "usage: office %s [flags]\n\nFlags:\n", name)
-		fs.SetOutput(stdout)
-		fs.PrintDefaults()
+		printHelp(stdout, name, fs)
 		return commands.ExitOK
 	}
 	if err != nil {
@@ -207,6 +236,67 @@ func RunContext(ctx context.Context, args []string, stdin io.Reader, stdout, std
 		e.cfg = c.Config(e.cfg)
 	}
 	return e.fail(runCmd(pos))
+}
+
+func isHelpFlag(a string) bool { return a == "-h" || a == "--help" || a == "-help" }
+
+// commonFlags are the flags that every command takes, with the variable and the default that
+// "office help config" explains.
+var commonFlags = map[string]bool{"json": true, "session": true, "hub": true, "ca-cert": true, "tenant": true,
+	"key": true, "hub-profile": true, "runtime-dir": true}
+
+// printHelp prints the help of a command: purpose, usage, details, its own flags, the common
+// flags and examples. fs holds the flags of the command; it is nil for a command without flags.
+func printHelp(w io.Writer, name string, fs *flag.FlagSet) {
+	h, ok := commands.Lookup(name)
+	if !ok {
+		fmt.Fprintf(w, "usage: office %s [flags]\n", name)
+		return
+	}
+	fmt.Fprintf(w, "office %s: %s\n\nusage: office %s\n", h.Name, h.Summary, h.Usage)
+	if h.Details != "" {
+		fmt.Fprintf(w, "\n%s\n", h.Details)
+	}
+	if fs != nil {
+		var own, common []*flag.Flag
+		fs.VisitAll(func(f *flag.Flag) {
+			if commonFlags[f.Name] {
+				common = append(common, f)
+			} else {
+				own = append(own, f)
+			}
+		})
+		if len(own) > 0 {
+			fmt.Fprintf(w, "\nFlags:\n")
+			printFlags(w, own)
+		}
+		fmt.Fprintf(w, "\nCommon flags (variables, files and defaults: \"office help config\"):\n")
+		printFlags(w, common)
+	}
+	if len(h.Examples) > 0 {
+		fmt.Fprintf(w, "\nExamples:\n")
+		for _, ex := range h.Examples {
+			fmt.Fprintf(w, "  %s\n", ex)
+		}
+	}
+}
+
+// printFlags prints flags as "  --name TYPE  usage (default D)".
+func printFlags(w io.Writer, fl []*flag.Flag) {
+	for _, f := range fl {
+		typ, usage := flag.UnquoteUsage(f)
+		line := "  --" + f.Name
+		if typ != "" {
+			line += " " + typ
+		}
+		line += "\n        " + usage
+		switch f.DefValue {
+		case "", "0", "false", "0s":
+		default:
+			line += fmt.Sprintf(" (default %s)", f.DefValue)
+		}
+		fmt.Fprintln(w, line)
+	}
 }
 
 // ownsConnection are the commands that resolve the connection themselves, because they show or
