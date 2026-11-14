@@ -16,8 +16,13 @@ package cli
 // section for another command is a new struct in fileConfig; loadConfig and "office config show"
 // need no change.
 //
+// The keys hub, tenant, ca-cert, key and hub-profile and the mapping hubs (named hub profiles)
+// set the connection to a hub. connection.go resolves them, since a profile takes part in the
+// order of the layers.
+//
 // A file never holds a secret. It names the environment variable that holds a key
-// (agent.wake.key-env); the CLI reads the key from the environment.
+// (agent.wake.key-env); the CLI reads the key from the environment. The key of the connection
+// (key) is the path of a key file, never the key.
 //
 // A relative path in a file is relative to the root of that file: the start directory for the
 // project file, the configuration folder for the user file. A relative path in a flag is relative
@@ -51,7 +56,21 @@ const projectConfigDir = ".office"
 // office:"path" marks a path, which is resolved against the root of the file; office:"duration"
 // marks a duration in the form of Go, such as "10s".
 type fileConfig struct {
-	Agent agentFile `yaml:"agent"`
+	Hub        string                 `yaml:"hub"`
+	Tenant     string                 `yaml:"tenant"`
+	CACert     string                 `yaml:"ca-cert" office:"path"`
+	Key        string                 `yaml:"key" office:"path"`
+	HubProfile string                 `yaml:"hub-profile"`
+	Hubs       map[string]profileFile `yaml:"hubs"`
+	Agent      agentFile              `yaml:"agent"`
+}
+
+// profileFile is one entry of the mapping hubs: a named hub profile.
+type profileFile struct {
+	Hub    string `yaml:"hub"`
+	Tenant string `yaml:"tenant"`
+	CACert string `yaml:"ca-cert" office:"path"`
+	Key    string `yaml:"key" office:"path"`
 }
 
 // agentFile is the mapping agent: the options of "office agent run".
@@ -75,6 +94,25 @@ type wakeFile struct {
 	Threshold float64 `yaml:"threshold"`
 	Timeout   string  `yaml:"timeout" office:"duration"`
 	KeyEnv    string  `yaml:"key-env"`
+}
+
+// The keys of the connection. The fields of a profile have the same names under hubs.<name>.
+const (
+	keyHub        = "hub"
+	keyTenant     = "tenant"
+	keyCACert     = "ca-cert"
+	keyKeyFile    = "key"
+	keyHubProfile = "hub-profile"
+	keyHubs       = "hubs"
+)
+
+// connectionFields are the settings of a hub that a profile holds.
+var connectionFields = []string{keyHub, keyTenant, keyCACert, keyKeyFile}
+
+// isConnectionKey reports whether key belongs to the connection (connection.go), not to the
+// settings of a command.
+func isConnectionKey(key string) bool {
+	return key == keyHubProfile || contains(connectionFields, key) || strings.HasPrefix(key, keyHubs+".")
 }
 
 // The keys of the settings.
@@ -122,13 +160,17 @@ const (
 	sourceProject = "project"
 	sourceEnv     = "env"
 	sourceFlag    = "flag"
+	// sourceProfile marks a value that a hub profile gives.
+	sourceProfile = "profile"
 )
 
 // source says where a setting comes from: the kind of layer and the file, the variable or the
-// flag.
+// flag. A value from a hub profile has the kind sourceProfile, the name of the profile and the
+// file that defines the value.
 type source struct {
-	Kind string `json:"source"`
-	From string `json:"from,omitempty"`
+	Kind    string `json:"source"`
+	From    string `json:"from,omitempty"`
+	Profile string `json:"profile,omitempty"`
 }
 
 func (s source) String() string {
@@ -141,6 +183,8 @@ func (s source) String() string {
 		return "environment variable " + s.From
 	case sourceFlag:
 		return s.From
+	case sourceProfile:
+		return "hub profile " + s.Profile + " (" + s.From + ")"
 	}
 	return "default"
 }
@@ -158,6 +202,9 @@ type settings map[string]setting
 type layer struct {
 	src    source
 	values map[string]any
+	// srcs gives the source of single values, when they differ from src: the layers of the
+	// environment and of the flags have one source per value.
+	srcs map[string]source
 }
 
 // configFileInfo describes one configuration file.
@@ -175,15 +222,12 @@ func configFiles(start string) []configFileInfo {
 	}
 }
 
-// loadConfig reads the configuration files for the start directory start and returns the
-// settings of the defaults and the files, and the files it looked for. env and flags are applied
-// on top with apply.
-func loadConfig(start string) (settings, []configFileInfo, error) {
-	s := settings{}
-	for k, v := range configDefaults {
-		s[k] = setting{Value: v, Source: source{Kind: sourceDefault}}
-	}
+// readLayers reads the user file and the project file of the start directory start, in this
+// order from low to high. A file that does not exist gives no layer. It also returns the files
+// it looked for.
+func readLayers(start string) ([]layer, []configFileInfo, error) {
 	files := configFiles(start)
+	var layers []layer
 	for i, f := range files {
 		root := filepath.Dir(f.Path) // the configuration folder
 		if f.Kind == sourceProject {
@@ -195,14 +239,32 @@ func loadConfig(start string) (settings, []configFileInfo, error) {
 		}
 		files[i].Found = found
 		if found {
-			s.apply(l)
+			layers = append(layers, l)
 		}
+	}
+	return layers, files, nil
+}
+
+// loadConfig reads the configuration files for the start directory start and returns the
+// settings of a command from the defaults and the files, and the files it looked for. env and
+// flags are applied on top with apply. The connection is not part of it (see loadConnection).
+func loadConfig(start string) (settings, []configFileInfo, error) {
+	s := settings{}
+	for k, v := range configDefaults {
+		s[k] = setting{Value: v, Source: source{Kind: sourceDefault}}
+	}
+	layers, files, err := readLayers(start)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, l := range layers {
+		s.apply(l)
 	}
 	return s, files, nil
 }
 
-// readConfigFile reads one file into a layer. A missing file is no error. Paths are resolved
-// against root.
+// readConfigFile reads one file into a layer. A missing file is no error (found is false). Paths
+// are resolved against root.
 func readConfigFile(path, root string, src source) (layer, bool, error) {
 	b, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -211,20 +273,26 @@ func readConfigFile(path, root string, src source) (layer, bool, error) {
 	if err != nil {
 		return layer{}, false, usagef("configuration file %s: %v", path, err)
 	}
+	l, err := parseConfig(b, path, root, src)
+	return l, err == nil, err
+}
+
+// parseConfig checks the content b of the file path and returns its layer.
+func parseConfig(b []byte, path, root string, src source) (layer, error) {
 	var doc yaml.Node
 	if err := yaml.Unmarshal(b, &doc); err != nil {
-		return layer{}, false, usagef("configuration file %s: %s", path, strings.TrimPrefix(err.Error(), "yaml: "))
+		return layer{}, usagef("configuration file %s: %s", path, strings.TrimPrefix(err.Error(), "yaml: "))
 	}
 	l := layer{src: src, values: map[string]any{}}
 	if len(doc.Content) > 0 { // an empty file or one with comments only has no content
 		if err := walkConfig(doc.Content[0], reflect.TypeOf(fileConfig{}), "", root, l.values); err != nil {
-			return layer{}, false, usagef("configuration file %s, %v", path, err)
+			return layer{}, usagef("configuration file %s, %v", path, err)
 		}
 	}
 	if err := l.check(); err != nil {
-		return layer{}, false, usagef("configuration file %s: %v", path, err)
+		return layer{}, usagef("configuration file %s: %v", path, err)
 	}
-	return l, true, nil
+	return l, nil
 }
 
 // walkConfig checks the mapping n against the schema t and puts the values it sets into out,
@@ -249,6 +317,10 @@ func walkConfig(n *yaml.Node, t reflect.Type, prefix, root string, out map[strin
 			return fmt.Errorf("line %d: unknown key %s", k.Line, key)
 		}
 		switch f.Type.Kind() {
+		case reflect.Map:
+			if err := walkProfiles(v, f.Type.Elem(), key, root, where, out); err != nil {
+				return err
+			}
 		case reflect.Struct:
 			if err := walkConfig(v, f.Type, key+".", root, out); err != nil {
 				return err
@@ -288,6 +360,32 @@ func walkConfig(n *yaml.Node, t reflect.Type, prefix, root string, out map[strin
 	return nil
 }
 
+// profileName is the form of the name of a hub profile. It also names the certificate file of
+// the profile, so it has no dot and no separator.
+var profileName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
+
+// walkProfiles checks the mapping n of named entries against the schema t. A name is a free
+// key. out gets the marker prefix.<name> = true for each entry and the values as prefix.<name>.<field>.
+func walkProfiles(n *yaml.Node, t reflect.Type, prefix, root, where string, out map[string]any) error {
+	if n.Kind == yaml.ScalarNode && n.Tag == "!!null" {
+		return nil
+	}
+	if n.Kind != yaml.MappingNode {
+		return fmt.Errorf("%s: want a mapping of names", where)
+	}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		k, v := n.Content[i], n.Content[i+1]
+		if !profileName.MatchString(k.Value) {
+			return fmt.Errorf("line %d, key %s.%s: a name has letters, digits, \"-\" and \"_\" (at most 64, not starting with a dash or underscore)", k.Line, prefix, k.Value)
+		}
+		out[prefix+"."+k.Value] = true
+		if err := walkConfig(v, t, prefix+"."+k.Value+".", root, out); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // schemaField returns the field of the struct t with the YAML name name.
 func schemaField(t reflect.Type, name string) (reflect.StructField, bool) {
 	for i := 0; i < t.NumField(); i++ {
@@ -300,9 +398,12 @@ func schemaField(t reflect.Type, name string) (reflect.StructField, bool) {
 
 var envName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-// check checks the values of one file: their form, the alternatives, and that the keys of
+// check checks the values of one file: their form, the connection, the alternatives, and that the keys of
 // agent.wake fit the strategy of the same file.
 func (l layer) check() error {
+	if err := l.checkConnection(); err != nil {
+		return err
+	}
 	for _, g := range alternatives {
 		var set []string
 		for _, k := range g {
@@ -345,6 +446,9 @@ func (l layer) check() error {
 // its group.
 func (s settings) apply(l layer) {
 	for k, v := range l.values {
+		if isConnectionKey(k) {
+			continue
+		}
 		for _, g := range alternatives {
 			if contains(g, k) {
 				for _, other := range g {

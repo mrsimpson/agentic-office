@@ -56,14 +56,11 @@ func ConfigFromEnv() Config {
 	if c.Hub == "" {
 		c.Hub = DefaultHub
 	}
-	cfgDir := ClientConfigDir()
 	if c.CACert == "" {
-		if p := filepath.Join(cfgDir, "hub.crt"); fileExists(p) {
-			c.CACert = p
-		}
+		c.CACert = DefaultCACert()
 	}
 	if c.KeyFile == "" {
-		c.KeyFile = filepath.Join(cfgDir, "key.pem")
+		c.KeyFile = DefaultKeyFile()
 	}
 	if c.RuntimeDir == "" {
 		if d := os.Getenv("XDG_RUNTIME_DIR"); d != "" {
@@ -91,6 +88,18 @@ func ClientConfigDir() string {
 	}
 	return filepath.Join(d, "agentic-office", "client")
 }
+
+// DefaultCACert is <config dir>/agentic-office/client/hub.crt if that file exists, else "" (the
+// system roots).
+func DefaultCACert() string {
+	if p := filepath.Join(ClientConfigDir(), "hub.crt"); fileExists(p) {
+		return p
+	}
+	return ""
+}
+
+// DefaultKeyFile is <config dir>/agentic-office/client/key.pem.
+func DefaultKeyFile() string { return filepath.Join(ClientConfigDir(), "key.pem") }
 
 func fileExists(p string) bool {
 	_, err := os.Stat(p)

@@ -104,6 +104,9 @@ func init() {
 		"mcp":                       cmdMCP,
 		"agent run":                 cmdAgentRun,
 		"config show":               cmdConfigShow,
+		"hub add":                   cmdHubAdd,
+		"hub list":                  cmdHubList,
+		"hub remove":                cmdHubRemove,
 		"admin link":                cmdAdminLink,
 		"document create":           cmdDocumentCreate,
 		"document change":           cmdDocumentChange,
@@ -169,10 +172,17 @@ func RunContext(ctx context.Context, args []string, stdin io.Reader, stdout, std
 	fs.SetOutput(io.Discard)
 	fs.BoolVar(&e.json, "json", e.json, "print one JSON object on stdout")
 	fs.StringVar(&e.session, "session", e.session, "session ID")
-	fs.StringVar(&e.cfg.Hub, "hub", e.cfg.Hub, "office hub URL")
-	fs.StringVar(&e.cfg.CACert, "ca-cert", e.cfg.CACert, "server certificate to trust (PEM)")
-	fs.StringVar(&e.cfg.Tenant, "tenant", e.cfg.Tenant, "tenant to work in")
-	fs.StringVar(&e.cfg.KeyFile, "key", e.cfg.KeyFile, "private key file")
+	// The flags of the connection are read after parsing, with the files and the environment
+	// (resolveConnection). An empty value is a value: --tenant "" means no tenant.
+	for _, f := range []struct{ name, usage string }{
+		{"hub", "office hub URL (env OFFICE_HUB)"},
+		{"ca-cert", "server certificate to trust, PEM (env OFFICE_CA_CERT)"},
+		{"tenant", "tenant to work in (env OFFICE_TENANT)"},
+		{"key", "private key file (env OFFICE_KEY)"},
+		{"hub-profile", "hub profile to use (env OFFICE_HUB_PROFILE)"},
+	} {
+		fs.String(f.name, "", f.usage)
+	}
 	fs.StringVar(&e.cfg.RuntimeDir, "runtime-dir", e.cfg.RuntimeDir, "directory for local logs and state")
 	runCmd := commandTable[name](e, fs)
 	pos, err := parseInterspersed(fs, rest)
@@ -185,7 +195,36 @@ func RunContext(ctx context.Context, args []string, stdin io.Reader, stdout, std
 	if err != nil {
 		return e.fail(usagef("%v", err))
 	}
+	if !ownsConnection[name] {
+		start, err := os.Getwd()
+		if err != nil {
+			return e.fail(err)
+		}
+		c, _, err := loadConnection(start, visitedFlags(fs, connectionFlagNames))
+		if err != nil {
+			return e.fail(err)
+		}
+		e.cfg = c.Config(e.cfg)
+	}
 	return e.fail(runCmd(pos))
+}
+
+// ownsConnection are the commands that resolve the connection themselves, because they show or
+// change the files that it comes from.
+var ownsConnection = map[string]bool{"config show": true, "hub add": true, "hub list": true, "hub remove": true}
+
+// connectionFlagNames are the flags of the connection, in the order of connectionFlags.
+var connectionFlagNames = []string{"hub", "ca-cert", "tenant", "key", "hub-profile"}
+
+// visitedFlags returns the values of the flags in names that were given.
+func visitedFlags(fs *flag.FlagSet, names []string) map[string]string {
+	out := map[string]string{}
+	fs.Visit(func(f *flag.Flag) {
+		if contains(names, f.Name) {
+			out[f.Name] = f.Value.String()
+		}
+	})
+	return out
 }
 
 // parseInterspersed parses flags that may come before, between or after positional arguments.

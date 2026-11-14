@@ -4,7 +4,8 @@
 // Conventions:
 //
 //   - Flags may come before or after the positional arguments. Every command takes the common
-//     flags --json, --session, --hub, --ca-cert, --key and --runtime-dir.
+//     flags --json, --session, --hub, --hub-profile, --ca-cert, --tenant, --key and
+//     --runtime-dir.
 //   - With --json, stdout carries exactly one JSON object, also on failure (ErrorJSON). Events
 //     have the form of their line in the local log.
 //   - Exit codes: ExitOK, ExitError and ExitUsage.
@@ -113,9 +114,19 @@ Agent runner (keeps an agent in the meeting over the Agent Client Protocol; see 
                                      back to turn-end
       every option can also come from a configuration file (keys agent.* and agent.wake.*)
 
+Hubs (named hub profiles in config.yaml; see README.md):
+  hub add <name> <url> [--fingerprint F] [--default] [--tenant T] [--key FILE]
+                                     read the certificate of the hub, show its SHA-256 fingerprint,
+                                     ask for confirmation (or compare with --fingerprint), store the
+                                     certificate and write the profile to the user file; a
+                                     certificate from a public authority is not stored
+  hub list                           the profiles of the files; the active one has a star
+  hub remove <name>                  remove the profile from the user file, with its certificate
+
 Configuration (config.yaml in the configuration folder, overridden by .office/config.yaml in
 the current directory, then by environment variables, then by flags; see README.md):
-  config show                        the effective settings of the files and where each comes from
+  config show                        the effective settings of the files and where each comes from,
+                                     with the active hub profile
 
 Other:
   version                            print the version
@@ -124,10 +135,11 @@ Other:
 Flags of every command:
   --json            print one JSON object on stdout (env OFFICE_JSON=1)
   --session S       the session; default: the only session joined from this machine (env OFFICE_SESSION)
-  --hub URL         office hub (env OFFICE_HUB, default https://127.0.0.1:8740)
-  --ca-cert FILE    trust this server certificate (env OFFICE_CA_CERT)
-  --tenant ID       tenant to work in (env OFFICE_TENANT)
-  --key FILE        private key of this actor (env OFFICE_KEY)
+  --hub-profile P   use the hub profile P (env OFFICE_HUB_PROFILE, key hub-profile)
+  --hub URL         office hub (env OFFICE_HUB, key hub, default https://127.0.0.1:8740)
+  --ca-cert FILE    trust this server certificate (env OFFICE_CA_CERT, key ca-cert)
+  --tenant ID       tenant to work in (env OFFICE_TENANT, key tenant)
+  --key FILE        private key of this actor (env OFFICE_KEY, key key)
   --runtime-dir D   directory for local logs and state (env OFFICE_RUNTIME_DIR)
 
 Exit codes: 0 success, 1 error, 2 usage error. See README.md for the --json format.

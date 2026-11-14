@@ -1036,6 +1036,40 @@ addresses: qg-usability, qg-confidentiality
 :::
 ```
 
+## The client keeps named hub profiles and learns a hub certificate by its fingerprint
+
+**Context:** A participant can work with several hubs, each with its own address, tenant and
+certificate. Until now the client took the hub and the tenant only from options and environment
+variables, and the participant had to copy the certificate of a self-signed hub by hand. That is
+easy to get wrong and hard to share. **Decision:** The configuration files (`dec-client-config-file`)
+also hold the connection to a hub: single settings (hub address, tenant, certificate, private key
+path) and named hub profiles with the same four values. A participant chooses a profile in a file,
+by an environment variable or by an option; the order of the sources stays as before, and a single
+setting of the same or a higher source overrides the value of a profile. A client command adds a
+profile: it reads the certificate that the hub presents, shows its SHA-256 fingerprint, and stores
+the certificate only after the participant has confirmed the fingerprint (or passed the expected
+fingerprint to the command). The participant compares it with the fingerprint in the log of the
+hub. A hub with a certificate from a trusted authority needs no stored certificate. Other commands
+list and remove profiles. **Consequences:** A new participant sets up a hub with one command and
+one comparison of a fingerprint. One client works with several hubs without shell profile lines.
+The trust in a self-signed hub rests on the participant's comparison of the fingerprint, as with
+the first SSH connection to a host. The decision extends `dec-client-config-file`; it adds no
+dependency between building blocks. **Rejected:** a profile that holds the certificate itself
+(a certificate is large and changes with each renewal; a file next to the profile is easy to
+replace); trusting the certificate at first use without a comparison (a person in the middle
+would go unnoticed); a separate file for the profiles (a second place to look, and the project
+file could not choose a profile).
+
+```arc42
+:::decision
+id: dec-hub-profiles
+title: The client keeps named hub profiles and learns a hub certificate by its fingerprint
+status: proposed
+date: 2026-11-14
+addresses: qg-usability, qg-confidentiality
+:::
+```
+
 ## Multi-tenancy in one hub
 
 **Context:** The hub has one archive repository, one signing key and one list of participants,

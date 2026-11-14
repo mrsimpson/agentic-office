@@ -9,10 +9,12 @@ import (
 )
 
 // cmdConfigShow prints the effective configuration of the files, the defaults and the
-// environment, with the source of each value: office config show [--json]. Flags of a command
-// are not part of it; they override what it shows. A key is never shown, only whether the
-// variable that agent.wake.key-env names is set.
-func cmdConfigShow(e *env, _ *flag.FlagSet) func([]string) error {
+// environment, with the source of each value: office config show [--json]. This includes the
+// connection (hub, tenant, certificate, key and the active hub profile) with the flags of the
+// connection, such as --hub-profile. The flags of the other settings are not part of it; they
+// override what it shows. A key is never shown, only whether the variable that
+// agent.wake.key-env names is set.
+func cmdConfigShow(e *env, fs *flag.FlagSet) func([]string) error {
 	return func(args []string) error {
 		if err := noArgs(args); err != nil {
 			return err
@@ -25,6 +27,14 @@ func cmdConfigShow(e *env, _ *flag.FlagSet) func([]string) error {
 		if err != nil {
 			return err
 		}
+		conn, _, err := loadConnection(start, visitedFlags(fs, connectionFlagNames))
+		if err != nil {
+			return err
+		}
+		for k, v := range conn.Settings {
+			s[k] = v
+		}
+		profile := conn.Settings.str(keyHubProfile)
 		if v := os.Getenv(EnvSession); v != "" {
 			s.apply(layer{src: source{Kind: sourceEnv, From: EnvSession}, values: map[string]any{keySession: v}})
 		}
@@ -40,9 +50,13 @@ func cmdConfigShow(e *env, _ *flag.FlagSet) func([]string) error {
 			}
 			out := struct {
 				Files    []configFileInfo `json:"files"`
+				Profile  *string          `json:"profile"`
 				Settings []entry          `json:"settings"`
 				KeySet   bool             `json:"keySet"`
 			}{Files: files, Settings: []entry{}, KeySet: keySet}
+			if profile != "" {
+				out.Profile = &profile
+			}
 			for _, k := range s.keys() {
 				out.Settings = append(out.Settings, entry{Key: k, Value: configValue(s[k].Value), Unused: contains(unused, k), source: s[k].Source})
 			}
@@ -55,6 +69,11 @@ func cmdConfigShow(e *env, _ *flag.FlagSet) func([]string) error {
 				state = "read"
 			}
 			fmt.Fprintf(e.stdout, "%s file: %s (%s)\n", f.Kind, f.Path, state)
+		}
+		if profile != "" {
+			fmt.Fprintf(e.stdout, "hub profile: %s (%s)\n", profile, s[keyHubProfile].Source)
+		} else {
+			fmt.Fprintln(e.stdout, "hub profile: none")
 		}
 		fmt.Fprintln(e.stdout)
 		w := tabwriter.NewWriter(e.stdout, 0, 4, 2, ' ', 0)

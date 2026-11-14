@@ -157,15 +157,19 @@ docker run -d --name office-hub --restart unless-stopped -p 8740:8740 -v office-
 docker cp office-hub:/data/tls.crt hub.crt
 ```
 
-The last command copies the certificate for the participants. `--restart unless-stopped` starts
+The last command copies the certificate; the participants usually do not need the file (see below). `--restart unless-stopped` starts
 the hub again after a restart of the server. When you pass flags to the image, pass all of them,
 as in the example.
 
-### Give the participants the certificate
+### Give the participants the fingerprint
 
-With the self-signed certificate, each participant needs the file `tls.crt` of the hub. Send it
-to them, for example in your team chat; it holds no secret. With a certificate from a public CA,
-they need nothing.
+With the self-signed certificate, each participant checks it once with `office hub add` (see
+[Set up once](#set-up-once)). Send them the address of the hub, the tenant and the SHA-256
+fingerprint from the log of the hub (`docker logs office-hub` or the output of the hub). They
+compare it with the one that `office hub add` shows. They need no file. With a certificate from a
+public CA, they need nothing but the address. If a participant has no way to reach the hub when
+setting up, send the file `tls.crt` instead; it holds no secret. They store it as the `ca-cert` of
+a profile.
 
 ### Create a tenant and register the participants
 
@@ -210,37 +214,68 @@ ended`, run `office admin link` again. Only system admins get a link.
 1. Get the client (see [Get the software](#1-get-the-software)). To speak, you also need a
    program that records the microphone: `ffmpeg` on macOS (`brew install ffmpeg`), `parec` on
    Linux (package `pulseaudio-utils`).
-2. Tell the client where the hub is, for example in your `~/.zshrc` or `~/.bashrc`:
+2. Add the hub as a **hub profile**. A profile has a name, the address of the hub, your tenant and
+   the certificate of the hub. Ask your admin for the address, the tenant and the fingerprint of the
+   certificate (the hub logs it at its start):
 
    ```sh
-   export OFFICE_HUB=https://hub.example.org:8740
+   office hub add main https://hub.example.org:8740 --tenant acme --default
    ```
 
-3. Put the certificate of the hub where the client looks for it:
+   The command connects to the hub and shows the **SHA-256 fingerprint** of its certificate.
+   Compare it with the fingerprint from your admin or from the log of the hub. Only if they are
+   the same, answer `y`. The client then stores the certificate and writes the profile to
+   `config.yaml` in your configuration folder (`$CFG/client` below). `--default` makes it the
+   profile that the client uses when you name none. In a script, pass the fingerprint instead of
+   answering: `--fingerprint <sha256>`. A hub with a certificate from a public certificate
+   authority needs no stored certificate and no question.
 
-   ```sh
-   CFG="$([ "$(uname)" = Darwin ] && echo "$HOME/Library/Application Support" || echo "${XDG_CONFIG_HOME:-$HOME/.config}")/agentic-office"
-   mkdir -p "$CFG/client"
-   cp hub.crt "$CFG/client/hub.crt"
-   ```
-
-4. Create your key and send the public key to your admin:
+3. Create your key and send the public key to your admin:
 
    ```sh
    office key create
    ```
 
-5. Tell the client which tenant you work in, for example in your `~/.zshrc` or `~/.bashrc`. If you
-   are a member of several tenants, choose per command with `--tenant`:
-
-   ```sh
-   export OFFICE_TENANT=acme
-   ```
-
-6. After the admin has registered you and added you to the tenant, check it: `office whoami` prints
+4. After the admin has registered you and added you to the tenant, check it: `office whoami` prints
    your participant ID.
 
-Your private key stays in `$CFG/client/key.pem`. It never leaves your computer.
+Your private key stays in `$CFG/client/key.pem`. It never leaves your computer. `$CFG` is the
+folder of the client on your computer:
+
+```sh
+CFG="$([ "$(uname)" = Darwin ] && echo "$HOME/Library/Application Support" || echo "${XDG_CONFIG_HOME:-$HOME/.config}")/agentic-office"
+```
+
+### Work with several hubs
+
+Add one profile per hub, with its own tenant:
+
+```sh
+office hub add lab https://lab.example.org:8740 --tenant research
+office hub list                      # the profiles; the active one has a star
+```
+
+Choose the hub for one command with `--hub-profile`, or for a shell with a variable:
+
+```sh
+office whoami --hub-profile lab
+export OFFICE_HUB_PROFILE=lab        # every command in this shell uses the hub "lab"
+```
+
+A project can choose its hub too. Put the name into `.office/config.yaml` in the folder where you
+start the commands, and check the file in:
+
+```yaml
+hub-profile: lab
+```
+
+The order is: the default profile in your `config.yaml`, then the project file, then
+`OFFICE_HUB_PROFILE`, then `--hub-profile`; the last one wins. `--hub`, `--tenant`, `--ca-cert`
+and `--key` still override single values of the profile, for example `--tenant other` if you are a
+member of several tenants. `office config show` shows the active profile and where each value
+comes from. `office hub remove lab` removes a profile and its stored certificate. Profiles never
+hold a secret; the private key stays a file. A profile can name another key file with `key:` in
+`config.yaml`. See the README for all keys ("Configuration files", "Hub profiles").
 
 ### The speech models
 
@@ -373,7 +408,7 @@ it in plain words. Each agent needs:
 - its **own participant ID and key**, so that everyone sees who said or recorded what;
 - its **own folder**, where its tool keeps its work and settings;
 - the **hub and its certificate**, as for a human (see [Set up once](#set-up-once)). On the
-  computer of a human participant, the agent uses the same `OFFICE_HUB` and the same certificate.
+  computer of a human participant, the agent uses the same hub profile.
 
 ### Create and register the keys
 
@@ -705,10 +740,10 @@ agent's folder. In a configuration file, write absolute paths: no `~` and no `$H
 
 ```sh
 # Claude Code
-claude mcp add office -e OFFICE_KEY="$CFG/agents/claude/key.pem" -e OFFICE_HUB="$OFFICE_HUB" \
+claude mcp add office -e OFFICE_KEY="$CFG/agents/claude/key.pem" -e OFFICE_HUB_PROFILE=main \
   -- "$(command -v office)" mcp --session weekly
 # opencode (writes opencode.json in the folder)
-opencode mcp add office --env OFFICE_KEY="$CFG/agents/opencode/key.pem" --env OFFICE_HUB="$OFFICE_HUB" \
+opencode mcp add office --env OFFICE_KEY="$CFG/agents/opencode/key.pem" --env OFFICE_HUB_PROFILE=main \
   -- "$(command -v office)" mcp --session weekly
 # Kiro
 mkdir -p .kiro/settings
@@ -718,7 +753,7 @@ cat > .kiro/settings/mcp.json <<EOF
     "office": {
       "command": "$(command -v office)",
       "args": ["mcp", "--session", "weekly"],
-      "env": { "OFFICE_KEY": "$CFG/agents/kiro/key.pem", "OFFICE_HUB": "$OFFICE_HUB" },
+      "env": { "OFFICE_KEY": "$CFG/agents/kiro/key.pem", "OFFICE_HUB_PROFILE": "main" },
       "autoApprove": ["meeting_events", "meeting_log", "whoami"]
     }
   }
@@ -790,8 +825,9 @@ scripts/try-local.sh tail bot                        # what the agent reads; sto
 
 - `scripts/try-local.sh add grace human` adds a participant.
 - `scripts/try-local.sh register me <public key> human` registers a client on your computer. That
-  client then joins this hub with `OFFICE_HUB=https://localhost:8740` and the certificate in
-  `office-trial/hub.crt`. This is how you try your headset (see [Join a meeting](#3-join-a-meeting)).
+  client then joins this hub: run `office hub add trial https://localhost:8740 --default` and
+  compare the fingerprint with the log of the hub container (the script also leaves the
+  certificate in `office-trial/hub.crt`). This is how you try your headset (see [Join a meeting](#3-join-a-meeting)).
 - `scripts/try-local.sh down` removes everything again.
 
 | Variable | Default | Meaning |
@@ -805,8 +841,11 @@ scripts/try-local.sh tail bot                        # what the agent reads; sto
 
 | Problem | What to do |
 |---|---|
-| `certificate signed by unknown authority` or `certificate is not standards compliant` | The client lacks the certificate of the hub. Copy `tls.crt` to `$CFG/client/hub.crt` (on macOS `~/Library/Application Support/agentic-office/client/hub.crt`), or set `OFFICE_CA_CERT`. |
-| `certificate is valid for …, not …` or `cannot validate certificate for …` | The name or address in `OFFICE_HUB` is not in the certificate. Delete `tls.crt` and `tls.key` in the data directory of the hub and start it with this name in `-tls-hosts`. Then give the participants the new `tls.crt`. |
+| `certificate signed by unknown authority` or `certificate is not standards compliant` | The client lacks the certificate of the hub. Run `office hub add <name> <url>` and compare the fingerprint with the log of the hub. Check with `office config show` that the hub profile you expect is active and has a `ca-cert`. |
+| `certificate is valid for …, not …` or `cannot validate certificate for …` | The name or address of the hub (the `hub` of the profile) is not in the certificate. Delete `tls.crt` and `tls.key` in the data directory of the hub and start it with this name in `-tls-hosts`. Then give the participants the new fingerprint and let them run `office hub add` again with the same profile name; it replaces the old certificate. |
+| `hub profile "…" … is not defined` | The profile named by `--hub-profile`, `OFFICE_HUB_PROFILE` or `hub-profile` in a file does not exist. The message lists the known profiles; `office hub list` shows them too. Add it with `office hub add`. |
+| The command reaches the wrong hub or tenant | `office config show` prints the active profile and the source of each value. A `hub`, `tenant` or `OFFICE_*` variable from a higher source overrides the profile, and a `.office/config.yaml` in the current folder can choose another profile. |
+| `office hub add` says the fingerprint does not match | The hub presents another certificate than you expect. Do not continue until you know why: you may reach another hub, or someone sits between you and the hub. Compare with the fingerprint in the log of the hub. |
 | `public key is not registered: ask an admin to register SHA256:…` | Send your public key to your admin (`office key show` prints it). Check with `office whoami`. |
 | `Admin link not valid` or `Session ended` in the admin view | The link works once and for a few minutes, and the page for one hour. Run `office admin link` again. Only system admins get a link (`permission_denied` otherwise). |
 | `the document has changed since you read it` (`aborted`) | Someone changed the document first. Read it again with `office document get` and redo your change with the new version in `--base`. |
