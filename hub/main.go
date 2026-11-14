@@ -59,6 +59,7 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/archive"
 	"github.com/mrsimpson/agentic-office/hub/archive/api/archivev1connect"
 	"github.com/mrsimpson/agentic-office/hub/documents/api/documentv1connect"
+	"github.com/mrsimpson/agentic-office/hub/health"
 	"github.com/mrsimpson/agentic-office/hub/identity"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/identityv1connect"
@@ -217,6 +218,8 @@ func main() {
 	archivev1connect.RegisterArchiveReadServiceHandler(cs, archiveReadMux{rts})
 	mux := http.NewServeMux()
 	connecthttp.Mount(mux, cs)
+	// The health check needs no token and reads no state, so a container probe can use it.
+	mux.Handle("GET "+health.Path, health.Handler())
 	// The admin view asks the identity part in-process, with the token of the admin.
 	mux.Handle(adminweb.PathPrefix, admin.New(admin.Options{Identity: connectinprocess.New(cs)}))
 	// The stage subscribes in-process through the token check, with the token of the link.

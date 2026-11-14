@@ -161,6 +161,11 @@ The last command copies the certificate for the participants. `--restart unless-
 the hub again after a restart of the server. When you pass flags to the image, pass all of them,
 as in the example.
 
+**Health check.** For a container platform (Kubernetes, a load balancer), the hub answers
+`GET /healthz` with `200` and `ok` on its TLS port. It needs no login and reads no data. The
+platform has to accept the self-signed certificate: the Kubernetes probe `httpGet` with
+`scheme: HTTPS` does.
+
 ### Give the participants the certificate
 
 With the self-signed certificate, each participant needs the file `tls.crt` of the hub. Send it
