@@ -7,7 +7,7 @@ package contract
 //
 // A session of another schema is prepared in the archive of a stopped hub: the test signs the
 // stored tree head again with the signing key file of the hub, but with another schema. The
-// archive layout and the tree head file are part of the contract (README, Archive).
+// archive layout and the tree head file are part of the contract (package session).
 
 import (
 	"bytes"

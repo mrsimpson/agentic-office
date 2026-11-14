@@ -157,7 +157,7 @@ func mcpJoined(t *testing.T, v map[string]any) (logPath, pid string, replicatorP
 	return logPath, pid, int(f)
 }
 
-// The tools of if-mcp. Names use "_" instead of "." (see README.md).
+// The tools of if-mcp. Names use "_" instead of "." (see package tools).
 var mcpTools = []string{"meeting_join", "meeting_log", "meeting_leave", "meeting_pause", "meeting_resume", "meeting_end",
 	"utterance_say", "utterance_off_the_record", "signal_turn_end", "signal_silence_long", "signal_addressed", "hand_raise",
 	"minutes_update", "stage_focus", "stage_link", "slides_render", "slides_get", "document_create", "document_change", "document_get", "document_list", "decision_record", "decision_list", "minutes_get", "minutes_list", "note_add", "note_list",

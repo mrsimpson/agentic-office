@@ -879,7 +879,7 @@ addresses: qg-usability, risk-imported-conversation
 should not change with every new tool. **Decision:** The first import format is our own: one JSON
 document per conversation with its title, its source, its participants and its utterances in
 order. The client core reads it and sends the conversation to the hub in pages, so the CLI and the
-MCP server accept the same format. The README of the client documents the format with an example.
+MCP server accept the same format. The help of the client ("office help import-format") documents the format with an example.
 Adapters for other formats, for example chat exports or WebVTT transcripts of meeting tools, are
 later work in the client and translate into the same pages. **Consequences:** The hub knows only
 the import interface, not the formats of other tools. An agent can write a conversation as one

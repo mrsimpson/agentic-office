@@ -14,7 +14,7 @@ Plan about 30 minutes. You need a second person or a second terminal to watch th
   PipeWire), `arecord` (`alsa-utils`) or `rec` (`sox`). On macOS: `rec` (SoX) or `ffmpeg`.
 - Go, make, git, a C/C++ compiler and cmake (see "Setup" in the README).
 - Access to an office hub, and a registered key for the laptop user. An admin registers it
-  (see "First start" in the README).
+  (see "Create a tenant and register the participants" in the user guide).
 - A second participant who follows the log: another person, or a second terminal on the same
   laptop with its own key (for example an agent key called `observer`).
 

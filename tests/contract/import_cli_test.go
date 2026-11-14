@@ -14,7 +14,7 @@ import (
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
-// conversationJSON is a conversation in the import format, as in README.md.
+// conversationJSON is a conversation in the import format, as in "office help import-format".
 const conversationJSON = `{
   "source": "Slack #design, exported 2026-11-06",
   "title": "Design review",

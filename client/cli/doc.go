@@ -10,5 +10,5 @@
 // "office meeting view" is the gateway view (dec-gateway-cli). The ears (client/ears) plug in
 // through CheckEars and StartEars, which the wiring in client/ sets; "join --mic" or "--wav" runs them with
 // the gateway view. Without them, --mic and --wav fail with the code unimplemented. "office mcp"
-// runs the MCP server (client/mcp) on stdin and stdout. README.md has the user documentation.
+// runs the MCP server (client/mcp) on stdin and stdout. "office help" and USER_GUIDE.md have the user documentation.
 package cli
