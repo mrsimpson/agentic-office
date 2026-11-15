@@ -68,8 +68,11 @@ Guidance for agents working in this repository.
 - Run `make arch` before you commit. It validates with `--strict`: fix all errors, warnings and
   hints, or suppress a hint with an ignore directive and a reason that you record in the evidence.
 - Keep implementation details out of the architecture: no file paths, field types, library calls
-  or lint rules. Describe responsibilities, contracts and qualities. Implementation details
-  belong in the code and its README files.
+  or lint rules, and no build, publishing or CI mechanics. Describe responsibilities, contracts
+  and qualities. Implementation details belong in the code and its README files. If a change does
+  not alter who is responsible for what, or how the parts interact, leave the architecture as it
+  is. Describe the current state only, never its history; history belongs in commit messages. The
+  skill `arc42-language` (`.claude/skills/arc42-language`) holds the rules of the arc42 tooling.
 - Do not invent facts. Mark open questions with `OPEN:`. Record where each fact comes from in
   `docs/architecture/architecture-evidence.md`.
 - We are in an early planning phase. Change decisions in place. Do not mark them as `superseded`

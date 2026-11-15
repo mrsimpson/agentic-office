@@ -1199,24 +1199,15 @@ addresses: risk-session-memory
 ## One documentation site with Starlight
 
 **Context:** The project had no public documentation. The user guide, the developer texts and the
-architecture lived in the repository only, and the address of the project site answered "not
-found". Readers should find everything at one address. **Decision:** One documentation site,
-built with **Starlight**. It has a start page, the user guide (one page per chapter), a command
-reference, the pages for developers and the architecture as a section. The site reads the existing
-Markdown files of the repository at build time, so a fact has one source and a reader of the
-repository and a reader of the site see the same text. The command reference is made from the
-help that the built programs print, so it cannot differ from them. The architecture is the output
-of the arc42 tooling, placed in the site. The build checks every link and fails on a broken one.
-Every push to the main branch that changes what the site shows publishes it at the root of the
-publishing branch. Pull requests build the site without publishing it. The review sites of pull
-requests stay in their own folders on the same branch; publishing the site never touches them, and
-the review never touches the site. **Consequences:** The docsite is documentation tooling, not a
-building block and not part of the office: it ships no code with the office, so the decision
-`dec-languages` stays as it is. It uses Node.js, which the architecture checks need already. The
-build of the command reference needs the built programs, so the build of the site needs the speech
-library too; the CI reuses the cached build of it. **Rejected:** two sites, one for the
-architecture and one for the rest (two addresses, two navigations); copies of the Markdown files
-inside the site (they drift from the originals).
+architecture lived in the repository only. Readers should find everything at one address.
+**Decision:** One documentation site, built with **Starlight**. It has a start page, the user
+guide, a command reference, the pages for developers and the architecture as a section. The site
+takes its content from the files of the repository and from the help of the programs, so a fact has
+one source and the site cannot differ from them. **Consequences:** The docsite is documentation
+tooling, not a building block and not part of the office, so the decision `dec-languages` stays as
+it is. It uses Node.js, which the architecture checks need already. **Rejected:** two sites, one
+for the architecture and one for the rest (two addresses, two navigations); copies of the Markdown
+files inside the site (they drift from the originals).
 
 ```arc42
 :::decision

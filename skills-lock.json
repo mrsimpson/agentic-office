@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "skills": {
+    "arc42-language": {
+      "source": "doctoolchain/arc42-language",
+      "sourceType": "github",
+      "skillPath": "skills/arc42-language/SKILL.md",
+      "computedHash": "0dd9dcabf26039d8a2642b44699bbdf6b24f457ddeec40997de2a7cf2326e02c",
+      "installMode": "copy"
+    }
+  }
+}
