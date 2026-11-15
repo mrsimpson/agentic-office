@@ -96,7 +96,7 @@ hosts: bb-mcp, bb-cli, bb-client-core, bb-replicator, bb-agent-runner
 One server or container that runs the hub: the meeting session, the records, the tasks, the
 slides, the stage and the archive. The archive stores sessions, decisions, minutes, notes, tasks
 and slide decks in a local Git repository on this host (`dec-yaml-git-storage`); the push to a remote
-is mocked for now. The host needs the Git command line tool. It keeps the participants and their keys (identity)
+is mocked. The host needs the Git command line tool. It keeps the participants and their keys (identity)
 permanently. The operator gives the hub its signing key for the tree heads (`dec-merkle-log`) at
 every start, at first as a key file on the command line, and creates that key with a separate
 command of the hub. The hub does not create a signing key by itself and does not start without
@@ -115,14 +115,9 @@ hosts: bb-session-service, bb-records, bb-tasks, bb-slides, bb-documents, bb-sta
 ## Documentation site
 
 The documentation of the office is one site on GitHub Pages: the user guide, the command
-reference, the pages for developers and, as a section, the architecture (`dec-docsite`). It is
-built in the CI from the files of the repository and from the help of the programs. It is
-published when the main branch changes what it shows. The site lies at the root of the publishing
-branch. The review sites of pull requests lie in their own folders on the same branch and stay
-untouched by the publishing of the site. The root of the site also serves two plain files for
-agents: an index for language models and a short setup guide that an agent follows once. The build
-fails when the guide names a command that the programs do not have, or when a link in these files
-leads nowhere. The site hosts no building block of the office.
+reference, the pages for developers and, as a section, the architecture (`dec-docsite`). It also
+serves an index and a short setup guide for agents. The review sites of pull requests are
+published beside it. The site hosts no building block of the office.
 
 ```arc42
 :::ignore H012 the documentation site hosts no building block of the office; it is documentation tooling (dec-docsite)

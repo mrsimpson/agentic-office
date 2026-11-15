@@ -59,7 +59,7 @@ standard input and output. The runner opens one ACP session per meeting and hand
 tools as an MCP server that runs with the key of the agent. **Consequences:** Every harness that
 speaks ACP can take part without code for that harness in the office. The agent keeps its
 context across the meeting in one ACP session. The agent still acts only through the office
-tools, as itself. A harness that does not speak ACP still works the old way, through MCP or the
+tools, as itself. A harness that does not speak ACP still works through MCP or the
 CLI and the log file. The runner depends on a protocol that is young and still changes.
 **Rejected:** a runner per harness (code for every product); building the agent into the office
 (`dec-headless-byoa`); MCP notifications to wake the agent (most clients do not pass them on,
@@ -108,61 +108,26 @@ addresses: con-turn-based-agents, qg-usability
 
 **Context:** The runner must deliver what was said reliably, while the agent may be busy and the
 log may grow. The harness works in turns and does not follow the session by itself, so the runner
-decides when to notify it over ACP. **Decision:** The runner has one notification strategy. A
-wake strategy, chosen by the user at the start of the runner, decides when to wake the agent:
-
-- `turn-end` (the default): at each change of speaker (`turn.end` of another participant). The
-  runner says at start that it does not notice a new topic within a monologue.
-- `llm`: a forwarding judge that the user brings decides after each utterance
-  (`dec-byo-decision-model`).
-- `decision-model`: a decision model that the user brings decides after each utterance
-  (`dec-byo-decision-model`).
-
-Each wake strategy is one exchangeable part of the runner. All other rules hold for all three:
-
-- The runner joins the session with the key of the agent and runs the log replicator in its own
-  process. The agent does not need to join; a join through the tools reuses the same participant
-  and the same local log.
-- It delivers utterances in the order of the log, from the cursor of its last delivery. It leaves
-  out the agent's own utterances and sentences off the record. A sentence that goes off the record
-  before it was delivered is never delivered. For a delivered one, the runner wakes the agent as
-  soon as it is free and tells it that the sentence is off the record.
-- With `llm` or `decision-model`, the runner checks after each utterance of another
-  participant, and once more when that participant ends the turn. One check runs at a time. Utterances that come
-  while a check runs wait; the next check judges all utterances that the agent has not got yet,
-  together. An answer about utterances that the agent got meanwhile counts no more. The runner
-  also checks while the agent works.
-- Graceful fallback: with `llm` or `decision-model`, a check that fails (an error, a time-out or
-  an answer outside the contract) does not wake the agent. The utterances wait for the next
-  change of speaker, as with `turn-end`; if that change has come already, the runner wakes the
-  agent now. After three failures within five minutes, with no answer between them, the runner
-  works as `turn-end` and logs this once. It asks the model again at most once per change of
-  speaker, at the first utterance after it, and switches back, with a log line, when the model
-  answers. The numbers are fixed; the user cannot change them.
-- When the runner wakes the agent, it sends all utterances of others since its last delivery as
-  one prompt. One prompt runs at a time. While the agent works, the runner queues what comes
-  and sends it together in one prompt afterwards. A change of speaker without new utterances of
-  others wakes nobody.
-- After `session.ended`, the runner sends what is left and a last prompt with the task of the
-  role for the end, then stops the harness. It does not leave the session, because a session
-  command would open it again (`dec-session-end-milestone`).
-- The runner answers permission requests of the harness by a rule of the user: by default it
-  allows the office tools and rejects every other tool. It offers the harness no access to its
-  file system or terminal.
-- A new runner opens a new ACP session. It starts its delivery after the join of the agent, so
-  a new runner for the same agent delivers what was said since that join.
-
-**Consequences:** Nothing is lost and nothing is sent twice within one ACP session. The agent
-gets fewer, larger prompts when it is slow. A slow model sees several utterances in one
-check instead of falling behind. A model that fails costs at most the wake-ups of `turn-end`, and
-the agent never waits longer than for the next change of speaker. The permission rule keeps an unattended agent from running
-other tools unless the user allows them. **Rejected:** cancelling a running prompt when a new
-turn comes (the agent would lose its work); one prompt per turn while busy (the agent would lag
-behind more and more); one check per utterance in parallel (answers could come out of order and
-the model would be asked more often than it can answer); waking the agent at every utterance
-without a model (too many wake-ups); waking the agent at every failed check (a broken model would
-wake it at every utterance); branches on "is a model configured" spread through the runner
-instead of one exchangeable wake strategy.
+decides when to notify it over ACP. **Decision:** The runner has one notification strategy with
+one exchangeable part, the wake strategy, which the user chooses at the start: `turn-end` (the
+default) wakes the agent at each change of speaker; `llm` and `decision-model` let a model that
+the user brings decide after each utterance (`dec-byo-decision-model`). The rest holds for all
+three. The runner joins with the key of the agent and runs the log replicator in its own process.
+It delivers utterances in the order of the log, from its last cursor, without the agent's own
+utterances and without sentences off the record. It sends everything new since the last delivery
+as one prompt, and one prompt at a time. After `session.ended` it sends what is left and a last
+prompt with the task of the role for the end, then stops the harness
+(`dec-session-end-milestone`). It answers permission requests of the harness by a rule of the
+user; by default it allows the office tools only. A failing model never wakes the agent by
+itself: the utterances wait for the next change of speaker, and after repeated failures the
+runner works as `turn-end` until the model answers again. **Consequences:** Nothing is lost and
+nothing is sent twice within one ACP session. A slow agent gets fewer, larger prompts. A failing
+model costs at most the wake-ups of `turn-end`. An unattended agent cannot run other tools unless
+the user allows them. **Rejected:** cancelling a running prompt when a new turn comes (the agent
+would lose its work); one prompt per turn while busy (the agent would lag behind more and more);
+checks in parallel (answers could come out of order); waking the agent at every utterance without
+a model (too many wake-ups); waking it at every failed check (a broken model would wake it at
+every utterance); branches on "is a model configured" instead of one exchangeable wake strategy.
 
 ```arc42
 :::decision
@@ -178,39 +143,23 @@ addresses: qg-resumability, qg-usability, risk-retraction-leak, risk-agent-wakeu
 
 **Context:** The runner checks after each utterance whether to wake the agent
 (`dec-wake-check-per-utterance`). Waking a harness with a large model for this costs time and
-money, and it is slow to decide that it is not addressed. A small model can decide this faster
-and cheaper. The hub must stay without intelligence (`con-no-intelligence`), and the office
-should not pick a model for its users. **Decision:** The user brings one of two kinds of model,
-each with its own interface:
-
-- A forwarding judge (`if-forwarding-judge`, wake strategy `llm`): a model or program to which
-  the runner forwards its question, typically a general language model that judges by a prompt.
-  It is an OpenAI-compatible chat endpoint with structured output by JSON schema (for
-  example llama.cpp, Ollama or a hosted model), or a command that reads the request as JSON and
-  writes the answer as JSON. It answers `act`, `addressed`, `topic_closed` and `reason`.
-- A decision model (`if-decision-model`, wake strategy `decision-model`): a small model made to
-  answer questions about a state with probabilities, reached through the System One API, for
-  example TypeSafe Jev or Cloudflare Clef. The runner sends the state of the meeting and asks
-  whether the agent should act and whether a block of topics has ended, each as a probability,
-  and whom the speaker addressed, as a choice among the participants and "nobody". A probability
-  at or above a threshold of the user counts as yes. There is no reason, so the runner logs the
-  probabilities.
-
-Towards the runner, both kinds hide behind one wake strategy, with the runner's own request
-and verdict; only the strategy maps them to the external contract. With either kind, the runner
-wakes the agent when it should act. When a block of topics has
-ended, it wakes the agent with the task of the role for the end of a topic, for example to update
-the minutes or to record decisions. If the model fails, the runner falls back to the change of
-speaker (`dec-agent-runner-delivery`). Without a model, the wake strategy `turn-end` wakes the
-agent at each change of speaker. **Consequences:** The office ships no model and stays free of a
-model vendor. Two contracts cover general chat models and dedicated decision models; each has its
-own request and answer. A wrong "no" of the model can keep the agent silent when it was
-addressed; the utterances stay queued and reach it with the next prompt, so nothing is lost. The
-System One API comes from one vendor, and another vendor states that it is compatible
-(`risk-decision-model-api`). **Rejected:** a model built into the office; one fixed vendor API;
-one contract for both kinds (a chat model answers with booleans and a reason, a decision model
-with probabilities); reaching a decision model through the chat endpoint of a model router (it
-does not take the structured output that the forwarding judge needs).
+money, and a small model decides faster and cheaper. The hub must stay without intelligence
+(`con-no-intelligence`), and the office should not pick a model for its users. **Decision:** The
+user brings the model, of one of two kinds, each with its own interface. A forwarding judge
+(`if-forwarding-judge`, wake strategy `llm`) is a general language model that judges by a prompt
+and says whether the agent should act, whom the speaker addressed and whether a topic has closed.
+A decision model (`if-decision-model`, wake strategy `decision-model`) is a small model made to
+answer questions about a state with probabilities; a threshold of the user turns them into yes or
+no. Towards the runner, both hide behind one wake strategy with the runner's own request and
+verdict; only the strategy maps them to the external contract. The runner wakes the agent when it
+should act, and with the task of the role when a block of topics has ended. If the model fails,
+the runner falls back to the change of speaker (`dec-agent-runner-delivery`). **Consequences:**
+The office ships no model and stays free of a model vendor. A wrong "no" can keep the agent
+silent when it was addressed; the utterances stay queued and reach it with the next prompt, so
+nothing is lost. The System One API comes from one vendor, and another vendor states that it is
+compatible (`risk-decision-model-api`). **Rejected:** a model built into the office; one fixed
+vendor API; one contract for both kinds (a chat model answers with booleans and a reason, a
+decision model with probabilities).
 
 ```arc42
 :::decision
@@ -449,7 +398,7 @@ by hand at first contact. Agents act as themselves, not on behalf of a human. Th
 with a read-only link. A participant can have several keys (several devices), and an admin can
 remove a key. **Proposed details:** challenge and response with a short-lived access token bound
 to the key. **Consequences:** No shared secrets; agents
-need only a key file. Enrollment needs a manual step for now (issue #2). **Considered:** OIDC with
+need only a key file. Enrollment needs a manual step. **Considered:** OIDC with
 an existing identity provider (standard, but heavy for a small team); mTLS with client certificates
 (strong, but certificate management and awkward in the browser); static API tokens (secret on the
 hub, no binding to a device); passkeys (good for humans in the browser, not for CLI and agents).
@@ -560,7 +509,7 @@ record afterwards. This is its own command; the hub checks that the caller is th
 mark is a new event. The interfaces then suppress the text: they deliver a placeholder with the
 same ID, the stage hides it, and it does not go into minutes, decisions or notes. Agents that already
 read it must respect the mark. The raw log keeps the original. Marking the sentences of others
-(moderation) is out of scope for the first stage (issue #31). **Consequences:** The log stays
+(moderation) is out of scope for the first stage. **Consequences:** The log stays
 complete and honest. Suppression works for every reader that uses the interfaces, but not for
 what an agent already holds in its context. The published session keeps the original and the
 mark; reading it from the archive also gives the placeholder (`dec-session-persistence`).
@@ -754,7 +703,7 @@ noticing. **Decision:** The operator gives the hub its signing key when the hub 
 as the name of a key file on the command line. The hub does not create a signing key by itself
 and does not start without one. **Consequences:** The operator controls the key and can keep it
 with other secrets. Replacing the key is a deliberate act. OPEN: how clients pin the public key
-of the hub (#41). **Rejected:** a key that the hub creates in its data directory.
+of the hub. **Rejected:** a key that the hub creates in its data directory.
 
 ```arc42
 :::decision
@@ -840,30 +789,24 @@ addresses: risk-archive-latency, qg-usability
 **Context:** Many conversations happen outside the office: in other meeting tools, in chats, or
 with an agent. The team wants minutes, decisions, notes and tasks from them, like from a session.
 The hub did not see these conversations happen, so it cannot order and sign their messages one by
-one. Nobody may mistake such a session for a live one. **Decision:** The hub has its own
-interface to import a whole conversation as a new session (`if-session-import`), in one call or in
-pages. The meeting session realizes it, so every session log keeps one writer. The first event of
-an imported session marks it as imported, with its source, its title and the participant who
-imported it; a last event marks the end of the import. The speakers of the conversation become
-imported participants with a name and a kind; their IDs are marked as imported, so they never
-match a registered participant. The utterances keep their order and, if known, the time they were
-made. Every page carries an ID created by the client (`dec-idempotent-commands`). Until the import
-is complete, the session takes only the pages of the participant who started it. After that, it is
-a session like any other: participants join, write minutes and end it, and the stream, the events
-after a cursor, the archive and the restore treat it like every other session. The end of an
-import starts a write to the archive, like the end of a session. The hub signs tree
-heads over an imported log as over every log. The signature proves who imported the log and that
-it has not changed since; it does not prove that the speakers said what it says.
-**Consequences:** Agents and humans derive records from an imported session through the existing
-interfaces, without a second path. Readers recognise an imported session by its first event. The
-new events are a new revision of the session schema (`dec-session-schema`). OPEN: nobody can mark
-an imported sentence off the record, because the speakers are not participants with a key (#50).
-OPEN: an import that stops halfway leaves an incomplete session; it cannot be continued by a new
-call of the client (#51). **Rejected:** a separate part of the hub with its own log (two writers,
-or an extra internal interface for writing many events at once); a signature per imported
-message (it would claim an order the hub never saw); ending the session with the import
-(participants could not write minutes into it any more); matching imported speakers to registered
-participants by name (the hub cannot check it).
+one, and nobody may mistake such a session for a live one. **Decision:** The hub has its own
+interface to import a whole conversation as a new session (`if-session-import`). The meeting
+session realizes it, so every session log keeps one writer. The first event marks the session as
+imported, with its source and the participant who imported it. The speakers become imported
+participants that never match a registered participant. Until the import is complete, only the
+participant who started it may add to it. After that, it is a session like any other: participants
+join, write minutes and end it, and the stream, the archive and the restore treat it like every
+other session. The signed tree heads prove who imported the log and that it has not changed
+since; they do not prove that the speakers said what it says. **Consequences:** Agents and humans
+derive records from an imported session through the existing interfaces, without a second path.
+Readers recognise an imported session by its first event. The new events are a new revision of
+the session schema (`dec-session-schema`). OPEN: nobody can mark an imported sentence off the
+record, because the speakers are not participants with a key. OPEN: an import that stops halfway
+leaves an incomplete session that a new call of the client cannot continue. **Rejected:** a
+separate part of the hub with its own log (two writers); a signature per imported message (it
+would claim an order the hub never saw); ending the session with the import (participants could
+not write minutes into it); matching imported speakers to registered participants by name (the
+hub cannot check it).
 
 ```arc42
 :::decision
@@ -905,25 +848,17 @@ addresses: qg-usability, con-no-intelligence
 
 **Context:** The ears need a Whisper model and a voice activity model. The client is published as
 a ready binary, so a participant has no build step that could fetch them. One model does not fit
-every meeting: a large model transcribes names and terms better, a model fine-tuned for one
-language is better still for that language, but both are too slow for live use without a GPU. A
-small model is fast on every computer, but makes more mistakes. **Decision:** The client knows a
-catalogue of speech models by name: a small multilingual model, a large multilingual model and a
-large model fine-tuned for German. The participant names the spoken language. The client takes the
-best model for that language: the German model for German, the large multilingual model for every
-other language. The participant can ask for the fast model instead. When the build of the client
-has no GPU support, the client takes the fast model by itself and says so. A participant can still
-name any model of the catalogue or a model file. When the ears start and the chosen model of the
-catalogue is missing, the client downloads it once from its public source, or from a mirror that
-the participant configures. It checks every file against a checksum that is pinned in the client
-and keeps only a matching file. Separate commands list the catalogue with what is downloaded and
-which model would be used, and download models ahead of time. A model file that the participant
-chose is never downloaded. **Consequences:** The first join with the microphone needs the network
-and takes longer; a large model is about 1.6 GB. Later joins are offline as before. Only the
-model files come in; no audio, text or identity goes out (`qg-confidentiality`). A changed or
-damaged file at the source stops the download instead of changing the transcription. A new model
-or a new version needs a new client. The client decides about the GPU from its build, not from
-the hardware; a participant with an own build can override it. OPEN: whether the large models are
+every meeting: a large model transcribes names and terms better, and a model fine-tuned for one
+language better still, but both are too slow for live use without a GPU. A small model is fast
+on every computer, but makes more mistakes. **Decision:** The client knows a catalogue of speech
+models by name and chooses by the spoken language and the wish for speed: the best model for the
+language, or the fast model on request or when the client has no GPU support. A participant can
+name any model of the catalogue or a model file. A missing model of the catalogue is downloaded
+once, from its public source or a mirror, and checked against a checksum that is pinned in the
+client. **Consequences:** The first join with the microphone needs the network and takes longer;
+later joins are offline. Only model files come in; no audio, text or identity goes out
+(`qg-confidentiality`). A changed or damaged file at the source stops the download instead of
+changing the transcription. A new model needs a new client. OPEN: whether the large models are
 fast enough for live use on the GPUs of participant laptops (minimum hardware, chapter 7).
 **Rejected:** models inside the binary (gigabytes for agents that never listen); a download
 without a checksum (the client would load whatever the source serves); one fixed model for
@@ -956,7 +891,7 @@ measured yet whether it helps. **Consequences:** A team improves the transcripti
 plain text file; no model is trained. The vocabulary and the names stay on the device like the
 audio (`concept-edge-transcription`). A wrong or very long vocabulary can make Whisper write a
 term that was not said. OPEN: the effect on the error rate is not measured; a measurement corpus
-is out of scope of the epic (#66). **Rejected:** fine-tuning a model per team (training data and
+is out of scope of the epic. **Rejected:** fine-tuning a model per team (training data and
 compute that a team does not have); correcting the text after Whisper (it cannot recover a word
 that Whisper did not hear as such).
 
@@ -972,34 +907,25 @@ addresses: qg-usability, qg-confidentiality
 
 ## A multilingual NER model in plain Go finds the names in project documents
 
-**Context:** A good vocabulary needs the names of people, organisations, places and products of
-a project (`dec-vocabulary-prompt`). They are in the project's documents, in German and English.
-Rules alone find words such as CamelCase names and acronyms, but not "Katharina Weber" or
-"Sonnenstrahl GmbH". The maintainer allows models in the client, as long as they do not generate
-text (`con-no-intelligence` applies to the hub). The client is Go, and its only native library
-is whisper.cpp (`dec-languages`). **Options:**
-
-- a pure-Go NER library: the known one (prose) has an English model only;
-- an ONNX model through the ONNX runtime: fast, with small quantised models (about 135 MB), but
-  a second native library that must be built or shipped for every platform of the client;
-- Python tools such as spaCy or Flair: good German models, but a Python runtime next to the
-  client;
-- a generative model: excluded, it writes text.
-
-**Decision:** The client uses the multilingual DistilBERT model for named-entity recognition by
-Davlan (distilbert-base-multilingual-cased-ner-hrl, licence AFL-3.0). It knows German, English and
-eight more languages, and the entity types person, organisation, place and date. The client runs
-the model with its own forward pass in plain Go. It downloads the weights (about 540 MB) on first
-use, like the speech models, with a pinned checksum (`dec-model-download`). Rules for CamelCase
-words, acronyms and words of headings add terms that the model does not know. The command ranks
-all terms and writes the vocabulary file, which the participant can edit.
+**Context:** A good vocabulary needs the names of people, organisations, places and products of a
+project (`dec-vocabulary-prompt`), in German and English. Rules alone find CamelCase names and
+acronyms, but not "Katharina Weber" or "Sonnenstrahl GmbH". Models in the client are allowed as
+long as they do not generate text (`con-no-intelligence` applies to the hub). The client is Go,
+and its only native library is whisper.cpp (`dec-languages`). **Options:** a pure-Go NER library
+(the known one has an English model only); an ONNX model through the ONNX runtime (fast, but a
+second native library for every platform of the client); Python tools such as spaCy or Flair (good
+German models, but a Python runtime next to the client); a generative model (excluded, it writes
+text). **Decision:** The client runs a multilingual DistilBERT model for named-entity recognition
+(Davlan, `distilbert-base-multilingual-cased-ner-hrl`, AFL-3.0) with its own forward pass in
+plain Go. It knows German, English and eight more languages. The client downloads the weights on
+first use with a pinned checksum, like the speech models (`dec-model-download`). Rules for
+CamelCase words, acronyms and words of headings add terms that the model does not know.
 **Consequences:** The client needs no new native library and runs the same on every platform. The
-model only labels words; it never writes text. The forward pass in Go is slow: on a shared host
-with 4 CPUs it handled about 60 to 100 words per second; 23,000 words took 4 minutes. The model
-was trained on news, so it misses many product and technical terms; the rules cover part of that. OPEN: whether the speed is good enough for large projects; the ONNX runtime is
-the faster option (#85). OPEN: the German training data (CoNLL 2003) has its own terms of use;
-the model itself is published under AFL-3.0. **Rejected:** the options above, for the reasons
-given.
+model only labels words; it never writes text. The forward pass in Go is slow on large projects,
+and the model was trained on news, so it misses many technical terms; the rules cover part of
+that. OPEN: whether the speed is good enough for large projects; the ONNX runtime is the faster
+option. OPEN: the German training data (CoNLL 2003) has its own terms of use. **Rejected:** the
+options above, for the reasons given.
 
 ```arc42
 :::decision
@@ -1020,11 +946,10 @@ options from two files in YAML (`concept-client-configuration`). The user file l
 configuration folder of the client, where the key and the certificate of the hub already are. The
 project file in the folder `.office` of the start directory overrides it key by key, like the
 vocabulary of the project. Environment variables override both files, and command-line options
-override everything. Unknown keys and wrong types are errors that name the file and the key. A
+override everything. A
 file names the environment variable of a key, never the key. **Consequences:** An agent with its
 role and its decision model starts with one short command, and a team can keep one project file
-per role in its repository. A typo in a file stops the command instead of being ignored. The
-client needs a YAML reader, which the hub already uses for its records. **Rejected:** TOML (the
+per role in its repository. A typo in a file stops the command instead of being ignored. **Rejected:** TOML (the
 maintainer chose YAML); options only on the command line (long commands, nothing to share);
 keys in the file (a checked-in file would leak them).
 
@@ -1041,26 +966,22 @@ addresses: qg-usability, qg-confidentiality
 ## The client keeps named hub profiles and learns a hub certificate by its fingerprint
 
 **Context:** A participant can work with several hubs, each with its own address, tenant and
-certificate. Until now the client took the hub and the tenant only from options and environment
-variables, and the participant had to copy the certificate of a self-signed hub by hand. That is
-easy to get wrong and hard to share. **Decision:** The configuration files (`dec-client-config-file`)
-also hold the connection to a hub: single settings (hub address, tenant, certificate, private key
-path) and named hub profiles with the same four values. A participant chooses a profile in a file,
-by an environment variable or by an option; the order of the sources stays as before, and a single
-setting of the same or a higher source overrides the value of a profile. A client command adds a
-profile: it reads the certificate that the hub presents, shows its SHA-256 fingerprint, and stores
-the certificate only after the participant has confirmed the fingerprint (or passed the expected
-fingerprint to the command). The participant compares it with the fingerprint in the log of the
-hub. A hub with a certificate from a trusted authority needs no stored certificate. Other commands
-list and remove profiles. **Consequences:** A new participant sets up a hub with one command and
-one comparison of a fingerprint. One client works with several hubs without shell profile lines.
-The trust in a self-signed hub rests on the participant's comparison of the fingerprint, as with
-the first SSH connection to a host. The decision extends `dec-client-config-file`; it adds no
-dependency between building blocks. **Rejected:** a profile that holds the certificate itself
-(a certificate is large and changes with each renewal; a file next to the profile is easy to
-replace); trusting the certificate at first use without a comparison (a person in the middle
-would go unnoticed); a separate file for the profiles (a second place to look, and the project
-file could not choose a profile).
+certificate. Copying the certificate of a self-signed hub by hand is easy to get wrong and hard
+to share. **Decision:** The configuration files (`dec-client-config-file`) also hold the
+connection to a hub: single settings (address, tenant, certificate, private key path) and named
+hub profiles with the same four values. A participant chooses a profile in a file, by an
+environment variable or by an option; a single setting of the same or a higher source overrides a
+value of the profile. A client command adds a profile: it reads the certificate that the hub
+presents, shows its fingerprint and stores the certificate only after the participant has
+confirmed the fingerprint against the log of the hub. A hub with a certificate from a trusted
+authority needs no stored certificate. **Consequences:** A new participant sets up a hub with one
+command and one comparison. One client works with several hubs. The trust in a self-signed hub
+rests on the participant's comparison, as with the first SSH connection to a host. The decision
+extends `dec-client-config-file` and adds no dependency between building blocks. **Rejected:** a
+profile that holds the certificate itself (a certificate changes with each renewal); trusting the
+certificate at first use without a comparison (a person in the middle would go unnoticed); a
+separate file for the profiles (a second place to look, and the project file could not choose a
+profile).
 
 ```arc42
 :::decision
@@ -1082,7 +1003,7 @@ registered at the hub first and then assigned to tenants. The hub keeps users, k
 system admins and the memberships with their roles in its own git repository, and only Identity
 writes there. The role per tenant is `member` or `tenant admin`; a separate system admin role runs
 the hub. Authentication stays with Ed25519 key pairs (`dec-auth-keypair`); first contact for
-further users works through an invitation (issue #2). One signing key of the hub signs the tree
+further users works through an invitation. One signing key of the hub signs the tree
 heads of all tenants. Identity checks every change and the loaded state against fixed rules (`concept-multi-tenancy`).
 **Consequences:** Every interface of the hub needs a tenant, and the archive
 needs a tenant in every call. The file of admin keys is removed. At start, the hub reads the hub
@@ -1093,7 +1014,7 @@ one tenant (advisers and agents would need several accounts); keys or membership
 (a revoked key would have to be removed in every tenant, and files in a tenant repository cannot
 be trusted for rights); OIDC (see `dec-auth-keypair`); one
 signing key per tenant (only useful when tenants distrust the operator). **Out of scope:**
-synchronisation of a repository with 0..n remotes (#43). OPEN: whether a tenant needs its own
+synchronisation of a repository with 0..n remotes. OPEN: whether a tenant needs its own
 signing key later.
 
 ```arc42
@@ -1109,33 +1030,29 @@ addresses: qg-confidentiality
 ## Artifacts: a path, a schema and a focus
 
 **Context:** Humans and agents work together in one session. They create notes, slide decks,
-documents and changes to documents. The stage shows one artifact, chosen by the type in front of
-its ID. Only slide decks work; the types so far were illustrations (`dec-records-per-type`).
-**Decision:** An artifact is a file in the git repository of the tenant. Its path is its
-identity. Two kinds of file are artifacts: text (Markdown) and data (YAML). The hub refuses
-other files. The file names its schema inside itself (in the front matter of a Markdown file, in
-a key of a YAML file), and the hub ships the schemas. A schema decides how the hub checks the
-artifact and how the stage renders it. Every type keeps its own interface, which creates and
-changes its artifacts (`dec-records-per-type`). The text document is a type too: a Markdown file
-without a schema, shown as plain text. Something that lives in another system, such as a task, is a small YAML artifact that holds the
-URL of the real thing; the hub resolves it through an API later. Every participant may create and
-change artifacts. A change always applies to the head of the repository; there are no branches or
-proposals. A change names the version that its author read, and the hub refuses it when the
-artifact has changed since. A session refers to several artifacts and exactly one has the focus. The minutes of the session
-are the first artifact and have the focus until another artifact gets it.
-Every participant may set the focus. People normally discuss the artifact in focus; the session
-log carries the discussion. The archive stores every change of an artifact in one commit. The rule
-for off the record applies when an artifact is created, not when it is shown. **Consequences:**
-The stage chooses its renderer by the schema and no longer by a fixed prefix. The session log
-needs events for created, changed and focused artifacts. Decisions, minutes, notes, slides and
+documents and changes to documents, and the stage must be able to show any of them.
+**Decision:** An artifact is a file in the git repository of the tenant, and its path is its
+identity. Text (Markdown) and data (YAML) are artifacts; the hub refuses other files. The file
+names its schema inside itself, the hub ships the schemas, and a schema decides how the hub checks
+the artifact and how the stage renders it. A text file without a schema is shown as plain text.
+Every type keeps its own interface that creates and changes its artifacts
+(`dec-records-per-type`). Something that lives in another system, such as a task, is a small YAML
+artifact that holds the URL of the real thing. Every participant may create and change artifacts
+and set the focus. A change applies to the head of the repository and names the version its
+author read; the hub refuses it when the artifact has changed since. A session refers to several
+artifacts and exactly one has the focus. The minutes are the first artifact and keep the focus
+until another artifact gets it. The archive stores every change in one commit, and the rule for
+off the record applies when an artifact is created. The archive offers an interface to read
+artifacts by path (`if-archive-read`); the stage reads through it, and only paths that the log of
+its own session names. **Consequences:** The stage chooses its renderer by the schema. The session
+log needs events for created, changed and focused artifacts. Decisions, minutes, notes, slides and
 tasks keep their interfaces and each has a schema; what they share is the path, the schema
-reference, the commit per change, the version check and the focus. The stage and the admin UI
-share one design for the artifact area. **Rejected:** schemas defined by the tenant (out of scope for now); one artifact in focus
-per participant (it breaks the shared screen); branches and proposals for changes (later, as a
-schema, if needed); files of any type (the stage cannot show them); one general write interface for all types (an agent should know what it writes). The archive offers an interface to read artifacts by path (`if-archive-read`). The stage reads an artifact
-through it and renders it by its schema, and only
-paths that the log of its own session names. OPEN: which types the hub ships first (proposal: text
-document, slides, minutes); the exact events; how the stage learns the tenant of a session (#114).
+reference, the commit per change, the version check and the focus. **Rejected:** schemas defined
+by the tenant; one artifact in focus per participant (it breaks the shared screen); branches and
+proposals for changes; files of any type (the stage cannot show them); one general write
+interface for all types (an agent should know what it writes). OPEN: which types the hub ships
+first (proposal: text document, slides, minutes); the exact events; how the stage learns the
+tenant of a session.
 
 ```arc42
 :::decision
@@ -1178,7 +1095,7 @@ addresses: qg-usability
 
 **Context:** The session log stays in memory after it is archived, and the restore loads every
 session at start. With several tenants, memory grows with the sum of all sessions
-(`risk-session-memory`, issue #113). **Decision:** A session that has ended and that nobody
+(`risk-session-memory`). **Decision:** A session that has ended and that nobody
 follows leaves memory. A later read loads it again from the archive with the same events and the
 same signed tree head. At start, the restore loads only sessions that have not ended.
 **Consequences:** A read of an old session can take as long as a read from the archive. The
@@ -1199,24 +1116,15 @@ addresses: risk-session-memory
 ## One documentation site with Starlight
 
 **Context:** The project had no public documentation. The user guide, the developer texts and the
-architecture lived in the repository only, and the address of the project site answered "not
-found". Readers should find everything at one address. **Decision:** One documentation site,
-built with **Starlight**. It has a start page, the user guide (one page per chapter), a command
-reference, the pages for developers and the architecture as a section. The site reads the existing
-Markdown files of the repository at build time, so a fact has one source and a reader of the
-repository and a reader of the site see the same text. The command reference is made from the
-help that the built programs print, so it cannot differ from them. The architecture is the output
-of the arc42 tooling, placed in the site. The build checks every link and fails on a broken one.
-Every push to the main branch that changes what the site shows publishes it at the root of the
-publishing branch. Pull requests build the site without publishing it. The review sites of pull
-requests stay in their own folders on the same branch; publishing the site never touches them, and
-the review never touches the site. **Consequences:** The docsite is documentation tooling, not a
-building block and not part of the office: it ships no code with the office, so the decision
-`dec-languages` stays as it is. It uses Node.js, which the architecture checks need already. The
-build of the command reference needs the built programs, so the build of the site needs the speech
-library too; the CI reuses the cached build of it. **Rejected:** two sites, one for the
-architecture and one for the rest (two addresses, two navigations); copies of the Markdown files
-inside the site (they drift from the originals).
+architecture lived in the repository only. Readers should find everything at one address.
+**Decision:** One documentation site, built with **Starlight**. It has a start page, the user
+guide, a command reference, the pages for developers and the architecture as a section. The site
+takes its content from the files of the repository and from the help of the programs, so a fact has
+one source and the site cannot differ from them. **Consequences:** The docsite is documentation
+tooling, not a building block and not part of the office, so the decision `dec-languages` stays as
+it is. It uses Node.js, which the architecture checks need already. **Rejected:** two sites, one
+for the architecture and one for the rest (two addresses, two navigations); copies of the Markdown
+files inside the site (they drift from the originals).
 
 ```arc42
 :::decision

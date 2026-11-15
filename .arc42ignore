@@ -23,3 +23,6 @@ version.txt
 # User documentation and scripts for trying the office locally.
 USER_GUIDE.md
 scripts
+# Agent tooling: the installed skills and their lock file.
+.claude
+skills-lock.json

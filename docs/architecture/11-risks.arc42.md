@@ -181,7 +181,7 @@ mitigation: An imported session is marked by its first event, with its source an
 The session log stays in memory after it is archived, and the restore loads every session at start.
 With several tenants, memory grows with the sum of all sessions, and one busy tenant can take the
 memory of the others. An ended session that is in the archive and that nobody reads leaves memory;
-a later read loads it from the archive (`dec-session-eviction`, issue #113). The restore at start
+a later read loads it from the archive (`dec-session-eviction`). The restore at start
 loads only the sessions that have not ended.
 
 ```arc42
@@ -189,6 +189,6 @@ loads only the sessions that have not ended.
 id: risk-session-memory
 title: Memory grows with all sessions of all tenants
 severity: medium
-mitigation: Take ended sessions that nobody follows out of memory and load them from the archive on demand; restore only open sessions at start (#113)
+mitigation: Take ended sessions that nobody follows out of memory and load them from the archive on demand; restore only open sessions at start
 :::
 ```

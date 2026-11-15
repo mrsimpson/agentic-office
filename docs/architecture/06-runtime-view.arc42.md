@@ -506,23 +506,16 @@ session with the key of the agent and follows its local log. It started the harn
 ACP session with the office tools and sent a first prompt with the role.
 
 A human talks. Each sentence reaches the local log as `utterance.final`. The wake strategy that
-the user chose decides when to wake the agent (`dec-agent-runner-delivery`). With `llm` or
-`decision-model`, the runner checks after each utterance (`dec-wake-check-per-utterance`): it
-asks the forwarding judge or the decision model whether the agent should act now, for example
-because
-the speaker addressed it, started a new topic within a monologue or talks about something that
-concerns the role of the agent (`dec-byo-decision-model`). If so, the runner collects what others said since its last
-delivery, leaves out the agent's own utterances and sentences off the record, and sends it as one
-prompt. The agent decides how to act: it answers with `utterance_say` when the speaker asked it,
-raises its hand instead of interrupting, or updates the minutes silently. Its actions reach every
-local log, also that of the runner, which leaves them out of the next prompt. If the agent is
-still busy, the runner queues what comes and sends it together afterwards. If the model is
-still busy with a check, the next check judges all new utterances together
-(`dec-agent-runner-delivery`). If a check fails, the utterances wait until the speaker ends the
-turn; after three failures within five minutes, the runner works as `turn-end` and asks the
-model again once after each change of speaker, until it answers. With `turn-end`, the runner wakes the agent only when the speaker ends the turn. When the
-session ends, the runner sends a last prompt with what is left
-and stops the harness.
+the user chose decides when to wake the agent (`dec-agent-runner-delivery`). With a model that
+the user brings, the runner asks it after each utterance whether the agent should act now, for
+example because the speaker addressed it or started a new topic (`dec-wake-check-per-utterance`,
+`dec-byo-decision-model`). With `turn-end`, or when the model fails, the runner waits until the
+speaker ends the turn. When the agent should act, the runner sends what others said since its
+last delivery as one prompt, without the agent's own utterances and sentences off the record. The
+agent decides how to act: it answers with `utterance_say` when the speaker asked it, raises its
+hand instead of interrupting, or updates the minutes silently. If the agent is still busy, the
+runner queues what comes and sends it together afterwards. When the session ends, the runner
+sends a last prompt with what is left and stops the harness.
 
 ```arc42
 :::runtime-scenario

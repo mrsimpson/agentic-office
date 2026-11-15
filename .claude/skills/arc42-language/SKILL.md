@@ -1,0 +1,70 @@
+---
+name: arc42-language
+description: Use when working on this project's architecture documentation in .arc42.md files.
+allowed-tools: Bash(arc42:*)
+---
+
+# arc42 Language
+
+The arc42 cli helps you to create and maintain machine-friendly, human readable architecture documents
+The chapter templates and the CLI guide contain the authoring rules and chapter-specific guidance;
+consult them instead of relying on remembered conventions.
+Always keep interaction with the human developer high: Architecture is all about decisions and tradeoffs
+so be sure to always align.
+
+Architecture describes how the parts of a system relate to each other and which responsibility each
+part carries so that the quality goals are achieved. If a change does not alter who is responsible
+for what, or how the parts interact, the architecture documentation stays as it is: features and
+implementation details belong in the code and product docs. The documentation describes only the
+current state, never its history; that belongs in commit messages.
+
+## Workflow
+
+1. For an existing repository, start with `arc42 guide migration` and follow its review gates.
+2. For a new workspace, create chapter files on demand as you reach each chapter — run
+   `arc42 guide chapter <number>` first to get the brief and starter template.
+3. Before authoring a chapter, run `arc42 guide chapter <number>` and read that chapter's template.
+4. Inspect the current model with `arc42 get` and use `arc42 explain <type>` when a block is needed.
+5. When authoring or debugging a diagram, run `arc42 explain diagram <type>` to see required fields,
+   allowed notations, alias syntax, and authoring tips for that diagram type.
+6. Finish with `arc42 --dir <workspace> validate` and resolve errors before continuing.
+   Warnings and hints that are intentional can be suppressed with a single-line ignore directive
+   placed inside the fenced block of the specific element you want to exempt:
+
+   ```arc42
+   :::ignore H020 Two interfaces, same entry point — intentional split contract :::
+   ```
+
+   The rule code is case-insensitive. A reason is optional but recommended. One directive suppresses
+   the next matching diagnostic for that rule at or after its position in the file — place it inside
+   the fence of the element to exempt, not at the top of the file. For full placement rules and how
+   to resolve stale-ignore warnings (WG06), run `arc42 explain ignore`.
+
+7. To attach project-specific data to a block (for example the process phase it supports), add an
+   attribute whose name starts with `x-`, such as `x-phase: explore`. `validate` accepts it on every
+   block type without `WG01`, and `arc42 get --format json` returns it as
+   `element.extensions.phase`. Values are plain strings or lists, not references. Misspelled
+   standard attributes (`parnet`) are still reported.
+
+8. Use `arc42 --dir <workspace> coverage --format tree` to see which source directories are claimed
+   by building-block or interface elements, and which are not. Uncovered paths are not errors — they
+   may be tooling, tests, or documentation that is intentionally out of model scope.
+
+The guide is read-only. Do not invent facts, silently repair contradictions, or replace human review
+with validation output.
+
+## Commands
+
+```bash
+arc42 guide migration
+arc42 guide chapter <number>
+arc42 get --dir <workspace>
+arc42 explain <type>
+arc42 explain diagram
+arc42 explain diagram <type>
+arc42 --dir <workspace> validate
+arc42 --dir <workspace> coverage --format tree
+arc42 rules
+```
+
+If `arc42` is unavailable, use `npx @doctc/arc42 ...`.
