@@ -28,6 +28,7 @@ jobs:
     outputs:
       code: ${{ steps.filter.outputs.code }}
       images: ${{ steps.filter.outputs.images }}
+      docs: ${{ steps.filter.outputs.docs }}
     steps:
       - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v4
@@ -55,6 +56,23 @@ jobs:
               - 'go.sum'
               - 'Makefile'
               - '.github/workflows/ci.yml'
+            # Everything the docsite shows or builds from: its pages, the architecture, and the
+            # programs, whose help makes the command reference. Keep in step with docs.yml.
+            docs:
+              - 'docs/**'
+              - 'USER_GUIDE.md'
+              - 'README.md'
+              - 'AGENTS.md'
+              - 'tests/README.md'
+              - 'client/**'
+              - 'hub/**'
+              - 'go.mod'
+              - 'go.sum'
+              - 'Makefile'
+              - 'scripts/publish-docs.sh'
+              - '.github/actions/build-docs/**'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/docs.yml'
 
   # Always runs: any new file can be outside the architecture model, and the check is quick.
   arch:
@@ -164,6 +182,18 @@ jobs:
         run: make models
       - name: End-to-end tests
         run: make e2e-all
+
+  # Builds the docsite as the publish workflow (docs.yml) does, without publishing. A broken link
+  # or a failed build fails here, before the merge.
+  docs:
+    name: Docsite
+    needs: changes
+    if: needs.changes.outputs.docs == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/build-docs
 
   images:
     name: Container images build
