@@ -109,20 +109,19 @@ flowchart LR
 
 ### Session commands
 
-Synchronous calls that answer at once: `join`, `leave`, `utterance.submit`, `utterance.mark_off_the_record`,
-`pause`, `hand.raise`, `minutes.update`, `stage.focus`. Each successful call creates one event in the
-log. Each call carries an ID created by the client, so a repeated call has no extra effect.
+The synchronous way to act in a session: join and leave, say something or mark a sentence off the
+record, pause, raise a hand, update the minutes, focus an artifact. Each successful call creates
+exactly one event in the log, and each call carries an ID created by the client, so a repeated
+call has no extra effect and a client may always repeat after a drop.
 
-The session commands also let anyone with a token check a session log (`dec-merkle-log`): they
-return the signed tree head of a log (for the current log or for its first events), a
-consistency proof between two sizes, an inclusion proof for one event, and the public key of the
-hub that signs the tree heads. The tree heads, the events in a result and the code that verifies
-them are those of the session stream, which owns the event log.
+The same interface lets anyone with a token check a session log (`dec-merkle-log`): it hands out
+signed tree heads, proofs and the public key of the hub. It owns no log types. The events, the tree
+heads and the code that verifies them belong to the session stream, which owns the event log.
 
-After a restart, a peer offers its copy of a session log with one more command
-(`dec-restore-from-peers`): the events the hub misses and a tree head signed by the hub over the
-copy. The hub accepts the copy only if it verifies and extends its own log. A copy that is not
-longer has no effect, and a copy that does not verify or forks fails.
+After a restart, a peer offers its copy of a session log through this interface
+(`dec-restore-from-peers`). The hub accepts a copy only if it verifies and extends its own log. A
+copy that is not longer has no effect, and a copy that does not verify or forks fails, so a peer
+can never rewrite history.
 
 ```arc42
 :::interface
@@ -137,21 +136,20 @@ path: hub/session/commandsapi
 
 ### Session stream
 
-Delivers the event log of a session from a cursor onwards, then live. This is the basis for local
-replication and for the stage. After a drop, the subscriber reconnects with its last event ID.
-It also answers a one-time request for the events after a cursor. A participant uses it when it
-finds a gap in its copy, or to follow the session without a file system (`dec-events-from-cursor`).
-With the last event it has, the stream sends a tree head signed by the hub over all events up to
-it, so a subscriber always holds a signed head over its whole copy (`dec-signed-head-in-stream`).
-A cursor beyond the end of the log means that the hub lost events: the subscriber then offers its
-copy.
+Delivers the event log of a session from a cursor onwards, then live. It is the one basis for the
+local replication and for the stage, so every reader sees the same log. After a drop, the
+subscriber reconnects with its last event ID. A one-time request for the events after a cursor
+serves a participant that finds a gap in its copy, or that follows the session without a file
+system (`dec-events-from-cursor`). With its last event, the stream sends a tree head signed by the
+hub over everything up to it, so a subscriber always holds a signed head over its whole copy
+(`dec-signed-head-in-stream`). A cursor beyond the end of the log means that the hub lost events;
+the subscriber then offers its copy.
 
 The interface owns the event log: the event types, the signed tree head and the code that builds
-and verifies the Merkle tree over a log (`dec-merkle-log`). The session commands and the session
-import return events and tree heads of these types. The interface also defines the stored form of
-a session log: one line per event and the signed tree head next to it. The local log of a participant and the session log in the archive use the
-same lines (`dec-yaml-git-storage`), so every reader can rebuild the events and check them
-against the tree head with the event types of this interface alone.
+and verifies the Merkle tree (`dec-merkle-log`). The other interfaces return events and tree heads
+of these types. The stored form of a session log is the same as the local one
+(`dec-yaml-git-storage`), so every reader can rebuild a log and check it against its tree head
+with this interface alone.
 
 ```arc42
 :::interface
@@ -167,25 +165,19 @@ path: hub/session/streamapi
 ### Session import
 
 Imports a whole conversation that happened outside the office as a new session
-(`dec-session-import`): a meeting in another tool, a chat, or a conversation with an agent. The
-import names its source and, optionally, a title. It lists the participants (a name, human or
-agent) and the utterances in order (speaker, text, modality and, if known, the time they were
-made). A conversation comes in one call or in pages. Each page carries an ID created by the client,
-so a repeated page has no extra effect. The last page completes the import.
+(`dec-session-import`): a meeting in another tool, a chat, or a conversation with an agent. It
+takes the source, the participants and the utterances in order, in one call or in pages. Each page
+carries an ID created by the client, so a repeated page has no extra effect.
 
-The import only fills the log. The meeting session writes the events of an import like those of
-live commands, and the session stream, the events after a cursor and the archive deliver them the
-same way. The first event of an imported session marks it as imported, with its source and the
-participant who imported it. A last event marks the end of the import. While an import is not
-complete, the session takes only the next pages of the same participant. After it, the session
-behaves like any other session, so participants derive minutes, decisions, notes and tasks
-through the existing interfaces.
+The import only fills the log. The meeting session writes its events like those of live commands,
+so the log keeps one writer, and the other interfaces treat an imported session like any other
+once the import is complete. The first event marks the session as imported, so nobody mistakes it
+for a live one. Until the import is complete, only the participant who started it may add pages.
 
-The speakers of an imported conversation are not registered participants: the hub cannot check
-who they are. Their participant IDs are marked as imported, so they never match a registered
-participant. The hub signs tree heads over an imported log like over every log. Such a signature
-proves which participant imported the log and that the log has not changed since; it does not
-prove that the speakers said what the log says.
+The speakers of an imported conversation are not registered participants: the hub cannot check who
+they are. So their IDs are marked as imported and never match a registered participant. The
+signature of the hub proves which participant imported the log and that it has not changed since;
+it does not prove that the speakers said what the log says.
 
 ```arc42
 :::interface
@@ -200,8 +192,11 @@ path: hub/session/importapi
 
 ### Auth API
 
-Challenge and response: the client asks for a challenge, signs it with its private key and gets a
-short-lived access token that is bound to its key. Also: create a read-only stage link. The calls of the meeting session, the records, the tasks and the slides name their tenant in a header, and Identity checks that the caller is a member of it; the auth API, the user API and the tenant API name no tenant.
+Proves who a caller is: the client signs a challenge from the hub with its private key and gets a
+short-lived access token that is bound to its key. The interface also creates the read-only links
+for the stage. The calls of the meeting session, the records, the tasks and the slides name a
+tenant, and Identity checks that the caller is a member of it. The auth, user and tenant APIs name
+no tenant, because they work across tenants.
 
 ```arc42
 :::interface
@@ -216,12 +211,11 @@ path: hub/identity/api
 
 ### User API
 
-Two steps. First, register a user at the hub: create the user, add a key, revoke a key, list users.
-Second, assign the user to tenants: add the user to a tenant with the role `member` or
-`tenant admin`, change the role and remove the user. Name and remove system admins. Who may do
-what: a system admin everything; a tenant admin only the memberships of their own tenant; everyone
-else only their own keys. Every change is checked against the rules in `concept-multi-tenancy`
-and refused if it breaks one. A user ID is never used again.
+Manages users in two steps, because a user is global and a membership belongs to a tenant. First
+the user and its keys are registered at the hub. Then the user is assigned to tenants with a role,
+and system admins are named. A system admin may do everything, a tenant admin only the memberships
+of their own tenant, and everyone else only their own keys. Every change is checked against the
+rules in `concept-multi-tenancy` and refused if it breaks one. A user ID is never used again.
 
 ```arc42
 :::interface
@@ -236,8 +230,8 @@ path: hub/identity/userapi
 
 ### Tenant API
 
-Create, list and remove tenants. Creating a tenant creates its git repository and names its first
-tenant admin. Who may do what: only a system admin.
+Creates, lists and removes tenants; only a system admin may. Creating a tenant gives it its own
+repository and names its first tenant admin.
 
 ```arc42
 :::interface
@@ -252,10 +246,10 @@ path: hub/tenant/api
 
 ### Decisions
 
-Record a decision and list the decisions, oldest first, by session and from a cursor. A decision
-records its author and whether the author is a human or an agent. Each command carries an ID
-created by the client, so a repeated command has no extra effect. A sentence that is off the
-record must not go into a decision (`dec-off-the-record`).
+Records decisions and lists them in order, by session and from a cursor. A decision keeps its
+author and whether the author is a human or an agent. Each command carries an ID created by the
+client, so a repeated command has no extra effect. A sentence that is off the record must not go
+into a decision (`dec-off-the-record`).
 
 ```arc42
 :::interface
@@ -270,11 +264,10 @@ path: hub/records/decision/api
 
 ### Minutes
 
-The minutes of a session. While the session runs, participants write the running minutes
-through the session commands (`minutes.update`). When the session ends, the meeting session
-stores the last version through this interface (`rs-session-ends`). Clients read the stored
-minutes of a session and list all stored minutes; they do not write them here. A sentence that
-is off the record must not go into the minutes.
+The minutes of a session. While the session runs, participants write the running minutes through
+the session commands. When the session ends, the meeting session stores the last version through
+this interface (`rs-session-ends`). Clients only read the stored minutes here, so the stored
+minutes have one writer. A sentence that is off the record must not go into the minutes.
 
 ```arc42
 :::interface
@@ -289,8 +282,8 @@ path: hub/records/minutes/api
 
 ### Notes
 
-Add a free note, with or without a session, and list the notes like the decisions. A sentence
-that is off the record must not go into a note.
+Adds free notes, with or without a session, and lists them like the decisions. A sentence that is
+off the record must not go into a note.
 
 ```arc42
 :::interface
@@ -305,11 +298,10 @@ path: hub/records/note/api
 
 ### Tasks
 
-Create a task, read one, list tasks and change them: title, description, assignee, status (open,
-in progress, done, cancelled) and a link to a session. List filters by status, assignee and
-session and reads page by page. A task records its author and whether the author is a human or
-an agent, and who changed it last. Each command carries an ID created by the client, so a
-repeated command has no extra effect. A sentence that is off the record must not go into a task.
+Creates and changes tasks and lists them by status, assignee and session. A task keeps its author,
+whether the author is a human or an agent, and who changed it last. Each command carries an ID
+created by the client, so a repeated command has no extra effect. A sentence that is off the
+record must not go into a task.
 
 Every task is a local draft of the hub (`dec-yaml-git-storage`). A sync with the task tool of the
 team would replace the draft by the synced task. So that this step does not change the contract, a
@@ -331,16 +323,15 @@ path: hub/tasks/api
 
 ### Slides
 
-Render a slide deck from a structured description (an optional title; slides with a title,
-bullets and speaker notes) and fetch a deck by its ID, with its input and its rendered output. A
-deck records its author and whether the author is a human or an agent. Each command carries an ID
-created by the client, so a repeated command has no extra effect. Rendering is deterministic
-(`con-no-intelligence`): the same input gives the same output. A sentence that is off the record
-must not go into a deck.
+Renders a slide deck from a structured description and returns a deck by its ID, with its input
+and its rendered output. A deck keeps its author and whether the author is a human or an agent.
+Each command carries an ID created by the client, so a repeated command has no extra effect.
+Rendering is deterministic (`con-no-intelligence`): the same input gives the same output, so the
+hub stays free of a model. A sentence that is off the record must not go into a deck.
 
-A deck has an ID with the type in front, for example `slides/42`. The stage shows a deck by this
-ID. In general, an artifact is anything that the stage can show by an ID like this; slide decks are
-the first type (`term-artifact`).
+A deck has an ID with the type in front, for example `slides/42`, and the stage shows a deck by
+this ID. In general, an artifact is anything that the stage can show by an ID like this; slide
+decks are the first type (`term-artifact`).
 
 ```arc42
 :::interface
@@ -355,12 +346,12 @@ path: hub/slides/api
 
 ### Documents
 
-Create and change text documents: Markdown files under `documents` in the archive, without a
-schema (`dec-artifacts`). The path is the identity of a document. A change names the version that
-its author read, and the hub refuses it when another change came first. The archive records the
-participant who calls as the author of the commit. A call may name a session; the hub then tells
-the meeting session, which appends `artifact.created` or `artifact.changed`. A sentence that is off
-the record must not go into a document; the author takes care of that.
+Creates and changes text documents: Markdown files without a schema (`dec-artifacts`). The path is
+the identity of a document. A change names the version that its author read, and the hub refuses
+it when another change came first, so two authors never overwrite each other unnoticed. The
+archive records the caller as the author of the commit. A call may name a session; the hub then
+tells the meeting session, which logs it. A sentence that is off the record must not go into a
+document; the hub cannot check this, so the author takes care of it.
 
 ```arc42
 :::interface
@@ -376,11 +367,9 @@ path: hub/documents/api
 ### Admin view
 
 A browser view for the system admins of the hub, opened by a link that a system admin creates with
-the CLI. It shows the users with their keys, the tenants and the system admins, and it creates users
-and adds and revokes keys. Memberships and tenants are still managed with the CLI. It has the same
-design as the stage. The link holds a code that works once;
-the admin view swaps it for an access token and keeps the token in a cookie that the page scripts
-cannot read.
+the CLI. It shows the users with their keys, the tenants and the system admins, and it manages
+users and keys. Memberships and tenants stay with the CLI. It has the same design as the stage.
+The link works once and is swapped for an access token that the scripts of the page cannot read.
 
 ```arc42
 :::interface
@@ -427,10 +416,9 @@ path: hub/stage/web
 
 ### Health check
 
-A plain address for container platforms and load balancers: `GET /healthz` answers 200 and `ok`
-when the hub serves requests. It needs no token and no cookie, reads no state and has no side
-effects. It answers on the TLS port of the hub, so it shows that the handshake and the HTTP server
-work, not only that the port is open.
+A plain address for container platforms and load balancers. It needs no token, reads no state and
+has no side effects. It answers on the TLS port of the hub, so it shows that the handshake and the
+HTTP server work, not only that the port is open.
 
 ```arc42
 :::interface
@@ -444,12 +432,11 @@ path: hub/health
 
 ### Meeting session
 
-Manages sessions and their participants. Accepts utterances from the ears and actions from
+Manages sessions and their participants. It accepts utterances from the ears and actions from
 participants, and writes everything to one append-only event log per session. It also takes
 imported conversations (`if-session-import`) and writes them into the log of a new session, so a
-session log has one writer in every case. Subscribers receive
-the log from a cursor onwards. Events are merged by time only: the participant model already says
-who spoke.
+session log has one writer in every case. Subscribers receive the log from a cursor onwards.
+Events are merged by time only: the participant model already says who spoke.
 
 ```arc42
 :::building-block
@@ -465,9 +452,8 @@ path: hub/session
 
 #### Session notice
 
-The notice interface lets a part of the hub that writes artifacts tell the session about it. The
-session appends `artifact.created` or `artifact.changed` for the participant who wrote, who must
-have joined the session.
+Lets a part of the hub that writes artifacts tell the session about it. The session logs the
+change for the participant who wrote, who must have joined the session.
 
 ```arc42
 :::interface
@@ -479,33 +465,30 @@ path: hub/session/notice
 :::
 ```
 
-The meeting session writes the log of every session that changed to the archive, at a
-configurable interval and when the session ends (`dec-session-persistence`). The end of an import
-also starts a write, so an imported session reaches the archive soon (`dec-session-import`). The write runs in
-the background: commands and the stream never wait for it. At most one write is in progress. A
-slow write makes the next write take everything that has come since. Every write stores the raw
-log (with the original text of sentences that are off the record, and their marks) and the tree
-head signed by the hub over exactly that log (`dec-merkle-log`).
+The meeting session writes the log of every session that changed to the archive, at an interval
+and when the session ends (`dec-session-persistence`); the end of an import also starts a write.
+The write runs in the background, so commands and the stream never wait for it, and a slow write
+makes the next one take everything that has come since. Every write stores the raw log, with the
+original text of sentences that are off the record, and the tree head signed by the hub over
+exactly that log (`dec-merkle-log`).
 
-When the hub starts, the meeting session reads every stored log back from the archive and checks
-it against its signed tree head before it uses it (`dec-restore-from-peers`). A restored session
-keeps its IDs, so every cursor stays valid. The events after the last write are lost; a peer
-fills them in. Until a peer copy fits, or a configurable wait is over, a restored session that has
-not ended takes no commands (`dec-signed-head-in-stream`). The archive also records whether the
-hub stopped after a last write of every session; then nothing is lost and there is no wait.
+When the hub starts, the meeting session reads every stored log back and checks it against its
+signed tree head before it uses it (`dec-restore-from-peers`). A restored session keeps its IDs, so
+every cursor stays valid. The events after the last write are lost; a peer fills them in. Until a
+peer copy fits, or a wait is over, a restored session that has not ended takes no commands
+(`dec-signed-head-in-stream`). The archive also records whether the hub stopped after a last write
+of every session; then nothing is lost and there is no wait.
 
 ### Records
 
 The memory of the team: decisions, minutes and notes (`dec-records-per-type`). Each type has its
-own interface and its own types.
-Each record keeps its origin: who wrote it, and whether a human or an agent. Tasks are not part
-of this block; they have their own part of the hub.
+own interface and its own types, and each record keeps who wrote it and whether that was a human
+or an agent. Tasks are not part of this block; they have their own part of the hub.
 
-Every record is one YAML file in the archive, and every new record is one commit
-(`dec-yaml-git-storage`). A command returns only after its commit, so a record that a client got
-back is stored. Local commits are fast, so this does not slow the meeting; the commit of the
-minutes is part of ending a session. When the hub starts, the block reads its records back from
-the archive, so they survive a restart.
+Every new record is one commit in the archive (`dec-yaml-git-storage`). A command returns only
+after its commit, so a record that a client got back is stored. Local commits are fast, so this
+does not slow the meeting; the commit of the minutes is part of ending a session. The block reads
+its records back from the archive at start, so they survive a restart.
 
 ```arc42
 :::building-block
@@ -520,15 +503,11 @@ requires: if-token-check, if-archive-storage
 
 ### Tasks part
 
-Keeps the tasks of the team behind the task interface (`dec-records-per-type`). Every
-task is a local draft: one YAML file in the archive per task (`dec-yaml-git-storage`). Creating a
-task is one commit, and every change rewrites the file in a new commit, so the archive keeps the
-history of every task. A command returns only after its commit. When the hub starts, the block
-reads its tasks back from the archive, so they survive a restart. Like the records part, it
-writes synchronously and can wait behind a session write of the archive.
-
-A sync with the task tool of the team would belong to this block. Only the hub would hold the
-credentials of that tool.
+Keeps the tasks of the team behind the task interface (`dec-records-per-type`). Every change is
+one commit, so the archive keeps the history of every task, and a command returns only after its
+commit. Like the records part, it writes synchronously and can wait behind a session write of the
+archive. A sync with the task tool of the team would belong to this block, and only the hub would
+hold the credentials of that tool.
 
 ```arc42
 :::building-block
@@ -560,15 +539,12 @@ path: hub/documents
 
 ### Slides part
 
-Renders slide decks and keeps them behind the slides interface (`dec-records-per-type`). Rendering
-is deterministic and without streaming. Every deck is stored in the archive in one commit
-(`dec-yaml-git-storage`): its input as YAML and its rendered output next to it. A command returns
-only after its commit. The output is stored and not rendered again on read, so a deck stays
-exactly what was shown in a meeting, even if a later version of the hub renders differently.
-Because rendering is deterministic, the stored input is enough to get the same output again.
-When the hub starts, the block reads its decks back from the archive, so they survive a restart.
-Like the records part, it writes synchronously and can wait behind a session write of the
-archive.
+Renders slide decks and keeps them behind the slides interface (`dec-records-per-type`).
+Rendering is deterministic and without streaming. A deck is stored in one commit with its input
+and its rendered output (`dec-yaml-git-storage`). The output is stored and not rendered again on
+read, so a deck stays exactly what was shown in a meeting, even if a later version of the hub
+renders differently; the stored input is enough to get the same output again. Like the records
+part, it writes synchronously and can wait behind a session write of the archive.
 
 The check of business plans by calculation (consistency, unit economics, completeness) is a
 different type with its own interface when it is built.
@@ -586,13 +562,11 @@ requires: if-token-check, if-archive-storage
 
 ### Archive
 
-The storage that all record parts of the hub use (`dec-records-per-type`). It stores records as
-files in a local Git repository on the hub host and commits locally (`dec-yaml-git-storage`).
-Every change of a caller is one commit. The archive does not know the records: the caller
-decides the files and their content. Callers read their files back from the current commit, for
-example to rebuild their index at start. After every commit, the archive pushes to a remote. The
-push is mocked: it does nothing and reports success. A commit can be slow, so callers
-that must not wait call it in the background.
+The storage that all record parts of the hub use (`dec-records-per-type`): a local Git repository
+on the hub host with one commit for every change of a caller (`dec-yaml-git-storage`). The archive
+does not know the records: the caller decides the files and their content. A commit can be slow,
+so callers that must not wait call it in the background. The push to a remote is mocked: it does
+nothing and reports success.
 
 ```arc42
 :::building-block
@@ -607,13 +581,13 @@ path: hub/archive
 
 #### Archive read
 
-Read artifacts from the archive by their path (`dec-artifacts`): one file with its content and
-its version, or the list of the files of a directory with their versions. The caller needs the
-access token of a participant. A stage link cannot use it: the link is shown on the shared
-screen. The stage reads in-process, and only paths that the log of its own session names. Only
-Markdown and YAML files can be read. Nothing under the session logs can be read, because they
-hold the original of sentences that are off the record. OPEN: how a call names the tenant, once
-the archive keeps one repository per tenant (`dec-multi-tenancy`).
+Reads artifacts by their path (`dec-artifacts`): one file with its content and its version, or
+the files of a directory. The caller needs the access token of a participant. A stage link cannot
+use it, because the link is shown on the shared screen. The stage reads in-process, and only paths
+that the log of its own session names. Only Markdown and YAML files can be read. Nothing under the
+session logs can be read, because they hold the original of sentences that are off the record.
+OPEN: how a call names the tenant, once the archive keeps one repository per tenant
+(`dec-multi-tenancy`).
 
 ```arc42
 :::interface
@@ -627,13 +601,11 @@ path: hub/archive/api
 
 #### Archive storage
 
-The in-process interface of the archive: write a set of files as one commit, list the paths of a
-directory, and read the files of a directory (or one file) as they are in the current commit. Paths are relative to the repository. The archive
-keeps one git repository for each tenant, with a directory per kind of content, and one further
-repository for the hub itself, for the users, the tenants, the memberships and the system admins. A
-caller asks for the archive of a repository, and each repository has its own commit queue, so one
-tenant does not hold up another. A tenant repository is created with the tenant and stays when the
-tenant is removed.
+The in-process interface of the archive: write a set of files as one commit, and list and read
+files as they are in the current commit. The archive keeps one git repository for each tenant and
+one for the hub itself, for the users, the tenants, the memberships and the system admins. Each
+repository has its own commit queue, so one tenant does not hold up another. A tenant repository is
+created with the tenant and stays when the tenant is removed.
 
 ```arc42
 :::interface
@@ -648,15 +620,13 @@ path: hub/archive/storage
 ### Stage
 
 One web page per session, shown in the meeting by screen share. It shows the artifact in focus,
-the other artifacts of the session as tabs, a log of the changes of artifacts, the transcript, and
-who is captured or paused, with the raised hands in the same list. The minutes are the first
-artifact of every session: they are the first tab and are in focus until someone focuses another
-artifact (`stage focus minutes` brings them back). Until there are minutes, the stage asks for an
-agent that takes them. It marks an
-imported session with its source and the participant who imported it, and never shows it as
-live. It is only a view of the session log and has no logic of its own. It reads an artifact
-straight from the archive (`if-archive-read`) by its path and renders it by its schema (`dec-artifacts`); it reads
-only paths that the log of its own session names.
+the other artifacts as tabs, the transcript, and who is captured or paused, with the raised hands
+in the same list. The minutes are the first artifact of every session and stay in focus until
+someone focuses another artifact. Until there are minutes, the stage asks for an agent that takes
+them. It marks an imported session with its source and never shows it as live. It is only a view of
+the session log and has no logic of its own: it reads an artifact straight from the archive
+(`if-archive-read`) and renders it by its schema (`dec-artifacts`), and only paths that the log of
+its own session names.
 
 ```arc42
 :::building-block
@@ -674,13 +644,12 @@ path: hub/stage
 
 Knows all users (participants), their public keys, their tenant memberships and the system admins
 in one place for the whole hub, and keeps them in the hub repository through the archive. It is
-the only writer there and checks every change. Each user,
-human or agent, is its own actor with its own Ed25519 key pair. A user can be a member of several
-tenants, with a role in each (`member` or `tenant admin`). A user can also be a system admin; this
-role replaces the file of admin keys. The client creates the key pair locally and sends only the public
-key. A new public key is registered by hand when we meet the person. Identity issues short-lived access tokens and creates
-read-only links for the stage. The token check tells other parts of the hub who the caller is,
-whether they are a system admin and which tenants they belong to with which role.
+the only writer there and checks every change. Each user, human or agent, is its own actor with
+its own key pair. The client creates the key pair locally and sends only the public key. A user can
+be a member of several tenants, with a role in each, and can also be a system admin. A new public
+key is registered by hand when we meet the person. Identity issues short-lived access tokens and
+creates read-only links for the stage. The token check tells the other parts of the hub who the
+caller is, whether they are a system admin and which tenants they belong to with which role.
 
 ```arc42
 :::building-block
@@ -710,10 +679,10 @@ path: hub/identity/tokencheck
 
 #### Tenant roster
 
-Identity keeps the tenant records in the hub repository, next to the users and memberships, so it
-can check that a membership belongs to a tenant that exists. Tenants uses this in-process interface
-to create a tenant together with its first tenant admin, to end a tenant with all its memberships,
-and to list tenants. A tenant ID is never used again.
+Identity keeps the tenant records next to the users and memberships, so it can check that a
+membership belongs to a tenant that exists. Tenants uses this in-process interface to create a
+tenant together with its first tenant admin, to end a tenant with all its memberships, and to list
+tenants. A tenant ID is never used again.
 
 ```arc42
 :::interface
@@ -815,9 +784,9 @@ path: client/cli/commands
 
 ### MCP tools
 
-Tools such as `meeting.join`, `meeting.leave`, `hand.raise`, `minutes.update`, `stage.focus`,
-`slides.render`, `slides.get`, `plan.validate`, `decision.record`, `minutes.get`, `note.add`, `task.create`,
-`task.update`, `session.import`.
+The office as tools for an agent, with the same features as the CLI: join and leave a meeting,
+raise a hand, update the minutes, focus an artifact, render slides, record decisions, add notes,
+create and update tasks, import a session. The names say what an agent does, not how the hub works.
 
 ```arc42
 :::interface
@@ -832,13 +801,12 @@ path: client/mcp/tools
 
 ### Local session log
 
-An append-only JSONL file with one compact line per event. Every line carries the event type in
-dotted form (for example `"type":"utterance.final"`) and the event ID as a JSON number, so that
-`tail -f`, `grep` and `jq` work without conversion. The line form belongs to the session stream,
-so the session log in the archive has the same lines. Next to the log, the replicator keeps the
-latest tree head that the hub signed over it (`dec-signed-head-in-stream`). The parts of the
-client that follow the log (the CLI, the client core and the agent runner) read it through this
-interface, as an agent does with `tail -f`.
+An append-only file with one line per event. Every line carries the event type and the event ID in
+a form that ordinary tools read without conversion (`tail -f`, `grep`, `jq`). The line form
+belongs to the session stream, so the session log in the archive has the same lines. Next to the
+log, the replicator keeps the latest tree head that the hub signed over it
+(`dec-signed-head-in-stream`). The parts of the client that follow the log (the CLI, the client
+core and the agent runner) read it through this interface, as an agent does with `tail -f`.
 
 ```arc42
 :::interface
@@ -868,18 +836,14 @@ path: client/ears/audio
 
 ### Agent Client Protocol (client side)
 
-The participant client is the client of the Agent Client Protocol (ACP) for an agent harness,
-for example Claude Code through its ACP adapter, opencode or Kiro. The agent runner starts the
-harness as a child process and talks JSON-RPC with it over its standard input and output. The
-contract is the published protocol; the client takes the client side and the harness the agent
-side (`dec-agent-runner-acp`):
-
-- The runner opens one ACP session per meeting and hands it the office tools as an MCP server
-  that runs with the key of the agent.
-- It sends prompts: a first one with the role and the meeting, then what was said.
-- It answers the requests of the harness for permission to use a tool by a rule of the user
-  (`dec-agent-runner-delivery`). It offers no access to its file system or terminal.
-- It ends the harness when the runner ends.
+The participant client is the client of the Agent Client Protocol (ACP) for an agent harness, for
+example Claude Code through its ACP adapter, opencode or Kiro. The agent runner starts the harness
+as a child process and talks JSON-RPC with it over its standard input and output. The contract is
+the published protocol; the client takes the client side and the harness the agent side
+(`dec-agent-runner-acp`). The runner hands the harness the office tools as an MCP server that
+runs with the key of the agent. It answers the requests of the harness for permission to use a
+tool by a rule of the user (`dec-agent-runner-delivery`) and offers it no access to its file
+system or terminal.
 
 ```arc42
 :::interface
@@ -894,22 +858,16 @@ path: client/agentrunner/acpclient
 
 ### Forwarding judge
 
-The contract for a forwarding judge that the user brings (`dec-byo-decision-model`), used by
-the wake strategy `llm`: the runner forwards its question to a model or program, which judges. After each utterance of another participant, and when that participant ends the
-turn, the agent runner sends a request (`dec-wake-check-per-utterance`): the session, the agent
-and its role, the participants, the recent context, the new utterances that the agent has not
-got yet, and whether the speaker of the last new utterance has ended the turn. The judge answers
-with structured output:
+The contract for a forwarding judge that the user brings (`dec-byo-decision-model`), used by the
+wake strategy `llm`: the runner forwards its question to a model or program that judges. After
+each utterance of another participant, and when that participant ends the turn, the runner sends
+the context and the new utterances that the agent has not got yet
+(`dec-wake-check-per-utterance`). The judge answers with structured output: whether the agent
+should act now, whom the speaker addressed, whether a block of topics has ended, and a short reason
+for the log of the runner.
 
-- `act`: whether the agent should act now;
-- `addressed`: the participant whom the speaker addressed, or empty;
-- `topic_closed`: whether a block of topics has ended;
-- `reason`: a short reason, for the log of the runner.
-
-The judge is reached in one of two ways: an OpenAI-compatible chat endpoint with structured
-output by JSON schema, or a command that reads the request as JSON on its standard input and
-writes the answer as JSON on its standard output. The contract owns the request, the answer and
-its JSON schema.
+The judge may be a chat endpoint or a command, so a user can bring a hosted model, a local model or
+a script. The contract owns the request, the answer and its schema.
 
 ```arc42
 :::interface
@@ -927,19 +885,11 @@ path: client/agentrunner/forwardingjudge
 The contract for a decision model that the user brings (`dec-byo-decision-model`), used by the
 wake strategy `decision-model`: the System One API, which TypeSafe Jev offers and Cloudflare Clef
 states to be compatible with. After each utterance of another participant, and when that
-participant ends the turn, the agent runner posts the model name, the state of the meeting and
-three questions to the endpoint that the user gives. The state holds the same facts as the
-request to a forwarding judge: the agent and its role, the participants, earlier and new utterances,
-and whether the turn has ended. The questions:
-
-- `act` (yes or no): should the agent act now? The answer is a probability.
-- `topic_closed` (yes or no): has a topic or a block of topics ended? The answer is a probability.
-- `addressed` (a choice): whom did the speaker address? The options are the participants and
-  "nobody"; the answer is one option with its probability.
-
-A probability at or above a threshold of the user counts as yes. The answer has no reason. The
-endpoint may send the answer bare or inside the envelope of its platform; both count. The
-contract owns the request, the state, the questions and the answer.
+participant ends the turn, the runner sends the state of the meeting and three questions: should
+the agent act now, has a block of topics ended, and whom did the speaker address. The model
+answers with probabilities, and a threshold of the user turns them into yes or no. The answer has
+no reason, so the runner logs the probabilities. The contract owns the request, the state, the
+questions and the answer.
 
 ```arc42
 :::interface
@@ -991,18 +941,14 @@ path: client/core/api
 
 ### office CLI
 
-The main access for humans and for agents with a shell. `office meeting join <session> [--mic]`
-starts the replication and prints the log path. `office agent run` starts the agent runner for
-an agent harness. With `--mic`, the terminal shows the user's own
-utterances with their status (partial → final → sent / off the record). Keys let the user pause and
-mark a sentence off the record. `office session import <file>` imports a conversation from a
-file in the import format of the client (`dec-import-format`). Other commands cover slides, the
-stage, decisions, minutes, notes and tasks.
+The main access for humans and for agents with a shell. It joins a meeting and starts the
+replication, runs the agent runner, imports conversations, and covers slides, the stage,
+decisions, minutes, notes and tasks. With a microphone, the terminal shows the user's own
+utterances with their status and lets the user pause and mark a sentence off the record.
 
-The CLI reads the configuration files of the client (`concept-client-configuration`): the user
-file and the project file of the start directory. It merges them with the environment and the
-command-line options and hands the result to the part that runs the command, for example the
-agent runner. `office config show` prints the effective settings and where each comes from.
+The CLI reads the configuration files of the client (`concept-client-configuration`), merges them
+with the environment and the command-line options and hands the result to the part that runs the
+command. It can show the effective settings and where each comes from.
 
 ```arc42
 :::building-block
@@ -1077,18 +1023,17 @@ path: client/agentrunner
 
 ### Log replicator
 
-A local process. It keeps a connection to the session stream and appends every event as one line to
-a file. There is one file per session and participant, in a private runtime directory of the user,
-so several participants on one machine (for example a human and an agent) do not collide and no
-other user can read the file. After a drop, it reconnects and continues after the last complete
-line in the file. On `session.ended` it writes a final line and stops.
-It also stops when its parent process dies.
+A local process that keeps a connection to the session stream and appends every event as one line
+to a file, so a person or an agent can follow a session with ordinary tools. There is one file for
+each session and participant, in a private runtime directory of the user, so several participants
+on one machine do not collide and no other user can read the file. After a drop, it reconnects and
+continues after the last complete line.
 
 If the hub does not know its cursor, the hub has lost events (`dec-restore-from-peers`). The
-replicator then offers the events the hub misses, with the signed tree head it keeps, through the
-session commands. It retries until the hub has its cursor again, from its own copy or from another
-peer. Before it goes on, it checks that the log of the hub up to the cursor has the same root
-hash as the local log; if not, it stops with an error instead of continuing a copy that forks.
+replicator then offers the events the hub misses, with the signed tree head it keeps, and retries
+until the hub has its cursor again, from its own copy or from another peer. Before it goes on, it
+checks that the log of the hub up to the cursor has the same root hash as the local log. If not,
+it stops with an error instead of continuing a copy that forks.
 
 ```arc42
 :::building-block
@@ -1120,19 +1065,17 @@ path: client/replicator/control
 
 ### Ears
 
-Only for humans with `--mic`. Pipeline: microphone → VAD → Whisper (local) → utterances to the
-session. The first stage needs a headset and has no voice print and no echo cancellation
-(`con-headset-only`). Raw audio never leaves the device. During a network drop, the ears keep
-transcribing and queue the utterances locally. They send them in order once the connection is back.
-The ears also end the turn of their participant: after a longer silence that follows the last
-sentence, they submit `turn.end` behind the sentences of the turn, once per turn and never while
-paused.
-The ears choose their speech model by language and speed (`dec-model-download`). They give Whisper
-the vocabulary of the project and the names of the participants as a prompt
-(`dec-vocabulary-prompt`); the CLI reads the names from the local log and passes them on.
-On request, the ears also build the vocabulary from the documents of a project: a model for
-named-entity recognition finds persons, organisations and places, and simple rules find other
-terms (`dec-ner-model`).
+Only for humans with a microphone. Pipeline: microphone → voice activity detection → Whisper
+(local) → utterances to the session. The first stage needs a headset and has no voice print and no
+echo cancellation (`con-headset-only`). Raw audio never leaves the device. During a network drop,
+the ears keep transcribing and queue the utterances locally. They send them in order once the
+connection is back. The ears also end the turn of their participant: after a longer silence that
+follows the last sentence, once per turn and never while paused. They choose their speech model by
+language and speed (`dec-model-download`). They give Whisper the vocabulary of the project and the
+names of the participants as a prompt (`dec-vocabulary-prompt`); the CLI reads the names from the
+local log and passes them on. On request, the ears also build the vocabulary from the documents of
+a project: a model for named-entity recognition finds persons, organisations and places, and simple
+rules find other terms (`dec-ner-model`).
 
 ```arc42
 :::building-block

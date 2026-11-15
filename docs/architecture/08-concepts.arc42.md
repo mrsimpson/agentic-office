@@ -2,14 +2,13 @@
 
 ## Participant model
 
-There are only **participants**. Each participant has an identity, a kind (`kind: human | agent`)
+There are only **participants**. Each participant has an identity, a kind (human or agent)
 and roles, for example moderator, minute taker or stage control. Rights depend on roles, not on
 the kind. The kind stays visible for two reasons: the stage marks agents as agents, and only speech
 needs consent to be recorded.
 
-An utterance is an utterance, whatever its channel. `utterance.final` carries
-`modality: voice | text`. Human speech is `voice`. Typed remarks and an agent's contributions are
-`text`. Later, speech output will voice text utterances, and the model stays the same.
+An utterance is an utterance, whatever its channel. Human speech is voice. Typed remarks and an
+agent's contributions are text. Later, speech output will voice text utterances, and the model stays the same.
 
 ```arc42
 :::concept
@@ -130,7 +129,7 @@ category: privacy
 
 ## Identity and access
 
-**Actors and keys.** Every participant is its own actor with its own Ed25519 key pair: each human
+**Actors and keys.** Every participant is its own actor with its own key pair: each human
 device and each agent. The key pair is created locally. Only the public key leaves the device. An
 agent does not act on behalf of a human; it acts as itself.
 
@@ -138,7 +137,7 @@ agent does not act on behalf of a human; it acts as itself.
 admin registers the key by hand.
 
 **Authentication.** Challenge and response: the client signs a challenge from the hub and gets
-an access token that lives about 15 minutes and is bound to its key. Every call carries the token.
+a short-lived access token that is bound to its key. Every call carries the token.
 All connections use TLS.
 
 **Stage.** A browser has no key. Identity creates a read-only link with a token that only allows

@@ -145,7 +145,7 @@ requires: if-user-api
 
 Runs the whole hub. A system admin creates and removes tenants, names the first tenant admin of a
 tenant, creates users and registers their keys, and names other system admins. A system admin does
-not read the contents of a tenant unless they are also a member of it.
+not read the contents of a tenant and is never a member of one.
 
 ```arc42
 :::actor
