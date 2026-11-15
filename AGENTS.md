@@ -20,6 +20,8 @@ Guidance for agents working in this repository.
 - All components are written in **Go** and live in this monorepo with one toolchain
   (see `dec-languages` in `docs/architecture/09-decisions.arc42.md`). The only extra tool is the
   C/C++ compiler that whisper.cpp needs through cgo.
+  The documentation site in `docs/site/` is documentation tooling in Node.js, not a component
+  (see `dec-docsite`).
 - The code follows the building blocks of chapter 5 (`concept-module-boundaries`). Every building
   block and every interface has exactly one path. An interface lies inside the path of its
   provider and owns its types, including its Protobuf contract. There is no shared or common
