@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/mrsimpson/agentic-office/compare/v0.1.0...v0.1.1) (2026-11-14)
+
+
+### Features
+
+* **hub:** add GET /healthz for container probes ([#128](https://github.com/mrsimpson/agentic-office/issues/128)) ([bb4e96c](https://github.com/mrsimpson/agentic-office/commit/bb4e96cd02c34b33edb3a544de069dbc7009ca18))
+
 ## [0.1.0](https://github.com/mrsimpson/agentic-office/compare/v0.0.4...v0.1.0) (2026-11-13)
 
 
