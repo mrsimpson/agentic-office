@@ -126,8 +126,11 @@ architecture is wrong or incomplete, open an issue with the label <code dir="aut
 <li>Run <code dir="auto">make arch</code> before you commit. It validates with <code dir="auto">--strict</code>: fix all errors, warnings and
 hints, or suppress a hint with an ignore directive and a reason that you record in the evidence.</li>
 <li>Keep implementation details out of the architecture: no file paths, field types, library calls
-or lint rules. Describe responsibilities, contracts and qualities. Implementation details
-belong in the code and its README files.</li>
+or lint rules, and no build, publishing or CI mechanics. Describe responsibilities, contracts
+and qualities. Implementation details belong in the code and its README files. If a change does
+not alter who is responsible for what, or how the parts interact, leave the architecture as it
+is. Describe the current state only, never its history; history belongs in commit messages. The
+skill <code dir="auto">arc42-language</code> (<code dir="auto">.claude/skills/arc42-language</code>) holds the rules of the arc42 tooling.</li>
 <li>Do not invent facts. Mark open questions with <code dir="auto">OPEN:</code>. Record where each fact comes from in
 <code dir="auto">docs/architecture/architecture-evidence.md</code>.</li>
 <li>We are in an early planning phase. Change decisions in place. Do not mark them as <code dir="auto">superseded</code>
