@@ -116,6 +116,6 @@ through its interfaces:
   with `arc42 get --format json` and the imports with `go list`. A fixture workspace with
   deliberate violations proves that each rule fails when it should.
 - The manual headset test (`qs-manual-headset`) is a checklist:
-  [`docs/testing/manual-headset-test.md`](docs/testing/manual-headset-test.md).
+  [`docs/testing/manual-headset-test.md`](../docs/testing/manual-headset-test.md).
 - The harness uses the binaries in `$OFFICE_BIN_DIR` (the Makefile sets it). Without it, the
   harness builds them with `go build`, so `go test ./tests/contract/...` also works.

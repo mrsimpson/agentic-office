@@ -1,0 +1,32 @@
+# Builds the docsite (make docs) into docs/site/dist. The command reference comes from the help of
+# the built programs, and these need whisper.cpp, so the action restores the cached build of
+# whisper.cpp that the jobs "test" and "e2e" of ci.yml use (same key), and builds it on a miss.
+# The caller checks out the repository first.
+name: Build the docsite
+description: Builds the programs, then the site (user guide, command reference, developer pages, architecture).
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 22
+    - name: whisper.cpp version
+      id: ref
+      shell: bash
+      run: echo "whisper=$(sed -n 's/^WHISPER_REF ?= //p' Makefile)" >> "$GITHUB_OUTPUT"
+    - name: whisper.cpp from cache
+      id: whisper
+      uses: actions/cache@v6
+      with:
+        path: third_party/whisper.cpp
+        key: whisper-portable-${{ runner.os }}-${{ runner.arch }}-${{ steps.ref.outputs.whisper }}
+    - name: Build whisper.cpp
+      if: steps.whisper.outputs.cache-hit != 'true'
+      shell: bash
+      run: make whisper WHISPER_NATIVE=OFF
+    - name: Build the site
+      shell: bash
+      run: make docs

@@ -1,0 +1,56 @@
+# Publishes the docsite (docs/site) to the root of the branch gh-pages: the user guide, the command
+# reference, the developer pages and, at /architecture/, the architecture. GitHub Pages serves the
+# branch at https://<owner>.github.io/<repo>/.
+#
+# This workflow runs on every push to main that changes what the site shows. Pull requests build
+# the site in the job "Docsite" of ci.yml, so a broken link fails before the merge.
+#
+# The branch gh-pages also holds the review sites of pull requests in pr-<number>/
+# (architecture-review.yml). scripts/publish-docs.sh leaves these folders alone, and that workflow
+# never touches the root. Both push to the same branch, so both try again on a rejected push.
+name: Docsite
+
+on:
+  push:
+    branches: [main]
+    # Keep in step with the filter "docs" in ci.yml.
+    paths:
+      - 'docs/**'
+      - 'USER_GUIDE.md'
+      - 'README.md'
+      - 'AGENTS.md'
+      - 'tests/README.md'
+      - 'client/**'
+      - 'hub/**'
+      - 'Makefile'
+      - 'scripts/publish-docs.sh'
+      - '.github/actions/build-docs/**'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+# A later push publishes a newer site: wait for a running publish, do not cancel it half way.
+concurrency:
+  group: docs-publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish the docsite
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/build-docs
+      - name: Publish to the root of gh-pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          MESSAGE: Publish the docsite (${{ github.sha }})
+        run: scripts/publish-docs.sh docs/site/dist "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "$MESSAGE"

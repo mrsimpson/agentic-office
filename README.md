@@ -9,6 +9,7 @@ This file helps you to work on the code. To use the office, read the user guide.
 
 | You want to | Read |
 |---|---|
+| Read everything in one place | The documentation site: <https://mrsimpson.github.io/agentic-office/> (user guide, command reference, developer pages, architecture) |
 | Run a hub, join a meeting, bring in an agent | [`USER_GUIDE.md`](USER_GUIDE.md) |
 | Know what a command does | `office help`, `office <command> --help`, `office-hub -h` |
 | Understand the design and its decisions | [`docs/architecture/`](docs/architecture/) (arc42) |
@@ -63,6 +64,8 @@ make models                    # downloads ggml-small.bin (about 490 MB) and the
 | `make e2e` | Quick run of the end-to-end tests with real processes (`tests/e2e/`, build tag `e2e`). It skips the tests that wait in real time on purpose (`go test -short`) and takes less than a minute. `make e2e RUN=TestEarsPause` runs the named tests, slow ones included |
 | `make e2e-all` | Runs every end-to-end test (about 4 minutes); the CI uses it. The ears tests need the models and are skipped without them |
 | `make performance` | Runs the quality scenarios with their timing criteria and their full lengths (build tags `e2e,performance`; about 35 minutes) and lists their numbers. Meant for the reference host |
+| `make docs` | Builds the documentation site (`docs/site/`, Starlight) into `docs/site/dist/`. It builds the programs first, because the command reference comes from their help (needs whisper.cpp and Node.js) |
+| `make docs-serve` | Builds the site and serves it at `http://localhost:4321/agentic-office/` |
 | `make lint` | Checks the Protobuf contracts with `buf lint` |
 | `make generate` | Regenerates the Go code of the contracts next to their `.proto` files |
 | `make check-generated` | Fails when the committed generated code differs from what the contracts produce |
@@ -90,6 +93,7 @@ runs only when files that matter to it changed:
 | Architecture (`make arch`) | always |
 | Contracts and contract tests (`make check-generated`, `make contract`) | Go code, Protobuf contracts, `go.mod`, `buf*.yaml`, `Makefile`, `tests/`, the CI workflow |
 | End-to-end tests (`make e2e-all`) | the same as the contract tests |
+| Docsite (`make docs`) | `docs/`, the user guide, the READMEs, `AGENTS.md`, `hub/`, `client/`, `go.mod`, `go.sum`, `Makefile`, the docsite scripts and workflows |
 | Container images build | `Dockerfile`, `.dockerignore`, `hub/`, `client/`, `go.mod`, `go.sum`, `Makefile`, the CI workflow |
 
 A skipped job counts as passed. A manual run of the workflow runs every job. The CI builds the
@@ -106,6 +110,15 @@ with the changes marked (`arc42 build --diff`):
   This needs Pages to deploy from the branch `gh-pages`, folder `/` (repository settings). The
   folder is removed when the pull request closes;
 - as one HTML file in a workflow artifact, which works without Pages.
+
+The workflow "Docsite" (`.github/workflows/docs.yml`) publishes the documentation site to the root of
+the branch `gh-pages` on every push to `main` that changes what the site shows. The site reads
+`USER_GUIDE.md`, `README.md`, `tests/README.md` and `AGENTS.md` at build time and builds the command
+reference from `office help` and `office-hub -h`; none of these copies is committed. The
+architecture is the section `/architecture/`. The build checks every link and fails on a broken one,
+so pull requests build the site too (the job "Docsite"). The publish replaces the root of the branch
+and leaves the folders `pr-<number>/` of the review sites alone; the review workflow never touches
+the root. Both push to the same branch and try again when a push is rejected.
 
 Consistency findings of the diff appear in the comment but do not fail the job; the job
 Architecture validates the model. Pull requests from forks get the job summary only.
@@ -162,6 +175,7 @@ client/                   bb-participant-client: wiring of the client (binary of
     systemone/            if-decision-model: request, state, questions and answers of the System One API
 tests/                    external actors: may use interfaces only (see tests/README.md)
 docs/architecture/        the arc42 architecture
+docs/site/                the documentation site (Starlight); its pages are made at build time
 docs/testing/             manual tests (the headset test)
 scripts/                  try-local.sh, which the user guide describes
 ```
