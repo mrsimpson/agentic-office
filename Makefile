@@ -17,7 +17,7 @@ export CGO_LDFLAGS := -O2 -g -L$(WHISPER_BUILD)/src -L$(WHISPER_BUILD)/ggml/src 
 # Models of the ears: a multilingual Whisper model and the Silero VAD model.
 MODEL_DIR ?= $(or $(XDG_DATA_HOME),$(HOME)/.local/share)/agentic-office/models
 
-.PHONY: all build arch test contract e2e e2e-all e2e-vet performance lint generate check-generated whisper models clean
+.PHONY: all build arch test contract e2e e2e-all e2e-vet performance docs docs-serve lint generate check-generated whisper models clean
 all: build
 
 build:
@@ -64,6 +64,19 @@ performance: build
 		$(GO) test -tags e2e,performance -count=1 -v -timeout 90m -run '^TestQuality' ./tests/e2e/... 2>&1; \
 		echo $$? > $(BIN)/performance.exit; } | tee $(BIN)/performance.log
 	@echo "== quality scenarios (also in $(BIN)/performance.log)"; grep '^QS ' $(BIN)/performance.log; exit $$(cat $(BIN)/performance.exit)
+
+# The docsite (docs/site/, Starlight): the user guide, the command reference, the developer pages and
+# the architecture. make docs builds it into docs/site/dist/. The command reference comes from the
+# help of the programs, so make docs builds them first (needs whisper.cpp). Needs Node.js.
+# make docs-serve builds the site and serves it on http://localhost:4321/agentic-office/.
+export ASTRO_TELEMETRY_DISABLED := 1
+
+docs: build
+	cd docs/site && npm ci --no-audit --no-fund
+	cd docs/site && OFFICE_BIN_DIR=$(BIN) npm run build
+
+docs-serve: docs
+	cd docs/site && npm run preview
 
 lint:
 	buf lint

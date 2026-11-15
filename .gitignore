@@ -1,3 +1,9 @@
 bin/
 third_party/whisper.cpp
 office-trial/
+# The docsite: dependencies, build output and the pages that the build makes from the Markdown
+# files of the repository.
+docs/site/node_modules/
+docs/site/dist/
+docs/site/.astro/
+docs/site/src/content/docs/

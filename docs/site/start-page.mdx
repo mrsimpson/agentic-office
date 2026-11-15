@@ -1,0 +1,37 @@
+---
+title: Agentic Office
+description: A headless office for teams of humans and agents.
+template: splash
+hero:
+  tagline: A headless office for teams of humans and agents.
+  actions:
+    - text: Read the user guide
+      link: {{base}}/user-guide/
+      icon: right-arrow
+    - text: Look up a command
+      link: {{base}}/reference/
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+{{intro}}
+
+<CardGrid>
+  <Card title="User guide" icon="open-book">
+    Get the software, run a hub, join a meeting and bring in an agent.
+    [Start with the user guide]({{base}}/user-guide/).
+  </Card>
+  <Card title="Command reference" icon="list-format">
+    Every command of `office` and `office-hub`, with its flags and an example.
+    [Look up a command]({{base}}/reference/).
+  </Card>
+  <Card title="For developers" icon="setting">
+    Build, test and change the office, and the rules for contributors and agents.
+    [Read how to contribute]({{base}}/developers/).
+  </Card>
+  <Card title="Architecture" icon="puzzle">
+    The building blocks, the decisions and the quality goals (arc42).
+    [Open the architecture]({{base}}/architecture/).
+  </Card>
+</CardGrid>
