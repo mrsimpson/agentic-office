@@ -17,7 +17,7 @@ export default defineConfig({
         { label: "Command reference", items: [{ autogenerate: { directory: "reference" } }] },
         { label: "For developers", items: [{ autogenerate: { directory: "developers" } }] },
         // Not a Starlight page: the output of "arc42 build", added after the site build.
-        { label: "Architecture", link: `/${architecturePath}/` },
+        { label: "Architecture", link: `/${architecturePath}/`, attrs: { target: "_blank", rel: "noopener" } },
       ],
       plugins: [
         // A broken link or anchor fails the build. The architecture is not part of the Astro site.
