@@ -6,7 +6,7 @@
   "scripts": {
     "prepare-content": "node scripts/prepare.mjs",
     "dev": "npm run prepare-content && astro dev",
-    "build": "npm run prepare-content && astro build && node scripts/architecture.mjs",
+    "build": "npm run prepare-content && astro build && node scripts/architecture.mjs && node scripts/check-agent-docs.mjs",
     "preview": "astro preview"
   },
   "dependencies": {

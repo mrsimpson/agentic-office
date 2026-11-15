@@ -11,7 +11,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import GithubSlugger from "github-slugger";
-import { architecturePath, base, branch, repository } from "../site-config.mjs";
+import { agentFiles, architecturePath, base, branch, origin, repository } from "../site-config.mjs";
 
 const siteDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const root = path.resolve(siteDir, "../..");
@@ -274,6 +274,20 @@ for (const [repoPath, source] of sources) {
   if (!/office/i.test(intro)) fail("the first paragraph of README.md changed: check the start page");
   const template = readFileSync(path.join(siteDir, "start-page.mdx"), "utf8");
   write("index.mdx", template.replaceAll("{{base}}", base).replace("{{intro}}", intro));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Files for agents: llms.txt and the setup guide, served as they are at the root of the site
+// ---------------------------------------------------------------------------------------------
+
+{
+  const publicDir = path.join(siteDir, "public");
+  rmSync(publicDir, { recursive: true, force: true });
+  mkdirSync(publicDir, { recursive: true });
+  for (const name of agentFiles) {
+    const text = readFileSync(path.join(siteDir, "agent", name), "utf8");
+    writeFileSync(path.join(publicDir, name), text.replaceAll("{{site}}", `${origin}${base}`));
+  }
 }
 
 // ---------------------------------------------------------------------------------------------

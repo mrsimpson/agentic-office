@@ -10,6 +10,7 @@ This file helps you to work on the code. To use the office, read the user guide.
 | You want to | Read |
 |---|---|
 | Read everything in one place | The documentation site: <https://mrsimpson.github.io/agentic-office/> (user guide, command reference, developer pages, architecture) |
+| Let an agent set up the office for you | The setup guide for agents, <https://mrsimpson.github.io/agentic-office/agent-setup.md>, and `llms.txt` at <https://mrsimpson.github.io/agentic-office/llms.txt>. The build fails when the guide names a command that does not exist |
 | Run a hub, join a meeting, bring in an agent | [`USER_GUIDE.md`](USER_GUIDE.md) |
 | Know what a command does | `office help`, `office <command> --help`, `office-hub -h` |
 | Understand the design and its decisions | [`docs/architecture/`](docs/architecture/) (arc42) |

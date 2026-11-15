@@ -119,7 +119,10 @@ reference, the pages for developers and, as a section, the architecture (`dec-do
 built in the CI from the files of the repository and from the help of the programs. It is
 published when the main branch changes what it shows. The site lies at the root of the publishing
 branch. The review sites of pull requests lie in their own folders on the same branch and stay
-untouched by the publishing of the site. The site hosts no building block of the office.
+untouched by the publishing of the site. The root of the site also serves two plain files for
+agents: an index for language models and a short setup guide that an agent follows once. The build
+fails when the guide names a command that the programs do not have, or when a link in these files
+leads nowhere. The site hosts no building block of the office.
 
 ```arc42
 :::ignore H012 the documentation site hosts no building block of the office; it is documentation tooling (dec-docsite)

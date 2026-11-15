@@ -17,6 +17,10 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 [ -f "$site/index.html" ] || { echo "::error::$site/index.html is missing: build the site first"; exit 1; }
+# The files for agents belong to the root of the site (docs/site/scripts/check-agent-docs.mjs checks them).
+for f in llms.txt agent-setup.md; do
+  [ -f "$site/$f" ] || { echo "::error::$site/$f is missing: the site must serve it at its root"; exit 1; }
+done
 if compgen -G "$site/pr-*" > /dev/null; then
   echo "::error::The site must not contain a folder pr-*: these belong to the review sites."
   exit 1

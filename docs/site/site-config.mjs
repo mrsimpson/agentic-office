@@ -11,3 +11,7 @@ export const architecturePath = "architecture";
 
 // Same version as in the Makefile and in tests/architecture/check.go.
 export const arc42 = ["-y", "@doctc/arc42@0.38.0"];
+
+// Files for agents, from docs/site/agent/ to the root of the site. In them, {{site}} stands for the
+// address of the site, because agents need absolute links.
+export const agentFiles = ["llms.txt", "agent-setup.md"];

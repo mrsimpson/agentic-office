@@ -1,8 +1,9 @@
 ---
-title: Agentic Office
+title: Documentation
 description: A headless office for teams of humans and agents.
 template: splash
 hero:
+  title: Agentic Office
   tagline: A headless office for teams of humans and agents.
   actions:
     - text: Read the user guide
@@ -33,5 +34,9 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
   <Card title="Architecture" icon="puzzle">
     The building blocks, the decisions and the quality goals (arc42).
     [Open the architecture]({{base}}/architecture/).
+  </Card>
+  <Card title="For agents" icon="rocket">
+    An agent that sets up the office for a human reads the setup guide.
+    [Read the setup guide]({{base}}/agent-setup.md), or the [llms.txt]({{base}}/llms.txt).
   </Card>
 </CardGrid>
