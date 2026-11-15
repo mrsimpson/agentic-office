@@ -468,8 +468,10 @@ addresses: qg-confidentiality, con-privacy-law
 
 **Context:** The architecture is still changing. Tests should survive changes inside a building
 block. **Decision:** We write no unit tests. Each building block gets black-box contract tests
-against its provided interfaces. End-to-end tests run real processes across several blocks.
-**Consequences:** The interfaces in chapter 5 must be precise enough to test against. Tests stay
+against its provided interfaces. A test uses the protocol that the interface itself uses: it starts
+the binary for a command-line interface and does not import the code behind it. An interface with
+consumers on several protocols gets one test for each protocol. End-to-end tests run real processes
+across several blocks. **Consequences:** The interfaces in chapter 5 must be precise enough to test against. Tests stay
 valid when the inside of a block changes. Errors deep inside a block are found through its
 interfaces, which can make them harder to locate. **Rejected:** unit tests per function.
 
@@ -1064,7 +1066,7 @@ file could not choose a profile).
 :::decision
 id: dec-hub-profiles
 title: The client keeps named hub profiles and learns a hub certificate by its fingerprint
-status: proposed
+status: accepted
 date: 2026-11-14
 addresses: qg-usability, qg-confidentiality
 :::
