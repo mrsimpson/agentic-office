@@ -123,7 +123,7 @@ definition: A later listening mode for several speakers at one microphone, with 
 ## Artifact
 
 The general word for what the stage shows. An artifact is a path in the repository of the
-tenant and names its schema (`dec-artifacts`). Today the stage shows slide decks only.
+tenant and names its schema (`dec-artifacts`).
 
 ```arc42
 :::glossary-term
@@ -135,7 +135,7 @@ definition: Anything that the stage can show by its path in the tenant repositor
 
 ## Slide deck
 
-One type of record of the hub, and today the only type of artifact.
+One type of record of the hub, and the first type of artifact.
 
 ```arc42
 :::glossary-term
@@ -165,7 +165,7 @@ A work item of the team (`dec-records-per-type`).
 :::glossary-term
 id: term-task
 title: Task
-definition: A work item with a title, a description, an assignee, a status (open, in progress, done or cancelled) and an optional link to a session; for now a local draft that the hub stores in the archive, later synced with the task tool of the team
+definition: A work item with a title, a description, an assignee, a status (open, in progress, done or cancelled) and an optional link to a session; a local draft that the hub stores in the archive
 :::
 ```
 

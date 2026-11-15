@@ -21,66 +21,50 @@ category: domain
 
 ## Event log with cursor
 
-Each session has an append-only log with exactly one writer, the hub. It gives every event an
-ID that grows by one inside the session. So the order is free of conflicts, and the IDs have no
+Each session has an append-only log with exactly one writer, the hub. It gives every event an ID
+that grows by one inside the session. So the order is free of conflicts, and the IDs have no
 gaps: a participant that sees event 43 after 41 knows that 42 is missing and fetches the events
 after its cursor (`dec-events-from-cursor`). The cursor is the last event ID a client has read,
-which is also the last line of the local file. Utterances never change and are never removed.
-Corrections and off-the-record marks are new events that point to the original
-(`utterance.corrected`, `utterance.off_the_record`). An utterance off the record keeps its ID; the interfaces
-deliver a placeholder without its text, so no false gap appears (`dec-off-the-record`).
+which is also the last line of its local file. Utterances never change and are never removed.
+Corrections and off-the-record marks are new events that point to the original. An utterance off
+the record keeps its ID; the interfaces deliver a placeholder without its text, so no false gap
+appears (`dec-off-the-record`). Partials are not written to the log (`dec-no-partials-in-log`).
 
 **Storage and integrity.** The hub orders the events and is the gateway to the archive: it writes
-the log to a Git repository at a configurable interval and at the end, without ever holding up
-the session (`dec-session-persistence`). At first the repository is local on the hub host
-(`dec-yaml-git-storage`). The peers keep copies as their reading interface; their copies and the
-stored log have the same lines. The events are the leaves of a Merkle tree, and the hub signs its
-tree head (`dec-merkle-log`). Every write to the archive carries the signed tree head over
-exactly the stored log. After a crash, the hub restores a session from the archive, and a peer fills in
-the rest (`dec-restore-from-peers`). For this, the stream gives every peer a signed tree head over
-its whole copy, and a restored session waits for the peers before it takes commands, so the IDs
-and every cursor stay valid (`dec-signed-head-in-stream`, `rs-hub-restart`).
+the log to a Git repository at intervals and at the end, without holding up the session
+(`dec-session-persistence`, `dec-yaml-git-storage`). The peers keep copies as their reading
+interface, with the same lines as the stored log. The events are the leaves of a Merkle tree, and
+the hub signs its tree head; every write to the archive carries the signed head over exactly the
+stored log (`dec-merkle-log`). After a crash, the hub restores a session from the archive, and a
+peer fills in the rest. Every peer gets a signed tree head over its whole copy through the stream,
+and a restored session waits for the peers before it takes commands, so IDs and cursors stay
+valid (`dec-restore-from-peers`, `dec-signed-head-in-stream`, `rs-hub-restart`). A placeholder of
+an utterance off the record carries the leaf hash of the original, so a copy with placeholders
+still verifies. A placeholder can hide a text; it cannot change what the tree proves.
 
 **Imported sessions.** A conversation from outside the office becomes a session through its own
-interface (`dec-session-import`). The meeting session writes it into the log like live commands,
-so the log keeps one writer and gap-free IDs. The first event marks the session as imported and
-names its source. The speakers are imported participants, not registered ones. The tree heads
-over an imported log protect it from later changes, but do not prove what was said.
+interface (`dec-session-import`). The meeting session writes it like live commands, so the log
+keeps one writer and gap-free IDs. The first event marks the session as imported and names its
+source. The speakers are imported participants, not registered ones. The tree heads protect an
+imported log from later changes, but do not prove what was said.
 
 **Resuming after a network drop:**
 
-- Readers (replicator, stage) reconnect with their last event ID and receive every event after it.
-  Nothing is lost, and nothing arrives twice.
+- Readers (replicator, stage) reconnect with their last event ID and receive every event after
+  it. Nothing is lost, and nothing arrives twice.
 - Writers (ears, CLI, MCP) give every command an ID that they create themselves. If they send a
-  command again after a drop, the hub recognises the ID and returns the existing event.
-- This includes `join`: a client keeps its join command ID, so after a restart it is still the
-  same participant.
+  command again after a drop, the hub recognises the ID and returns the existing event. This
+  includes `join`: a client keeps its join command ID, so after a restart it is still the same
+  participant.
 - The ears queue utterances locally while offline (text only) and send them in order.
 
-Event levels (guide values, configurable per participant):
-
-| Event | Trigger |
-|---|---|
-| `utterance.final` | End of sentence, about 300–700 ms of silence |
-| `turn.end` | Change of speaker, about 1.5–2 s of silence |
-| `silence.long` | More than 5 s of silence |
-| `addressed` | A participant's name is mentioned |
-| `hand.raised`, `minutes.updated`, `artifact.focused` | Actions of participants |
-| `participant.joined/left/paused`, `session.ended` | Life cycle |
-
-The ears of a speaker submit `turn.end` for their own participant when the silence after the last
-sentence reaches the turn level. They hear only their own participant, so they cannot tell a
-silence of the whole session. OPEN: which part submits `silence.long`; today only the CLI and the
-MCP server do, on request.
-
-Partials are not written to the log (`dec-no-partials-in-log`).
-
-**Checking a log:** the events of a session are the leaves of a Merkle tree (`dec-merkle-log`).
-The hub signs the head of the tree with its own key, which stays the same across restarts. It
-puts the signed head of the log so far into `session.ended`, and returns a signed head, a
-consistency proof or an inclusion proof on request. A placeholder of an utterance that is off
-the record carries the leaf hash of the original, so a copy with placeholders still verifies.
-A placeholder can only hide a text; it cannot change what the tree proves.
+**Event levels.** Events carry what agents need to decide when to act: the end of a sentence, the
+change of speaker, a long silence, a participant addressed by name, the actions of participants
+(raised hand, updated minutes, focused artifact) and the life cycle of participants and sessions.
+The thresholds are guide values, configurable per participant. The ears submit the end of a turn
+for their own participant. They hear only their own participant, so they cannot tell a silence of
+the whole session. OPEN: which part submits the long-silence event; only the CLI and the MCP
+server do, on request.
 
 ```arc42
 :::concept
@@ -151,7 +135,7 @@ device and each agent. The key pair is created locally. Only the public key leav
 agent does not act on behalf of a human; it acts as itself.
 
 **First contact.** In the first stage, we trust a new public key because we meet the person. An
-admin registers the key by hand. A real enrollment flow is issue #2.
+admin registers the key by hand.
 
 **Authentication.** Challenge and response: the client signs a challenge from the hub and gets
 an access token that lives about 15 minutes and is bound to its key. Every call carries the token.
@@ -167,7 +151,7 @@ key; tokens bound to it stop working when they expire, at the latest.
 `concept-multi-tenancy`.
 
 **Out of scope for the first stage:** acting on behalf of someone else (delegation), self-service
-enrollment (issue #2), encryption of stored data (OPEN).
+enrollment, encryption of stored data (OPEN).
 
 ```arc42
 :::concept
@@ -179,54 +163,41 @@ category: security
 
 ## Tenants, repository and roles
 
-The hub serves several **tenants**. A tenant is the unit of separation: one organisation, with
-one git repository where it keeps all its information. One hub, one user list, many tenants.
+The hub serves several **tenants**. A tenant is the unit of separation: one organisation, with one
+git repository where it keeps all its information. One hub, one user list, many tenants.
 
-**Users.** Users are global and registered at the hub first (name and keys); this is step one. The
-hub keeps them in its own git repository, together with the list of tenants and system admins. A
-tenant admin or system admin then assigns the user to a tenant (step two). A user can be a member
-of several tenants. A membership has one role: `member` or `tenant admin`. Identity keeps the memberships in the hub
-repository, so a key and a membership are each kept in one place. A membership names the user ID
-and never a key, so rotating a key touches no membership. Roles inside a session (moderator, minute taker) stay as in
-`concept-participant-model`; they are not tenant roles.
+**Users and memberships.** Users are global and registered at the hub first (name and keys). A
+tenant admin or a system admin then assigns the user to a tenant. A user can be a member of
+several tenants, with one role per membership: `member` or `tenant admin`. A membership names the
+user ID and never a key, so rotating a key touches no membership. Identity keeps users, keys and
+memberships in the hub repository, each in one place. Roles inside a session (moderator, minute
+taker) stay as in `concept-participant-model`; they are not tenant roles.
 
-**Admins.** There are two admin levels. A **system admin** runs the hub: creates tenants and
-users, names the first tenant admin of each tenant and other system admins. A **tenant admin** runs
-one tenant: manages its members. A system admin never reads the content of a tenant: a system admin is
-never a member of a tenant, and a member of a tenant is never a system admin. Identity refuses
-both. A person who does both uses two users with two different keys; a key belongs to one user
-only. At least one system admin always exists. The operator names the first one at the first start
-of the hub, when the hub repository does not exist yet, by passing the ID and the public key of
-that user. The hub refuses to start without them at the first start and ignores them later. There
-is no file of admin keys. Every tenant has at least one tenant admin.
+**Admins.** A **system admin** runs the hub: creates tenants and users, names the first tenant
+admin of each tenant and other system admins. A **tenant admin** runs one tenant and manages its
+members. A system admin never reads the content of a tenant: a system admin is never a member of
+a tenant, and a member is never a system admin. A person who does both uses two users with two
+different keys. The hub always has at least one system admin, named by the operator at the first
+start, and every tenant has at least one tenant admin.
 
 **Rules for changes.** Identity is the only writer of users, keys, memberships and system admins.
-It refuses a change when: the caller may not make it (a tenant admin changes only the memberships
-of their own tenant; a user adds and revokes only their own keys); the tenant or user does not
-exist; the change would leave a tenant without a tenant admin or the hub without a system admin.
-Users, memberships and tenants have a validity period. Removing one ends its period and keeps its
-record, so the ID stays taken and is never used again: a new user cannot inherit old memberships,
-and the history shows who was a member when. Ending a user ends its memberships in the same
-commit. A call is checked against the periods that are valid at the time of the call. A period that starts or ends in the future, for example a guest who has access until a date, would fit the same fields but is out of scope for now. Identity checks the same rules
-when it loads the hub repository at start and refuses to start on a violation, for example after
-a manual edit. **Key rotation:** a user adds the new key with the old one and then revokes the old
-one; tokens bound to the old key expire after about 15 minutes at the latest. A compromised key is
-revoked by a system admin and stops working in all tenants.
+It refuses a change when the caller may not make it, when the tenant or user does not exist, or
+when the change would leave a tenant without a tenant admin or the hub without a system admin.
+Removing a user, a membership or a tenant ends its period of validity and keeps its record, so an
+ID is never used again and the history shows who was a member when. A compromised key is revoked
+by a system admin and stops working in all tenants. Identity checks the same rules when it loads
+the hub repository and refuses to start on a violation.
 
-**Repository.** A tenant has exactly one local git repository, with a directory for each kind of
-content (sessions, records, tasks, slides). Every session, record, task and slide deck
-belongs to exactly one tenant. The archive writes to the repository of that tenant only
-(`dec-yaml-git-storage`). The hub repository and the tenant repositories have a fixed place on the hub host, apart from each
-other; neither is configurable. Later, a repository can be synchronised with 0..n remotes; this is out of
-scope for now.
+**Repository.** A tenant has exactly one git repository, with a directory for each kind of
+content. Every session, record, task and slide deck belongs to exactly one tenant, and the archive
+writes to the repository of that tenant only (`dec-yaml-git-storage`).
 
 **Separation.** Every call of the meeting session, the records, the tasks, the slides and the
-stage link names a tenant in a header; a stage link carries the tenant of the user who created it.
-The hub keeps one instance of each of these parts for each tenant, and each instance reads and
-writes only the repository of its tenant. The hub checks the membership and the role of the
-caller (from the token) before it reads or writes. A caller who is no member gets the same answer
-as for something that does not exist. Tenants share no data, and the log of one session is never
-visible in another tenant.
+stage link names a tenant; a stage link carries the tenant of the user who created it. The hub
+keeps one instance of each of these parts for each tenant, and each instance reads and writes
+only the repository of its tenant. The hub checks the membership and the role of the caller before
+it reads or writes. A caller who is no member gets the same answer as for something that does not
+exist. Tenants share no data, and the log of one session is never visible in another tenant.
 
 ```arc42
 :::concept
@@ -316,50 +287,28 @@ category: structure
 ## Client configuration
 
 The participant client has many options, and a user starts the same agent or the same meeting
-again and again. So the options can live in configuration files (`dec-client-config-file`).
-The office CLI reads them; the other parts of the client get the resulting options as before.
+again and again. So the options can live in configuration files (`dec-client-config-file`). The
+office CLI reads them; the other parts of the client get the resulting options.
 
-**Two files.** The user file lies in the configuration folder of the client, next to the key and
-the certificate of the hub. The project file lies in the folder `.office` of the start directory,
-next to the vocabulary of the project (`dec-vocabulary-prompt`). A team can check the project
-file in, for example one file per role of an agent.
+**Two layers.** A user file, next to the key and the certificate of the hub, holds what is
+personal. A project file in the folder `.office` of the start directory, next to the vocabulary of
+the project (`dec-vocabulary-prompt`), holds what a team shares; a team can check it in, for
+example one file per role of an agent. The project file overrides the user file, environment
+variables override both, and command-line options override everything.
 
-**Order of precedence**, from lowest to highest. A higher source overrides a lower one, key by
-key:
-
-1. the defaults of the client;
-2. the user file;
-3. the project file;
-4. environment variables;
-5. command-line options.
-
-A few keys exclude each other, for example a role in words and a role file. When a higher source
-sets one of them, the others of lower sources no longer count.
-
-**Strict files.** Every key belongs to the section of one command, for example `agent` for the
-agent runner. An unknown key or a value of the wrong type stops the command with an error that
-names the file and the key. A setting that does not fit another setting of the same file is also
-an error. A relative path in a file is relative to the root of that file: the start directory for
-the project file, the configuration folder for the user file.
-
-**Secrets never in a file.** A file names the environment variable that holds a key, never the
-key itself. So a project file can be checked in, and a key stays where it was before.
+**Strict and without secrets.** An unknown key is an error and is never ignored. A file names the
+environment variable that holds a key, never the key itself, so a project file can be checked in.
 
 **Transparency.** A command shows the effective settings and the source of each value, without
 any key.
 
-**The connection to a hub.** The files also hold the connection: the address of the hub, the
-tenant, the certificate of the hub and the path of the private key, as single settings and as
-named hub profiles (`dec-hub-profiles`). A profile is a named set of these four values, so one
-client can work with several hubs. A participant chooses a profile in a file, with an environment
-variable or with a command-line option; single settings of the same or a higher source override the
-values of the profile. A command of the client adds a profile: it reads the certificate of the hub,
-shows its fingerprint, asks the participant to compare it with the fingerprint in the log of the
-hub, and only then stores the certificate. A hub with a certificate from a trusted authority needs
-no stored certificate. A profile never holds a secret: the private key stays in its file.
+**The connection to a hub.** The files also hold the address of the hub, the tenant, the
+certificate and the path of the private key, as single settings and as named hub profiles
+(`dec-hub-profiles`). So one client can work with several hubs. The participant confirms the
+fingerprint of a new hub certificate once, before the client stores it.
 
-**Scope.** The agent runner and the connection to a hub. The options of the ears and other
-commands follow as further sections. OPEN: which other commands get a section, and when.
+**Scope.** The agent runner and the connection to a hub. OPEN: which other commands get a section
+of their own.
 
 ```arc42
 :::concept

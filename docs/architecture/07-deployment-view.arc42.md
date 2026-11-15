@@ -96,7 +96,7 @@ hosts: bb-mcp, bb-cli, bb-client-core, bb-replicator, bb-agent-runner
 One server or container that runs the hub: the meeting session, the records, the tasks, the
 slides, the stage and the archive. The archive stores sessions, decisions, minutes, notes, tasks
 and slide decks in a local Git repository on this host (`dec-yaml-git-storage`); the push to a remote
-is mocked for now. The host needs the Git command line tool. It keeps the participants and their keys (identity)
+is mocked. The host needs the Git command line tool. It keeps the participants and their keys (identity)
 permanently. The operator gives the hub its signing key for the tree heads (`dec-merkle-log`) at
 every start, at first as a key file on the command line, and creates that key with a separate
 command of the hub. The hub does not create a signing key by itself and does not start without

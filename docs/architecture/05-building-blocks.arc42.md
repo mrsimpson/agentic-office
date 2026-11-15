@@ -311,12 +311,12 @@ session and reads page by page. A task records its author and whether the author
 an agent, and who changed it last. Each command carries an ID created by the client, so a
 repeated command has no extra effect. A sentence that is off the record must not go into a task.
 
-For now every task is a local draft of the hub (`dec-yaml-git-storage`). Later the hub syncs tasks
-with the task tool of the team, and the synced task replaces the draft. So that this step does
-not change the contract, a task is named by a stable reference with a scheme, for example
-`local:42` today and `github:owner/repo#12` later. Clients treat the reference as opaque: they
-keep it and pass it back. Each task also says where it lives; today that is always the hub.
-OPEN: how a synced task replaces its draft, and which side is the truth (#40).
+Every task is a local draft of the hub (`dec-yaml-git-storage`). A sync with the task tool of the
+team would replace the draft by the synced task. So that this step does not change the contract, a
+task is named by a stable reference with a scheme, for example `local:42` or
+`github:owner/repo#12`. Clients treat the reference as opaque: they keep it and pass it back. Each
+task also says where it lives. OPEN: how a synced task replaces its draft, and which side is the
+truth.
 
 ```arc42
 :::interface
@@ -339,8 +339,8 @@ created by the client, so a repeated command has no extra effect. Rendering is d
 must not go into a deck.
 
 A deck has an ID with the type in front, for example `slides/42`. The stage shows a deck by this
-ID. In general, an artifact is anything that the stage can show by an ID like this; today slide
-decks are the only type (`term-artifact`).
+ID. In general, an artifact is anything that the stage can show by an ID like this; slide decks are
+the first type (`term-artifact`).
 
 ```arc42
 :::interface
@@ -520,15 +520,15 @@ requires: if-token-check, if-archive-storage
 
 ### Tasks part
 
-Keeps the tasks of the team behind the task interface (`dec-records-per-type`). For now every
+Keeps the tasks of the team behind the task interface (`dec-records-per-type`). Every
 task is a local draft: one YAML file in the archive per task (`dec-yaml-git-storage`). Creating a
 task is one commit, and every change rewrites the file in a new commit, so the archive keeps the
 history of every task. A command returns only after its commit. When the hub starts, the block
 reads its tasks back from the archive, so they survive a restart. Like the records part, it
-writes synchronously and can wait behind a session write of the archive (#45).
+writes synchronously and can wait behind a session write of the archive.
 
-A later sync with the task tool of the team (#40) belongs to this block. Only the hub will hold
-the credentials of that tool.
+A sync with the task tool of the team would belong to this block. Only the hub would hold the
+credentials of that tool.
 
 ```arc42
 :::building-block
@@ -568,10 +568,10 @@ exactly what was shown in a meeting, even if a later version of the hub renders 
 Because rendering is deterministic, the stored input is enough to get the same output again.
 When the hub starts, the block reads its decks back from the archive, so they survive a restart.
 Like the records part, it writes synchronously and can wait behind a session write of the
-archive (#45).
+archive.
 
 The check of business plans by calculation (consistency, unit economics, completeness) is a
-different type with its own interface when it is built (#3).
+different type with its own interface when it is built.
 
 ```arc42
 :::building-block
@@ -591,7 +591,7 @@ files in a local Git repository on the hub host and commits locally (`dec-yaml-g
 Every change of a caller is one commit. The archive does not know the records: the caller
 decides the files and their content. Callers read their files back from the current commit, for
 example to rebuild their index at start. After every commit, the archive pushes to a remote. The
-push is mocked for now: it does nothing and reports success. A commit can be slow, so callers
+push is mocked: it does nothing and reports success. A commit can be slow, so callers
 that must not wait call it in the background.
 
 ```arc42
@@ -678,8 +678,7 @@ the only writer there and checks every change. Each user,
 human or agent, is its own actor with its own Ed25519 key pair. A user can be a member of several
 tenants, with a role in each (`member` or `tenant admin`). A user can also be a system admin; this
 role replaces the file of admin keys. The client creates the key pair locally and sends only the public
-key. In the first stage, a new public key is registered by hand when we meet the person
-(issue #2 describes a real enrollment flow). Identity issues short-lived access tokens and creates
+key. A new public key is registered by hand when we meet the person. Identity issues short-lived access tokens and creates
 read-only links for the stage. The token check tells other parts of the hub who the caller is,
 whether they are a system admin and which tenants they belong to with which role.
 
@@ -1043,23 +1042,15 @@ session and one agent key, it:
 
 - joins the session as the agent and runs the log replicator in its own process, so it follows
   the local log of the agent;
-- starts the agent harness, opens one ACP session and hands it the office tools as an MCP server
-  with the key of the agent;
-- sends a first prompt with the role of the agent and the meeting;
+- starts the agent harness, opens one ACP session, hands it the office tools as an MCP server with
+  the key of the agent and sends a first prompt with the role of the agent and the meeting;
 - decides with one wake strategy, chosen by the user at start, when to wake the agent
-  (`dec-agent-runner-delivery`): `turn-end` wakes it at each change of speaker and says at start
-  that it does not notice a new topic within a monologue; `llm` asks a forwarding judge and
-  `decision-model` asks a decision model after each utterance of another participant
-  (`dec-wake-check-per-utterance`, `dec-byo-decision-model`), and they wake the agent when the
-  model says it should act or a block of topics has ended;
-- falls back to `turn-end` when the model fails: a failed check wakes nobody, and the
-  utterances wait for the next change of speaker; after three failures within five minutes it
-  works as `turn-end`, asks the model again at most once per change of speaker and switches back
-  when the model answers;
+  (`dec-agent-runner-delivery`): at each change of speaker, or when a forwarding judge or a
+  decision model that the user brings says so (`dec-wake-check-per-utterance`,
+  `dec-byo-decision-model`); when the model fails, it falls back to the change of speaker;
 - when it wakes the agent, sends what others said since its last delivery, with who said it and
-  whether that participant is a human or an agent. It leaves out the agent's own utterances and
-  sentences off the record. While the agent works, it queues what comes and sends it together
-  afterwards, so nothing is lost and nothing is sent twice (`dec-agent-runner-delivery`);
+  whether that participant is a human or an agent, but not the agent's own utterances or
+  sentences off the record; nothing is lost and nothing is sent twice;
 - after the session ends, sends a last prompt and stops the harness.
 
 The runner never speaks for the agent and judges nothing itself: the agent decides whether it is
@@ -1067,12 +1058,10 @@ addressed and acts through the office tools. Whatever the harness writes as a re
 logged.
 
 Inside the runner, the wake strategy is one seam that serves the runner as its consumer. The
-runner asks it what an utterance or a change of speaker means, hands it the pending utterances
-with their context in its own terms, and gets back its own verdict: wake, wait, or check with
-the model. The three strategies hide behind this seam. Only the strategies `llm` and
-`decision-model` know the external contracts, `if-forwarding-judge` and `if-decision-model`, and
-each maps the request and the verdict to its contract. The seam lies inside the runner, so it is
-no interface of the model.
+runner hands it the pending utterances in its own terms and gets back its own verdict: wake, wait,
+or check with the model. Only the strategies that use a model know the external contracts,
+`if-forwarding-judge` and `if-decision-model`, and each maps the request and the verdict to its
+contract. The seam lies inside the runner, so it is no interface of the model.
 
 ```arc42
 :::building-block
