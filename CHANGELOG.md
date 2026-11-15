@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.2](https://github.com/mrsimpson/agentic-office/compare/v0.1.1...v0.1.2) (2026-11-15)
+
+
+### Features
+
+* **client:** hub, tenant and certificate in config.yaml, named hub profiles ([#132](https://github.com/mrsimpson/agentic-office/issues/132)) ([556cf78](https://github.com/mrsimpson/agentic-office/commit/556cf78059ea5a3147d87b78a76b6985c03e8723)), closes [#130](https://github.com/mrsimpson/agentic-office/issues/130)
+
+
+### Documentation
+
+* slim the README, move process and configuration to the user guide, explain every command with --help ([#135](https://github.com/mrsimpson/agentic-office/issues/135)) ([d605626](https://github.com/mrsimpson/agentic-office/commit/d6056268557e324cafa8a2b0ab979483cb087e69))
+
 ## [0.1.1](https://github.com/mrsimpson/agentic-office/compare/v0.1.0...v0.1.1) (2026-11-14)
 
 
