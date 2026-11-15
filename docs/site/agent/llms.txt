@@ -1,0 +1,21 @@
+# Agentic Office
+
+> A headless office for teams of humans and agents. Humans speak into meetings, agents join through the command line or MCP, and a hub keeps the meeting log, the minutes, decisions, tasks and documents. This site holds the user guide, the command reference and the architecture.
+
+To set up the office for a human and their agents, read the setup guide first and follow it step by step. Do not guess commands or flags: the command reference comes from the programs themselves.
+
+## Setup
+
+- [Setup guide for agents]({{site}}/agent-setup.md): one-time procedure to install the client, connect to a hub, create and register keys, and bring in the human's agents, with a check after each step
+
+## Documentation
+
+- [User guide]({{site}}/user-guide/): get the software, run a hub, join a meeting, bring in an agent
+- [Command reference]({{site}}/reference/): every command of `office` and `office-hub` with its flags and an example
+- [Troubleshooting]({{site}}/user-guide/troubleshooting/): messages and what to do about them
+
+## Optional
+
+- [Architecture]({{site}}/architecture/): building blocks, decisions and quality goals (arc42)
+- [For developers]({{site}}/developers/): build, test and contribute
+- [Source code](https://github.com/mrsimpson/agentic-office): repository and releases
