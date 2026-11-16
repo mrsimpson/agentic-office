@@ -20,11 +20,11 @@ package office.archive.v1;
 option go_package = "github.com/mrsimpson/agentic-office/hub/archive/changes/api;changesv1";
 
 service ArchiveChangesService {
-  // Follow first sends one FollowResponse without changes: it says that the hub has registered
-  // the call, so the client receives every change of main from now on. A client that wants a
-  // complete clone waits for it and then updates its clone through Git. After that, Follow sends
-  // one FollowResponse for each change of main that touches an artifact that matches the
-  // request, until the client ends the call or the access token ends.
+  // Follow first sends one FollowResponse with the signal "registered": it says that the hub
+  // has registered the call, so the client receives every change of main from now on. A client
+  // that wants a complete clone waits for it and then updates its clone through Git. After that,
+  // Follow sends one FollowResponse with changes for each change of main that touches an
+  // artifact that matches the request, until the client ends the call or the access token ends.
   //
   // The hub never waits for a follower. A follower that does not read fast enough is dropped: its
   // stream fails with resource_exhausted, and the client connects again and updates its clone.
@@ -40,8 +40,21 @@ message FollowRequest {
 }
 
 message FollowResponse {
-  // changes are the artifacts of one change of main that match the request, ordered by path.
-  // Every message has at least one entry, except the first one (see Follow).
+  // The first message of a call is registered. Every later message is changes.
+  oneof message {
+    // registered says that the hub has registered the follower (see Follow).
+    Registered registered = 1;
+    // changes are the artifacts of one change of main that match the request.
+    ArtifactChanges changes = 2;
+  }
+}
+
+// Registered is the signal that the follower is registered. It has no content.
+message Registered {}
+
+// ArtifactChanges are the artifacts of one change of main that match the request, ordered by
+// path. It has at least one entry.
+message ArtifactChanges {
   repeated ArtifactChange changes = 1;
 }
 

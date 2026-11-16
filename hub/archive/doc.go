@@ -34,7 +34,8 @@
 // not empty, compares the old and the new tree (git diff-tree) and sends the artifacts (Markdown
 // and YAML files) to each follower. Delivery to a follower never blocks:
 // a follower with a full buffer is dropped (see package changes). The state of main at start is
-// not reported.
+// not reported. A follower first gets the signal "registered", a message of its own type without
+// changes, and then one message with changes for each reported change of main.
 //
 // How it works:
 //

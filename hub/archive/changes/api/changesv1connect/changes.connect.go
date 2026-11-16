@@ -57,11 +57,11 @@ var (
 
 // ArchiveChangesServiceClient is a client for the office.archive.v1.ArchiveChangesService service.
 type ArchiveChangesServiceClient interface {
-	// Follow first sends one FollowResponse without changes: it says that the hub has registered
-	// the call, so the client receives every change of main from now on. A client that wants a
-	// complete clone waits for it and then updates its clone through Git. After that, Follow sends
-	// one FollowResponse for each change of main that touches an artifact that matches the
-	// request, until the client ends the call or the access token ends.
+	// Follow first sends one FollowResponse with the signal "registered": it says that the hub
+	// has registered the call, so the client receives every change of main from now on. A client
+	// that wants a complete clone waits for it and then updates its clone through Git. After that,
+	// Follow sends one FollowResponse with changes for each change of main that touches an
+	// artifact that matches the request, until the client ends the call or the access token ends.
 	//
 	// The hub never waits for a follower. A follower that does not read fast enough is dropped: its
 	// stream fails with resource_exhausted, and the client connects again and updates its clone.
@@ -99,11 +99,11 @@ func (s ArchiveChangesServiceFollowClientStream) Close() error {
 // ArchiveChangesServiceHandler is an implementation of the office.archive.v1.ArchiveChangesService
 // service.
 type ArchiveChangesServiceHandler interface {
-	// Follow first sends one FollowResponse without changes: it says that the hub has registered
-	// the call, so the client receives every change of main from now on. A client that wants a
-	// complete clone waits for it and then updates its clone through Git. After that, Follow sends
-	// one FollowResponse for each change of main that touches an artifact that matches the
-	// request, until the client ends the call or the access token ends.
+	// Follow first sends one FollowResponse with the signal "registered": it says that the hub
+	// has registered the call, so the client receives every change of main from now on. A client
+	// that wants a complete clone waits for it and then updates its clone through Git. After that,
+	// Follow sends one FollowResponse with changes for each change of main that touches an
+	// artifact that matches the request, until the client ends the call or the access token ends.
 	//
 	// The hub never waits for a follower. A follower that does not read fast enough is dropped: its
 	// stream fails with resource_exhausted, and the client connects again and updates its clone.

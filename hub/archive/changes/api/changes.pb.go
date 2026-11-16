@@ -139,9 +139,13 @@ func (x *FollowRequest) GetPathPrefixes() []string {
 
 type FollowResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// changes are the artifacts of one change of main that match the request, ordered by path.
-	// Every message has at least one entry, except the first one (see Follow).
-	Changes       []*ArtifactChange `protobuf:"bytes,1,rep,name=changes,proto3" json:"changes,omitempty"`
+	// The first message of a call is registered. Every later message is changes.
+	//
+	// Types that are valid to be assigned to Message:
+	//
+	//	*FollowResponse_Registered
+	//	*FollowResponse_Changes
+	Message       isFollowResponse_Message `protobuf_oneof:"message"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -176,7 +180,126 @@ func (*FollowResponse) Descriptor() ([]byte, []int) {
 	return file_office_archive_v1_changes_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *FollowResponse) GetChanges() []*ArtifactChange {
+func (x *FollowResponse) GetMessage() isFollowResponse_Message {
+	if x != nil {
+		return x.Message
+	}
+	return nil
+}
+
+func (x *FollowResponse) GetRegistered() *Registered {
+	if x != nil {
+		if x, ok := x.Message.(*FollowResponse_Registered); ok {
+			return x.Registered
+		}
+	}
+	return nil
+}
+
+func (x *FollowResponse) GetChanges() *ArtifactChanges {
+	if x != nil {
+		if x, ok := x.Message.(*FollowResponse_Changes); ok {
+			return x.Changes
+		}
+	}
+	return nil
+}
+
+type isFollowResponse_Message interface {
+	isFollowResponse_Message()
+}
+
+type FollowResponse_Registered struct {
+	// registered says that the hub has registered the follower (see Follow).
+	Registered *Registered `protobuf:"bytes,1,opt,name=registered,proto3,oneof"`
+}
+
+type FollowResponse_Changes struct {
+	// changes are the artifacts of one change of main that match the request.
+	Changes *ArtifactChanges `protobuf:"bytes,2,opt,name=changes,proto3,oneof"`
+}
+
+func (*FollowResponse_Registered) isFollowResponse_Message() {}
+
+func (*FollowResponse_Changes) isFollowResponse_Message() {}
+
+// Registered is the signal that the follower is registered. It has no content.
+type Registered struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Registered) Reset() {
+	*x = Registered{}
+	mi := &file_office_archive_v1_changes_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Registered) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Registered) ProtoMessage() {}
+
+func (x *Registered) ProtoReflect() protoreflect.Message {
+	mi := &file_office_archive_v1_changes_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Registered.ProtoReflect.Descriptor instead.
+func (*Registered) Descriptor() ([]byte, []int) {
+	return file_office_archive_v1_changes_proto_rawDescGZIP(), []int{2}
+}
+
+// ArtifactChanges are the artifacts of one change of main that match the request, ordered by
+// path. It has at least one entry.
+type ArtifactChanges struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Changes       []*ArtifactChange      `protobuf:"bytes,1,rep,name=changes,proto3" json:"changes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ArtifactChanges) Reset() {
+	*x = ArtifactChanges{}
+	mi := &file_office_archive_v1_changes_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ArtifactChanges) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ArtifactChanges) ProtoMessage() {}
+
+func (x *ArtifactChanges) ProtoReflect() protoreflect.Message {
+	mi := &file_office_archive_v1_changes_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ArtifactChanges.ProtoReflect.Descriptor instead.
+func (*ArtifactChanges) Descriptor() ([]byte, []int) {
+	return file_office_archive_v1_changes_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ArtifactChanges) GetChanges() []*ArtifactChange {
 	if x != nil {
 		return x.Changes
 	}
@@ -197,7 +320,7 @@ type ArtifactChange struct {
 
 func (x *ArtifactChange) Reset() {
 	*x = ArtifactChange{}
-	mi := &file_office_archive_v1_changes_proto_msgTypes[2]
+	mi := &file_office_archive_v1_changes_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -209,7 +332,7 @@ func (x *ArtifactChange) String() string {
 func (*ArtifactChange) ProtoMessage() {}
 
 func (x *ArtifactChange) ProtoReflect() protoreflect.Message {
-	mi := &file_office_archive_v1_changes_proto_msgTypes[2]
+	mi := &file_office_archive_v1_changes_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -222,7 +345,7 @@ func (x *ArtifactChange) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArtifactChange.ProtoReflect.Descriptor instead.
 func (*ArtifactChange) Descriptor() ([]byte, []int) {
-	return file_office_archive_v1_changes_proto_rawDescGZIP(), []int{2}
+	return file_office_archive_v1_changes_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ArtifactChange) GetPath() string {
@@ -252,8 +375,16 @@ const file_office_archive_v1_changes_proto_rawDesc = "" +
 	"\n" +
 	"\x1foffice/archive/v1/changes.proto\x12\x11office.archive.v1\"4\n" +
 	"\rFollowRequest\x12#\n" +
-	"\rpath_prefixes\x18\x01 \x03(\tR\fpathPrefixes\"M\n" +
-	"\x0eFollowResponse\x12;\n" +
+	"\rpath_prefixes\x18\x01 \x03(\tR\fpathPrefixes\"\x9c\x01\n" +
+	"\x0eFollowResponse\x12?\n" +
+	"\n" +
+	"registered\x18\x01 \x01(\v2\x1d.office.archive.v1.RegisteredH\x00R\n" +
+	"registered\x12>\n" +
+	"\achanges\x18\x02 \x01(\v2\".office.archive.v1.ArtifactChangesH\x00R\achangesB\t\n" +
+	"\amessage\"\f\n" +
+	"\n" +
+	"Registered\"N\n" +
+	"\x0fArtifactChanges\x12;\n" +
 	"\achanges\x18\x01 \x03(\v2!.office.archive.v1.ArtifactChangeR\achanges\"q\n" +
 	"\x0eArtifactChange\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x121\n" +
@@ -281,23 +412,27 @@ func file_office_archive_v1_changes_proto_rawDescGZIP() []byte {
 }
 
 var file_office_archive_v1_changes_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_office_archive_v1_changes_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_office_archive_v1_changes_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_office_archive_v1_changes_proto_goTypes = []any{
-	(ChangeKind)(0),        // 0: office.archive.v1.ChangeKind
-	(*FollowRequest)(nil),  // 1: office.archive.v1.FollowRequest
-	(*FollowResponse)(nil), // 2: office.archive.v1.FollowResponse
-	(*ArtifactChange)(nil), // 3: office.archive.v1.ArtifactChange
+	(ChangeKind)(0),         // 0: office.archive.v1.ChangeKind
+	(*FollowRequest)(nil),   // 1: office.archive.v1.FollowRequest
+	(*FollowResponse)(nil),  // 2: office.archive.v1.FollowResponse
+	(*Registered)(nil),      // 3: office.archive.v1.Registered
+	(*ArtifactChanges)(nil), // 4: office.archive.v1.ArtifactChanges
+	(*ArtifactChange)(nil),  // 5: office.archive.v1.ArtifactChange
 }
 var file_office_archive_v1_changes_proto_depIdxs = []int32{
-	3, // 0: office.archive.v1.FollowResponse.changes:type_name -> office.archive.v1.ArtifactChange
-	0, // 1: office.archive.v1.ArtifactChange.kind:type_name -> office.archive.v1.ChangeKind
-	1, // 2: office.archive.v1.ArchiveChangesService.Follow:input_type -> office.archive.v1.FollowRequest
-	2, // 3: office.archive.v1.ArchiveChangesService.Follow:output_type -> office.archive.v1.FollowResponse
-	3, // [3:4] is the sub-list for method output_type
-	2, // [2:3] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	3, // 0: office.archive.v1.FollowResponse.registered:type_name -> office.archive.v1.Registered
+	4, // 1: office.archive.v1.FollowResponse.changes:type_name -> office.archive.v1.ArtifactChanges
+	5, // 2: office.archive.v1.ArtifactChanges.changes:type_name -> office.archive.v1.ArtifactChange
+	0, // 3: office.archive.v1.ArtifactChange.kind:type_name -> office.archive.v1.ChangeKind
+	1, // 4: office.archive.v1.ArchiveChangesService.Follow:input_type -> office.archive.v1.FollowRequest
+	2, // 5: office.archive.v1.ArchiveChangesService.Follow:output_type -> office.archive.v1.FollowResponse
+	5, // [5:6] is the sub-list for method output_type
+	4, // [4:5] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_office_archive_v1_changes_proto_init() }
@@ -305,13 +440,17 @@ func file_office_archive_v1_changes_proto_init() {
 	if File_office_archive_v1_changes_proto != nil {
 		return
 	}
+	file_office_archive_v1_changes_proto_msgTypes[1].OneofWrappers = []any{
+		(*FollowResponse_Registered)(nil),
+		(*FollowResponse_Changes)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_office_archive_v1_changes_proto_rawDesc), len(file_office_archive_v1_changes_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   3,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

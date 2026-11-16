@@ -24,7 +24,9 @@
 //     is dropped: its stream fails with resource_exhausted and it connects again. A follower
 //     whose client has gone is removed when its call ends. A slow or gone follower never holds
 //     up a commit or another follower.
-//   - The first message of a call has no changes. The hub sends it when it has registered the
-//     follower, so a client that has received it gets every later change. A client that wants a
-//     complete clone connects, waits for this message and then updates its clone through Git.
+//   - The first message of a call is a signal of its own type, Registered. It carries no
+//     changes. The hub sends it when it has registered the follower, so a client that has
+//     received it gets every later change. Every later message carries changes (ArtifactChanges,
+//     at least one entry). A client that wants a complete clone connects, waits for the signal
+//     and then updates its clone through Git.
 package changes
