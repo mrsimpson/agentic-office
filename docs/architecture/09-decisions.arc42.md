@@ -1105,7 +1105,7 @@ artifact type (not now).
 :::decision
 id: dec-artifact-sync
 title: Artifacts reach the participant's computer through Git
-status: proposed
+status: accepted
 date: 2026-11-16
 addresses: qg-usability, qg-confidentiality, risk-push-bypass, risk-push-size, risk-unsigned-commits, risk-stale-memory
 :::
