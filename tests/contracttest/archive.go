@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"encoding/base64"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -38,6 +39,51 @@ func Git(t testing.TB, dir string, args ...string) string {
 		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, stderr.String())
 	}
 	return string(out)
+}
+
+// Files returns the paths of the files in the current commit of a bare repository, ordered. It
+// returns nil if the repository has no commit yet.
+func Files(t testing.TB, repo string) []string {
+	t.Helper()
+	if err := exec.Command("git", "-C", repo, "rev-parse", "--verify", "-q", "HEAD").Run(); err != nil {
+		return nil
+	}
+	return strings.Fields(Git(t, repo, "ls-tree", "-r", "--name-only", "HEAD"))
+}
+
+// AllText returns the content of all files in the current commit, one after the other.
+func AllText(t testing.TB, repo string) string {
+	t.Helper()
+	var all strings.Builder
+	for _, f := range Files(t, repo) {
+		all.WriteString(Git(t, repo, "show", "HEAD:"+f))
+	}
+	return all.String()
+}
+
+// Edit changes the files of a bare repository like a person with a clone: it clones the repository,
+// calls fn with the directory of the work tree, commits everything that fn changed and pushes it
+// to main. The hub must not run while a test uses Edit, unless the test wants the race.
+func Edit(t testing.TB, repo, message string, fn func(work string)) {
+	t.Helper()
+	work := filepath.Join(t.TempDir(), "work")
+	Git(t, filepath.Dir(work), "clone", "-q", repo, work)
+	fn(work)
+	Git(t, work, "add", "-A")
+	Git(t, work, "-c", "user.name=editor", "-c", "user.email=e@example.org", "commit", "-q", "-m", message)
+	Git(t, work, "push", "-q", "origin", "HEAD:main")
+}
+
+// WriteFile writes a file below a work tree, with its directories.
+func WriteFile(t testing.TB, work, file, content string) {
+	t.Helper()
+	p := filepath.Join(work, filepath.FromSlash(file))
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 var safeName = regexp.MustCompile(`^[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}$`)

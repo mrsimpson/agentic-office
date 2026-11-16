@@ -27,7 +27,7 @@ import (
 // slowCommit is how long every commit of the archive takes in qs-archive-no-backpressure.
 const slowCommit = 5 * time.Second
 
-// slowGit writes a git wrapper that makes every "git commit" take d and logs when each commit
+// slowGit writes a git wrapper that makes every "git commit-tree" take d and logs when each commit
 // starts and ends, and whether it is a session write (message "Sessions: …") or a record. It
 // returns the directory to put first in PATH and the log file.
 func slowGit(t *testing.T, d time.Duration) (string, string) {
@@ -44,7 +44,7 @@ func slowGit(t *testing.T, d time.Duration) (string, string) {
 	script := fmt.Sprintf(`#!/bin/sh
 # Only the commits of the tenant repositories count; the hub repository is not slowed.
 case "$PWD" in */repos/tenants/*) ;; *) exec %[2]q "$@";; esac
-if [ "$1" = commit ]; then
+if [ "$1" = commit-tree ]; then
   kind=record
   case "$*" in *" -m Sessions:"*) kind=session;; esac
   echo "start $(date +%%s%%N) $kind" >> %[1]q
