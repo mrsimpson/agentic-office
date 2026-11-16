@@ -425,6 +425,45 @@ only. The session logs lie in a repository that no participant can read.`,
 		Examples: []string{"office document list"}},
 
 	// Artifacts in a local directory.
+	{Name: "sync", Group: groupSync, Summary: "bring the directory up to date with the hub",
+		Usage: "sync [<directory>]",
+		Details: `Updates the main directory (default: the current directory) that "office sync init" set up:
+it fetches the hub and moves main forward. It never merges. Files that you changed and did not
+commit stay as they are.
+
+The command stops and changes nothing when
+  - main has commits of its own: the main directory mirrors the hub, so move them to a branch
+    in a worktree and push that branch;
+  - the hub rewrote the history of main: clone the hub again into a new directory;
+  - an incoming change would overwrite a file that you changed and did not commit: commit or
+    move the file, then run the command again.
+It refuses a directory that is not set up and a linked worktree (it works on the main directory
+only). Git gets its access token from the helper that "office sync init" wrote into the clone.
+
+To keep the directory up to date while you work, use "office sync follow".
+
+--json prints {"directory", "updated", "from", "to"} (the commits of main).`,
+		Examples: []string{"office sync", "office sync ~/artifacts"}},
+	{Name: "sync follow", Group: groupSync, Summary: "keep the directory up to date until you stop the command",
+		Usage: "sync follow [<directory>] [--path P]...",
+		Details: `Updates the main directory once (as "office sync" does), then follows the hub and updates the
+directory after each change of an artifact, whether it came through the documents interface or
+through a push. Stop it with Ctrl-C or SIGTERM.
+
+It connects first, waits until the hub confirms that it is listening, and then updates, so no
+change gets lost between the two. A change is announced without its content; the update always
+takes everything that is new. When the connection ends or fails, the command waits (one second,
+then longer, up to 30 seconds), connects again and updates before it follows. An update that
+needs your action (own commits in main, rewritten history, a file that would be overwritten)
+is reported on stderr and does not stop the command; the next change tries again.
+
+--path limits the changes that start an update to artifacts under a directory or file of the
+repository, for example notes or notes/plan.md. You can repeat it. An update still brings
+everything.
+
+With --json, every update prints {"directory", "updated", "from", "to"} on stdout, and messages
+on stderr are {"progress": text}.`,
+		Examples: []string{"office sync follow", "office sync follow ~/artifacts --path documents --path notes/plan.md"}},
 	{Name: "sync init", Group: groupSync, Summary: "set up a directory with the artifacts of the tenant",
 		Usage: "sync init [<directory>]",
 		Details: `Clones the artifact repository of the tenant from the hub into the directory (default: the

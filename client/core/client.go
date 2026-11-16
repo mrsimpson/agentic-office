@@ -37,8 +37,9 @@ type hubClient struct {
 	key    ed25519.PrivateKey
 	tokens *auth.TokenSource
 
-	commands sessioncommandsv1connect.SessionCommandsServiceClient
-	stream   sessionstreamv1connect.SessionStreamServiceClient
+	connection *connect.Client
+	commands   sessioncommandsv1connect.SessionCommandsServiceClient
+	stream     sessionstreamv1connect.SessionStreamServiceClient
 	// sessionImport imports conversations (if-session-import); see Import.
 	sessionImport sessionimportv1connect.SessionImportServiceClient
 	identity      identityv1connect.IdentityServiceClient
@@ -73,7 +74,7 @@ func Dial(cfg coreapi.Config) (coreapi.Client, error) {
 	// The identity client inside the token source must not use Bearer itself.
 	ts := auth.NewTokenSource(identityv1connect.NewIdentityServiceClient(newConnect(hc, base)), key)
 	cc := newConnect(hc, base, auth.Bearer(ts), auth.Tenant(cfg.Tenant))
-	return &hubClient{cfg: cfg, key: key, tokens: ts,
+	return &hubClient{cfg: cfg, key: key, tokens: ts, connection: cc,
 		commands:      sessioncommandsv1connect.NewSessionCommandsServiceClient(cc),
 		stream:        sessionstreamv1connect.NewSessionStreamServiceClient(cc),
 		sessionImport: sessionimportv1connect.NewSessionImportServiceClient(cc),
@@ -91,6 +92,8 @@ func Dial(cfg coreapi.Config) (coreapi.Client, error) {
 }
 
 func (c *hubClient) Config() coreapi.Config { return c.cfg }
+
+func (c *hubClient) Connection() *connect.Client { return c.connection }
 
 func (c *hubClient) KeyID() string { return auth.KeyID(auth.PublicKey(c.key)) }
 
