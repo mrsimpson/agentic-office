@@ -11,12 +11,14 @@
 //     and its source is TASK_SOURCE_LOCAL. Clients treat the ref as opaque. GetTask and
 //     UpdateTask answer NotFound for every ref that is not a local task, also for other schemes.
 //   - Storage: every task is one YAML file in the archive (if-archive-storage),
-//     tasks/NNNNNN.yaml, where NNNNNN is the number with at least six digits. The YAML has the
-//     field names of the contract (snake_case, enums by name, times in RFC 3339), and the extra
-//     field command_ids: the command IDs of the creation and of every update, oldest first. A
+//     tasks/NNNNNN.yaml, where NNNNNN is the number with at least six digits. The YAML starts
+//     with the field schema (office.task.v1), has the field names of the contract (snake_case,
+//     enums by name, times in RFC 3339), and the extra field command_ids: the command IDs of the creation and of every update, oldest first. A
 //     text with line breaks is a literal block. Creating a task is one commit; every change
 //     rewrites the file in a new commit, so Git keeps the history of a task. A command returns
-//     only after its commit.
+//     only after its commit. The check of the part (package check, if-tasks-check) decides what
+//     a valid file is. The part uses it for every file it writes and reads, and Git access uses
+//     it for a push, so every rule exists once.
 //   - Open reads all tasks from the current commit of the archive and keeps them in memory, so
 //     tasks survive a restart. Reads use only the memory. A file that is not valid stops the
 //     start with an error; files without the ending .yaml are ignored.
