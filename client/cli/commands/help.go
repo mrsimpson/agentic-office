@@ -249,7 +249,13 @@ With --mic or --wav FILE the client joins as captured: the ears transcribe your 
 locally with Whisper and the gateway view shows each sentence. Only text leaves your computer.
 Use a headset. A missing speech model is downloaded once; before join, the ears check the
 models, the WAV file or the recorder, and if something is missing you do not join. "office help
-ears" lists the flags and variables of the ears.`,
+ears" lists the flags and variables of the ears.
+
+If you run join in a directory that "office sync init" set up, or in a worktree of it, the
+replicator also keeps that clone up to date while it runs, like "office sync follow". Nothing
+is printed for it; a problem (hub away, commits of your own in main, no access) never stops the
+meeting and is written once to the output of the replicator. In any other directory join does
+nothing extra.`,
 		Examples: []string{`LOG=$(office meeting join weekly)   # prints the path of the local log`,
 			"office meeting join weekly --mic --language english", "office meeting join weekly --foreground &"}},
 	{Name: "meeting log", Group: groupMeeting, Summary: "print the path of the local log",

@@ -82,7 +82,7 @@ var MeetingEnd = &sdk.Tool{Name: "meeting_end", Title: "End the meeting for ever
 
 // MeetingJoin is the tool meeting_join.
 var MeetingJoin = &sdk.Tool{Name: "meeting_join", Title: "Join a meeting", Annotations: Additive,
-	Description: `Join a meeting session and start copying its events into a local log file. Returns {"sessionId", "participantId", "logPath", "replicatorPid", "event", "duplicate"}. Joining again is safe: you stay the same participant and get the same file. The copy runs as long as this MCP server runs (replicatorPid is the process that writes the file), until you leave or the session ends; call meeting_join again to restart it.
+	Description: `Join a meeting session and start copying its events into a local log file. Returns {"sessionId", "participantId", "logPath", "replicatorPid", "event", "duplicate"}. Joining again is safe: you stay the same participant and get the same file. The copy runs as long as this MCP server runs (replicatorPid is the process that writes the file), until you leave or the session ends; call meeting_join again to restart it. If the working directory of this MCP server is a directory that "office sync init" set up, or a worktree of it, the first meeting_join also keeps that clone up to date while the server runs. The result does not change; a problem with the clone never fails the join and goes to the log of the server once.
 
 ` + LogHelp}
 
