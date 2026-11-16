@@ -1,9 +1,12 @@
 package tasks
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"log"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -13,6 +16,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/mrsimpson/agentic-office/hub/archive/storage"
+	"github.com/mrsimpson/agentic-office/hub/archive/watch"
 	"github.com/mrsimpson/agentic-office/hub/identity/tokencheck"
 	taskv1 "github.com/mrsimpson/agentic-office/hub/tasks/api"
 	"github.com/mrsimpson/agentic-office/hub/tasks/api/taskv1connect"
@@ -28,71 +32,266 @@ const (
 	Dir = check.Dir
 )
 
+// maxCreateAttempts is how often a create takes the next number again because a file of that
+// number was already in the archive. Every attempt means that a push put a file there meanwhile.
+const maxCreateAttempts = 50
+
 // entry is a stored task with the command IDs that changed it, oldest first.
 type entry struct {
+	num      uint64
 	task     *taskv1.Task
 	commands []string
+	version  string // the version of the file that the entry was read from; empty after a write
 }
 
 // Service implements the task interface (if-task-api).
 type Service struct {
 	arch storage.Archive
+	logf func(string, ...any)
 
-	mu    sync.Mutex // one write at a time; guards all and byCmd
-	all   []*entry   // index n-1 holds the task with the local number n
+	watcher watch.Watcher
+	ctx     context.Context
+	cancel  context.CancelFunc
+	done    chan struct{}
+
+	mu    sync.Mutex // one write at a time; guards everything below
+	byNum map[uint64]*entry
 	byCmd map[string]*entry
+	bad   map[string]string // path to the version of a file that was ignored and logged
+	high  uint64            // the highest number of any file ever seen, valid or not
+	all   []*entry          // ordered by number; stale while dirty
+	dirty bool
 }
 
 var _ taskv1connect.TaskServiceHandler = (*Service)(nil)
 
-// Open reads all tasks from the archive and returns the service that stores tasks there.
-func Open(ctx context.Context, arch storage.Archive) (*Service, error) {
-	s := &Service{arch: arch, byCmd: map[string]*entry{}}
-	files, err := arch.Read(ctx, Dir)
-	if err != nil {
-		return nil, fmt.Errorf("tasks: read %s: %w", Dir, err)
+// Open reads all tasks from the archive and returns the service that stores tasks there. The
+// service follows the archive through w (if-archive-watch) until Close: it reloads the task files
+// that a push changed or added. logf logs the files it ignores; nil means log.Printf.
+func Open(ctx context.Context, arch storage.Archive, w watch.Watcher, logf func(string, ...any)) (*Service, error) {
+	if logf == nil {
+		logf = log.Printf
 	}
-	byNum := map[uint64]*entry{}
+	// Watch first, then read: a change in between is reported and read again.
+	sub, err := w.Watch(Dir)
+	if err != nil {
+		return nil, fmt.Errorf("tasks: watch the archive: %w", err)
+	}
+	s := &Service{arch: arch, logf: logf, watcher: w, done: make(chan struct{}),
+		byNum: map[uint64]*entry{}, byCmd: map[string]*entry{}, bad: map[string]string{}}
+	if err := s.loadAll(ctx, true); err != nil {
+		sub.Close()
+		return nil, err
+	}
+	s.ctx, s.cancel = context.WithCancel(context.Background())
+	go s.run(sub)
+	return s, nil
+}
+
+// Close stops following the archive. The service still answers calls.
+func (s *Service) Close() {
+	s.cancel()
+	<-s.done
+}
+
+// run reloads the files that the archive reports until Close. A subscription that was dropped
+// (the part was too slow) is replaced, and then every file is read again, because changes may
+// have been missed.
+func (s *Service) run(sub watch.Subscription) {
+	defer close(s.done)
+	for {
+		s.pump(sub)
+		sub.Close()
+		if s.ctx.Err() != nil {
+			return
+		}
+		s.logf("tasks: the archive dropped the watcher (%v); watching again and reading all tasks", sub.Err())
+		var err error
+		if sub, err = s.watcher.Watch(Dir); err != nil {
+			s.logf("tasks: cannot watch the archive again, pushed files are not seen until the hub restarts: %v", err)
+			return
+		}
+		if err := s.loadAll(s.ctx, false); err != nil {
+			s.logf("%v", err)
+		}
+	}
+}
+
+func (s *Service) pump(sub watch.Subscription) {
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case changes, ok := <-sub.Changes():
+			if !ok {
+				return
+			}
+			if err := s.reload(s.ctx, changes); err != nil {
+				s.logf("%v", err)
+			}
+		}
+	}
+}
+
+// numberOf returns the number in the name of a task file such as "tasks/000042.yaml".
+func numberOf(p string) (uint64, bool) {
+	n, err := strconv.ParseUint(strings.TrimSuffix(path.Base(p), ".yaml"), 10, 64)
+	return n, err == nil
+}
+
+// load reads one file into the service. It returns an error and changes nothing if the file is
+// not valid. The caller holds s.mu. A file that is not valid still counts for the next number, so
+// the part never takes its number.
+func (s *Service) load(f storage.File) error {
+	if path.Ext(f.Path) != ".yaml" {
+		return nil
+	}
+	if n, ok := numberOf(f.Path); ok {
+		s.high = max(s.high, n)
+		if e := s.byNum[n]; e != nil && e.version == f.Version {
+			return nil
+		}
+	}
+	// The check of the part: the same one that decides about a push.
+	if reasons := check.Validate(check.SchemaTask, f.Path, f.Data); len(reasons) > 0 {
+		return fmt.Errorf("%s: %s", f.Path, strings.Join(reasons, "; "))
+	}
+	t, cmds, err := decode(f.Data)
+	if err != nil {
+		return fmt.Errorf("%s: %w", f.Path, err)
+	}
+	n, _ := check.LocalNumber(t.GetRef())
+	for _, c := range cmds {
+		if other := s.byCmd[c]; other != nil && other.num != n {
+			return fmt.Errorf("%s: command ID %q is used by %s", f.Path, c, other.task.GetRef())
+		}
+	}
+	s.forget(n)
+	e := &entry{num: n, task: t, commands: cmds, version: f.Version}
+	s.byNum[n] = e
+	for _, c := range cmds {
+		s.byCmd[c] = e
+	}
+	delete(s.bad, f.Path)
+	s.dirty = true
+	return nil
+}
+
+// loadLenient is load for a file that a push brought: a file that is not valid is logged once for
+// its version and ignored. The task that the path had before stays.
+func (s *Service) loadLenient(f storage.File) {
+	if err := s.load(f); err != nil && s.bad[f.Path] != f.Version {
+		s.bad[f.Path] = f.Version
+		s.logf("tasks: ignore the pushed file %v", err)
+	}
+}
+
+// forget removes the task with number n. The caller holds s.mu.
+func (s *Service) forget(n uint64) {
+	if e := s.byNum[n]; e != nil {
+		for _, c := range e.commands {
+			if s.byCmd[c] == e {
+				delete(s.byCmd, c)
+			}
+		}
+		delete(s.byNum, n)
+		s.dirty = true
+	}
+	delete(s.bad, check.FilePath(n))
+}
+
+// loadAll reads every file of the directory. With strict, the first file that is not valid fails
+// it (the start of the hub). Otherwise such a file is logged and ignored, and a task whose file is
+// gone is removed.
+func (s *Service) loadAll(ctx context.Context, strict bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	files, err := s.arch.Read(ctx, Dir)
+	if err != nil {
+		return fmt.Errorf("tasks: read %s: %w", Dir, err)
+	}
+	present := map[uint64]bool{}
 	for _, f := range files {
 		if path.Ext(f.Path) != ".yaml" {
 			continue
 		}
-		// The check of the part: the same one that decides about a push.
-		if reasons := check.Validate(check.SchemaTask, f.Path, f.Data); len(reasons) > 0 {
-			return nil, fmt.Errorf("tasks: %s: %s", f.Path, strings.Join(reasons, "; "))
+		if n, ok := numberOf(f.Path); ok {
+			present[n] = true
 		}
-		t, cmds, err := decode(f.Data)
-		if err != nil {
-			return nil, fmt.Errorf("tasks: %s: %w", f.Path, err)
-		}
-		n, _ := check.LocalNumber(t.GetRef())
-		if byNum[n] != nil {
-			return nil, fmt.Errorf("tasks: %s: ref %q is twice", f.Path, t.GetRef())
-		}
-		e := &entry{task: t, commands: cmds}
-		byNum[n] = e
-		for _, c := range cmds {
-			if s.byCmd[c] != nil {
-				return nil, fmt.Errorf("tasks: %s: command ID %q is used twice", f.Path, c)
+		if strict {
+			if err := s.load(f); err != nil {
+				return fmt.Errorf("tasks: %w", err)
 			}
-			s.byCmd[c] = e
+		} else {
+			s.loadLenient(f)
 		}
 	}
-	// The numbers have no gaps: a task is never deleted.
-	for n := uint64(1); n <= uint64(len(byNum)); n++ {
-		if byNum[n] == nil {
-			return nil, fmt.Errorf("tasks: %s is missing", check.FilePath(n))
+	for n := range s.byNum {
+		if !present[n] {
+			s.forget(n)
 		}
-		s.all = append(s.all, byNum[n])
 	}
-	return s, nil
+	return nil
+}
+
+// reloadPaths reads the files at the paths again from the current commit: a file that is there is
+// loaded, a file that is gone is removed. The caller holds s.mu.
+func (s *Service) reloadPaths(ctx context.Context, paths []string) error {
+	for _, p := range paths {
+		if path.Ext(p) != ".yaml" {
+			continue
+		}
+		files, err := s.arch.Read(ctx, p)
+		if err != nil {
+			return fmt.Errorf("tasks: read %s: %w", p, err)
+		}
+		if len(files) == 0 {
+			if n, ok := numberOf(p); ok {
+				s.forget(n)
+			}
+			continue
+		}
+		for _, f := range files {
+			s.loadLenient(f)
+		}
+	}
+	return nil
+}
+
+// reload reads the task files that the changes name.
+func (s *Service) reload(ctx context.Context, changes []watch.Change) error {
+	var paths []string
+	for _, ch := range changes {
+		if strings.HasPrefix(ch.Path, Dir+"/") {
+			paths = append(paths, ch.Path)
+		}
+	}
+	if len(paths) == 0 {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.reloadPaths(ctx, paths)
+}
+
+// sorted returns the entries ordered by number. The caller holds s.mu.
+func (s *Service) sorted() []*entry {
+	if s.dirty {
+		s.all = s.all[:0]
+		for _, e := range s.byNum {
+			s.all = append(s.all, e)
+		}
+		slices.SortFunc(s.all, func(a, b *entry) int { return cmp.Compare(a.num, b.num) })
+		s.dirty = false
+	}
+	return s.all
 }
 
 // Count returns the number of tasks.
 func (s *Service) Count() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return len(s.all)
+	return len(s.byNum)
 }
 
 func invalid(msg string) error { return connect.NewError(connect.CodeInvalidArgument, msg) }
@@ -158,37 +357,55 @@ func (s *Service) CreateTask(ctx context.Context, req *taskv1.CreateTaskRequest)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if prev := s.byCmd[req.GetCommandId()]; prev != nil {
-		t := prev.task
-		// After a change, the stored task no longer shows what was created; then only the
-		// author is compared.
-		other := prev.commands[0] != req.GetCommandId() || t.GetAuthorParticipantId() != req.GetAuthorParticipantId() ||
-			(t.GetRevision() == 1 && (t.GetTitle() != req.GetTitle() || t.GetDescription() != req.GetDescription() ||
-				t.GetAssigneeParticipantId() != req.GetAssigneeParticipantId() || t.GetSessionId() != req.GetSessionId() ||
-				t.GetStatus() != status))
-		if other {
-			return nil, connect.NewError(connect.CodeAlreadyExists, "command_id was already used for another task or change")
+	// The file is created with "must not exist yet". If a push put a file with this number there
+	// first, the part reads the file, takes the next free number and tries again.
+	for attempt := 0; attempt < maxCreateAttempts; attempt++ {
+		if prev := s.byCmd[req.GetCommandId()]; prev != nil {
+			t := prev.task
+			// After a change, the stored task no longer shows what was created; then only the
+			// author is compared.
+			other := prev.commands[0] != req.GetCommandId() || t.GetAuthorParticipantId() != req.GetAuthorParticipantId() ||
+				(t.GetRevision() == 1 && (t.GetTitle() != req.GetTitle() || t.GetDescription() != req.GetDescription() ||
+					t.GetAssigneeParticipantId() != req.GetAssigneeParticipantId() || t.GetSessionId() != req.GetSessionId() ||
+					t.GetStatus() != status))
+			if other {
+				return nil, connect.NewError(connect.CodeAlreadyExists, "command_id was already used for another task or change")
+			}
+			return &taskv1.CreateTaskResponse{Task: t, Duplicate: true}, nil
 		}
-		return &taskv1.CreateTaskResponse{Task: t, Duplicate: true}, nil
+		n := s.high + 1
+		now := timestamppb.Now()
+		t := &taskv1.Task{Ref: check.LocalRef(n), Source: taskv1.TaskSource_TASK_SOURCE_LOCAL, Title: req.GetTitle(),
+			Description: req.GetDescription(), AssigneeParticipantId: req.GetAssigneeParticipantId(), Status: status,
+			SessionId: req.GetSessionId(), AuthorParticipantId: req.GetAuthorParticipantId(), AuthorKind: kind,
+			CreateTime: now, UpdatedByParticipantId: req.GetAuthorParticipantId(), UpdateTime: now, Revision: 1,
+			CommandId: req.GetCommandId()}
+		e := &entry{num: n, task: t, commands: []string{req.GetCommandId()}}
+		err := s.write(ctx, n, e, fmt.Sprintf("Task %s: %s", t.GetRef(), summary(t.GetTitle())), storage.NoFile)
+		if storage.IsConflict(err) {
+			// A push came first. Read what is there; its number is taken from now on.
+			if err := s.reloadPaths(context.WithoutCancel(ctx), []string{check.FilePath(n)}); err != nil {
+				return nil, connect.NewError(connect.CodeInternal, err.Error())
+			}
+			s.high = max(s.high, n)
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		s.forget(n)
+		s.high = n
+		s.byNum[n] = e
+		s.byCmd[req.GetCommandId()] = e
+		s.dirty = true
+		return &taskv1.CreateTaskResponse{Task: t}, nil
 	}
-	n := uint64(len(s.all)) + 1
-	now := timestamppb.Now()
-	t := &taskv1.Task{Ref: check.LocalRef(n), Source: taskv1.TaskSource_TASK_SOURCE_LOCAL, Title: req.GetTitle(),
-		Description: req.GetDescription(), AssigneeParticipantId: req.GetAssigneeParticipantId(), Status: status,
-		SessionId: req.GetSessionId(), AuthorParticipantId: req.GetAuthorParticipantId(), AuthorKind: kind,
-		CreateTime: now, UpdatedByParticipantId: req.GetAuthorParticipantId(), UpdateTime: now, Revision: 1,
-		CommandId: req.GetCommandId()}
-	e := &entry{task: t, commands: []string{req.GetCommandId()}}
-	if err := s.write(ctx, n, e, fmt.Sprintf("Task %s: %s", t.GetRef(), summary(t.GetTitle()))); err != nil {
-		return nil, err
-	}
-	s.all = append(s.all, e)
-	s.byCmd[req.GetCommandId()] = e
-	return &taskv1.CreateTaskResponse{Task: t}, nil
+	return nil, connect.NewError(connect.CodeInternal, "store the task in the archive: too many files were pushed meanwhile; repeat the command")
 }
 
-// write stores the task of e as the file of the local number n, in one commit.
-func (s *Service) write(ctx context.Context, n uint64, e *entry, message string) error {
+// write stores the task of e as the file of the local number n, in one commit. base is the
+// Base of the file (see storage.File). A conflict is returned as it is.
+func (s *Service) write(ctx context.Context, n uint64, e *entry, message, base string) error {
 	data, err := encode(e.task, e.commands)
 	if err != nil {
 		return connect.NewError(connect.CodeInternal, "encode the task: "+err.Error())
@@ -199,7 +416,10 @@ func (s *Service) write(ctx context.Context, n uint64, e *entry, message string)
 	// A cancelled commit could leave the repository locked, so the commit is not cancelled with
 	// the call.
 	if _, err := s.arch.Commit(context.WithoutCancel(ctx), storage.Change{Message: message,
-		Files: []storage.File{{Path: check.FilePath(n), Data: data}}}); err != nil {
+		Files: []storage.File{{Path: check.FilePath(n), Data: data, Base: base}}}); err != nil {
+		if storage.IsConflict(err) {
+			return err
+		}
 		return connect.NewError(connect.CodeInternal, "store the task in the archive: "+err.Error())
 	}
 	return nil
@@ -220,10 +440,10 @@ func (s *Service) find(ref string) (*entry, uint64, error) {
 		return nil, 0, invalid("ref is required")
 	}
 	n, ok := check.LocalNumber(ref)
-	if !ok || n > uint64(len(s.all)) {
+	if !ok || s.byNum[n] == nil {
 		return nil, 0, connect.NewError(connect.CodeNotFound, "no task "+ref)
 	}
-	return s.all[n-1], n, nil
+	return s.byNum[n], n, nil
 }
 
 // GetTask returns one task.
@@ -268,8 +488,11 @@ func (s *Service) ListTasks(ctx context.Context, req *taskv1.ListTasksRequest) (
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	res := &taskv1.ListTasksResponse{}
-	for i := after; i < uint64(len(s.all)); i++ {
-		t := s.all[i].task
+	for _, e := range s.sorted() {
+		if e.num <= after {
+			continue
+		}
+		t := e.task
 		if (len(statuses) > 0 && !statuses[t.GetStatus()]) ||
 			(req.GetAssigneeParticipantId() != "" && t.GetAssigneeParticipantId() != req.GetAssigneeParticipantId()) ||
 			(req.GetSessionId() != "" && t.GetSessionId() != req.GetSessionId()) {
@@ -277,7 +500,8 @@ func (s *Service) ListTasks(ctx context.Context, req *taskv1.ListTasksRequest) (
 		}
 		if len(res.Tasks) == limit {
 			// One more task matches: the page ends after the last task in it.
-			res.NextPageToken = strconv.FormatUint(i, 10)
+			last, _ := check.LocalNumber(res.Tasks[limit-1].GetRef())
+			res.NextPageToken = strconv.FormatUint(last, 10)
 			break
 		}
 		res.Tasks = append(res.Tasks, t)
@@ -342,11 +566,11 @@ func (s *Service) UpdateTask(ctx context.Context, req *taskv1.UpdateTaskRequest)
 	t.UpdateTime = timestamppb.Now()
 	next := &entry{task: t, commands: append(append([]string{}, e.commands...), req.GetCommandId())}
 	if err := s.write(ctx, n, next, fmt.Sprintf("Task %s, revision %d: %s", t.GetRef(), t.GetRevision(),
-		strings.Join(changed, ", "))); err != nil {
+		strings.Join(changed, ", ")), ""); err != nil {
 		return nil, err
 	}
 	// The entry keeps its identity, so byCmd stays valid for the older command IDs.
-	e.task, e.commands = next.task, next.commands
+	e.task, e.commands, e.version = next.task, next.commands, ""
 	s.byCmd[req.GetCommandId()] = e
 	return &taskv1.UpdateTaskResponse{Task: t}, nil
 }
