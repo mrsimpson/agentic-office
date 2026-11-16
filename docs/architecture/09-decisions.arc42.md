@@ -1080,12 +1080,14 @@ there, and a check in the clone stops commits there. Local work happens in workt
 branches, and the participant pushes with plain Git. The office CLI sets up, updates and follows
 the clone and passes no other Git command on. The hub accepts a push only when it moves main
 forward without rewriting history, when the author of every new commit is the participant of the
-token, when only artifact files change and none of them lies under the session logs, and when each
+token, when only artifact files change, and when each
 file with a schema is valid against the schema that it names; a file without a schema only has to be valid Markdown
 or YAML. The schema belongs to its type: the part of the hub that owns a type owns its schemas and
 checks its files. A small part of the hub knows which type owns which schema and hands a check
 to it, and Git access knows no schema. Git refuses a push on an old base,
-which is the base version of the interfaces. The archive keeps the tenant repository without a work
+which is the base version of the interfaces. The tenant has a second repository for its session logs, which Git access never serves, because
+the logs hold the original of sentences that are off the record (`dec-off-the-record`). The archive
+keeps the artifact repository without a work
 tree, and the archive and a push both move main in one atomic step of Git, so no lock is needed. After
 every change of main, from an interface or from a push, the archive tells the clients that follow
 the tenant which artifacts changed. An event has no content and no position. A client updates by
@@ -1098,7 +1100,8 @@ the same event can serve. The archive changes from a repository with a work tree
 login over SSH (a second port and a second way to give access); a sync in both directions by the
 client (the participant solves conflicts anyway, and it would be a second writer); a lock around
 every push (it holds up the records for as long as an upload takes); branches and proposals on the
-hub (`dec-artifacts`); a part that owns all schemas (a schema belongs to its type); JSON as an
+hub (`dec-artifacts`); the session logs on a hidden branch of the same repository (the separation
+would hang on one setting); a part that owns all schemas (a schema belongs to its type); JSON as an
 artifact type (not now).
 
 ```arc42

@@ -635,6 +635,11 @@ When a push comes first, the archive repeats its commit on the new state. The ar
 place that learns about every change of main, whatever its source. It finds which artifacts
 changed and tells the clients that follow the tenant.
 
+The session logs of a tenant lie in their own repository, which only the meeting session uses
+(`dec-artifact-sync`). They hold the original of sentences that are off the record
+(`dec-off-the-record`), so no interface for participants reaches that repository: Git access does
+not serve it, and the archive does not read from it for them.
+
 ```arc42
 :::building-block
 id: bb-archive
@@ -651,8 +656,8 @@ path: hub/archive
 Reads artifacts by their path (`dec-artifacts`): one file with its content and its version, or
 the files of a directory. The caller needs the access token of a participant. A stage link cannot
 use it, because the link is shown on the shared screen. The stage reads in-process, and only paths
-that the log of its own session names. Only Markdown and YAML files can be read. Nothing under the
-session logs can be read, because they hold the original of sentences that are off the record.
+that the log of its own session names. Only Markdown and YAML files can be read. The session logs lie in
+another repository and cannot be read here.
 OPEN: how a call names the tenant, once the archive keeps one repository per tenant
 (`dec-multi-tenancy`).
 
@@ -669,8 +674,8 @@ path: hub/archive/api
 #### Archive storage
 
 The in-process interface of the archive: write a set of files as one commit, and list and read
-files as they are in the current commit. The archive keeps one git repository for each tenant and
-one for the hub itself, for the users, the tenants, the memberships and the system admins. Each
+files as they are in the current commit. The archive keeps two git repositories for each tenant, one for its artifacts and one for its
+session logs, and one for the hub itself, for the users, the tenants, the memberships and the system admins. Each
 repository has its own commit queue, so one tenant does not hold up another. A tenant repository is
 created with the tenant and stays when the tenant is removed.
 
@@ -705,7 +710,7 @@ path: hub/archive/repository
 A participant follows the changes of the artifacts of a tenant. The call needs the access token of
 a participant who belongs to the tenant, and it may name path prefixes. The hub sends one event for
 each change of the branch main: the artifacts that were created, changed or removed, with their new
-versions. An artifact is a Markdown or YAML file, and nothing under the session logs is ever named.
+versions. An artifact is a Markdown or YAML file.
 An event holds no content and the stream has no position and no replay. A client that connects, or
 connects again, first updates its clone through Git access and then follows. A change that the
 archive wrote and a change that came by a push give the same event.
@@ -732,7 +737,7 @@ rules. It does three things:
   Git, and a push is checked inside Git only after the upload, so the gate comes first.
 - Rules for every push, which Git runs before it accepts the push: the author of every new commit
   is the participant of the token; only the branch main changes and no history is rewritten; only
-  artifact files change and none of them lies under the session logs; and every file with a schema
+  artifact files change; and every file with a schema
   is valid against the schema that it names. Git access knows no schema: it asks the artifacts
   part, which hands the check to the part of the hub that owns the schema. A refused push shows
   its reason to the participant.

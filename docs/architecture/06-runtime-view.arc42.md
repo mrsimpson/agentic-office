@@ -388,7 +388,7 @@ sequenceDiagram
     actor_human->>bb_git_access: git push, token as password
     bb_git_access->>bb_identity: check token and tenant
     bb_git_access->>bb_archive: find the repository of the tenant
-    Note over bb_git_access: rules before Git accepts: author is the participant, only main, no rewrite, only artifact files, none under the session logs
+    Note over bb_git_access: rules before Git accepts: author is the participant, only main, no rewrite, only artifact files
     bb_git_access->>bb_artifacts: check a changed file with a schema
     bb_artifacts->>bb_records: pass the check to the owner of the schema, here a record type
     bb_records-->>bb_artifacts: valid, or invalid with reasons
