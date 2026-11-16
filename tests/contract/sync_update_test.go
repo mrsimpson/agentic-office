@@ -298,39 +298,6 @@ func TestSyncUpdateKeepsUncommittedFiles(t *testing.T) {
 	}
 }
 
-// When the hub rewrote the history of main, the update says so and changes nothing.
-func TestSyncUpdateReportsRewrittenHistory(t *testing.T) {
-	srv := startSyncHub(t)
-	s := newSyncSet(t, srv)
-	writeDoc(t, s.ada, "documents/plan/b.md", "# B\n")
-	s.sync(t)
-	old := s.head(t, s.dir)
-
-	// A new commit on the parent of the old tip: the old tip is no ancestor of it.
-	repo := srv.ArchiveDir()
-	tip := strings.TrimSpace(contracttest.Git(t, repo, "rev-parse", "main"))
-	parent := tip + "~1"
-	if tip != old {
-		t.Fatalf("the hub has %s, the clone %s", tip, old)
-	}
-	rewritten := strings.TrimSpace(contracttest.Git(t, repo, "-c", "user.name=Rewrite", "-c", "user.email=rewrite@example.org",
-		"commit-tree", parent+"^{tree}", "-p", parent, "-m", "rewritten"))
-	contracttest.Git(t, repo, "update-ref", "refs/heads/main", rewritten)
-
-	s.refused(t, s.dir, "rewrote the history", "Nothing was changed")
-	if got := s.head(t, s.dir); got != old {
-		t.Errorf("main moved to %s, was %s", got, old)
-	}
-	if got := fileContent(filepath.Join(s.dir, "documents/plan/b.md")); got != "# B\n" {
-		t.Errorf("file after the refusal: %q", got)
-	}
-	// Run again: the clone knows the new history now, and it still does not move.
-	s.refused(t, s.dir, "rewrote the history", "Nothing was changed")
-	if got := s.head(t, s.dir); got != old {
-		t.Errorf("main moved to %s, was %s", got, old)
-	}
-}
-
 // A directory that is not set up, a plain Git repository and a linked worktree are refused, by
 // "office sync" and by "office sync follow".
 func TestSyncRefusesWhatIsNotTheMainDirectory(t *testing.T) {

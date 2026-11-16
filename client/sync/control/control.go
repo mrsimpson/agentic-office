@@ -46,6 +46,9 @@ type UpdateResult struct {
 	Updated bool
 	// From and To are the commits of main before and after the update (the same when not Updated).
 	From, To string
+	// Rewritten is true if the hub had rewritten the history of main and main moved to the new
+	// state (Updated is true then, too).
+	Rewritten bool
 }
 
 // FollowOptions configure Follow.
@@ -56,7 +59,7 @@ type FollowOptions struct {
 	// Updated is called after every update that Follow runs: the first one, one for each event
 	// (or a group of events that arrived while an update ran) and one after each reconnect. err is
 	// nil on success. An update that fails for a reason that the participant must fix (own commits,
-	// rewritten history, files that would be overwritten) does not stop Follow; the next event
+	// files that would be overwritten) does not stop Follow; the next event
 	// tries again. Nil means: no call.
 	Updated func(res UpdateResult, err error)
 	// FirstPause is the pause before the first new connection after a failure. The pause doubles
@@ -79,12 +82,14 @@ type Sync interface {
 	Init(ctx context.Context, dir string) (Result, error)
 
 	// Update fetches the hub and moves main of the main directory dir forward without a merge
-	// (fast-forward only). It never touches a file that the participant changed and did not commit.
-	// It runs no other Git command than fetch and the fast-forward merge, besides read-only
-	// queries about commits. Errors: ErrNotSetUp (no set-up directory), ErrLinkedWorktree,
-	// ErrOwnCommits (main has commits of its own), ErrHistoryRewritten (the hub rewrote history),
-	// ErrLocalChanges (the update would overwrite uncommitted files; nothing changed), ErrFetch
-	// (the hub could not be reached).
+	// (fast-forward only). When the hub rewrote the history and main has no commits of its own,
+	// nothing of the participant is on main and main moves to the new state of the hub
+	// (UpdateResult.Rewritten). Update never touches a file that the participant changed and did not
+	// commit. It runs no other Git command than fetch, the fast-forward merge or the move to the
+	// rewritten state, besides read-only queries about commits. Errors: ErrNotSetUp (no set-up
+	// directory), ErrLinkedWorktree, ErrOwnCommits (main has commits of its own), ErrLocalChanges
+	// (the update would overwrite uncommitted files; nothing changed), ErrFetch (the hub could not
+	// be reached).
 	Update(ctx context.Context, dir string) (UpdateResult, error)
 
 	// Follow updates dir once and then follows the changes of the hub (if-artifact-changes)
@@ -123,10 +128,6 @@ var ErrLinkedWorktree = errors.New("the directory is a linked worktree")
 
 // ErrOwnCommits means that main of the main directory has commits that the hub does not have.
 var ErrOwnCommits = errors.New("the main directory has commits of its own")
-
-// ErrHistoryRewritten means that the hub rewrote the history of main: the commit that the main
-// directory had is no ancestor of the new one.
-var ErrHistoryRewritten = errors.New("the hub rewrote the history of main")
 
 // ErrLocalChanges means that a file with changes that are not committed would be overwritten by
 // the update. Nothing was changed.

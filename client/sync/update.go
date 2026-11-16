@@ -63,8 +63,9 @@ func short(id string) string {
 	return id
 }
 
-// update fetches and moves main forward. The only commands that change anything are "git fetch"
-// and "git merge --ff-only"; the others read.
+// update fetches and moves main forward. The only commands that change anything are "git fetch",
+// "git merge --ff-only" and, after a rewrite of the history by the hub, "git reset --keep"; the
+// others read.
 func (s *syncer) update(ctx context.Context, git, dir string) (control.UpdateResult, error) {
 	res := control.UpdateResult{Dir: dir}
 	if branch, _ := query(ctx, git, dir, "symbolic-ref", "-q", "--short", "HEAD"); branch != "main" {
@@ -94,20 +95,19 @@ func (s *syncer) update(ctx context.Context, git, dir string) (control.UpdateRes
 		return ok
 	}
 	if head != "" && !ancestor(head, after) {
-		switch {
-		case before != "" && before != after && !ancestor(before, after):
-			return res, fmt.Errorf("%w: the commit %s that main had is not part of the new history %s of the hub. "+
-				"Nothing was changed. Ask who rewrote the history; to take the version of the hub, clone it again into a new directory",
-				control.ErrHistoryRewritten, short(before), short(after))
-		case ancestor(after, head):
+		if before != "" && head == before {
+			// The hub rewrote the history: nothing of the participant is on main, so main moves to
+			// the new state of the hub.
+			return s.moveToRewritten(ctx, git, dir, res, before, after)
+		}
+		if ancestor(after, head) {
 			return res, fmt.Errorf("%w: main is ahead of the hub (main is %s, the hub has %s). Nothing was changed. "+
 				"The main directory mirrors the hub: move your commits to a branch in a worktree and push that branch",
 				control.ErrOwnCommits, short(head), short(after))
-		default:
-			return res, fmt.Errorf("main (%s) and the hub (%s) went different ways, so it is not a fast-forward: "+
-				"%w, or %w. Nothing was changed. Move your own commits to a branch in a worktree; if the hub rewrote the history, clone it again into a new directory",
-				short(head), short(after), control.ErrOwnCommits, control.ErrHistoryRewritten)
 		}
+		return res, fmt.Errorf("%w: main (%s) and the hub (%s) went different ways, so it is not a fast-forward. Nothing was changed. "+
+			"The main directory mirrors the hub: move your commits to a branch in a worktree and push that branch",
+			control.ErrOwnCommits, short(head), short(after))
 	}
 	// The merge is short and changes the files and HEAD. It runs to its end, also when ctx ends.
 	if out, err := run(context.WithoutCancel(ctx), git, dir, "merge", "--ff-only", "--quiet", remoteMain); err != nil {
@@ -118,6 +118,24 @@ func (s *syncer) update(ctx context.Context, git, dir string) (control.UpdateRes
 		return res, fmt.Errorf("move main forward: %s (%v)", strings.TrimSpace(out), err)
 	}
 	res.Updated = true
+	res.To, _ = query(ctx, git, dir, "rev-parse", "--verify", "-q", "HEAD")
+	return res, nil
+}
+
+// moveToRewritten moves main to the fetched state after the hub rewrote the history. "git reset
+// --keep" keeps files that the participant changed and did not commit, as long as the move does not
+// need to change them; otherwise it changes nothing. In that case the remote-tracking branch goes
+// back to the previous state, so the next run finds the same situation and does not mistake it for
+// commits of the participant.
+func (s *syncer) moveToRewritten(ctx context.Context, git, dir string, res control.UpdateResult, before, after string) (control.UpdateResult, error) {
+	// The reset is short and changes the files and HEAD. It runs to its end, also when ctx ends.
+	if out, err := run(context.WithoutCancel(ctx), git, dir, "reset", "--keep", "--quiet", after); err != nil {
+		_, _ = run(context.WithoutCancel(ctx), git, dir, "update-ref", remoteMain, before, after)
+		return res, fmt.Errorf("%w: the hub rewrote the history of main (it had %s, the hub has %s now) and main must move to the new state, "+
+			"but that would overwrite files that you changed and did not commit. Commit or move these files, then run the command again. Nothing was changed.\n%s",
+			control.ErrLocalChanges, short(before), short(after), strings.TrimSpace(out))
+	}
+	res.Updated, res.Rewritten = true, true
 	res.To, _ = query(ctx, git, dir, "rev-parse", "--verify", "-q", "HEAD")
 	return res, nil
 }
