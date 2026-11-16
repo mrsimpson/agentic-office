@@ -137,7 +137,7 @@ func TestGitPushAccepted(t *testing.T) {
 	expect := func(kind changesv1.ChangeKind, path string) {
 		t.Helper()
 		ev := f.next(t)
-		got := ev.GetChanges()
+		got := ev.GetChanges().GetChanges()
 		if len(got) != 1 || got[0].GetKind() != kind || got[0].GetPath() != path {
 			t.Fatalf("event %v, want %s %s", described(ev), kind, path)
 		}
@@ -194,7 +194,7 @@ func TestGitPushFirstCommit(t *testing.T) {
 	if mainOf(t, srv, contracttest.DefaultTenant) == "" {
 		t.Fatal("main was not created")
 	}
-	if got := f.next(t).GetChanges(); len(got) != 1 || got[0].GetPath() != "docs/first.md" {
+	if got := f.next(t).GetChanges().GetChanges(); len(got) != 1 || got[0].GetPath() != "docs/first.md" {
 		t.Errorf("event %v", got)
 	}
 }
