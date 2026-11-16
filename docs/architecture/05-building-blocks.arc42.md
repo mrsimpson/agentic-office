@@ -67,7 +67,7 @@ id: bb-office-hub-whitebox
 view: building-block
 notation: mermaid
 roots: bb-office-hub
-aliases: bb_office_hub=bb-office-hub, bb_admin=bb-admin, bb_archive=bb-archive, bb_documents=bb-documents, bb_git_access=bb-git-access, bb_identity=bb-identity, bb_records=bb-records, bb_schemas=bb-schemas, bb_session_service=bb-session-service, bb_slides=bb-slides, bb_stage=bb-stage, bb_tasks=bb-tasks, bb_tenants=bb-tenants
+aliases: bb_office_hub=bb-office-hub, bb_admin=bb-admin, bb_archive=bb-archive, bb_documents=bb-documents, bb_git_access=bb-git-access, bb_identity=bb-identity, bb_records=bb-records, bb_session_service=bb-session-service, bb_slides=bb-slides, bb_stage=bb-stage, bb_tasks=bb-tasks, bb_tenants=bb-tenants
 :::
 ```
 
@@ -80,7 +80,6 @@ flowchart LR
         bb_git_access[Git access]
         bb_identity[Identity]
         bb_records[Records]
-        bb_schemas[Schemas]
         bb_session_service[Meeting session]
         bb_slides[Slides]
         bb_stage[Stage]
@@ -110,7 +109,9 @@ flowchart LR
     bb_tenants -->|if-tenant-roster| bb_identity
     bb_tenants -->|if-token-check| bb_identity
     bb_git_access -->|if-archive-repository| bb_archive
-    bb_git_access -->|if-artifact-check| bb_schemas
+    bb_git_access -->|if-records-check| bb_records
+    bb_git_access -->|if-slides-check| bb_slides
+    bb_git_access -->|if-tasks-check| bb_tasks
     bb_git_access -->|if-token-check| bb_identity
 ```
 
@@ -508,6 +509,23 @@ requires: if-token-check, if-archive-storage
 :::
 ```
 
+#### Records check
+
+Lets Git access check a file of a record type (decision, minutes or note) before it accepts a push. The part owns the schemas of
+its types, and the same check serves its own interface, so every rule exists once. The call
+gives the path and the content of one file. The part answers that the file names none of its
+schemas, that it is valid, or that it is invalid, with the reasons in plain words.
+
+```arc42
+:::interface
+id: if-records-check
+title: Records check
+provider: bb-records
+protocol: In-process Go call
+path: hub/records/check
+:::
+```
+
 ### Tasks part
 
 Keeps the tasks of the team behind the task interface (`dec-records-per-type`). Every change is
@@ -524,6 +542,23 @@ technology: Go / YAML in the archive
 parent: bb-office-hub
 path: hub/tasks
 requires: if-token-check, if-archive-storage
+:::
+```
+
+#### Tasks check
+
+Lets Git access check a file of a task before it accepts a push. The part owns the schemas of
+its types, and the same check serves its own interface, so every rule exists once. The call
+gives the path and the content of one file. The part answers that the file names none of its
+schemas, that it is valid, or that it is invalid, with the reasons in plain words.
+
+```arc42
+:::interface
+id: if-tasks-check
+title: Tasks check
+provider: bb-tasks
+protocol: In-process Go call
+path: hub/tasks/check
 :::
 ```
 
@@ -564,6 +599,23 @@ technology: Go / YAML and HTML in the archive
 parent: bb-office-hub
 path: hub/slides
 requires: if-token-check, if-archive-storage
+:::
+```
+
+#### Slides check
+
+Lets Git access check a file of a slide deck before it accepts a push. The part owns the schemas of
+its types, and the same check serves its own interface, so every rule exists once. The call
+gives the path and the content of one file. The part answers that the file names none of its
+schemas, that it is valid, or that it is invalid, with the reasons in plain words.
+
+```arc42
+:::interface
+id: if-slides-check
+title: Slides check
+provider: bb-slides
+protocol: In-process Go call
+path: hub/slides/check
 :::
 ```
 
@@ -679,8 +731,8 @@ rules. It does three things:
 - Rules for every push, which Git runs before it accepts the push: the author of every new commit
   is the participant of the token; only the branch main changes and no history is rewritten; only
   artifact files change and none of them lies under the session logs; and every file with a schema
-  is valid against the schema that it names (the check of the schemas part). A refused push shows
-  its reason to the participant.
+  is valid against the schema that it names. The part of the hub that owns the schema does this
+  check; Git access knows no schema. A refused push shows its reason to the participant.
 - After an accepted push, it tells the archive that main moved.
 
 Git alone decides whether a push builds on the current state: a push on an old base is refused,
@@ -692,7 +744,7 @@ id: bb-git-access
 title: Git access
 technology: Go / Git (smart HTTP)
 parent: bb-office-hub
-requires: if-token-check, if-archive-repository, if-artifact-check
+requires: if-token-check, if-archive-repository, if-records-check, if-slides-check, if-tasks-check
 implements: concept-multi-tenancy
 path: hub/gitaccess
 :::
@@ -714,39 +766,6 @@ title: Git access
 provider: bb-git-access
 protocol: Git over HTTPS (smart protocol), access token as password
 path: hub/gitaccess/web
-:::
-```
-
-### Schemas
-
-Ships the schemas of the artifact types (`dec-artifacts`) and checks a file against the schema that
-it names. The check is the same wherever a file comes from. Git access uses it for every push. The
-parts of the hub that write a type through their own interface should use the same check, so that
-every rule exists once. OPEN: the parts for records, tasks and slides adopt it (proposal).
-
-```arc42
-:::building-block
-id: bb-schemas
-title: Schemas
-technology: Go
-parent: bb-office-hub
-implements: concept-module-boundaries
-path: hub/schemas
-:::
-```
-
-#### Artifact check
-
-Checks the content of one file of an artifact type against the schema that the file names. It
-answers valid, or invalid with the reasons in plain words.
-
-```arc42
-:::interface
-id: if-artifact-check
-title: Artifact check
-provider: bb-schemas
-protocol: In-process Go call
-path: hub/schemas/check
 :::
 ```
 

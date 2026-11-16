@@ -1081,7 +1081,8 @@ branches, and the participant pushes with plain Git. The office CLI sets up, upd
 the clone and passes no other Git command on. The hub accepts a push only when it moves main
 forward without rewriting history, when the author of every new commit is the participant of the
 token, when only artifact files change and none of them lies under the session logs, and when each
-file with a schema is valid against the schema that it names. Git refuses a push on an old base,
+file with a schema is valid against the schema that it names. The schema belongs to its type: the part of the hub that owns a type owns its schemas and
+checks its files, and Git access knows no schema. Git refuses a push on an old base,
 which is the base version of the interfaces. The archive keeps the tenant repository without a work
 tree, and the archive and a push both move main in one atomic step of Git, so no lock is needed. After
 every change of main, from an interface or from a push, the archive tells the clients that follow
@@ -1089,15 +1090,14 @@ the tenant which artifacts changed. An event has no content and no position. A c
 fetching at start, after every reconnect and on request, so it never misses a change. A participant
 signs in with the key as for every other interface and gets an access token; the client gives it to
 Git. **Consequences:** Git is the position of a clone, so there is no cursor and no replay. A push
-passes the same rules as an interface call, so the rules need one home that both use
-(`bb-schemas`). The parts of the hub that keep an index in memory must learn about pushes, which
+passes the same rules as an interface call: the part of a type uses one check for both. The parts of the hub that keep an index in memory must learn about pushes, which
 the same event can serve. The archive changes from a repository with a work tree to one without.
 **Rejected:** a Git protocol layer of our own in the hub (a gate and rules in Git are enough); a
 login over SSH (a second port and a second way to give access); a sync in both directions by the
 client (the participant solves conflicts anyway, and it would be a second writer); a lock around
 every push (it holds up the records for as long as an upload takes); branches and proposals on the
-hub (`dec-artifacts`); JSON as an artifact type (not now). OPEN: how the check of the schemas
-reaches the interfaces of the types (proposal: they use `bb-schemas`); whether a YAML file without a
+hub (`dec-artifacts`); JSON as an artifact type (not now). OPEN: how Git access
+knows which part owns the schema that a file names; whether a YAML file without a
 schema is accepted; signed commits with the key of the participant; a size limit for a push; which
 parts of the hub keep an index that a push makes stale.
 

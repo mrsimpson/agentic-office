@@ -187,7 +187,7 @@ refuses, or the hub shows an artifact that its type cannot read.
 id: risk-push-bypass
 title: A push goes around the rules of the types
 severity: medium
-mitigation: Every push passes the rules of Git access: author, ref, file types and the schema that a file names; the check of the schemas part is the one place of these rules, and the parts of the hub that write a type should use it too (dec-artifact-sync)
+mitigation: Every push passes the rules of Git access: author, ref, file types and the schema that a file names; the part that owns a type uses one check of its schemas for its own interface and for pushes (dec-artifact-sync)
 :::
 ```
 
