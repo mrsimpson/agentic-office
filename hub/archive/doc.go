@@ -27,6 +27,14 @@
 // Git access never serves it, and no interface for participants reads it. if-archive-read,
 // if-archive-repository and if-artifact-changes concern the artifact repository only.
 //
+// It provides if-archive-watch (package watch): the in-process form of the changes. The parts that
+// keep files in memory (records, tasks, slides) ask Repo.Watch (Repos.Watcher for a tenant) for the
+// created, changed and removed artifacts below their directories and reload them. A watcher is a
+// follower of the same delivery as a call of the changes stream (follow.go): one path serves both,
+// with the same buffer of 16 events, and a watcher that does not read fast enough is dropped and
+// its subscription ends with watch.ErrDropped. The watcher is registered when Watch returns. No
+// token is needed. Only the artifact repository of a tenant has watchers.
+//
 // It provides if-archive-read (ReadService, the Protobuf contract in package api), if-archive-repository
 // (Repos implements package repository: where Git finds the bare repository of a tenant, and the
 // notice that main moved) and if-artifact-changes (ChangesService, the contract in package
