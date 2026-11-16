@@ -114,6 +114,26 @@ func (c *hubClient) ParticipantID(ctx context.Context) (string, error) {
 	return pid, err
 }
 
+// DisplayName authenticates if needed and returns the display name of the participant.
+func (c *hubClient) DisplayName(ctx context.Context) (string, error) {
+	var name string
+	err := retry(ctx, func() (err error) {
+		name, err = c.tokens.DisplayName(ctx)
+		return err
+	})
+	return name, err
+}
+
+// AccessToken authenticates if needed and returns a valid access token.
+func (c *hubClient) AccessToken(ctx context.Context) (string, error) {
+	var tok string
+	err := retry(ctx, func() (err error) {
+		tok, err = c.tokens.Token(ctx)
+		return err
+	})
+	return tok, err
+}
+
 // retry runs f and runs it once more if it failed with "unauthenticated" (the token was
 // dropped, for example after a restart of the server). Commands are idempotent, so this is
 // safe as long as f reuses its command ID.

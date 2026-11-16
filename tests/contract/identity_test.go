@@ -149,9 +149,9 @@ func TestIdentityChallengeAndResponse(t *testing.T) {
 		t.Fatal(err)
 	}
 	exp := res.GetExpiresAt().AsTime()
-	if res.GetAccessToken() == "" || res.GetParticipantId() != "ada" ||
+	if res.GetAccessToken() == "" || res.GetParticipantId() != "ada" || res.GetDisplayName() != "Ada" ||
 		exp.Before(before.Add(14*time.Minute)) || exp.After(before.Add(16*time.Minute)) {
-		t.Fatalf("exchange: %v, want a token for ada that lives 15 minutes", res)
+		t.Fatalf("exchange: %v, want a token for ada (display name Ada) that lives 15 minutes", res)
 	}
 	_, err = exchange(pub, ch, sig)
 	wantCode(t, "challenge used twice", err, connect.CodeUnauthenticated)

@@ -249,6 +249,8 @@ type ExchangeChallengeResponse struct {
 	// participant_id is the identity the key belongs to. It is also the participant ID in every
 	// session.
 	ParticipantId string `protobuf:"bytes,3,opt,name=participant_id,json=participantId,proto3" json:"participant_id,omitempty"`
+	// display_name is the name of the participant, for example as the author of a commit.
+	DisplayName   string `protobuf:"bytes,4,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -300,6 +302,13 @@ func (x *ExchangeChallengeResponse) GetExpiresAt() *timestamppb.Timestamp {
 func (x *ExchangeChallengeResponse) GetParticipantId() string {
 	if x != nil {
 		return x.ParticipantId
+	}
+	return ""
+}
+
+func (x *ExchangeChallengeResponse) GetDisplayName() string {
+	if x != nil {
+		return x.DisplayName
 	}
 	return ""
 }
@@ -626,12 +635,13 @@ const file_office_identity_v1_identity_proto_rawDesc = "" +
 	"\n" +
 	"public_key\x18\x01 \x01(\fR\tpublicKey\x12\x1c\n" +
 	"\tchallenge\x18\x02 \x01(\fR\tchallenge\x12\x1c\n" +
-	"\tsignature\x18\x03 \x01(\fR\tsignature\"\xa0\x01\n" +
+	"\tsignature\x18\x03 \x01(\fR\tsignature\"\xc3\x01\n" +
 	"\x19ExchangeChallengeResponse\x12!\n" +
 	"\faccess_token\x18\x01 \x01(\tR\vaccessToken\x129\n" +
 	"\n" +
 	"expires_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12%\n" +
-	"\x0eparticipant_id\x18\x03 \x01(\tR\rparticipantId\"7\n" +
+	"\x0eparticipant_id\x18\x03 \x01(\tR\rparticipantId\x12!\n" +
+	"\fdisplay_name\x18\x04 \x01(\tR\vdisplayName\"7\n" +
 	"\x16CreateAdminLinkRequest\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\"f\n" +
