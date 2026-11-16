@@ -10,6 +10,7 @@ import (
 
 	"github.com/mrsimpson/agentic-office/hub/archive/repository"
 	"github.com/mrsimpson/agentic-office/hub/archive/storage"
+	"github.com/mrsimpson/agentic-office/hub/archive/watch"
 )
 
 // The layout below the root is fixed (concept-multi-tenancy): the hub repository and, apart from
@@ -99,6 +100,16 @@ func (r *Repos) Changes(tenant string) (*ChangesService, error) {
 		return nil, err
 	}
 	return NewChangesService(repo), nil
+}
+
+// Watcher returns the watch interface (if-archive-watch) of a tenant. It fails with
+// repository.ErrNoTenant if the tenant has no repository.
+func (r *Repos) Watcher(tenant string) (watch.Watcher, error) {
+	repo, err := r.tenant(tenant)
+	if err != nil {
+		return nil, err
+	}
+	return repo, nil
 }
 
 func (r *Repos) tenant(id string) (*Repo, error) {

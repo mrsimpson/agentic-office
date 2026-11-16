@@ -72,16 +72,33 @@ func (r *runtimes) get(ctx context.Context, tenant string) (*tenantRuntime, erro
 	}
 	logf := func(format string, args ...any) { log.Printf("tenant "+tenant+": "+format, args...) }
 	rt := &tenantRuntime{id: tenant, done: make(chan struct{})}
-	if rt.records, err = records.Open(ctx, arch); err != nil {
+	// The parts follow the archive of the tenant: they reload the files that a push changed
+	// (if-archive-watch).
+	watcher, err := r.repos.Watcher(tenant)
+	if err != nil {
+		return nil, fmt.Errorf("tenant %s: %w", tenant, err)
+	}
+	if rt.records, err = records.Open(ctx, arch, watcher, logf); err != nil {
 		return nil, err
 	}
 	nd, nm, nn := rt.records.Counts()
-	if rt.tasks, err = tasks.Open(ctx, arch); err != nil {
+	if rt.tasks, err = tasks.Open(ctx, arch, watcher, logf); err != nil {
+		rt.records.Close()
 		return nil, err
 	}
-	if rt.slides, err = slides.Open(ctx, arch); err != nil {
+	if rt.slides, err = slides.Open(ctx, arch, watcher, logf); err != nil {
+		rt.records.Close()
+		rt.tasks.Close()
 		return nil, err
 	}
+	opened := false
+	defer func() {
+		if !opened {
+			rt.records.Close()
+			rt.tasks.Close()
+			rt.slides.Close()
+		}
+	}()
 	logf("%d decisions, %d minutes, %d notes, %d local drafts, %d decks", nd, nm, nn, rt.tasks.Count(), rt.slides.Count())
 	rt.sessions = session.New(session.NewMemoryStore(), session.TokenCheck(), rt.records, r.signingKey)
 	rt.documents = documents.New(arch, rt.sessions)
@@ -98,6 +115,7 @@ func (r *runtimes) get(ctx context.Context, tenant string) (*tenantRuntime, erro
 	runCtx, rt.stop = context.WithCancel(context.Background())
 	go func() { rt.sessions.RunArchive(runCtx); close(rt.done) }()
 	r.m[tenant] = rt
+	opened = true
 	return rt, nil
 }
 
@@ -124,5 +142,8 @@ func (r *runtimes) stopAll() {
 	}
 	for _, rt := range r.m {
 		<-rt.done
+		rt.records.Close()
+		rt.tasks.Close()
+		rt.slides.Close()
 	}
 }

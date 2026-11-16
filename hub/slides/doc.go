@@ -37,6 +37,23 @@
 //   - Open reads all decks from the current commit of the archive and renders them, so decks
 //     survive a restart. Reads use only the memory and do not wait for a commit. A YAML file that
 //     is not valid stops the start with an error; other files are ignored.
+//   - Reload (if-archive-watch): the part watches the archive of its tenant and reloads the
+//     files of its directory that a push or a commit changed, created or removed. It reads
+//     them from the archive again, checks each with the check of the part and keeps serving reads
+//     from memory. A file that is not valid after a push is logged once for its version and
+//     ignored: the part keeps what it had for that path. (The hook of Git access refuses such
+//     files, so this is a defence.) A file that is gone is removed from memory. If the archive
+//     drops the watcher because the part was too slow, the part watches again and reads all its
+//     files. A file that bypasses the hook and is not valid still counts for the next number, so
+//     the part never takes its number.
+//   - Numbers: the next number is one above the highest number ever seen in this run, in a file or
+//     in memory. A number is never used twice while the hub runs, also after a push removed its
+//     file. The numbers can have gaps, because a push may bring any number. A part creates its file with "must not
+//     exist yet" (storage.NoFile). If a push put a file there first, the create fails inside the
+//     archive; the part reads that file, takes the next free number and tries again, so the
+//     caller sees no error.
+//     A reloaded deck is rendered again from its input. Close stops the part from following the
+//     archive.
 //   - Every render is idempotent by its command_id (dec-idempotent-commands). A repeated request
 //     returns the stored deck with duplicate set. The same command_id with another title, other
 //     slides or another author fails with AlreadyExists. A new command_id with the same deck

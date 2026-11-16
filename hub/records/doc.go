@@ -15,7 +15,7 @@
 // How it works:
 //
 //   - Every record type is a list of records. Each record has an ID that grows by one per type
-//     and starts at 1. Records never change.
+//     and starts at 1. The hub never changes a record; a push can.
 //   - Storage (dec-yaml-git-storage): every record is one YAML file in the archive
 //     (if-archive-storage): decisions/NNNNNN.yaml, minutes/NNNNNN.yaml and notes/NNNNNN.yaml,
 //     where NNNNNN is the ID with at least six digits. The YAML has the field names of the
@@ -28,6 +28,22 @@
 //   - Open reads all records from the current commit of the archive and keeps them in memory, so
 //     records survive a restart of the hub. Reads use only the memory. A file that is not valid
 //     stops the start with an error; files without the ending .yaml are ignored.
+//   - Reload (if-archive-watch): the part watches the archive of its tenant and reloads the
+//     files of its directory (decisions, minutes, notes) that a push or a commit changed, created or removed. It reads
+//     them from the archive again, checks each with the check of the part and keeps serving reads
+//     from memory. A file that is not valid after a push is logged once for its version and
+//     ignored: the part keeps what it had for that path. (The hook of Git access refuses such
+//     files, so this is a defence.) A file that is gone is removed from memory. If the archive
+//     drops the watcher because the part was too slow, the part watches again and reads all its
+//     files. A file that bypasses the hook and is not valid still counts for the next ID, so
+//     the part never takes its ID.
+//   - Numbers: the next ID is one above the highest ID ever seen in this run, in a file or
+//     in memory. An ID is never used twice while the hub runs, also after a push removed its
+//     file. The numbers can have gaps, because a push may bring any ID. A part creates its file with "must not
+//     exist yet" (storage.NoFile). If a push put a file there first, the create fails inside the
+//     archive; the part reads that file, takes the next free ID and tries again, so the
+//     caller sees no error.
+//     Close stops the part from following the archive.
 //   - Every call of a client needs the caller from the identity token check (if-token-check).
 //     author_participant_id must name the participant of the token, or the call fails with
 //     PermissionDenied. The hub sets author_kind (human or agent) from the token. A stage link

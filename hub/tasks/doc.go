@@ -7,7 +7,7 @@
 //
 // How it works:
 //
-//   - Every task has a local number that grows by one and starts at 1. Its ref is "local:<n>",
+//   - Every task has a local number that starts at 1 and grows by one for every new task. Its ref is "local:<n>",
 //     and its source is TASK_SOURCE_LOCAL. Clients treat the ref as opaque. GetTask and
 //     UpdateTask answer NotFound for every ref that is not a local task, also for other schemes.
 //   - Storage: every task is one YAML file in the archive (if-archive-storage),
@@ -22,6 +22,24 @@
 //   - Open reads all tasks from the current commit of the archive and keeps them in memory, so
 //     tasks survive a restart. Reads use only the memory. A file that is not valid stops the
 //     start with an error; files without the ending .yaml are ignored.
+//   - Reload (if-archive-watch): the part watches the archive of its tenant and reloads the
+//     files of its directory that a push or a commit changed, created or removed. It reads
+//     them from the archive again, checks each with the check of the part and keeps serving reads
+//     from memory. A file that is not valid after a push is logged once for its version and
+//     ignored: the part keeps what it had for that path. (The hook of Git access refuses such
+//     files, so this is a defence.) A file that is gone is removed from memory. If the archive
+//     drops the watcher because the part was too slow, the part watches again and reads all its
+//     files. A file that bypasses the hook and is not valid still counts for the next number, so
+//     the part never takes its number.
+//   - Numbers: the next number is one above the highest number ever seen in this run, in a file or
+//     in memory. A number is never used twice while the hub runs, also after a push removed its
+//     file. The numbers can have gaps, because a push may bring any number. A part creates its file with "must not
+//     exist yet" (storage.NoFile). If a push put a file there first, the create fails inside the
+//     archive; the part reads that file, takes the next free number and tries again, so the
+//     caller sees no error.
+//     An update of a task rewrites its file without a check of the version: a pushed change of the
+//     same file that the part has not yet reloaded is replaced.
+//     Close stops the part from following the archive.
 //   - Every call needs the caller from the identity token check (if-token-check).
 //     author_participant_id (create) and participant_id (update) must name the participant of
 //     the token, or the call fails with PermissionDenied. The hub sets author_kind from the
