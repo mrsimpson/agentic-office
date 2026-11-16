@@ -747,8 +747,7 @@ background, and its result appears as an event in the session log. A later sessi
 speak, raise a hand, show on the stage, pause or resume) opens the session again; the log shows
 this as its own event. Artifacts through their own interfaces (decisions, minutes, notes, tasks,
 slides) may refer to an ended session and never open it again. Minutes are such an artifact: they
-are written only through the minutes interface and stored at once like every other artifact
-(`dec-records-synchronous`). While a session is open, the hub adds a notice to its log when its
+are written only through the minutes interface and stored at once like every other artifact. While a session is open, the hub adds a notice to its log when its
 minutes change, so the stage and agents see them live. **Consequences:** Streams, replicators and
 agents keep following a session after its end until the participant leaves. The session itself
 no longer has a command to update minutes. **Rejected:** an end that rejects all later commands;
@@ -761,26 +760,6 @@ title: The end of a session is a milestone, not a stop
 status: accepted
 date: 2026-11-07
 addresses: qg-usability, risk-archive-latency
-:::
-```
-
-## Records are written synchronously and before session writes
-
-**Context:** A client must learn whether its decision, note, task or slide deck was stored.
-Session logs are written in the background, and a Git commit can be slow. **Decision:** Records
-are written synchronously: a call returns only after the commit, and a failure reaches the
-client. Writes of records go before waiting writes of session logs, so a record waits at most for
-the one session write that is in progress, never for a queue. **Consequences:** Clients get a
-clear result. A slow repository slows records, but not the session itself. **Rejected:** records
-in the background (the client would not learn about a failure).
-
-```arc42
-:::decision
-id: dec-records-synchronous
-title: Records are written synchronously and before session writes
-status: accepted
-date: 2026-11-07
-addresses: risk-archive-latency, qg-usability
 :::
 ```
 

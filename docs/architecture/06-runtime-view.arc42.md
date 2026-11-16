@@ -176,7 +176,7 @@ sequenceDiagram
     participant bb_stage as Stage
     actor_agent->>bb_cli: office slides render deck.md
     bb_cli->>bb_slides: render
-    bb_slides->>bb_archive: commit input and output
+    bb_slides->>bb_archive: commit the input
     bb_slides-->>bb_cli: deck slides/42
     actor_agent->>bb_cli: office hand raise --topic budget
     bb_cli->>bb_session: hand.raise

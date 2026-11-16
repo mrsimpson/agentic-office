@@ -532,8 +532,7 @@ path: hub/records/check
 
 Keeps the tasks of the team behind the task interface (`dec-records-per-type`). Every change is
 one commit, so the archive keeps the history of every task, and a command returns only after its
-commit. Like the records part, it writes synchronously and can wait behind a session write of the
-archive. A sync with the task tool of the team would belong to this block, and only the hub would
+commit. Like the records part, it writes synchronously. A sync with the task tool of the team would belong to this block, and only the hub would
 hold the credentials of that tool.
 
 ```arc42
@@ -585,10 +584,10 @@ path: hub/documents
 
 Renders slide decks and keeps them behind the slides interface (`dec-records-per-type`).
 Rendering is deterministic and without streaming. A deck is stored in one commit with its input
-and its rendered output (`dec-yaml-git-storage`). The output is stored and not rendered again on
-read, so a deck stays exactly what was shown in a meeting, even if a later version of the hub
-renders differently; the stored input is enough to get the same output again. Like the records
-part, it writes synchronously and can wait behind a session write of the archive.
+(`dec-yaml-git-storage`). The rendered output is a runtime artifact: it is not committed, so no
+clone of the tenant repository contains it, and the slides part renders it again from the stored
+input when it is needed. A later version of the hub may render a deck differently. Like the
+records part, it writes synchronously.
 
 The check of business plans by calculation (consistency, unit economics, completeness) is a
 different type with its own interface when it is built.
@@ -711,7 +710,9 @@ A participant follows the changes of the artifacts of a tenant. The call needs t
 a participant who belongs to the tenant, and it may name path prefixes. The hub sends one event for
 each change of the branch main: the artifacts that were created, changed or removed, with their new
 versions. An artifact is a Markdown or YAML file.
-An event holds no content and the stream has no position and no replay. A client that connects, or
+The stream starts with a message of its own type that says the follower is registered. Changes
+follow in messages of another type. An event holds no content and the stream has no position and no
+replay. A client that connects, or
 connects again, first updates its clone through Git access and then follows. A change that the
 archive wrote and a change that came by a push give the same event.
 
