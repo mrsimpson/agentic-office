@@ -6,8 +6,8 @@
 // the hub accepts a push. The slides part asks it when it writes a deck and when it reads the
 // decks at the start.
 //
-// The check covers the YAML file of a deck, which holds its input. The rendered HTML file next to
-// it is output and has no schema.
+// The check covers the YAML file of a deck, which holds its input. The rendered output is not
+// stored in the archive and has no schema.
 //
 // The signatures use only types that Go has built in. Every stored deck is a YAML file and names
 // its schema in the field "schema".
@@ -77,7 +77,7 @@ func Validate(schema, filePath string, content []byte) []string {
 		reasons = append(reasons, fmt.Sprintf("the field %s must be %q", SchemaKey, schema))
 	}
 	delete(v, SchemaKey)
-	// The rendered output is the HTML file next to the YAML file, not a field of it.
+	// The rendered output is not a field of the file.
 	delete(v, "media_type")
 	delete(v, "content")
 	raw, err := json.Marshal(v)

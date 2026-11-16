@@ -15,7 +15,7 @@ import (
 )
 
 // outputFields are the fields of a deck that are not in its YAML file: the rendered output is
-// the HTML file next to it.
+// not stored.
 var outputFields = map[string]bool{"media_type": true, "content": true}
 
 // encode returns the YAML file of a deck: the name of its schema, the fields of the contract in
