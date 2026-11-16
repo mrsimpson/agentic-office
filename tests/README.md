@@ -125,6 +125,24 @@ through its interfaces:
   the call (the decision waits at most for the one in progress, the note for none), that session
   writes still run between the rounds, and that the last commit has the whole session. Only
   `make performance` fails on the time of a record call (< 4.5 s: one other commit and its own).
+- `tests/e2e/sync_test.go` tests the whole artifact sync path (`dec-artifact-sync`) with the real
+  `office-hub`, the real `office` and the plain `git` tool, with several participants and two
+  tenants. The contract tests (`sync_init_test.go`, `sync_update_test.go`, `gitpush_test.go`,
+  `gitaccess_test.go`) cover each step alone; these tests combine them.
+  `TestSyncTwoParticipantsWholePath`: a human and an agent with two clones and a running
+  `office sync follow` each; the first commit of the tenant is the only commit of a fresh clone;
+  the guard refuses a commit in the main directory; a change by interface and a push from a
+  worktree reach the other clone and the hub; an agent pushes 36 Markdown and 6 YAML files in one
+  push. `TestSyncTwoWritersConflictStaysInTheWorktree`: the hub interface and a stale worktree
+  change the same line; the push is refused, the rebase gives a normal Git conflict that stays in
+  the worktree, and the participant solves it with fetch, rebase and push.
+  `TestSyncTwoTenantsNeverLeak`: two tenants with humans, agents and a member of both; no file,
+  path, record, commit message, author, configuration or follower output of one tenant is in a
+  clone of the other, and a refused `sync init` for the other tenant says nothing of the first.
+  `TestSyncSessionsNeverReachTheClones` (slow): sessions with off-the-record sentences, a hub
+  restart and the end of a session; no sentence is in any clone, new or old. All waits are
+  waits for a condition with a long deadline; no test measures time. Run them with
+  `make e2e RUN=TestSync` (a named run includes the slow test); `make e2e` skips the slow one.
 - `tests/architecture/` checks the code against the arc42 model (`make arch`). It reads the model
   with `arc42 get --format json` and the imports with `go list`. A fixture workspace with
   deliberate violations proves that each rule fails when it should.
