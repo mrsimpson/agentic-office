@@ -177,13 +177,14 @@ func TestArtifactChangesNameOnlyArtifacts(t *testing.T) {
 	ada := srv.Participant(t, "ada", "Ada", human)
 	f := followChanges(t, ada.Clients)
 
-	// The session log is committed when the session ends; it is under sessions/.
+	// The session log is committed when the session ends; it lies in the session-log repository, not in the
+	// artifact repository that the followers watch.
 	sid := "team/1"
 	join(t, ada.Clients, sid)
 	if _, err := ada.Commands.EndSession(ctx10(t), &sessioncommandsv1.EndSessionRequest{SessionId: sid, CommandId: coreapi.NewCommandID(), ParticipantId: ada.ParticipantID}); err != nil {
 		t.Fatal(err)
 	}
-	contracttest.WaitArchived(t, srv.ArchiveDir(), sid, 20*time.Second, (*contracttest.ArchivedSession).Ended)
+	contracttest.WaitArchived(t, srv.SessionLogsDir(), sid, 20*time.Second, (*contracttest.ArchivedSession).Ended)
 	// A document that is not Markdown or YAML is refused by the documents interface, so the
 	// last event proves what came before: only the document, never the session log.
 	v := newDoc(t, ada, "documents/last.md", "last")

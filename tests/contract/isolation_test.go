@@ -222,8 +222,8 @@ func TestTenantContentLivesInTheTenantRepository(t *testing.T) {
 	recordDecision(t, m.bob, "Globex waits.", "weekly")
 	createTask(t, m.bob, &taskv1.CreateTaskRequest{Title: "Globex task"})
 	render(t, m.ada, &slidesv1.RenderDeckRequest{Title: "Acme deck", Slides: []*slidesv1.Slide{{Title: "Acme"}}})
-	contracttest.WaitArchived(t, m.srv.TenantRepoDir("acme"), "weekly", 20*time.Second, func(a *contracttest.ArchivedSession) bool { return len(a.Events) == 1 })
-	contracttest.WaitArchived(t, m.srv.TenantRepoDir("globex"), "weekly", 20*time.Second, func(a *contracttest.ArchivedSession) bool { return len(a.Events) == 1 })
+	contracttest.WaitArchived(t, m.srv.TenantSessionLogsDir("acme"), "weekly", 20*time.Second, func(a *contracttest.ArchivedSession) bool { return len(a.Events) == 1 })
+	contracttest.WaitArchived(t, m.srv.TenantSessionLogsDir("globex"), "weekly", 20*time.Second, func(a *contracttest.ArchivedSession) bool { return len(a.Events) == 1 })
 
 	read := func(tenant string) string {
 		return contracttest.AllText(t, m.srv.TenantRepoDir(tenant))
@@ -234,6 +234,17 @@ func TestTenantContentLivesInTheTenantRepository(t *testing.T) {
 	}
 	if !strings.Contains(globex, "Globex waits.") || strings.Contains(globex, "Acme") || strings.Contains(globex, "ada") {
 		t.Errorf("repository of globex:\n%.600s", globex)
+	}
+	// Each tenant has its own session-log repository, too, and the logs of a tenant stay in it.
+	logs := func(tenant string) string {
+		return contracttest.AllText(t, m.srv.TenantSessionLogsDir(tenant))
+	}
+	acmeLogs, globexLogs := logs("acme"), logs("globex")
+	if !strings.Contains(acmeLogs, "Ada") || strings.Contains(acmeLogs, "Bob") {
+		t.Errorf("session logs of acme:\n%.600s", acmeLogs)
+	}
+	if !strings.Contains(globexLogs, "Bob") || strings.Contains(globexLogs, "Ada") {
+		t.Errorf("session logs of globex:\n%.600s", globexLogs)
 	}
 
 	if code, err := m.srv.Stop(10 * time.Second); err != nil || code != 0 {

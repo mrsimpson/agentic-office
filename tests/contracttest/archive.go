@@ -17,8 +17,18 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/session/streamapi/merkle"
 )
 
-// ArchiveDir returns the default Git repository of the archive of the hub.
+// ArchiveDir returns the artifact repository of the default tenant.
 func (s *Hub) ArchiveDir() string { return s.TenantRepoDir(DefaultTenant) }
+
+// SessionLogsDir returns the session-log repository of the default tenant. Only the meeting
+// session writes it; it holds the logs, the tree heads and the archive state of the sessions.
+func (s *Hub) SessionLogsDir() string { return s.TenantSessionLogsDir(DefaultTenant) }
+
+// TenantSessionLogsDir is the session-log repository of a tenant. It exists once the tenant is
+// created. It is a second repository next to TenantRepoDir, which holds the artifacts.
+func (s *Hub) TenantSessionLogsDir(tenantID string) string {
+	return filepath.Join(s.DataDir, "repos", "session-logs", tenantID)
+}
 
 // HubRepoDir is the Git repository of the hub: users, tenants and memberships (system/).
 func (s *Hub) HubRepoDir() string { return filepath.Join(s.DataDir, "repos", "hub") }

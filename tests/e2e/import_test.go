@@ -141,7 +141,7 @@ func TestImportedConversationToRecords(t *testing.T) {
 	}
 
 	// The archive holds the ended session, marked as imported and covered by its tree head.
-	a := contracttest.WaitArchived(t, srv.ArchiveDir(), "planning", 20*time.Second, (*contracttest.ArchivedSession).Ended)
+	a := contracttest.WaitArchived(t, srv.SessionLogsDir(), "planning", 20*time.Second, (*contracttest.ArchivedSession).Ended)
 	keyRes, err := srv.Participant(t, "viewer", "Viewer", 1).Commands.GetHubKey(ctx, &sessioncommandsv1.GetHubKeyRequest{})
 	if err != nil {
 		t.Fatal(err)
