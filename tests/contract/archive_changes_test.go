@@ -2,8 +2,9 @@ package contract
 
 // Contract tests of the changes interface of the archive (if-artifact-changes,
 // dec-artifact-sync). They start the real office-hub, follow a tenant through Connect and change
-// the archive through the documents interface. The path of a change by push and a notice is
-// tested in hub/archive (changes_contract_test.go), because the notice is an in-process call.
+// the archive through the documents interface. Changes by a real git push are tested in
+// archive_changes_push_test.go. The cases that need the in-process notice "main moved" with a
+// timing that a push cannot make are tested in hub/archive (changes_notice_test.go).
 // The tests wait on channels with generous deadlines and never check how long something takes.
 
 import (
@@ -278,6 +279,6 @@ func TestArtifactChangesSlowFollowerDoesNotBlock(t *testing.T) {
 		reader.next(t)
 	}
 	// The events of the stalled follower wait in the buffer of the hub or of the connection. The
-	// archive drops a follower that cannot keep up; that case is tested in hub/archive, where
-	// the stream blocks at once.
+	// archive drops a follower that cannot keep up; that case is tested in hub/archive
+	// (changes_notice_test.go), where the stream blocks at once.
 }
