@@ -205,13 +205,19 @@ func cmdReplicatorRun(e *env, fs *flag.FlagSet) func([]string) error {
 		}
 		lg.Printf("pid %d writes %s from cursor %d", os.Getpid(), *path, r.Cursor())
 		ready("ready " + strconv.Itoa(os.Getpid()))
-		ctx := e.ctx
+		ctx, cancelRun := context.WithCancel(e.ctx)
+		defer cancelRun()
 		if *parent > 0 {
 			var cancel context.CancelFunc
 			ctx, cancel = watchParent(ctx, *parent, lg)
 			defer cancel()
 		}
+		// In a set-up directory (or a worktree of one) the replicator also follows the artifacts. A
+		// problem of the sync never stops the replication.
+		waitFollow := startCloneFollow(ctx, c, lg)
 		reason, err := r.Run(ctx)
+		cancelRun()
+		waitFollow()
 		if err != nil {
 			lg.Printf("stopped: %v", err)
 			return err
