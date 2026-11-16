@@ -223,16 +223,17 @@ mitigation: The hub accepts a push only for the participant that the token names
 ## A push makes the memory of a part stale
 
 The records, tasks and slides parts read their files from the archive when the hub starts and
-answer reads from memory. A file that a participant pushes is not in this memory until the hub
-restarts. A part that allocates IDs in memory may also choose an ID that a pushed file already
-uses. The maintainer accepted this risk on 2026-11-16.
+answer reads from memory. The archive tells them after every change of main, also after a push
+(`if-archive-watch`), and they reload. In the short time between a push and the reload, a part
+answers from the old state, and a part that allocates IDs in memory may choose an ID that a pushed
+file already uses; it then reloads and takes the next free ID.
 
 ```arc42
 :::risk
 id: risk-stale-memory
 title: A push makes the memory of a part stale
-severity: medium
-mitigation: Accepted for now; the change event of the archive can later make the parts reload or refuse a conflicting file (dec-artifact-sync)
+severity: low
+mitigation: The archive tells the parts after every change of main and they reload; a part never overwrites a file that a push put there first, it reloads and takes the next free ID (dec-artifact-sync)
 :::
 ```
 

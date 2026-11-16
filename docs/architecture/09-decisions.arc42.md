@@ -1073,8 +1073,8 @@ the tenant which artifacts changed. An event has no content and no position. A c
 fetching at start, after every reconnect and on request, so it never misses a change. A participant
 signs in with the key as for every other interface and gets an access token; the client gives it to
 Git. **Consequences:** Git is the position of a clone, so there is no cursor and no replay. A push
-passes the same rules as an interface call: the part of a type uses one check for both. The parts of the hub that keep an index in memory must learn about pushes, which
-the same event can serve. The archive changes from a repository with a work tree to one without.
+passes the same rules as an interface call: the part of a type uses one check for both. The parts that keep files in memory (records, tasks, slides) learn about pushes from the archive
+(`if-archive-watch`) and reload, and a part never overwrites a file that a push put there first. The archive changes from a repository with a work tree to one without.
 **Rejected:** a Git protocol layer of our own in the hub (a gate and rules in Git are enough); a
 login over SSH (a second port and a second way to give access); a sync in both directions by the
 client (the participant solves conflicts anyway, and it would be a second writer); a lock around

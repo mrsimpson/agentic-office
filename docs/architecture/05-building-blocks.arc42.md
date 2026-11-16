@@ -94,16 +94,19 @@ flowchart LR
     bb_documents -->|if-session-notice| bb_session_service
     bb_documents -->|if-token-check| bb_identity
     bb_records -->|if-archive-storage| bb_archive
+    bb_records -->|if-archive-watch| bb_archive
     bb_records -->|if-token-check| bb_identity
     bb_session_service -->|if-archive-storage| bb_archive
     bb_session_service -->|if-minutes-api| bb_records
     bb_session_service -->|if-token-check| bb_identity
     bb_slides -->|if-archive-storage| bb_archive
+    bb_slides -->|if-archive-watch| bb_archive
     bb_slides -->|if-token-check| bb_identity
     bb_stage -->|if-session-stream| bb_session_service
     bb_stage -->|if-slides-api| bb_slides
     bb_stage -->|if-auth-api| bb_identity
     bb_tasks -->|if-archive-storage| bb_archive
+    bb_tasks -->|if-archive-watch| bb_archive
     bb_identity -->|if-archive-storage| bb_archive
     bb_tasks -->|if-token-check| bb_identity
     bb_tenants -->|if-archive-storage| bb_archive
@@ -500,7 +503,9 @@ or an agent. Tasks are not part of this block; they have their own part of the h
 Every new record is one commit in the archive (`dec-yaml-git-storage`). A command returns only
 after its commit, so a record that a client got back is stored. Local commits are fast, so this
 does not slow the meeting; the commit of the minutes is part of ending a session. The block reads
-its records back from the archive at start, so they survive a restart.
+its records back from the archive at start, so they survive a restart. It also reloads a record file
+that a push changed or added (`if-archive-watch`), and it never overwrites a file that a push put
+there first: it reloads and takes the next free ID.
 
 ```arc42
 :::building-block
@@ -509,7 +514,7 @@ title: Records (decisions, minutes, notes)
 technology: Go / YAML in the archive
 parent: bb-office-hub
 path: hub/records
-requires: if-token-check, if-archive-storage
+requires: if-token-check, if-archive-storage, if-archive-watch
 :::
 ```
 
@@ -534,7 +539,8 @@ path: hub/records/check
 
 Keeps the tasks of the team behind the task interface (`dec-records-per-type`). Every change is
 one commit, so the archive keeps the history of every task, and a command returns only after its
-commit. Like the records part, it writes synchronously. A sync with the task tool of the team would belong to this block, and only the hub would
+commit. Like the records part, it writes synchronously, and it reloads a task file that a push changed or
+added (`if-archive-watch`). A sync with the task tool of the team would belong to this block, and only the hub would
 hold the credentials of that tool.
 
 ```arc42
@@ -544,7 +550,7 @@ title: Tasks
 technology: Go / YAML in the archive
 parent: bb-office-hub
 path: hub/tasks
-requires: if-token-check, if-archive-storage
+requires: if-token-check, if-archive-storage, if-archive-watch
 :::
 ```
 
@@ -589,7 +595,8 @@ Rendering is deterministic and without streaming. A deck is stored in one commit
 (`dec-yaml-git-storage`). The rendered output is a runtime artifact: it is not committed, so no
 clone of the tenant repository contains it, and the slides part renders it again from the stored
 input when it is needed. A later version of the hub may render a deck differently. Like the
-records part, it writes synchronously.
+records part, it writes synchronously, and it reloads a deck file that a push changed or added
+(`if-archive-watch`).
 
 The check of business plans by calculation (consistency, unit economics, completeness) is a
 different type with its own interface when it is built.
@@ -598,10 +605,10 @@ different type with its own interface when it is built.
 :::building-block
 id: bb-slides
 title: Slides
-technology: Go / YAML and HTML in the archive
+technology: Go / YAML in the archive
 parent: bb-office-hub
 path: hub/slides
-requires: if-token-check, if-archive-storage
+requires: if-token-check, if-archive-storage, if-archive-watch
 :::
 ```
 
@@ -727,6 +734,25 @@ title: Archive changes
 provider: bb-archive
 protocol: Connect RPC, server stream (dec-connect-rpc)
 path: hub/archive/changes
+:::
+```
+
+#### Archive watch
+
+The in-process interface for the parts of the hub that keep files of the archive in memory (the
+records, tasks and slides parts). A part asks for the changes of the artifact repository of its
+tenant and gets the same changes that a participant gets through the changes stream: the
+artifacts that were created, changed or removed, after a commit of the archive or after a push.
+It needs no token. The part reloads the files that changed. A part that is slow never holds up a
+commit: the rule for the followers of the stream holds here too.
+
+```arc42
+:::interface
+id: if-archive-watch
+title: Archive watch
+provider: bb-archive
+protocol: In-process Go call
+path: hub/archive/watch
 :::
 ```
 

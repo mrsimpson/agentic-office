@@ -395,6 +395,7 @@ sequenceDiagram
     bb_artifacts-->>bb_git_access: the answer of the owner
     Note over bb_git_access: Git moves main in one step, or the push is refused with the reason
     bb_git_access->>bb_archive: main moved
+    bb_archive-->>bb_records: changed artifacts, the part reloads its files
     bb_archive-->>bb_sync: changed artifacts, to the clients that follow
     bb_git_access-->>actor_human: push accepted
 ```
