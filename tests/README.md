@@ -90,10 +90,18 @@ through its interfaces:
   event of a commit of the archive (created, changed, with the version of the read interface),
   every follower gets every event, path prefixes, only Markdown and YAML,
   outsiders, other tenants and stage links, and a follower that never reads does not hold up the
-  commits. `hub/archive/changes_contract_test.go` tests the same service and
-  `if-archive-repository` in one process, because the notice "main moved" is an in-process call:
-  a change by the real `git` tool plus the notice gives the same event as a commit of the
-  archive; created, changed and removed artifacts; a follower that cannot keep up is dropped.
+  commits.
+- `tests/contract/archive_changes_push_test.go` checks `if-artifact-changes` for changes that come
+  by a real `git push` with the real `git` tool: the same event as for a commit of the archive
+  (created, changed, removed, with the version of the read interface), several files in one push
+  as one event ordered by path, no event for a push that changes nothing, a push and a commit in
+  order, path prefixes, and a follower that has gone.
+- `hub/archive/changes_notice_test.go` is the one test file that lies inside a provider tree. The
+  notice "main moved" of `if-archive-repository` is an in-process call, and a real push sends it
+  right after the push. These cases cannot be made from outside: a late notice (the archive commits
+  before the notice of an earlier change by Git arrives), a repeated notice that gives no second
+  event, a follower that cannot keep up and is dropped with `resource_exhausted` (the stream blocks
+  at once), and an unknown tenant.
 - `tests/contract/restore_test.go` checks the restore after a restart. `contracttest.NewGitGate`
   puts a `git` wrapper first in the `PATH` of the hub that can make every commit fail; the test
   writes a session, closes the gate, adds events and kills the hub, so the hub loses the tail.
