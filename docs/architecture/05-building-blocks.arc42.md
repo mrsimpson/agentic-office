@@ -966,6 +966,7 @@ flowchart LR
     bb_ears -->|if-client-core| bb_client_core
     bb_mcp -->|if-client-core| bb_client_core
     bb_mcp -->|if-replication| bb_replicator
+    bb_mcp -->|if-sync| bb_sync
     bb_cli -->|if-sync| bb_sync
     bb_sync -->|if-client-core| bb_client_core
 ```
@@ -1145,7 +1146,7 @@ path: client/core/api
 ### office CLI
 
 The main access for humans and for agents with a shell. It joins a meeting and starts the
-replication, runs the agent runner, imports conversations, and covers slides, the stage,
+replication (and the follow of the local clone, when it was started in a set-up directory), runs the agent runner, imports conversations, and covers slides, the stage,
 decisions, minutes, notes and tasks. It sets up, updates and follows the local clone of a tenant
 (`dec-artifact-sync`) but runs no other Git command: commits and pushes are plain Git. With a microphone, the terminal shows the user's own
 utterances with their status and lets the user pause and mark a sentence off the record.
@@ -1169,8 +1170,9 @@ path: client/cli
 ### MCP server
 
 A local MCP server (stdio) with the same features as the CLI. `meeting.join` starts the
-replication and returns the path to the log file. The replication lives as long as the MCP
-process.
+replication and returns the path to the log file. When the MCP server was started in a set-up
+directory, it also follows the changes of that clone. The replication and the follow live as long
+as the MCP process.
 
 ```arc42
 :::building-block
@@ -1178,7 +1180,7 @@ id: bb-mcp
 title: MCP server
 technology: Go / official MCP Go SDK
 parent: bb-participant-client
-requires: if-client-core, if-replication, if-session-commands, if-slides-api
+requires: if-client-core, if-replication, if-session-commands, if-slides-api, if-sync
 implements: concept-read-file-write-tools
 path: client/mcp
 :::
@@ -1276,16 +1278,21 @@ Keeps a clone of the tenant repository in a directory that the participant has s
   branch main and writes into the own Git configuration of the clone: the author of the
   participant, the way to get a fresh access token for Git, and a check that stops commits in the
   main directory.
-- An update fetches and moves main forward without a merge. It runs when a client process starts,
-  after every reconnect and on request. It stops and reports when the main directory has commits
-  of its own or when the hub rewrote history. It never touches files that a participant has
+- An update fetches and moves main to the state of the hub without a merge. It runs when a client
+  process starts, after every reconnect and on request. When the hub rewrote history, nothing of
+  the participant is on main, so main simply moves to the new state. The update stops and reports
+  when the main directory has commits of its own. It never touches files that a participant has
   changed and not committed.
 - While a client process runs, it follows the changes of the artifacts (`if-artifact-changes`),
-  optionally for path prefixes, and updates the clone after each event.
+  optionally for path prefixes, and updates the clone after each event. A client process that
+  starts in a set-up directory, or in a worktree of its clone, follows that clone: `meeting join`
+  of the CLI and of the MCP server starts the follow, and joining a meeting never needs a flag for
+  it.
 
 The main directory is a mirror of main. Participants and agents work in worktrees next to it, on
-local branches, and push with plain Git. The sync runs no other Git command than clone and
-update, and the office CLI passes none on.
+local branches, and push with plain Git. For the participant, the sync runs only clone and update;
+for its own update it also reads the state of the repository, like any Git tool. The office CLI
+passes no Git command on.
 
 ```arc42
 :::building-block

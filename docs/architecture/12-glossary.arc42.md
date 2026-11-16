@@ -141,7 +141,7 @@ The main directory of a local clone of the tenant repository.
 :::glossary-term
 id: term-mirror
 title: Mirror directory
-definition: The main directory of a local clone of the tenant repository; the client only moves it forward to the branch main of the hub, and nobody commits there, because work happens in worktrees
+definition: The main directory of a local clone of the tenant repository; the client only moves it to the branch main of the hub, and nobody commits there, because work happens in worktrees
 :::
 ```
 

@@ -1054,7 +1054,7 @@ every tenant over the Git protocol. A gate checks the access token and the membe
 before Git reads anything, and rules for the content run on every push. Git does the rest; the hub
 has no layer of its own that translates Git. The participant client keeps a clone of the tenant
 repository in a directory that the participant has set up on purpose. The main directory of the
-clone is a mirror of the branch main: the client only moves it forward and never merges or commits
+clone is a mirror of the branch main: the client only moves it to the state of the hub and never merges or commits
 there, and a check in the clone stops commits there. Local work happens in worktrees on local
 branches, and the participant pushes with plain Git. The office CLI sets up, updates and follows
 the clone and passes no other Git command on. The hub accepts a push only when it moves main
