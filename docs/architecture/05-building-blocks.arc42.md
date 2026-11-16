@@ -35,6 +35,8 @@ flowchart LR
     bb_participant_client -->|if-slides-api| bb_office_hub
     bb_participant_client -->|if-document-api| bb_office_hub
     bb_participant_client -->|if-archive-read| bb_office_hub
+    bb_participant_client -->|if-artifact-changes| bb_office_hub
+    bb_participant_client -->|if-git-access| bb_office_hub
     bb_participant_client -->|if-auth-api| bb_office_hub
     bb_participant_client -->|if-user-api| bb_office_hub
     bb_participant_client -->|if-tenant-api| bb_office_hub
@@ -65,7 +67,7 @@ id: bb-office-hub-whitebox
 view: building-block
 notation: mermaid
 roots: bb-office-hub
-aliases: bb_office_hub=bb-office-hub, bb_admin=bb-admin, bb_archive=bb-archive, bb_documents=bb-documents, bb_identity=bb-identity, bb_records=bb-records, bb_session_service=bb-session-service, bb_slides=bb-slides, bb_stage=bb-stage, bb_tasks=bb-tasks, bb_tenants=bb-tenants
+aliases: bb_office_hub=bb-office-hub, bb_admin=bb-admin, bb_archive=bb-archive, bb_documents=bb-documents, bb_git_access=bb-git-access, bb_identity=bb-identity, bb_records=bb-records, bb_schemas=bb-schemas, bb_session_service=bb-session-service, bb_slides=bb-slides, bb_stage=bb-stage, bb_tasks=bb-tasks, bb_tenants=bb-tenants
 :::
 ```
 
@@ -75,8 +77,10 @@ flowchart LR
         bb_admin[Admin view]
         bb_archive[Archive]
         bb_documents[Documents]
+        bb_git_access[Git access]
         bb_identity[Identity]
         bb_records[Records]
+        bb_schemas[Schemas]
         bb_session_service[Meeting session]
         bb_slides[Slides]
         bb_stage[Stage]
@@ -105,6 +109,9 @@ flowchart LR
     bb_tenants -->|if-archive-storage| bb_archive
     bb_tenants -->|if-tenant-roster| bb_identity
     bb_tenants -->|if-token-check| bb_identity
+    bb_git_access -->|if-archive-repository| bb_archive
+    bb_git_access -->|if-artifact-check| bb_schemas
+    bb_git_access -->|if-token-check| bb_identity
 ```
 
 ### Session commands
@@ -568,6 +575,12 @@ does not know the records: the caller decides the files and their content. A com
 so callers that must not wait call it in the background. The push to a remote is mocked: it does
 nothing and reports success.
 
+A tenant repository has no work tree, because a participant can push to it through Git access
+(`dec-artifact-sync`). The archive and a push both move the branch main in one atomic step of Git.
+When a push comes first, the archive repeats its commit on the new state. The archive is the one
+place that learns about every change of main, whatever its source. It finds which artifacts
+changed and tells the clients that follow the tenant.
+
 ```arc42
 :::building-block
 id: bb-archive
@@ -614,6 +627,126 @@ title: Archive storage
 provider: bb-archive
 protocol: In-process Go call
 path: hub/archive/storage
+:::
+```
+
+#### Archive repository
+
+The in-process interface that lets Git access use the repository of a tenant: it says where Git
+finds the repository, and it tells the archive that a push moved the branch main, so that the
+archive can report the change. Git access writes no file through it.
+
+```arc42
+:::interface
+id: if-archive-repository
+title: Archive repository
+provider: bb-archive
+protocol: In-process Go call
+path: hub/archive/repository
+:::
+```
+
+#### Archive changes
+
+A participant follows the changes of the artifacts of a tenant. The call needs the access token of
+a participant who belongs to the tenant, and it may name path prefixes. The hub sends one event for
+each change of the branch main: the artifacts that were created, changed or removed, with their new
+versions. An artifact is a Markdown or YAML file, and nothing under the session logs is ever named.
+An event holds no content and the stream has no position and no replay. A client that connects, or
+connects again, first updates its clone through Git access and then follows. A change that the
+archive wrote and a change that came by a push give the same event.
+
+```arc42
+:::interface
+id: if-artifact-changes
+title: Archive changes
+provider: bb-archive
+protocol: Connect RPC, server stream (dec-connect-rpc)
+path: hub/archive/changes
+:::
+```
+
+### Git access
+
+Serves the repository of every tenant over the Git protocol, so that participants fetch the
+artifacts of their tenant and push changes with plain Git (`dec-artifact-sync`). It has no
+records of its own and no layer that translates Git; Git does the work and this part sets the
+rules. It does three things:
+
+- A gate: before Git reads anything, it checks the access token and the membership in the tenant
+  of the address, and it finds the repository through the archive. A fetch has no check inside
+  Git, and a push is checked inside Git only after the upload, so the gate comes first.
+- Rules for every push, which Git runs before it accepts the push: the author of every new commit
+  is the participant of the token; only the branch main changes and no history is rewritten; only
+  artifact files change and none of them lies under the session logs; and every file with a schema
+  is valid against the schema that it names (the check of the schemas part). A refused push shows
+  its reason to the participant.
+- After an accepted push, it tells the archive that main moved.
+
+Git alone decides whether a push builds on the current state: a push on an old base is refused,
+and the participant fetches first. This is the base version of the interfaces of the types.
+
+```arc42
+:::building-block
+id: bb-git-access
+title: Git access
+technology: Go / Git (smart HTTP)
+parent: bb-office-hub
+requires: if-token-check, if-archive-repository, if-artifact-check
+implements: concept-multi-tenancy
+path: hub/gitaccess
+:::
+```
+
+#### Git protocol
+
+The repository of a tenant under one fixed address of the hub (the hub address and the tenant).
+Any Git client can fetch and push. The password is the access token of the participant, which
+lives one hour; the client of the participant gives Git a fresh token when it needs one. Only
+participants of the tenant get access. They read and push the branch main and nothing else. The
+author of a commit has the form that the hub uses for its own commits: the display name of the
+participant and an address that is built from the participant ID.
+
+```arc42
+:::interface
+id: if-git-access
+title: Git access
+provider: bb-git-access
+protocol: Git over HTTPS (smart protocol), access token as password
+path: hub/gitaccess/web
+:::
+```
+
+### Schemas
+
+Ships the schemas of the artifact types (`dec-artifacts`) and checks a file against the schema that
+it names. The check is the same wherever a file comes from. Git access uses it for every push. The
+parts of the hub that write a type through their own interface should use the same check, so that
+every rule exists once. OPEN: the parts for records, tasks and slides adopt it (proposal).
+
+```arc42
+:::building-block
+id: bb-schemas
+title: Schemas
+technology: Go
+parent: bb-office-hub
+implements: concept-module-boundaries
+path: hub/schemas
+:::
+```
+
+#### Artifact check
+
+Checks the content of one file of an artifact type against the schema that the file names. It
+answers valid, or invalid with the reasons in plain words.
+
+```arc42
+:::interface
+id: if-artifact-check
+title: Artifact check
+provider: bb-schemas
+protocol: In-process Go call
+path: hub/schemas/check
 :::
 ```
 
@@ -718,7 +851,7 @@ path: hub/tenant
 ## Participant client
 
 Runs locally on every participant's computer and is the same for humans and agents. It contains
-the CLI, the MCP server, the log replicator, the agent runner and, optionally, the ears. Unlike the
+the CLI, the MCP server, the log replicator, the artifact sync, the agent runner and, optionally, the ears. Unlike the
 hub, the client may contain models (`dec-models-in-client`): the speech model of the ears, and a
 decision model that the user brings for the agent runner.
 
@@ -741,7 +874,7 @@ id: bb-participant-client-whitebox
 view: building-block
 notation: mermaid
 roots: bb-participant-client
-aliases: bb_participant_client=bb-participant-client, bb_agent_runner=bb-agent-runner, bb_cli=bb-cli, bb_client_core=bb-client-core, bb_ears=bb-ears, bb_mcp=bb-mcp, bb_replicator=bb-replicator
+aliases: bb_participant_client=bb-participant-client, bb_agent_runner=bb-agent-runner, bb_cli=bb-cli, bb_client_core=bb-client-core, bb_ears=bb-ears, bb_mcp=bb-mcp, bb_replicator=bb-replicator, bb_sync=bb-sync
 :::
 ```
 
@@ -754,6 +887,7 @@ flowchart LR
         bb_ears[Ears]
         bb_mcp[MCP server]
         bb_replicator[Log replicator]
+        bb_sync[Artifact sync]
     end
     bb_agent_runner -->|if-client-core| bb_client_core
     bb_agent_runner -->|if-replication| bb_replicator
@@ -765,6 +899,8 @@ flowchart LR
     bb_ears -->|if-client-core| bb_client_core
     bb_mcp -->|if-client-core| bb_client_core
     bb_mcp -->|if-replication| bb_replicator
+    bb_cli -->|if-sync| bb_sync
+    bb_sync -->|if-client-core| bb_client_core
 ```
 
 ### CLI
@@ -943,7 +1079,8 @@ path: client/core/api
 
 The main access for humans and for agents with a shell. It joins a meeting and starts the
 replication, runs the agent runner, imports conversations, and covers slides, the stage,
-decisions, minutes, notes and tasks. With a microphone, the terminal shows the user's own
+decisions, minutes, notes and tasks. It sets up, updates and follows the local clone of a tenant
+(`dec-artifact-sync`) but runs no other Git command: commits and pushes are plain Git. With a microphone, the terminal shows the user's own
 utterances with their status and lets the user pause and mark a sentence off the record.
 
 The CLI reads the configuration files of the client (`concept-client-configuration`), merges them
@@ -956,7 +1093,7 @@ id: bb-cli
 title: office CLI
 technology: Go, single binary
 parent: bb-participant-client
-requires: if-client-core, if-replication, if-local-log, if-session-commands, if-session-stream, if-slides-api, if-auth-api, if-user-api
+requires: if-client-core, if-replication, if-local-log, if-session-commands, if-session-stream, if-slides-api, if-auth-api, if-user-api, if-sync
 implements: concept-read-file-write-tools, concept-client-configuration
 path: client/cli
 :::
@@ -1060,6 +1197,52 @@ title: Replication control
 provider: bb-replicator
 protocol: In-process Go call
 path: client/replicator/control
+:::
+```
+
+### Artifact sync
+
+Keeps a clone of the tenant repository in a directory that the participant has set up on purpose
+(`dec-artifact-sync`). It never syncs a directory by itself.
+
+- Set-up works out the address of the repository from the hub address and the tenant, clones the
+  branch main and writes into the own Git configuration of the clone: the author of the
+  participant, the way to get a fresh access token for Git, and a check that stops commits in the
+  main directory.
+- An update fetches and moves main forward without a merge. It runs when a client process starts,
+  after every reconnect and on request. It stops and reports when the main directory has commits
+  of its own or when the hub rewrote history. It never touches files that a participant has
+  changed and not committed.
+- While a client process runs, it follows the changes of the artifacts (`if-artifact-changes`),
+  optionally for path prefixes, and updates the clone after each event.
+
+The main directory is a mirror of main. Participants and agents work in worktrees next to it, on
+local branches, and push with plain Git. The sync runs no other Git command than clone and
+update, and the office CLI passes none on.
+
+```arc42
+:::building-block
+id: bb-sync
+title: Artifact sync
+technology: Go / Git command line tool
+parent: bb-participant-client
+requires: if-client-core, if-git-access, if-artifact-changes
+path: client/sync
+:::
+```
+
+#### Sync control
+
+The in-process interface to set up a directory, to update it once, to follow the changes until
+the process ends, and to stop. The CLI runs the sync as its own process, like the replication.
+
+```arc42
+:::interface
+id: if-sync
+title: Sync control
+provider: bb-sync
+protocol: In-process Go call
+path: client/sync/control
 :::
 ```
 

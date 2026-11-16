@@ -227,6 +227,174 @@ sequenceDiagram
     bb_stage->>bb_archive: read the document by its path
 ```
 
+## Participant sets up a local directory
+
+A participant starts `office sync init` in a directory. The sync part gets an access token with the
+key of the participant and clones the branch main of the tenant through Git access. It writes the
+author, the way to get a token and the check for the main directory into the own configuration of
+the clone, and it remembers the directory.
+
+```arc42
+:::runtime-scenario
+id: rs-sync-setup
+title: Participant sets up a local directory
+trigger: A participant runs the set-up of a directory
+involves: bb-cli, bb-sync, bb-identity, bb-git-access, bb-archive, bb-participant-client, bb-office-hub
+:::
+```
+
+```arc42
+:::diagram
+id: seq-sync-setup
+notation: mermaid-sequence
+scenario: rs-sync-setup
+aliases: bb_cli=bb-cli, bb_sync=bb-sync, bb_identity=bb-identity, bb_git_access=bb-git-access, bb_archive=bb-archive
+:::
+```
+
+```mermaid
+sequenceDiagram
+    participant bb_cli as office CLI
+    participant bb_sync as Artifact sync
+    participant bb_identity as Identity
+    participant bb_git_access as Git access
+    participant bb_archive as Archive
+    bb_cli->>bb_sync: set up the directory
+    bb_sync->>bb_identity: prove the key
+    bb_identity-->>bb_sync: access token
+    bb_sync->>bb_git_access: clone main, token as password
+    bb_git_access->>bb_identity: check token and tenant
+    bb_git_access->>bb_archive: find the repository of the tenant
+    bb_git_access-->>bb_sync: repository, branch main
+    Note over bb_sync: writes author, token source and guard into the clone
+```
+
+## A client process starts in a set-up directory
+
+The sync part brings the main directory up to date, and then it follows the changes. It keeps no
+position: after a start and after every reconnect it fetches first, so no change is missed. When
+the main directory has commits of its own, the sync part stops and reports it.
+
+```arc42
+:::runtime-scenario
+id: rs-sync-start
+title: A client process starts in a set-up directory
+trigger: A client process starts, or its connection to the hub comes back
+involves: bb-sync, bb-identity, bb-git-access, bb-archive, bb-participant-client, bb-office-hub
+:::
+```
+
+```arc42
+:::diagram
+id: seq-sync-start
+notation: mermaid-sequence
+scenario: rs-sync-start
+aliases: bb_sync=bb-sync, bb_identity=bb-identity, bb_git_access=bb-git-access, bb_archive=bb-archive
+:::
+```
+
+```mermaid
+sequenceDiagram
+    participant bb_sync as Artifact sync
+    participant bb_identity as Identity
+    participant bb_git_access as Git access
+    participant bb_archive as Archive
+    bb_sync->>bb_identity: prove the key
+    bb_identity-->>bb_sync: access token
+    bb_sync->>bb_git_access: fetch
+    bb_git_access-->>bb_sync: new commits
+    Note over bb_sync: main moves forward without a merge, or the sync stops and reports own commits
+    bb_sync->>bb_archive: follow the changes, optionally for path prefixes
+    bb_archive-->>bb_sync: stream open
+    Note over bb_sync,bb_archive: after a drop: fetch again, then follow again
+```
+
+## A change reaches a local clone
+
+A participant changes a document through the hub. The archive commits it, finds the artifacts that
+changed and tells every client that follows the tenant. The sync part of another participant
+fetches and moves its main directory forward. A change that came by a push gives the same event
+(see the push scenario).
+
+```arc42
+:::runtime-scenario
+id: rs-change-reaches-clone
+title: A change reaches a local clone
+trigger: A part of the hub commits a change of an artifact
+involves: bb-documents, bb-archive, bb-sync, bb-git-access, bb-participant-client, bb-office-hub
+:::
+```
+
+```arc42
+:::diagram
+id: seq-change-reaches-clone
+notation: mermaid-sequence
+scenario: rs-change-reaches-clone
+aliases: bb_documents=bb-documents, bb_archive=bb-archive, bb_sync=bb-sync, bb_git_access=bb-git-access
+:::
+```
+
+```mermaid
+sequenceDiagram
+    participant bb_documents as Documents
+    participant bb_archive as Archive
+    participant bb_sync as Artifact sync
+    participant bb_git_access as Git access
+    bb_documents->>bb_archive: commit, author is the participant
+    Note over bb_archive: compares the old and the new state of main, keeps artifacts only
+    bb_archive-->>bb_sync: notes/plan.md changed, new version
+    bb_sync->>bb_git_access: fetch
+    bb_git_access-->>bb_sync: new commit
+    Note over bb_sync: main moves forward without a merge
+```
+
+## Participant pushes a change with Git
+
+A participant commits in a worktree and pushes the branch main with plain Git. Git access checks
+the token and the tenant before Git reads the upload. Then Git runs the rules of Git access on the
+new commits. When all of them hold, Git moves main in one step, and Git access tells the archive,
+which tells the clients that follow the tenant. A push that breaks a rule is refused as a whole and
+shows the reason. A push on an old base is refused by Git, and the participant fetches and merges
+by hand first.
+
+```arc42
+:::runtime-scenario
+id: rs-git-push
+title: Participant pushes a change with Git
+trigger: A participant pushes the branch main of the tenant repository
+involves: bb-git-access, bb-identity, bb-schemas, bb-archive, bb-sync, bb-participant-client, bb-office-hub
+:::
+```
+
+```arc42
+:::diagram
+id: seq-git-push
+notation: mermaid-sequence
+scenario: rs-git-push
+aliases: actor_human=actor-human, bb_git_access=bb-git-access, bb_identity=bb-identity, bb_schemas=bb-schemas, bb_archive=bb-archive, bb_sync=bb-sync
+:::
+```
+
+```mermaid
+sequenceDiagram
+    participant actor_human as Human participant
+    participant bb_git_access as Git access
+    participant bb_identity as Identity
+    participant bb_schemas as Schemas
+    participant bb_archive as Archive
+    participant bb_sync as Artifact sync
+    actor_human->>bb_git_access: git push, token as password
+    bb_git_access->>bb_identity: check token and tenant
+    bb_git_access->>bb_archive: find the repository of the tenant
+    Note over bb_git_access: rules before Git accepts: author is the participant, only main, no rewrite, only artifact files, none under the session logs
+    bb_git_access->>bb_schemas: check every changed file with a schema
+    bb_schemas-->>bb_git_access: valid, or invalid with reasons
+    Note over bb_git_access: Git moves main in one step, or the push is refused with the reason
+    bb_git_access->>bb_archive: main moved
+    bb_archive-->>bb_sync: changed artifacts, to the clients that follow
+    bb_git_access-->>actor_human: push accepted
+```
+
 ## Admin opens the admin view
 
 An admin asks for a link with the CLI. The identity part creates a code that works once and returns

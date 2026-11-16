@@ -176,6 +176,21 @@ mitigation: An imported session is marked by its first event, with its source an
 :::
 ```
 
+## A push goes around the rules of the types
+
+A participant can write an artifact with Git and so does not pass the interface of its type. If
+the rules of Git access differ from the rules of the interface, one way accepts what the other
+refuses, or the hub shows an artifact that its type cannot read.
+
+```arc42
+:::risk
+id: risk-push-bypass
+title: A push goes around the rules of the types
+severity: medium
+mitigation: Every push passes the rules of Git access: author, ref, file types and the schema that a file names; the check of the schemas part is the one place of these rules, and the parts of the hub that write a type should use it too (dec-artifact-sync)
+:::
+```
+
 ## Memory grows with all sessions of all tenants
 
 The session log stays in memory after it is archived, and the restore loads every session at start.
