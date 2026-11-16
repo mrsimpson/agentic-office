@@ -1,9 +1,10 @@
 // Slides (if-slides-api): render a slide deck from a structured description and fetch it again
 // by its ID. One of the record types of the hub (dec-records-per-type).
 //
-// The hub keeps the input of every deck (title, slides, author, time) and the rendered output in
-// its archive (dec-yaml-git-storage), so decks survive a restart. Rendering is deterministic
-// (con-no-intelligence): the same title and slides give the same bytes.
+// The hub keeps the input of every deck (title, slides, author, time) in its archive
+// (dec-yaml-git-storage), so decks survive a restart. The rendered output is not stored: the hub
+// renders it again from the input. Rendering is deterministic (con-no-intelligence): the same
+// title and slides give the same bytes.
 //
 // A deck has an ID such as "slides/42". The stage shows a deck by this ID (artifact.focused in
 // commands.proto): "artifact" is the general word for anything the stage can show, and the part
@@ -64,7 +65,7 @@ var (
 
 // SlidesServiceClient is a client for the office.slides.v1.SlidesService service.
 type SlidesServiceClient interface {
-	// RenderDeck renders a deck and stores its input and its output as a new deck. It returns
+	// RenderDeck renders a deck and stores its input as a new deck. It returns
 	// only after the deck is stored. It is idempotent by command_id: a repeated request returns
 	// the stored deck with duplicate set. The same command_id with another title, other slides or
 	// another author fails with already_exists.
@@ -82,7 +83,7 @@ func NewSlidesServiceClient(client *connect.Client) SlidesServiceClient {
 
 // SlidesServiceHandler is an implementation of the office.slides.v1.SlidesService service.
 type SlidesServiceHandler interface {
-	// RenderDeck renders a deck and stores its input and its output as a new deck. It returns
+	// RenderDeck renders a deck and stores its input as a new deck. It returns
 	// only after the deck is stored. It is idempotent by command_id: a repeated request returns
 	// the stored deck with duplicate set. The same command_id with another title, other slides or
 	// another author fails with already_exists.

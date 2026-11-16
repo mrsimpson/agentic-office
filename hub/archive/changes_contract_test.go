@@ -79,8 +79,12 @@ func (f *fixture) follow(t *testing.T, prefixes ...string) *follower {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.Receive(); err != nil {
+	first, err := st.Receive()
+	if err != nil {
 		t.Fatalf("first message: %v", err)
+	}
+	if first.GetRegistered() == nil || first.GetChanges() != nil {
+		t.Fatalf("the first message is %v, want the registered signal", first)
 	}
 	fl := &follower{events: make(chan *changesv1.FollowResponse, 1000), errs: make(chan error, 1)}
 	go func() {
@@ -101,7 +105,7 @@ func (f *follower) next(t *testing.T) []string {
 	select {
 	case ev := <-f.events:
 		var out []string
-		for _, c := range ev.GetChanges() {
+		for _, c := range ev.GetChanges().GetChanges() {
 			out = append(out, fmt.Sprintf("%s %s %s", strings.TrimPrefix(c.GetKind().String(), "CHANGE_KIND_"), c.GetPath(), c.GetVersion()))
 		}
 		return out
@@ -282,8 +286,8 @@ func TestSlowFollowerIsDroppedAndNeverBlocks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := stalled.Receive(); err != nil {
-		t.Fatal(err)
+	if first, err := stalled.Receive(); err != nil || first.GetRegistered() == nil {
+		t.Fatalf("first message: %v, %v", first, err)
 	}
 	reader := f.follow(t)
 

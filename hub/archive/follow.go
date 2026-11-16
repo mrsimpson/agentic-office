@@ -256,8 +256,8 @@ func (s *ChangesService) Follow(ctx context.Context, req *changesv1.FollowReques
 	caller, _ := tokencheck.CallerFrom(ctx)
 	f := s.repo.follow(prefixes)
 	defer s.repo.unfollow(f)
-	// The first message says that the follower is registered (see the contract).
-	if err := stream.Send(&changesv1.FollowResponse{}); err != nil {
+	// The first message is the signal that the follower is registered (see the contract).
+	if err := stream.Send(&changesv1.FollowResponse{Message: &changesv1.FollowResponse_Registered{Registered: &changesv1.Registered{}}}); err != nil {
 		return err
 	}
 	for {
@@ -271,7 +271,7 @@ func (s *ChangesService) Follow(ctx context.Context, req *changesv1.FollowReques
 				// Only publish closes the channel of a call that is still running.
 				return connect.NewError(connect.CodeResourceExhausted, "the follower did not read fast enough and was dropped; connect again and update the clone")
 			}
-			if err := stream.Send(&changesv1.FollowResponse{Changes: changes}); err != nil {
+			if err := stream.Send(&changesv1.FollowResponse{Message: &changesv1.FollowResponse_Changes{Changes: &changesv1.ArtifactChanges{Changes: changes}}}); err != nil {
 				return err
 			}
 		}

@@ -20,23 +20,23 @@
 //     like "#slide-2" shows that slide. Notes are in the document but hidden (speaker notes). The
 //     document has no scripts and loads nothing: all text is HTML-escaped, and a
 //     Content-Security-Policy allows only the inline style sheet.
-//   - Storage: every deck is two files in the archive (if-archive-storage), written in one
-//     commit: slides/NNNNNN.yaml holds the input (schema,
-//     id, title, slides, author, author kind, time, command ID). schema is office.slides.v1; the
-//     other field names are those of the contract (snake_case, enums by name, times in RFC 3339;
-//     a text with line breaks is a literal block). slides/NNNNNN.html holds the rendered
-//     document. The check of the part (package check, if-slides-check) decides what a valid YAML
-//     file is. The part uses it for every file it writes and reads, and Git access uses it for a
-//     push, so every rule exists once. NNNNNN is n with at least six digits. RenderDeck returns only after the
-//     commit.
-//   - The output is stored, not rendered again on read. So a deck stays exactly what was shown
-//     in a meeting, even if a later hub renders differently, and a reader of the archive can open
-//     the HTML without the hub. Because rendering is deterministic, the input alone is enough to
-//     get the same document from the same hub version.
-//   - Open reads all decks from the current commit of the archive and keeps them in memory, so
-//     decks survive a restart. Reads use only the memory and do not wait for a commit. A file
-//     that is not valid, or a YAML file without its HTML file, stops the start with an error;
-//     other files are ignored.
+//   - Storage: every deck is one file in the archive (if-archive-storage), written in one
+//     commit: slides/NNNNNN.yaml holds the input (schema, id, title, slides, author, author kind,
+//     time, command ID). schema is office.slides.v1; the other field names are those of the
+//     contract (snake_case, enums by name, times in RFC 3339; a text with line breaks is a
+//     literal block). NNNNNN is n with at least six digits. The check of the part (package check,
+//     if-slides-check) decides what a valid YAML file is. The part uses it for every file it
+//     writes and reads, and Git access uses it for a push, so every rule exists once.
+//     RenderDeck returns only after the commit.
+//   - The rendered output is a runtime artifact. It is never committed, so no clone of the
+//     artifact repository holds a rendered deck. The part keeps the output of every deck in
+//     memory, next to the input, and the slides interface returns it. Open renders every deck
+//     again from its stored input, so a deck has the same output after a restart. Because the
+//     rendering is deterministic, the same hub version gives the same bytes. A later hub version
+//     may render a deck differently; that is accepted.
+//   - Open reads all decks from the current commit of the archive and renders them, so decks
+//     survive a restart. Reads use only the memory and do not wait for a commit. A YAML file that
+//     is not valid stops the start with an error; other files are ignored.
 //   - Every render is idempotent by its command_id (dec-idempotent-commands). A repeated request
 //     returns the stored deck with duplicate set. The same command_id with another title, other
 //     slides or another author fails with AlreadyExists. A new command_id with the same deck
@@ -46,8 +46,8 @@
 //     PermissionDenied. The hub sets author_kind from the token. Any participant can fetch
 //     every deck. A stage link cannot use the slides interface (PermissionDenied): the stage
 //     renders on the hub and loads decks through Service.Load, so the browser never needs them.
-//   - One write at a time: a render holds the write lock while its commit runs. The commit waits
-//     for a session write that the archive is carrying out (#45).
+//   - One write at a time: a render holds the write lock while its commit runs. The commit
+//     does not wait behind session writes: the session logs lie in their own repository.
 //   - Error codes: a missing or bad field, or a rendered deck larger than MaxContentBytes, is
 //     InvalidArgument; an unknown ID is NotFound; a participant that is not the caller, or a stage
 //     link, is PermissionDenied; no valid token is Unauthenticated; a reused command_id is

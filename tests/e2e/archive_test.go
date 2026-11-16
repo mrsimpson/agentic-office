@@ -251,8 +251,8 @@ func waitCommitRunning(t *testing.T, logFile string, session bool) commitSpan {
 	}
 }
 
-// dec-records-synchronous: a record does not wait for a session write, because the session logs
-// have their own repository and so their own commit queue. Every commit takes 2 s, the interval
+// A record is written synchronously and does not wait behind a session write, because the session
+// logs have their own repository and so their own commit queue. Every commit takes 2 s, the interval
 // is 100 ms and a participant speaks every 50 ms, so a session write is always running or
 // waiting. In each round a decision is recorded while a session write runs, and a note while the
 // decision is committed. The decision is committed while the session write goes on; the note
@@ -264,7 +264,7 @@ func TestArchiveRecordsDoNotWaitForSessionWrites(t *testing.T) {
 	srv := contracttest.StartHub(t, []string{"PATH=" + gitDir + string(os.PathListSeparator) + os.Getenv("PATH")},
 		"-archive-interval", "100ms")
 	ada := srv.Participant(t, "ada", "Ada", identityv1.ActorKind_ACTOR_KIND_HUMAN)
-	sid := "records-first-" + coreapi.NewCommandID()
+	sid := "records-sync-" + coreapi.NewCommandID()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	if _, err := ada.Commands.Join(ctx, &sessioncommandsv1.JoinRequest{SessionId: sid, CommandId: coreapi.NewCommandID()}); err != nil {

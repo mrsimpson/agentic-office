@@ -1,7 +1,6 @@
 package slides
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"path"
@@ -49,12 +48,6 @@ func Open(ctx context.Context, arch storage.Archive) (*Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("slides: read %s: %w", Kind, err)
 	}
-	contents := map[string][]byte{}
-	for _, f := range files {
-		if path.Ext(f.Path) == ".html" {
-			contents[strings.TrimSuffix(f.Path, ".html")] = f.Data
-		}
-	}
 	byNum := map[uint64]*slidesv1.Deck{}
 	for _, f := range files {
 		if path.Ext(f.Path) != ".yaml" {
@@ -75,9 +68,10 @@ func Open(ctx context.Context, arch storage.Archive) (*Service, error) {
 		case s.byCmd[d.GetCommandId()] != nil:
 			return nil, fmt.Errorf("slides: %s: command ID %q is used twice", f.Path, d.GetCommandId())
 		}
-		content, ok := contents[strings.TrimSuffix(f.Path, ".yaml")]
-		if !ok {
-			return nil, fmt.Errorf("slides: %s is missing", check.FilePath(n, ".html"))
+		// The output is not stored: render it again from the stored input.
+		content, err := Render(d.GetTitle(), d.GetSlides())
+		if err != nil {
+			return nil, fmt.Errorf("slides: %s: render: %w", f.Path, err)
 		}
 		d.MediaType, d.Content = MediaType, content
 		byNum[n] = d
@@ -134,8 +128,8 @@ func sameSlides(a, b []*slidesv1.Slide) bool {
 	return true
 }
 
-// RenderDeck renders a deck and stores its input and output as a new deck "slides/<n>", in one
-// commit of the archive. It is idempotent by command_id.
+// RenderDeck renders a deck and stores its input as a new deck "slides/<n>", in one commit of the
+// archive. The output stays in memory. It is idempotent by command_id.
 func (s *Service) RenderDeck(ctx context.Context, req *slidesv1.RenderDeckRequest) (*slidesv1.RenderDeckResponse, error) {
 	switch {
 	case req.GetCommandId() == "":
@@ -191,7 +185,7 @@ func (s *Service) RenderDeck(ctx context.Context, req *slidesv1.RenderDeckReques
 	return &slidesv1.RenderDeckResponse{Deck: d}, nil
 }
 
-// write stores the input and the output of deck n in one commit.
+// write stores the input of deck n in one commit. The rendered output is not stored.
 func (s *Service) write(ctx context.Context, n uint64, d *slidesv1.Deck) error {
 	data, err := encode(d)
 	if err != nil {
@@ -208,8 +202,7 @@ func (s *Service) write(ctx context.Context, n uint64, d *slidesv1.Deck) error {
 	// the call.
 	if _, err := s.arch.Commit(context.WithoutCancel(ctx), storage.Change{
 		Message: fmt.Sprintf("Slides %s: %s", d.GetId(), summary(title)),
-		Files: []storage.File{{Path: check.FilePath(n, ".yaml"), Data: data},
-			{Path: check.FilePath(n, ".html"), Data: bytes.Clone(d.GetContent())}},
+		Files:   []storage.File{{Path: check.FilePath(n, ".yaml"), Data: data}},
 	}); err != nil {
 		return connect.NewError(connect.CodeInternal, "store the deck in the archive: "+err.Error())
 	}

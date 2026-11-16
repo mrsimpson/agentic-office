@@ -18,8 +18,8 @@ import (
 // Archive stores files in a repository. An Archive is safe for use by many goroutines; it
 // carries out one change at a time.
 //
-// Records are not held up by session writes (dec-records-synchronous): the session logs have
-// their own repository and so their own queue (see Archives).
+// A record is written synchronously, and it does not wait behind session writes: the session
+// logs have their own repository and so their own queue (see Archives).
 //
 // A part of the hub reads its records back with Read, for example to rebuild its index when the
 // hub starts.

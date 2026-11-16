@@ -28,7 +28,7 @@ type changeFollower struct {
 	errs   chan error
 }
 
-// follow opens a call, waits for the first message (the call is registered) and returns a
+// follow opens a call, waits for the first message (the registered signal) and returns a
 // follower of the following events. A failed call fails the test.
 func followChanges(t *testing.T, c contracttest.Clients, prefixes ...string) *changeFollower {
 	t.Helper()
@@ -61,8 +61,15 @@ func tryFollow(t *testing.T, c contracttest.Clients, prefixes ...string) (*chang
 				return
 			}
 			if i == 0 {
+				// The signal comes first, and it has a type of its own, not an empty list.
+				if res.GetRegistered() == nil || res.GetChanges() != nil {
+					t.Errorf("the first message is %v, want the registered signal", res)
+				}
 				close(first)
 				continue
+			}
+			if res.GetChanges() == nil || len(res.GetChanges().GetChanges()) == 0 || res.GetRegistered() != nil {
+				t.Errorf("a later message is %v, want changes with at least one entry", res)
 			}
 			f.events <- res
 		}
@@ -97,7 +104,7 @@ func (f *changeFollower) next(t *testing.T) *changesv1.FollowResponse {
 // described returns the changes of an event as "kind path version" strings.
 func described(ev *changesv1.FollowResponse) []string {
 	var out []string
-	for _, c := range ev.GetChanges() {
+	for _, c := range ev.GetChanges().GetChanges() {
 		out = append(out, fmt.Sprintf("%s %s %s", c.GetKind(), c.GetPath(), c.GetVersion()))
 	}
 	return out
@@ -157,7 +164,7 @@ func TestArtifactChangesPathPrefix(t *testing.T) {
 	newDoc(t, ada, "documents/b/y.md", "y")
 	v := newDoc(t, ada, "documents/a/z.md", "z")
 	for _, p := range []string{"documents/ab/x.md", "documents/b/y.md", "documents/a/z.md"} {
-		if got := all.next(t).GetChanges(); len(got) != 1 || got[0].GetPath() != p {
+		if got := all.next(t).GetChanges().GetChanges(); len(got) != 1 || got[0].GetPath() != p {
 			t.Fatalf("follower of all: %v, want %s", got, p)
 		}
 	}
@@ -249,8 +256,8 @@ func TestArtifactChangesSlowFollowerDoesNotBlock(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stalled.Close()
-	if _, err := stalled.Receive(); err != nil { // registered; now it never reads again
-		t.Fatal(err)
+	if first, err := stalled.Receive(); err != nil || first.GetRegistered() == nil { // registered; now it never reads again
+		t.Fatalf("first message: %v, %v", first, err)
 	}
 	reader := followChanges(t, ada.Clients)
 

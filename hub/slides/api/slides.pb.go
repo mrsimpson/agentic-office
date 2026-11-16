@@ -1,9 +1,10 @@
 // Slides (if-slides-api): render a slide deck from a structured description and fetch it again
 // by its ID. One of the record types of the hub (dec-records-per-type).
 //
-// The hub keeps the input of every deck (title, slides, author, time) and the rendered output in
-// its archive (dec-yaml-git-storage), so decks survive a restart. Rendering is deterministic
-// (con-no-intelligence): the same title and slides give the same bytes.
+// The hub keeps the input of every deck (title, slides, author, time) in its archive
+// (dec-yaml-git-storage), so decks survive a restart. The rendered output is not stored: the hub
+// renders it again from the input. Rendering is deterministic (con-no-intelligence): the same
+// title and slides give the same bytes.
 //
 // A deck has an ID such as "slides/42". The stage shows a deck by this ID (artifact.focused in
 // commands.proto): "artifact" is the general word for anything the stage can show, and the part
@@ -149,7 +150,8 @@ func (x *Slide) GetNotes() string {
 	return ""
 }
 
-// Deck is a stored deck: its input as the client sent it, and its rendered output.
+// Deck is a stored deck: its input as the client sent it, and its rendered output (not stored; the hub renders it
+// again from the input).
 type Deck struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// id names the deck, for example "slides/42". It never changes and is never used twice.

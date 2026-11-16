@@ -399,7 +399,7 @@ func sameSlides(a, b []*slidesv1.Slide) bool {
 }
 
 // TestSlidesInArchive: a render returns only after its commit. The commit holds the input as
-// YAML (slides/NNNNNN.yaml) and the rendered deck as HTML (slides/NNNNNN.html), and nothing else.
+// YAML (slides/NNNNNN.yaml) and nothing else. The rendered deck is not committed.
 func TestSlidesInArchive(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	bot := srv.Participant(t, "bot", "Bot", agent)
@@ -410,14 +410,17 @@ func TestSlidesInArchive(t *testing.T) {
 
 	repo := srv.ArchiveDir()
 	files := strings.Fields(contracttest.Git(t, repo, "show", "--format=", "--name-only", "HEAD"))
-	if strings.Join(files, " ") != "slides/000001.html slides/000001.yaml" {
+	if strings.Join(files, " ") != "slides/000001.yaml" {
 		t.Fatalf("files of the last commit: %v", files)
 	}
 	if msg := strings.TrimSpace(contracttest.Git(t, repo, "log", "-1", "--format=%s")); !strings.Contains(msg, "slides/1") {
 		t.Errorf("commit message %q does not name the deck", msg)
 	}
-	if html := contracttest.Git(t, repo, "show", "HEAD:slides/000001.html"); html != string(a.GetContent()) {
-		t.Fatal("the HTML file in the archive is not the rendered deck")
+	if all := contracttest.Git(t, repo, "ls-tree", "-r", "--name-only", "HEAD"); strings.Contains(all, ".html") {
+		t.Fatalf("the archive holds a rendered deck:\n%s", all)
+	}
+	if len(a.GetContent()) == 0 {
+		t.Fatal("the slides interface returned no rendered deck")
 	}
 	y := archivedYAML(t, srv, "slides/000001.yaml")
 	sl, _ := y["slides"].([]any)
@@ -448,7 +451,7 @@ func TestSlidesInArchive(t *testing.T) {
 }
 
 // TestSlidesRenderStoredInput: the input in the archive is enough to get the deck again. Rendering
-// it again, on the same hub or on another one, gives the stored output byte for byte.
+// it again, on the same hub or on another one, gives the same output byte for byte.
 func TestSlidesRenderStoredInput(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
@@ -471,7 +474,6 @@ func TestSlidesRenderStoredInput(t *testing.T) {
 	if err := protojson.Unmarshal(b, again); err != nil {
 		t.Fatalf("stored input is not a deck: %v\n%s", err, raw)
 	}
-	stored1 := []byte(contracttest.Git(t, srv.ArchiveDir(), "show", "HEAD:slides/000001.html"))
 	for name, who := range map[string]*contracttest.Actor{
 		"same hub": ada,
 		"another hub": func() *contracttest.Actor {
@@ -480,14 +482,14 @@ func TestSlidesRenderStoredInput(t *testing.T) {
 		}(),
 	} {
 		got := render(t, who, again)
-		if !bytes.Equal(got.GetContent(), stored1) || !bytes.Equal(got.GetContent(), a.GetContent()) {
+		if !bytes.Equal(got.GetContent(), a.GetContent()) {
 			t.Errorf("%s: rendering the stored input gives other content", name)
 		}
 	}
 }
 
 // TestSlidesSurviveRestart: the hub reads the decks back from the archive when it starts. A deck
-// keeps its input and output, IDs do not start again, and a repeat is still a duplicate. The old
+// keeps its input and gets the same output again (the hub renders it from the stored input), IDs do not start again, and a repeat is still a duplicate. The old
 // file of the artifact tools is not written.
 func TestSlidesSurviveRestart(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
@@ -531,8 +533,8 @@ func TestSlidesSurviveRestart(t *testing.T) {
 	}
 }
 
-// TestSlidesBadArchive: a deck in the archive without its rendered output stops the start of the
-// hub with an error that names the file.
+// TestSlidesBadArchive: a deck in the archive that is not valid stops the start of the hub with an
+// error that names the file.
 func TestSlidesBadArchive(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
@@ -541,8 +543,8 @@ func TestSlidesBadArchive(t *testing.T) {
 		t.Fatalf("stop: %d, %v", code, err)
 	}
 	repo := srv.ArchiveDir()
-	contracttest.Edit(t, repo, "remove the output", func(work string) {
-		if err := os.Remove(filepath.Join(work, "slides", "000001.html")); err != nil {
+	contracttest.Edit(t, repo, "break the input", func(work string) {
+		if err := os.WriteFile(filepath.Join(work, "slides", "000001.yaml"), []byte("title: no schema\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -553,9 +555,9 @@ func TestSlidesBadArchive(t *testing.T) {
 	case <-p.Done():
 	case <-time.After(10 * time.Second):
 		p.Kill()
-		t.Fatal("the hub started with a deck without its output")
+		t.Fatal("the hub started with a deck that is not valid")
 	}
-	if !strings.Contains(p.Stderr(), "slides/000001.html") {
-		t.Fatalf("the error does not name the missing file:\n%s", p.Stderr())
+	if !strings.Contains(p.Stderr(), "slides/000001.yaml") {
+		t.Fatalf("the error does not name the file:\n%s", p.Stderr())
 	}
 }
