@@ -42,6 +42,15 @@ type Archive interface {
 	// commit has no files. A caller that wants the content of a few files from a large
 	// directory lists it first and reads them one by one.
 	List(ctx context.Context, dir string) ([]string, error)
+	// Names returns every path under the directory dir that ever lay in it in the history of
+	// main, also the paths of files that were removed later. The paths are ordered and have no
+	// duplicates; the content is not read. History is never rewritten, so a name that is in the
+	// result stays in it. A part that numbers its files uses the highest number among the names
+	// as the lowest value that its next number may be built on, so that it never gives a number
+	// again that a removed file had. A directory that never held a file, or a repository without
+	// commits, has no names. Names fails if dir is not a valid path (see CheckPath). The cost is
+	// one walk through the history of the directory.
+	Names(ctx context.Context, dir string) ([]string, error)
 }
 
 // Archives gives the archive of each repository (concept-multi-tenancy). The hub has one

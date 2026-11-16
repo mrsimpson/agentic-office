@@ -37,9 +37,10 @@
 //     drops the watcher because the part was too slow, the part watches again and reads all its
 //     files. A file that bypasses the hook and is not valid still counts for the next ID, so
 //     the part never takes its ID.
-//   - Numbers: the next ID is one above the highest ID ever seen in this run, in a file or
-//     in memory. An ID is never used twice while the hub runs, also after a push removed its
-//     file. The numbers can have gaps, because a push may bring any ID. A part creates its file with "must not
+//   - Numbers: the next ID is one above the highest ID ever seen, in a file, in memory or in
+//     the names that ever lay in the directory in the history of main (Names of
+//     if-archive-storage; the part asks at start and when it reads all files again). An ID is
+//     never used twice, also after a push removed its file and the hub restarted. The numbers can have gaps, because a push may bring any ID. A part creates its file with "must not
 //     exist yet" (storage.NoFile). If a push put a file there first, the create fails inside the
 //     archive; the part reads that file, takes the next free ID and tries again, so the
 //     caller sees no error.

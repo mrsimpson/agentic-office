@@ -73,6 +73,11 @@
 //   - Read returns the files of a directory as they are in the current commit (git ls-tree and
 //     git cat-file). It does not wait for a running change. The records of the hub use it to
 //     rebuild their index at start.
+//   - Names returns every path that ever lay in a directory in the history of main, also of files
+//     that were removed later (git log with the filter "added", without renames, no content read).
+//     The parts that number their files take the highest number among the names as the floor of
+//     their next number, so a number whose file a push removed is never given again. History is
+//     never rewritten, so the answer only grows. The cost is one git run for each directory.
 //   - A failed push does not fail the commit: the commit is in the local repository, and the
 //     next push takes it along. The error is logged.
 //

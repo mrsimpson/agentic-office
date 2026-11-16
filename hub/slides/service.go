@@ -214,6 +214,17 @@ func (s *Service) loadAll(ctx context.Context, strict bool) error {
 	if err != nil {
 		return fmt.Errorf("slides: read %s: %w", Kind, err)
 	}
+	// The next number never goes below a number that ever lay in the directory, also not below
+	// the number of a file that a push removed.
+	names, err := s.arch.Names(ctx, Kind)
+	if err != nil {
+		return fmt.Errorf("slides: list the names in %s: %w", Kind, err)
+	}
+	for _, p := range names {
+		if n, ok := numberOf(p); ok {
+			s.high = max(s.high, n)
+		}
+	}
 	present := map[uint64]bool{}
 	for _, f := range files {
 		if path.Ext(f.Path) != ".yaml" {

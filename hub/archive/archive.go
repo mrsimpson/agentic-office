@@ -357,6 +357,31 @@ func (r *Repo) List(ctx context.Context, dir string) ([]string, error) {
 	return out, nil
 }
 
+// Names implements storage.Archive. It asks git for the files that a commit of the history of
+// main added to the directory (git log with the filter "added"). Renames are not detected, so a
+// file that was moved into the directory counts as added there. No content is read.
+func (r *Repo) Names(ctx context.Context, dir string) ([]string, error) {
+	if err := storage.CheckPath(dir); err != nil {
+		return nil, err
+	}
+	head, err := r.head(ctx)
+	if err != nil || head == "" {
+		return nil, err
+	}
+	out, err := r.run(ctx, "log", "-z", "--no-renames", "--diff-filter=A", "--name-only", "--format=", head, "--", dir)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, p := range strings.Split(out, "\x00") {
+		if p != "" {
+			names = append(names, p)
+		}
+	}
+	slices.Sort(names)
+	return slices.Compact(names), nil
+}
+
 // Read implements storage.Archive. It lists the files of dir (or reads the file dir) in the current commit and reads
 // their content in one more run of git. It does not wait for a running change.
 func (r *Repo) Read(ctx context.Context, dir string) ([]storage.File, error) {

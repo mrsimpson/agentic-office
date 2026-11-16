@@ -132,6 +132,17 @@ func (c *collection[T]) loadAll(ctx context.Context, strict bool) error {
 	if err != nil {
 		return fmt.Errorf("records: read %s: %w", c.dir, err)
 	}
+	// The next ID never goes below a number that ever lay in the directory, also not below the
+	// number of a file that a push removed.
+	names, err := c.arch.Names(ctx, c.dir)
+	if err != nil {
+		return fmt.Errorf("records: list the names in %s: %w", c.dir, err)
+	}
+	for _, p := range names {
+		if n, ok := numberOf(p); ok {
+			c.high = max(c.high, n)
+		}
+	}
 	present := map[string]bool{}
 	for _, f := range files {
 		present[f.Path] = true
