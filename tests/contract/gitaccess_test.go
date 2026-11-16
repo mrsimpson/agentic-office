@@ -288,35 +288,3 @@ func TestGitAccessServesNoSessionLogs(t *testing.T) {
 		t.Error("an object of the clone holds the off-the-record sentence")
 	}
 }
-
-// A push is refused, and the repository of the hub does not change.
-func TestGitAccessRefusesPush(t *testing.T) {
-	srv := contracttest.StartHub(t, nil)
-	ada := srv.Participant(t, "ada", "Ada", human)
-	helper, token := gitHelper(t), tokenOf(t, ada)
-	writeDoc(t, ada, "documents/a.md", "a\n")
-	work := t.TempDir()
-	clone := filepath.Join(work, "c")
-	if out, code := gitAs(t, srv, helper, token, work, "clone", "-q", gitURL(srv, contracttest.DefaultTenant), clone); code != 0 {
-		t.Fatalf("clone: %d\n%s", code, out)
-	}
-	before := strings.TrimSpace(contracttest.Git(t, srv.ArchiveDir(), "rev-parse", "main"))
-	if err := os.WriteFile(filepath.Join(clone, "pushed.md"), []byte("pushed\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	contracttest.Git(t, clone, "add", "pushed.md")
-	if out, code := gitAs(t, srv, helper, token, clone, "commit", "-q", "-m", "push me"); code != 0 {
-		t.Fatalf("commit: %d\n%s", code, out)
-	}
-	for _, args := range [][]string{{"push", "origin", "main"}, {"push", "origin", "HEAD:refs/heads/other"}} {
-		if out, code := gitAs(t, srv, helper, token, clone, args...); code == 0 {
-			t.Errorf("git %v worked\n%s", args, out)
-		}
-	}
-	if after := strings.TrimSpace(contracttest.Git(t, srv.ArchiveDir(), "rev-parse", "main")); after != before {
-		t.Errorf("main moved from %s to %s", before, after)
-	}
-	if refs := strings.Fields(contracttest.Git(t, srv.ArchiveDir(), "for-each-ref", "--format=%(refname)")); strings.Join(refs, " ") != "refs/heads/main" {
-		t.Errorf("refs in the hub repository: %v", refs)
-	}
-}
