@@ -14,6 +14,7 @@ import (
 
 	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
 	"github.com/mrsimpson/agentic-office/client/replicator"
+	artifactsync "github.com/mrsimpson/agentic-office/client/sync"
 
 	"github.com/mrsimpson/agentic-office/client/agentrunner"
 	"github.com/mrsimpson/agentic-office/client/cli"
@@ -25,9 +26,10 @@ import (
 func main() {
 	cli.Dial = core.Dial
 	cli.NewReplicator = replicator.New
+	cli.NewSync = artifactsync.New
 	cli.RunMCP = func(ctx context.Context, o cli.MCPOptions) error {
 		s := &mcp.Server{Config: o.Config, Session: o.Session, Version: o.Version, Stderr: o.Stderr,
-			Dial: core.Dial, NewReplicator: replicator.New}
+			Dial: core.Dial, NewReplicator: replicator.New, NewSync: artifactsync.New}
 		return s.Run(ctx, io.NopCloser(o.Stdin), nopWriteCloser{o.Stdout})
 	}
 	cli.RunAgent = func(ctx context.Context, o cli.AgentOptions) error {

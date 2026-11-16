@@ -682,7 +682,8 @@ issues), and the synced task replaces the local draft. **Consequences:** No exte
 needed to start, and commits stay fast. Sessions are written in the background at an interval
 (`dec-session-persistence`). The session log is the exception to YAML: it is stored with one
 line per event, in the same format as the local log of the peers, because it only grows and every
-write appends lines. **Rejected:** a database (not needed yet);
+write appends lines. The repository has no work tree, so that a push and the archive can both move
+its branch (`dec-artifact-sync`). **Rejected:** a database (not needed yet);
 external task tools from the start (slow and not predictable).
 
 ```arc42
@@ -746,8 +747,7 @@ background, and its result appears as an event in the session log. A later sessi
 speak, raise a hand, show on the stage, pause or resume) opens the session again; the log shows
 this as its own event. Artifacts through their own interfaces (decisions, minutes, notes, tasks,
 slides) may refer to an ended session and never open it again. Minutes are such an artifact: they
-are written only through the minutes interface and stored at once like every other artifact
-(`dec-records-synchronous`). While a session is open, the hub adds a notice to its log when its
+are written only through the minutes interface and stored at once like every other artifact. While a session is open, the hub adds a notice to its log when its
 minutes change, so the stage and agents see them live. **Consequences:** Streams, replicators and
 agents keep following a session after its end until the participant leaves. The session itself
 no longer has a command to update minutes. **Rejected:** an end that rejects all later commands;
@@ -760,26 +760,6 @@ title: The end of a session is a milestone, not a stop
 status: accepted
 date: 2026-11-07
 addresses: qg-usability, risk-archive-latency
-:::
-```
-
-## Records are written synchronously and before session writes
-
-**Context:** A client must learn whether its decision, note, task or slide deck was stored.
-Session logs are written in the background, and a Git commit can be slow. **Decision:** Records
-are written synchronously: a call returns only after the commit, and a failure reaches the
-client. Writes of records go before waiting writes of session logs, so a record waits at most for
-the one session write that is in progress, never for a queue. **Consequences:** Clients get a
-clear result. A slow repository slows records, but not the session itself. **Rejected:** records
-in the background (the client would not learn about a failure).
-
-```arc42
-:::decision
-id: dec-records-synchronous
-title: Records are written synchronously and before session writes
-status: accepted
-date: 2026-11-07
-addresses: risk-archive-latency, qg-usability
 :::
 ```
 
@@ -1038,7 +1018,8 @@ the artifact and how the stage renders it. A text file without a schema is shown
 Every type keeps its own interface that creates and changes its artifacts
 (`dec-records-per-type`). Something that lives in another system, such as a task, is a small YAML
 artifact that holds the URL of the real thing. Every participant may create and change artifacts
-and set the focus. A change applies to the head of the repository and names the version its
+and set the focus. A participant may also change artifacts with Git on their own computer
+(`dec-artifact-sync`). A change applies to the head of the repository and names the version its
 author read; the hub refuses it when the artifact has changed since. A session refers to several
 artifacts and exactly one has the focus. The minutes are the first artifact and keep the focus
 until another artifact gets it. The archive stores every change in one commit, and the rule for
@@ -1061,6 +1042,54 @@ title: Artifacts: a path, a schema and a focus
 status: accepted
 date: 2026-11-12
 addresses: qg-usability
+:::
+```
+
+## Artifacts reach the participant's computer through Git
+
+**Context:** People and agents want to read and change the artifacts of their tenant with ordinary
+tools on their own computer, and they want the changes of others to arrive there. A change can
+start in an interface of the hub or on a computer. **Decision:** The hub serves the repository of
+every tenant over the Git protocol. A gate checks the access token and the membership in the tenant
+before Git reads anything, and rules for the content run on every push. Git does the rest; the hub
+has no layer of its own that translates Git. The participant client keeps a clone of the tenant
+repository in a directory that the participant has set up on purpose. The main directory of the
+clone is a mirror of the branch main: the client only moves it to the state of the hub and never merges or commits
+there, and a check in the clone stops commits there. Local work happens in worktrees on local
+branches, and the participant pushes with plain Git. The office CLI sets up, updates and follows
+the clone and passes no other Git command on. The hub accepts a push only when it moves main
+forward without rewriting history, when the author of every new commit is the participant of the
+token, when only artifact files change, and when each
+file with a schema is valid against the schema that it names; a file without a schema only has to be valid Markdown
+or YAML. The schema belongs to its type: the part of the hub that owns a type owns its schemas and
+checks its files. A small part of the hub knows which type owns which schema and hands a check
+to it, and Git access knows no schema. Git refuses a push on an old base,
+which is the base version of the interfaces. The tenant has a second repository for its session logs, which Git access never serves, because
+the logs hold the original of sentences that are off the record (`dec-off-the-record`). The archive
+keeps the artifact repository without a work
+tree, and the archive and a push both move main in one atomic step of Git, so no lock is needed. After
+every change of main, from an interface or from a push, the archive tells the clients that follow
+the tenant which artifacts changed. An event has no content and no position. A client updates by
+fetching at start, after every reconnect and on request, so it never misses a change. A participant
+signs in with the key as for every other interface and gets an access token; the client gives it to
+Git. **Consequences:** Git is the position of a clone, so there is no cursor and no replay. A push
+passes the same rules as an interface call: the part of a type uses one check for both. The parts that keep files in memory (records, tasks, slides) learn about pushes from the archive
+(`if-archive-watch`) and reload, and a part never overwrites a file that a push put there first. The archive changes from a repository with a work tree to one without.
+**Rejected:** a Git protocol layer of our own in the hub (a gate and rules in Git are enough); a
+login over SSH (a second port and a second way to give access); a sync in both directions by the
+client (the participant solves conflicts anyway, and it would be a second writer); a lock around
+every push (it holds up the records for as long as an upload takes); branches and proposals on the
+hub (`dec-artifacts`); the session logs on a hidden branch of the same repository (the separation
+would hang on one setting); a part that owns all schemas (a schema belongs to its type); JSON as an
+artifact type (not now).
+
+```arc42
+:::decision
+id: dec-artifact-sync
+title: Artifacts reach the participant's computer through Git
+status: accepted
+date: 2026-11-16
+addresses: qg-usability, qg-confidentiality, risk-push-bypass, risk-push-size, risk-unsigned-commits, risk-stale-memory
 :::
 ```
 

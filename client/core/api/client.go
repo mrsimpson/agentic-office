@@ -1,6 +1,7 @@
 package coreapi
 
 import (
+	"connectrpc.com/connect/v2"
 	"context"
 	"errors"
 	"time"
@@ -55,10 +56,19 @@ type Joined struct {
 type Client interface {
 	// Config returns the configuration the client was dialled with.
 	Config() Config
+	// Connection returns the Connect client of the hub with the access token and the tenant of
+	// this client. A caller that needs a service that this interface does not wrap builds its
+	// own service client on it (for example if-artifact-changes).
+	Connection() *connect.Client
 	// KeyID returns the ID of the public key of the actor.
 	KeyID() string
 	// ParticipantID authenticates if needed and returns the participant of the key.
 	ParticipantID(ctx context.Context) (string, error)
+	// DisplayName authenticates if needed and returns the display name of the participant.
+	DisplayName(ctx context.Context) (string, error)
+	// AccessToken authenticates if needed and returns a valid access token. A token that is close
+	// to its end is replaced first, so the caller can use the result at once.
+	AccessToken(ctx context.Context) (string, error)
 
 	// Commands returns the session commands client, for example for a replicator.
 	Commands() sessioncommandsv1connect.SessionCommandsServiceClient

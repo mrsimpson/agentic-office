@@ -2,13 +2,17 @@ package records
 
 import (
 	"context"
+	"fmt"
+	"log"
 	"strings"
 
 	"connectrpc.com/connect/v2"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/mrsimpson/agentic-office/hub/archive/storage"
+	"github.com/mrsimpson/agentic-office/hub/archive/watch"
 	"github.com/mrsimpson/agentic-office/hub/identity/tokencheck"
+	"github.com/mrsimpson/agentic-office/hub/records/check"
 	decisionv1 "github.com/mrsimpson/agentic-office/hub/records/decision/api"
 	"github.com/mrsimpson/agentic-office/hub/records/decision/api/decisionv1connect"
 	minutesv1 "github.com/mrsimpson/agentic-office/hub/records/minutes/api"
@@ -26,9 +30,9 @@ const (
 
 // Directories of the record types in the archive.
 const (
-	DecisionsDir = "decisions"
-	MinutesDir   = "minutes"
-	NotesDir     = "notes"
+	DecisionsDir = check.DecisionsDir
+	MinutesDir   = check.MinutesDir
+	NotesDir     = check.NotesDir
 )
 
 // Service implements the decisions, the minutes and the notes (if-decision-api, if-minutes-api,
@@ -37,6 +41,12 @@ type Service struct {
 	decisions *collection[*decisionv1.Decision]
 	minutes   *collection[*minutesv1.Minutes]
 	notes     *collection[*notev1.Note]
+
+	watcher watch.Watcher
+	logf    func(string, ...any)
+	ctx     context.Context
+	cancel  context.CancelFunc
+	done    chan struct{}
 }
 
 var (
@@ -46,23 +56,85 @@ var (
 )
 
 // Open reads all records from the archive and returns the service that stores new records there.
-func Open(ctx context.Context, arch storage.Archive) (*Service, error) {
-	d, err := openCollection(ctx, arch, "decision", DecisionsDir, func() *decisionv1.Decision { return &decisionv1.Decision{} },
-		func(r *decisionv1.Decision, id uint32) { r.Id = id })
-	if err != nil {
-		return nil, err
+// The service follows the archive through w (if-archive-watch) until Close: it reloads the
+// record files that a push changed or added. logf logs the files it ignores; nil means
+// log.Printf.
+func Open(ctx context.Context, arch storage.Archive, w watch.Watcher, logf func(string, ...any)) (*Service, error) {
+	if logf == nil {
+		logf = log.Printf
 	}
-	m, err := openCollection(ctx, arch, "minutes", MinutesDir, func() *minutesv1.Minutes { return &minutesv1.Minutes{} },
-		func(r *minutesv1.Minutes, id uint32) { r.Id = id })
+	// Watch first, then read: a change in between is reported and read again.
+	sub, err := w.Watch(DecisionsDir, MinutesDir, NotesDir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("records: watch the archive: %w", err)
 	}
-	n, err := openCollection(ctx, arch, "note", NotesDir, func() *notev1.Note { return &notev1.Note{} },
-		func(r *notev1.Note, id uint32) { r.Id = id })
-	if err != nil {
-		return nil, err
+	s := &Service{watcher: w, logf: logf, done: make(chan struct{}),
+		decisions: newCollection(arch, "decision", DecisionsDir, check.SchemaDecision, func() *decisionv1.Decision { return &decisionv1.Decision{} },
+			func(r *decisionv1.Decision, id uint32) { r.Id = id }, logf),
+		minutes: newCollection(arch, "minutes", MinutesDir, check.SchemaMinutes, func() *minutesv1.Minutes { return &minutesv1.Minutes{} },
+			func(r *minutesv1.Minutes, id uint32) { r.Id = id }, logf),
+		notes: newCollection(arch, "note", NotesDir, check.SchemaNote, func() *notev1.Note { return &notev1.Note{} },
+			func(r *notev1.Note, id uint32) { r.Id = id }, logf)}
+	for _, load := range []func(context.Context, bool) error{s.decisions.loadAll, s.minutes.loadAll, s.notes.loadAll} {
+		if err := load(ctx, true); err != nil {
+			sub.Close()
+			return nil, err
+		}
 	}
-	return &Service{decisions: d, minutes: m, notes: n}, nil
+	s.ctx, s.cancel = context.WithCancel(context.Background())
+	go s.run(sub)
+	return s, nil
+}
+
+// Close stops following the archive. The service still answers calls.
+func (s *Service) Close() {
+	s.cancel()
+	<-s.done
+}
+
+// run reloads the files that the archive reports until Close. A subscription that was dropped
+// (the part was too slow) is replaced, and then every file is read again, because changes may
+// have been missed.
+func (s *Service) run(sub watch.Subscription) {
+	defer close(s.done)
+	for {
+		s.pump(sub)
+		sub.Close()
+		if s.ctx.Err() != nil {
+			return
+		}
+		s.logf("records: the archive dropped the watcher (%v); watching again and reading all records", sub.Err())
+		var err error
+		if sub, err = s.watcher.Watch(DecisionsDir, MinutesDir, NotesDir); err != nil {
+			s.logf("records: cannot watch the archive again, pushed files are not seen until the hub restarts: %v", err)
+			return
+		}
+		for _, c := range []interface {
+			loadAll(context.Context, bool) error
+		}{s.decisions, s.minutes, s.notes} {
+			if err := c.loadAll(s.ctx, false); err != nil {
+				s.logf("%v", err)
+			}
+		}
+	}
+}
+
+func (s *Service) pump(sub watch.Subscription) {
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case changes, ok := <-sub.Changes():
+			if !ok {
+				return
+			}
+			for _, r := range []func(context.Context, []watch.Change) error{s.decisions.reload, s.minutes.reload, s.notes.reload} {
+				if err := r(s.ctx, changes); err != nil {
+					s.logf("%v", err)
+				}
+			}
+		}
+	}
 }
 
 // Counts returns the number of decisions, minutes and notes.

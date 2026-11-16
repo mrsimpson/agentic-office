@@ -112,6 +112,10 @@ func init() {
 		"document change":           cmdDocumentChange,
 		"document get":              cmdDocumentGet,
 		"document list":             cmdDocumentList,
+		"sync":                      cmdSyncUpdate,
+		"sync follow":               cmdSyncFollow,
+		"sync init":                 cmdSyncInit,
+		"sync credential":           cmdSyncCredential,
 	}
 	checkHelp()
 }

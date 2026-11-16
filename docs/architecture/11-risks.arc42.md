@@ -176,6 +176,67 @@ mitigation: An imported session is marked by its first event, with its source an
 :::
 ```
 
+## A push goes around the rules of the types
+
+A participant can write an artifact with Git and so does not pass the interface of its type. If
+the rules of Git access differ from the rules of the interface, one way accepts what the other
+refuses, or the hub shows an artifact that its type cannot read.
+
+```arc42
+:::risk
+id: risk-push-bypass
+title: A push goes around the rules of the types
+severity: medium
+mitigation: Every push passes the rules of Git access: author, ref, file types and the schema that a file names; the part that owns a type uses one check of its schemas for its own interface and for pushes (dec-artifact-sync)
+:::
+```
+
+## A large push holds up the hub
+
+A push can carry a large upload. Git reads it into the repository before the rules of Git access
+run, so a participant, or a faulty tool, can use up disk space or slow the hub down.
+
+```arc42
+:::risk
+id: risk-push-size
+title: A large push holds up the hub
+severity: medium
+mitigation: Only participants of the tenant can push, and the access token lives one hour; a size limit for a push is still to be set (dec-artifact-sync)
+:::
+```
+
+## The author of a pushed commit has no signature
+
+The hub checks the author of every pushed commit against the access token. The commit itself carries
+no signature. A copy of the repository outside the hub cannot prove who wrote a commit. Signed
+commits with the key of the participant would close this. A login over SSH was left out.
+
+```arc42
+:::risk
+id: risk-unsigned-commits
+title: The author of a pushed commit has no signature
+severity: low
+mitigation: The hub accepts a push only for the participant that the token names, and the token is bound to the key; signed commits are a later option (dec-artifact-sync)
+:::
+```
+
+## A push makes the memory of a part stale
+
+The records, tasks and slides parts read their files from the archive when the hub starts and
+answer reads from memory. The archive tells them after every change of main, also after a push
+(`if-archive-watch`), and they reload. In the short time between a push and the reload, a part
+answers from the old state, and a part that allocates IDs in memory may choose an ID that a pushed
+file already uses; it then reloads and takes the next free ID.
+
+```arc42
+:::risk
+id: risk-stale-memory
+title: A push makes the memory of a part stale
+severity: low
+mitigation: The archive tells the parts after every change of main and they reload; a part never overwrites a file that a push put there first, it reloads and takes the next free ID (dec-artifact-sync)
+:::
+```
+
 ## Memory grows with all sessions of all tenants
 
 The session log stays in memory after it is archived, and the restore loads every session at start.

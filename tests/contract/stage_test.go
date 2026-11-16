@@ -727,10 +727,10 @@ func TestStageShowsDocuments(t *testing.T) {
 		return strings.Contains(first, "Minute Bot") && strings.Contains(first, "focused") && strings.Contains(first, "documents/notes.md")
 	})
 
-	// The session logs cannot be shown.
-	focus("sessions/x/log.yaml")
+	// A path that the archive refuses cannot be shown.
+	focus("documents/.hidden.md")
 	n = st.wait("artifact", "a note for a path that cannot be read", func(n *html.Node) bool {
-		return len(findAll(n, byTag("iframe"))) == 0 && len(findAll(n, withAttr("data-artifact", "sessions/x/log.yaml"))) == 1
+		return len(findAll(n, byTag("iframe"))) == 0 && len(findAll(n, withAttr("data-artifact", "documents/.hidden.md"))) == 1
 	})
 	if !strings.Contains(text(n), "cannot show") {
 		t.Errorf("note: %q", text(n))

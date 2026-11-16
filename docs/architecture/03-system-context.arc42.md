@@ -35,12 +35,14 @@ flowchart LR
     actor_agent -->|if-cli| bb_participant_client
     actor_agent -->|if-local-log| bb_participant_client
     actor_agent -->|if-acp-client| bb_participant_client
+    actor_agent -->|if-git-access| bb_office_hub
     actor_container_platform -->|if-health| bb_office_hub
     actor_decision_model -->|if-decision-model| bb_participant_client
     actor_forwarding_judge -->|if-forwarding-judge| bb_participant_client
     actor_human -->|if-cli| bb_participant_client
     actor_human -->|if-audio-in| bb_participant_client
     actor_human -->|if-local-log| bb_participant_client
+    actor_human -->|if-git-access| bb_office_hub
     actor_human -->|if-stage-web| bb_office_hub
     actor_meeting_tool -->|if-stage-web| bb_office_hub
     actor_system_admin -->|if-admin-web| bb_office_hub
@@ -54,7 +56,8 @@ flowchart LR
 A team member in a meeting. They use the CLI like an agent does: show artifacts, raise a hand,
 edit minutes. With `--mic` they also switch on the ears. Their speech is then transcribed
 locally, and the terminal shows what was captured and sent. One person opens the stage in a
-browser and shares it in the meeting.
+browser and shares it in the meeting. They can also read and change the artifacts of their tenant
+with plain Git in a local clone (`dec-artifact-sync`).
 
 ```arc42
 :::actor
@@ -62,7 +65,7 @@ id: actor-human
 title: Human participant
 type: person
 description: Speaks (optionally transcribed), uses the CLI, shares the stage
-requires: if-cli, if-audio-in, if-local-log, if-stage-web
+requires: if-cli, if-audio-in, if-local-log, if-stage-web, if-git-access
 :::
 ```
 
@@ -70,7 +73,8 @@ requires: if-cli, if-audio-in, if-local-log, if-stage-web
 
 Any agent, for example Claude Code or an agent built on the Agent SDK. It joins a session, reads
 the locally replicated log as a file (`tail -f`, `grep`) and acts through tools (MCP or CLI). It
-brings all the intelligence.
+brings all the intelligence. In a local clone of its tenant it can read the artifacts as files and
+change them with plain Git (`dec-artifact-sync`).
 
 An agent can also run in an **agent harness** that speaks the Agent Client Protocol (ACP), for
 example Claude Code through its ACP adapter, opencode or Kiro. Then the agent runner of the client
@@ -84,7 +88,7 @@ id: actor-agent
 title: Agent
 type: system
 description: Reads the session log as a file or gets it from the agent runner over ACP, writes through tools; keeps minutes, raises its hand, creates artifacts
-requires: if-mcp, if-cli, if-local-log, if-acp-client
+requires: if-mcp, if-cli, if-local-log, if-acp-client, if-git-access
 :::
 ```
 

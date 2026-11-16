@@ -12,6 +12,7 @@ To set up the office for a human and their agents, read the setup guide first an
 
 - [User guide]({{site}}/user-guide/): get the software, run a hub, join a meeting, bring in an agent
 - [Command reference]({{site}}/reference/): every command of `office` and `office-hub` with its flags and an example
+- [Work on files in a local directory]({{site}}/user-guide/join-a-meeting/#work-on-files-in-a-local-directory): `office sync init`, `office sync`, `office sync follow`, worktrees, pushing with Git and what a refused push means
 - [Troubleshooting]({{site}}/user-guide/troubleshooting/): messages and what to do about them
 
 ## Optional

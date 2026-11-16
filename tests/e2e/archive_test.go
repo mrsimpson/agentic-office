@@ -27,9 +27,10 @@ import (
 // slowCommit is how long every commit of the archive takes in qs-archive-no-backpressure.
 const slowCommit = 5 * time.Second
 
-// slowGit writes a git wrapper that makes every "git commit" take d and logs when each commit
-// starts and ends, and whether it is a session write (message "Sessions: …") or a record. It
-// returns the directory to put first in PATH and the log file.
+// slowGit writes a git wrapper that makes every "git commit-tree" take d and logs when each commit
+// starts and ends, and whether it is a session write (a commit in the session-log repository of a
+// tenant) or a record (a commit in the artifact repository of a tenant). It returns the directory
+// to put first in PATH and the log file.
 func slowGit(t *testing.T, d time.Duration) (string, string) {
 	t.Helper()
 	real, err := exec.LookPath("git")
@@ -43,10 +44,12 @@ func slowGit(t *testing.T, d time.Duration) (string, string) {
 	logFile := filepath.Join(dir, "commits.log")
 	script := fmt.Sprintf(`#!/bin/sh
 # Only the commits of the tenant repositories count; the hub repository is not slowed.
-case "$PWD" in */repos/tenants/*) ;; *) exec %[2]q "$@";; esac
-if [ "$1" = commit ]; then
-  kind=record
-  case "$*" in *" -m Sessions:"*) kind=session;; esac
+case "$PWD" in
+  */repos/tenants/*) kind=record;;
+  */repos/session-logs/*) kind=session;;
+  *) exec %[2]q "$@";;
+esac
+if [ "$1" = commit-tree ]; then
   echo "start $(date +%%s%%N) $kind" >> %[1]q
   sleep %[3]d
   %[2]q "$@"; rc=$?
@@ -67,7 +70,8 @@ type commitSpan struct {
 	session    bool
 }
 
-// commitSpans reads the commits from the log of slowGit, oldest first.
+// commitSpans reads the commits from the log of slowGit, oldest first, without the first commit of
+// the tenant repository.
 func commitSpans(t *testing.T, logFile string) []commitSpan {
 	t.Helper()
 	b, err := os.ReadFile(logFile)
@@ -89,10 +93,23 @@ func commitSpans(t *testing.T, logFile string) []commitSpan {
 		case "start":
 			spans = append(spans, commitSpan{start: at, session: f[2] == "session"})
 		case "end":
-			if len(spans) == 0 || !spans[len(spans)-1].end.IsZero() {
-				t.Fatalf("two commits at the same time (an end without its start):\n%s", b)
+			// A commit of a session write and a commit of a record may run at the same time:
+			// they lie in two repositories. The end belongs to the last open commit of its kind.
+			i := len(spans) - 1
+			for i >= 0 && (spans[i].session != (f[2] == "session") || !spans[i].end.IsZero()) {
+				i--
 			}
-			spans[len(spans)-1].end = at
+			if i < 0 {
+				t.Fatalf("two commits at the same time in one repository (an end without its start):\n%s", b)
+			}
+			spans[i].end = at
+		}
+	}
+	// The first record commit is the first commit of the tenant repository, which the hub makes when
+	// it creates the tenant. It is no write of a record.
+	for i, sp := range spans {
+		if !sp.session {
+			return append(spans[:i:i], spans[i+1:]...)
 		}
 	}
 	return spans
@@ -178,7 +195,7 @@ func TestQualityArchiveNoBackpressure(t *testing.T) {
 	mu.Unlock()
 
 	// The last write has the whole session.
-	repo := srv.ArchiveDir()
+	repo := srv.SessionLogsDir()
 	last := contracttest.WaitArchived(t, repo, sid, 4*slowCommit, (*contracttest.ArchivedSession).Ended)
 	evs, err := ada.Stream.GetEvents(ctx, &sessionstreamv1.GetEventsRequest{SessionId: sid, Limit: 1000})
 	if err != nil {
@@ -221,7 +238,7 @@ func TestQualityArchiveNoBackpressure(t *testing.T) {
 	}
 }
 
-// recordCommit is how long every commit takes in TestArchiveRecordsBeforeSessionWrites.
+// recordCommit is how long every commit takes in TestArchiveRecordsDoNotWaitForSessionWrites.
 const recordCommit = 2 * time.Second
 
 // waitCommitRunning waits until a commit of the given kind runs, and returns it.
@@ -229,9 +246,10 @@ func waitCommitRunning(t *testing.T, logFile string, session bool) commitSpan {
 	t.Helper()
 	deadline := time.Now().Add(10 * recordCommit)
 	for {
-		if spans := commitSpans(t, logFile); len(spans) > 0 {
-			if last := spans[len(spans)-1]; last.end.IsZero() && last.session == session {
-				return last
+		spans := commitSpans(t, logFile)
+		for i := len(spans) - 1; i >= 0; i-- {
+			if spans[i].end.IsZero() && spans[i].session == session {
+				return spans[i]
 			}
 		}
 		if time.Now().After(deadline) {
@@ -241,20 +259,20 @@ func waitCommitRunning(t *testing.T, logFile string, session bool) commitSpan {
 	}
 }
 
-// dec-records-synchronous: records go before waiting session writes. Every commit takes 2 s, the
-// interval is 100 ms and a participant speaks every 50 ms, so a session write always waits. In
-// each round a decision is recorded while a session write runs, and a note while the decision is
-// committed. Neither waits for a session write that started after the call: the decision waits
-// only for the session write in progress, the note for no session write at all. Session writes
-// still happen between the rounds, and the last write has the whole session. The latency is
-// asserted only with the build tag performance.
-func TestArchiveRecordsBeforeSessionWrites(t *testing.T) {
+// A record is written synchronously and does not wait behind a session write, because the session
+// logs have their own repository and so their own commit queue. Every commit takes 2 s, the interval
+// is 100 ms and a participant speaks every 50 ms, so a session write is always running or
+// waiting. In each round a decision is recorded while a session write runs, and a note while the
+// decision is committed. The decision is committed while the session write goes on; the note
+// waits for the decision only. Session writes still happen between the rounds, and the last write
+// has the whole session. The latency is asserted only with the build tag performance.
+func TestArchiveRecordsDoNotWaitForSessionWrites(t *testing.T) {
 	slow(t)
 	gitDir, commitLog := slowGit(t, recordCommit)
 	srv := contracttest.StartHub(t, []string{"PATH=" + gitDir + string(os.PathListSeparator) + os.Getenv("PATH")},
 		"-archive-interval", "100ms")
 	ada := srv.Participant(t, "ada", "Ada", identityv1.ActorKind_ACTOR_KIND_HUMAN)
-	sid := "records-first-" + coreapi.NewCommandID()
+	sid := "records-sync-" + coreapi.NewCommandID()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	if _, err := ada.Commands.Join(ctx, &sessioncommandsv1.JoinRequest{SessionId: sid, CommandId: coreapi.NewCommandID()}); err != nil {
@@ -324,7 +342,7 @@ func TestArchiveRecordsBeforeSessionWrites(t *testing.T) {
 	}
 
 	// Session writes still happen: the last write has the whole session.
-	repo := srv.ArchiveDir()
+	repo := srv.SessionLogsDir()
 	last := contracttest.WaitArchived(t, repo, sid, 10*recordCommit, (*contracttest.ArchivedSession).Ended)
 	evs, err := ada.Stream.GetEvents(ctx, &sessionstreamv1.GetEventsRequest{SessionId: sid, Limit: 1000})
 	if err != nil {
@@ -336,39 +354,41 @@ func TestArchiveRecordsBeforeSessionWrites(t *testing.T) {
 
 	spans := commitSpans(t, commitLog)
 	var records, sessions []commitSpan
-	for i, s := range spans {
-		if i > 0 && s.start.Before(spans[i-1].end) {
-			t.Fatalf("commit %d started before commit %d ended", i+1, i)
-		}
+	for _, s := range spans {
 		if s.session {
 			sessions = append(sessions, s)
 		} else {
 			records = append(records, s)
 		}
 	}
+	// Each repository has one commit at a time. Commits of the two repositories may overlap.
+	for _, kind := range [][]commitSpan{records, sessions} {
+		for i := 1; i < len(kind); i++ {
+			if kind[i].start.Before(kind[i-1].end) {
+				t.Fatalf("commit %d of a repository started before commit %d ended", i+1, i)
+			}
+		}
+	}
 	if len(records) != len(calls) {
 		t.Fatalf("%d record commits for %d record calls", len(records), len(calls))
 	}
-	// The records are committed in the order of the calls: each call starts after the commit of
-	// the one before has started.
+	// A decision is called while a session write runs. Its commit starts before that write ends:
+	// the record did not wait for the session write.
 	var took latencies
 	for i, c := range calls {
-		var waited []string
-		started := 0
-		for _, s := range sessions {
-			if s.start.Before(records[i].start) && s.end.After(c.start) {
-				waited = append(waited, fmt.Sprintf("%s-%s", s.start.Format("15:04:05.000"), s.end.Format("15:04:05.000")))
-				if s.start.After(c.start) {
-					started++
+		if i%2 == 0 {
+			var running *commitSpan
+			for j := range sessions {
+				if !sessions[j].start.After(c.start) && sessions[j].end.After(c.start) {
+					running = &sessions[j]
 				}
 			}
-		}
-		if started > 0 || len(waited) > 1 {
-			t.Errorf("%s (called %s) waited for the session writes %v: want at most the one in progress",
-				c.name, c.start.Format("15:04:05.000"), waited)
-		}
-		if i%2 == 1 && len(waited) > 0 {
-			t.Errorf("%s was called while a record was committed, but waited for the session writes %v", c.name, waited)
+			if running == nil {
+				t.Errorf("%s (called %s): no session write was running", c.name, c.start.Format("15:04:05.000"))
+			} else if !records[i].start.Before(running.end) {
+				t.Errorf("%s (called %s) waited for the session write %s-%s", c.name, c.start.Format("15:04:05.000"),
+					running.start.Format("15:04:05.000"), running.end.Format("15:04:05.000"))
+			}
 		}
 		took = append(took, c.took)
 	}
@@ -384,9 +404,9 @@ func TestArchiveRecordsBeforeSessionWrites(t *testing.T) {
 	}
 	t.Logf("commit=%s records %s, session writes %d (%d between the rounds)", recordCommit, took.summary(), len(sessions), between)
 	if assertTiming {
-		// One session write in progress or the record before, and the own commit.
+		// The record before, and the own commit.
 		if limit := 2*recordCommit + 500*time.Millisecond; took.max() >= limit {
-			t.Errorf("a record took %s, want < %s (at most one other commit and its own)", ms(took.max()), ms(limit))
+			t.Errorf("a record took %s, want < %s (at most the record before and its own commit)", ms(took.max()), ms(limit))
 		}
 	}
 }

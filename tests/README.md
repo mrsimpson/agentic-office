@@ -80,7 +80,28 @@ through its interfaces:
   of an off-the-record sentence and its mark, and a tree head that verifies; at a short interval
   every write is one commit whose log extends the one before; the hub writes once more when it
   stops; session IDs that are not safe as file names are encoded. The harness reads the
-  repository with `contracttest.SessionCommits` and `ReadArchivedSession`.
+  session-log repository of the tenant (`Hub.SessionLogsDir`, `TenantSessionLogsDir`) with
+  `contracttest.SessionCommits` and `ReadArchivedSession`.
+- `tests/contract/sessionlogs_repo_test.go` checks that the session logs lie in a second
+  repository of the tenant: a clone of the artifact repository has no `sessions/` directory and no
+  original of an off-the-record sentence, the session-log repository holds the logs and verifies,
+  records land in the artifact repository, and each tenant has its own two repositories.
+- `tests/contract/archive_changes_test.go` checks `if-artifact-changes` through the real hub: the
+  event of a commit of the archive (created, changed, with the version of the read interface),
+  every follower gets every event, path prefixes, only Markdown and YAML,
+  outsiders, other tenants and stage links, and a follower that never reads does not hold up the
+  commits.
+- `tests/contract/archive_changes_push_test.go` checks `if-artifact-changes` for changes that come
+  by a real `git push` with the real `git` tool: the same event as for a commit of the archive
+  (created, changed, removed, with the version of the read interface), several files in one push
+  as one event ordered by path, no event for a push that changes nothing, a push and a commit in
+  order, path prefixes, and a follower that has gone.
+- `hub/archive/changes_notice_test.go` is the one test file that lies inside a provider tree. The
+  notice "main moved" of `if-archive-repository` is an in-process call, and a real push sends it
+  right after the push. These cases cannot be made from outside: a late notice (the archive commits
+  before the notice of an earlier change by Git arrives), a repeated notice that gives no second
+  event, a follower that cannot keep up and is dropped with `resource_exhausted` (the stream blocks
+  at once), and an unknown tenant.
 - `tests/contract/restore_test.go` checks the restore after a restart. `contracttest.NewGitGate`
   puts a `git` wrapper first in the `PATH` of the hub that can make every commit fail; the test
   writes a session, closes the gate, adds events and kills the hub, so the hub loses the tail.
@@ -105,13 +126,31 @@ through its interfaces:
   there are far fewer commits than intervals (no queue), and that the last commit has the whole
   session. Only `make performance` fails on the latency of commands and the stream (maximum
   < 200 ms). `QS_ARCHIVE_DURATION` sets how long Ada speaks (default `12s`).
-  `TestArchiveRecordsBeforeSessionWrites` (`dec-records-synchronous`) uses the same wrapper with
+  `TestArchiveRecordsDoNotWaitForSessionWrites` uses the same wrapper with
   commits of 2 s, an interval of 100 ms and Ada speaking every 50 ms. In three rounds it records
   a decision while a session write runs and a note while the decision is committed. It checks
   from the commit log of the wrapper that no record waits for a session write that started after
   the call (the decision waits at most for the one in progress, the note for none), that session
   writes still run between the rounds, and that the last commit has the whole session. Only
   `make performance` fails on the time of a record call (< 4.5 s: one other commit and its own).
+- `tests/e2e/sync_test.go` tests the whole artifact sync path (`dec-artifact-sync`) with the real
+  `office-hub`, the real `office` and the plain `git` tool, with several participants and two
+  tenants. The contract tests (`sync_init_test.go`, `sync_update_test.go`, `gitpush_test.go`,
+  `gitaccess_test.go`) cover each step alone; these tests combine them.
+  `TestSyncTwoParticipantsWholePath`: a human and an agent with two clones and a running
+  `office sync follow` each; the first commit of the tenant is the only commit of a fresh clone;
+  the guard refuses a commit in the main directory; a change by interface and a push from a
+  worktree reach the other clone and the hub; an agent pushes 36 Markdown and 6 YAML files in one
+  push. `TestSyncTwoWritersConflictStaysInTheWorktree`: the hub interface and a stale worktree
+  change the same line; the push is refused, the rebase gives a normal Git conflict that stays in
+  the worktree, and the participant solves it with fetch, rebase and push.
+  `TestSyncTwoTenantsNeverLeak`: two tenants with humans, agents and a member of both; no file,
+  path, record, commit message, author, configuration or follower output of one tenant is in a
+  clone of the other, and a refused `sync init` for the other tenant says nothing of the first.
+  `TestSyncSessionsNeverReachTheClones` (slow): sessions with off-the-record sentences, a hub
+  restart and the end of a session; no sentence is in any clone, new or old. All waits are
+  waits for a condition with a long deadline; no test measures time. Run them with
+  `make e2e RUN=TestSync` (a named run includes the slow test); `make e2e` skips the slow one.
 - `tests/architecture/` checks the code against the arc42 model (`make arch`). It reads the model
   with `arc42 get --format json` and the imports with `go list`. A fixture workspace with
   deliberate violations proves that each rule fails when it should.

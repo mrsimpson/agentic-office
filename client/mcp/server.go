@@ -15,6 +15,7 @@ import (
 
 	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
 	"github.com/mrsimpson/agentic-office/client/replicator/control"
+	syncctl "github.com/mrsimpson/agentic-office/client/sync/control"
 
 	"connectrpc.com/connect/v2"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -36,6 +37,8 @@ type Server struct {
 	Dial coreapi.Dial
 	// NewReplicator creates the replicators of this process (if-replication).
 	NewReplicator control.New
+	// NewSync creates the artifact sync (if-sync). Nil means: meeting_join does not follow a clone.
+	NewSync syncctl.New
 
 	log *log.Logger
 
@@ -44,6 +47,8 @@ type Server struct {
 	ctx    context.Context // lives as long as Run; the replicators run under it
 	reps   map[string]*rep // by local log path
 	wg     sync.WaitGroup
+
+	cloneFollowing bool // the follow of the clone of the working directory was started
 }
 
 // rep is a replicator that runs in this process.

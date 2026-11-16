@@ -327,7 +327,7 @@ func (s *Service) ExchangeChallenge(_ context.Context, req *identityv1.ExchangeC
 	if !ok || ch.keyID != id || !time.Now().Before(ch.expires) {
 		return nil, unauthenticated("challenge unknown, used or expired: get a new one")
 	}
-	k, _, ok := s.usable(id, time.Now())
+	k, u, ok := s.usable(id, time.Now())
 	if !ok {
 		return nil, unauthenticated("public key is not registered")
 	}
@@ -336,7 +336,7 @@ func (s *Service) ExchangeChallenge(_ context.Context, req *identityv1.ExchangeC
 	}
 	tok, exp := s.newToken("oat_", id, "", "", s.opts.TokenTTL)
 	return &identityv1.ExchangeChallengeResponse{AccessToken: tok, ExpiresAt: timestamppb.New(exp),
-		ParticipantId: k.userID}, nil
+		ParticipantId: k.userID, DisplayName: u.DisplayName}, nil
 }
 
 // repeat handles a repeated command_id. It returns the stored response, or AlreadyExists if the

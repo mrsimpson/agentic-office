@@ -44,42 +44,9 @@ type Repo struct {
 	push Pusher
 	logf func(string, ...any)
 
-	turn turn // one change at a time, records first
-}
+	turn sync.Mutex // one change at a time
 
-// turn lets one change at a time into the repository. A change that is not Background goes
-// before a waiting Background change (dec-records-synchronous); the change in progress is not
-// interrupted.
-type turn struct {
-	mu      sync.Mutex
-	free    *sync.Cond // signalled when busy becomes false
-	busy    bool       // a change is in progress
-	records int        // changes that are not Background and wait for their turn
-}
-
-// take waits until the change may go. A Background change also waits while a record waits.
-func (t *turn) take(background bool) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.free == nil {
-		t.free = sync.NewCond(&t.mu)
-	}
-	if !background {
-		t.records++
-		defer func() { t.records-- }()
-	}
-	for t.busy || (background && t.records > 0) {
-		t.free.Wait()
-	}
-	t.busy = true
-}
-
-// give ends the change in progress and lets the next change go.
-func (t *turn) give() {
-	t.mu.Lock()
-	t.busy = false
-	t.mu.Unlock()
-	t.free.Broadcast()
+	changes changeLog // the followers of main (if-artifact-changes)
 }
 
 var _ storage.Archive = (*Repo)(nil)
@@ -107,22 +74,37 @@ func Open(ctx context.Context, opts Options) (*Repo, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("archive: %w", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, ".git")); errors.Is(err, os.ErrNotExist) {
-		if _, err := r.run(ctx, "init", "-q", "-b", "main"); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, "HEAD")); errors.Is(err, os.ErrNotExist) {
+		if _, err := r.run(ctx, "init", "-q", "--bare", "-b", "main"); err != nil {
 			return nil, err
 		}
 	} else if err != nil {
 		return nil, fmt.Errorf("archive: %w", err)
 	}
-	// Only the hub writes the repository. A lock file left by a hub that died during a commit
+	// Only the hub writes the repository. Files that a hub left when it died during a commit
 	// would block every later commit.
-	if err := os.Remove(filepath.Join(dir, ".git", "index.lock")); err == nil {
-		r.logf("archive: removed the lock file of an interrupted commit in %s", dir)
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("archive: %w", err)
+	for _, f := range []string{"refs/heads/main.lock", "HEAD.lock", "packed-refs.lock", indexFile} {
+		if err := os.Remove(filepath.Join(dir, filepath.FromSlash(f))); err == nil {
+			r.logf("archive: removed %s of an interrupted commit in %s", f, dir)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("archive: %w", err)
+		}
 	}
+	head, err := r.head(ctx)
+	if err != nil {
+		return nil, err
+	}
+	r.changes.reset(head)
 	return r, nil
 }
+
+// indexFile is the temporary index of a commit, in the repository directory. The repository has
+// no work tree; a commit uses the index only to build the new tree.
+const indexFile = "office-index"
+
+// maxAttempts is how often a commit builds its change on a new state of main when main moved
+// in the meantime.
+const maxAttempts = 20
 
 // Dir returns the directory of the repository.
 func (r *Repo) Dir() string { return r.dir }
@@ -148,7 +130,8 @@ func (r *Repo) runEnv(ctx context.Context, stdin []byte, env []string, args ...s
 	dieWithHub(cmd)
 	// No system or global configuration of the user: no hooks, no signing, no pager, no editor.
 	cmd.Env = append(os.Environ(),
-		"GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_TERMINAL_PROMPT=0",
+		"GIT_DIR="+r.dir, "GIT_CONFIG_NOSYSTEM=1",
+		"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=core.hooksPath", "GIT_CONFIG_VALUE_0="+os.DevNull, "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_TERMINAL_PROMPT=0",
 		"GIT_AUTHOR_NAME=office-hub", "GIT_AUTHOR_EMAIL=office-hub@localhost",
 		"GIT_COMMITTER_NAME=office-hub", "GIT_COMMITTER_EMAIL=office-hub@localhost")
 	cmd.Env = append(cmd.Env, env...)
@@ -199,57 +182,152 @@ func (r *Repo) Commit(ctx context.Context, c storage.Change) (string, error) {
 	if a := c.Author; a != (storage.Author{}) && (a.Name == "" || a.Email == "") {
 		return "", errors.New("archive: an author needs a name and an email")
 	}
-	r.turn.take(c.Background)
-	defer r.turn.give()
-	if err := r.checkBases(ctx, c.Files); err != nil {
-		return "", err
-	}
-	paths := make([]string, 0, len(c.Files))
-	for _, f := range c.Files {
-		if err := writeFile(filepath.Join(r.dir, filepath.FromSlash(f.Path)), f.Data); err != nil {
-			return "", fmt.Errorf("archive: %w", err)
-		}
-		paths = append(paths, f.Path)
-	}
-	if len(paths) > 0 {
-		if _, err := r.run(ctx, append([]string{"add", "--"}, paths...)...); err != nil {
+	r.turn.Lock()
+	defer r.turn.Unlock()
+	// Write the files as objects once; a retry reuses them.
+	blobs := make([]string, len(c.Files))
+	for i, f := range c.Files {
+		out, err := r.runInput(ctx, f.Data, "hash-object", "-w", "--stdin")
+		if err != nil {
 			return "", err
 		}
+		blobs[i] = strings.TrimSpace(string(out))
 	}
-	// Exit code 1: something is staged, also from an earlier change whose commit failed.
-	if _, err := r.run(ctx, "diff", "--cached", "--quiet"); err == nil {
-		return r.head(ctx)
-	} else if exitCode(err) != 1 {
-		return "", err
-	}
-	var env []string
-	if a := c.Author; a != (storage.Author{}) {
-		env = []string{"GIT_AUTHOR_NAME=" + a.Name, "GIT_AUTHOR_EMAIL=" + a.Email}
-	}
-	if _, err := r.runEnv(ctx, nil, env, "commit", "-q", "--no-verify", "-m", c.Message); err != nil {
-		return "", err
-	}
-	id, err := r.head(ctx)
+	old, err := r.head(ctx)
 	if err != nil {
 		return "", err
 	}
-	if err := r.push.Push(ctx, r.dir); err != nil {
-		r.logf("archive: push of %s failed, the next push takes it along: %v", id, err)
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if err := r.checkBases(ctx, old, c.Files); err != nil {
+			return "", err
+		}
+		if len(c.Files) == 0 && old == "" {
+			return "", nil
+		}
+		tree, err := r.buildTree(ctx, old, c.Files, blobs)
+		if err != nil {
+			return "", err
+		}
+		if old != "" {
+			if cur, err := r.rev(ctx, old+"^{tree}"); err != nil {
+				return "", err
+			} else if cur == tree {
+				return old, nil // the change alters nothing
+			}
+		}
+		args := []string{"commit-tree", tree}
+		if old != "" {
+			args = append(args, "-p", old)
+		}
+		var env []string
+		if a := c.Author; a != (storage.Author{}) {
+			env = []string{"GIT_AUTHOR_NAME=" + a.Name, "GIT_AUTHOR_EMAIL=" + a.Email}
+		}
+		out, err := r.runEnv(ctx, nil, env, append(args, "-m", c.Message)...)
+		if err != nil {
+			return "", err
+		}
+		id := strings.TrimSpace(string(out))
+		// The one atomic step: main moves to the new commit only if it is still at old. An empty
+		// old value means that main must not exist yet.
+		if _, err := r.run(ctx, "update-ref", "-m", "office-hub commit", "refs/heads/main", id, old); err != nil {
+			now, herr := r.head(ctx)
+			if herr != nil {
+				return "", errors.Join(err, herr)
+			}
+			if now == old {
+				return "", err // main did not move: another problem
+			}
+			// Main moved in the meantime. A file of this change that someone else changed in
+			// between is a conflict; otherwise build the same change on the new state.
+			if err := r.checkMoved(ctx, old, now, c.Files, blobs); err != nil {
+				return "", err
+			}
+			old = now
+			continue
+		}
+		r.moved(old, id)
+		if err := r.push.Push(ctx, r.dir); err != nil {
+			r.logf("archive: push of %s failed, the next push takes it along: %v", id, err)
+		}
+		return id, nil
 	}
-	return id, nil
+	return "", fmt.Errorf("archive: main moved %d times during the commit; giving up", maxAttempts)
 }
 
-// checkBases compares the Base of every file with its version in the current commit.
-func (r *Repo) checkBases(ctx context.Context, files []storage.File) error {
+// rev returns the object ID that the revision expression names, or "" if there is none.
+func (r *Repo) rev(ctx context.Context, expr string) (string, error) {
+	out, err := r.run(ctx, "rev-parse", "--verify", "-q", expr)
+	if err != nil {
+		if exitCode(err) == 1 || exitCode(err) == 128 {
+			return "", nil
+		}
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}
+
+// buildTree returns the ID of the tree of commit old with the files replaced. It uses a
+// temporary index file and no work tree.
+func (r *Repo) buildTree(ctx context.Context, old string, files []storage.File, blobs []string) (string, error) {
+	index := "GIT_INDEX_FILE=" + filepath.Join(r.dir, indexFile)
+	defer os.Remove(filepath.Join(r.dir, indexFile))
+	if old != "" {
+		if _, err := r.runEnv(ctx, nil, []string{index}, "read-tree", old); err != nil {
+			return "", err
+		}
+	}
+	var entries bytes.Buffer
+	for i, f := range files {
+		fmt.Fprintf(&entries, "100644 %s\t%s\x00", blobs[i], f.Path)
+	}
+	if entries.Len() > 0 {
+		if _, err := r.runEnv(ctx, entries.Bytes(), []string{index}, "update-index", "--add", "--replace", "-z", "--index-info"); err != nil {
+			return "", err
+		}
+	}
+	out, err := r.runEnv(ctx, nil, []string{index}, "write-tree")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// checkMoved fails with a *ConflictError when a file of the change differs between the commit
+// the change was built on (old) and the new current commit, unless the new version is the
+// content of the change itself.
+func (r *Repo) checkMoved(ctx context.Context, old, now string, files []storage.File, blobs []string) error {
+	for i, f := range files {
+		was, err := r.rev(ctx, old+":"+f.Path)
+		if old == "" {
+			was = ""
+		} else if err != nil {
+			return err
+		}
+		cur, err := r.rev(ctx, now+":"+f.Path)
+		if err != nil {
+			return err
+		}
+		if cur != was && cur != blobs[i] {
+			return &storage.ConflictError{Path: f.Path, Current: cur}
+		}
+	}
+	return nil
+}
+
+// checkBases compares the Base of every file with its version in the commit old ("" for none).
+func (r *Repo) checkBases(ctx context.Context, old string, files []storage.File) error {
 	for _, f := range files {
 		if f.Base == "" {
 			continue
 		}
-		out, err := r.run(ctx, "rev-parse", "--verify", "-q", "HEAD:"+f.Path)
-		if err != nil && exitCode(err) != 1 && exitCode(err) != 128 {
-			return err
+		cur := ""
+		if old != "" {
+			var err error
+			if cur, err = r.rev(ctx, old+":"+f.Path); err != nil {
+				return err
+			}
 		}
-		cur := strings.TrimSpace(out)
 		if (f.Base == storage.NoFile && cur != "") || (f.Base != storage.NoFile && f.Base != cur) {
 			return &storage.ConflictError{Path: f.Path, Current: cur}
 		}
@@ -277,6 +355,31 @@ func (r *Repo) List(ctx context.Context, dir string) ([]string, error) {
 		}
 	}
 	return out, nil
+}
+
+// Names implements storage.Archive. It asks git for the files that a commit of the history of
+// main added to the directory (git log with the filter "added"). Renames are not detected, so a
+// file that was moved into the directory counts as added there. No content is read.
+func (r *Repo) Names(ctx context.Context, dir string) ([]string, error) {
+	if err := storage.CheckPath(dir); err != nil {
+		return nil, err
+	}
+	head, err := r.head(ctx)
+	if err != nil || head == "" {
+		return nil, err
+	}
+	out, err := r.run(ctx, "log", "-z", "--no-renames", "--diff-filter=A", "--name-only", "--format=", head, "--", dir)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, p := range strings.Split(out, "\x00") {
+		if p != "" {
+			names = append(names, p)
+		}
+	}
+	slices.Sort(names)
+	return slices.Compact(names), nil
 }
 
 // Read implements storage.Archive. It lists the files of dir (or reads the file dir) in the current commit and reads
@@ -333,36 +436,33 @@ func (r *Repo) Read(ctx context.Context, dir string) ([]storage.File, error) {
 	return files, nil
 }
 
-// head returns the ID of the current commit, or "" in a repository without commits.
-func (r *Repo) head(ctx context.Context) (string, error) {
-	out, err := r.run(ctx, "rev-parse", "--verify", "-q", "HEAD")
-	if err != nil {
-		if exitCode(err) == 1 {
-			return "", nil
-		}
-		return "", err
+// firstCommit gives main its first commit if it has none: an empty commit that holds no file, by
+// office-hub. The artifact repository of a tenant starts with it, so main exists from the start.
+// The followers are not told: the state of main at start is not reported.
+func (r *Repo) firstCommit(ctx context.Context) error {
+	r.turn.Lock()
+	defer r.turn.Unlock()
+	old, err := r.head(ctx)
+	if err != nil || old != "" {
+		return err
 	}
-	return strings.TrimSpace(out), nil
+	tree, err := r.run(ctx, "mktree")
+	if err != nil {
+		return err
+	}
+	out, err := r.run(ctx, "commit-tree", strings.TrimSpace(tree), "-m", "Create the artifact repository")
+	if err != nil {
+		return err
+	}
+	id := strings.TrimSpace(out)
+	if _, err := r.run(ctx, "update-ref", "-m", "office-hub first commit", "refs/heads/main", id, ""); err != nil {
+		return err
+	}
+	r.changes.reset(id)
+	return nil
 }
 
-// writeFile replaces the file at p with data: it writes a temporary file and renames it.
-func writeFile(p string, data []byte) error {
-	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
-		return err
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(p), ".tmp-*")
-	if err != nil {
-		return err
-	}
-	_, werr := tmp.Write(data)
-	cerr := tmp.Close()
-	if werr != nil || cerr != nil {
-		os.Remove(tmp.Name())
-		return errors.Join(werr, cerr)
-	}
-	if err := os.Chmod(tmp.Name(), 0o600); err != nil {
-		os.Remove(tmp.Name())
-		return err
-	}
-	return os.Rename(tmp.Name(), p)
+// head returns the ID of the commit that main points to, or "" in a repository without commits.
+func (r *Repo) head(ctx context.Context) (string, error) {
+	return r.rev(ctx, "refs/heads/main")
 }

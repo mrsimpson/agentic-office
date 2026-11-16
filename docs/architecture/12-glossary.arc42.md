@@ -133,6 +133,18 @@ definition: Anything that the stage can show by its path in the tenant repositor
 :::
 ```
 
+## Mirror directory
+
+The main directory of a local clone of the tenant repository.
+
+```arc42
+:::glossary-term
+id: term-mirror
+title: Mirror directory
+definition: The main directory of a local clone of the tenant repository; the client only moves it to the branch main of the hub, and nobody commits there, because work happens in worktrees
+:::
+```
+
 ## Slide deck
 
 One type of record of the hub, and the first type of artifact.

@@ -18,46 +18,62 @@ import (
 // Archive stores files in a repository. An Archive is safe for use by many goroutines; it
 // carries out one change at a time.
 //
-// Records go first (dec-records-synchronous): when changes wait, the archive carries out every
-// waiting change that is not Background before a waiting Background change. A change that is in
-// progress is never interrupted. So a record waits at most for the one background change that is
-// in progress, never for a queue of them.
+// A record is written synchronously, and it does not wait behind session writes: the session
+// logs have their own repository and so their own queue (see Archives).
 //
 // A part of the hub reads its records back with Read, for example to rebuild its index when the
 // hub starts.
 type Archive interface {
 	// Commit writes the files of c and records them as one commit with the message of c. It
 	// returns the ID of the commit. A change with a stale Base of a file fails with a *ConflictError and
-	// writes nothing. A change that does not alter any file creates no commit and
+	// writes nothing. The same error follows when someone else moved the repository during the
+	// commit and changed a file of this change; if they changed other files, Commit builds the
+	// change on the new state and succeeds. A change that does not alter any file creates no commit and
 	// returns the ID of the current commit. Commit fails if a path is not valid (see CheckPath).
-	// Commit may take a long time; callers that must not wait call it in the background and mark
-	// the change as Background.
+	// Commit may take a long time; callers that must not wait call it in the background.
 	Commit(ctx context.Context, c Change) (string, error)
 	// Read returns the files under the directory dir as they are in the current commit, ordered
 	// by path. dir is a valid path (see CheckPath); if it names a file, Read returns this file. A directory that is not in the current
-	// commit, or a repository without commits, has no files. Files of a change whose commit
-	// failed are not returned.
+	// commit, or a repository without commits, has no files. A change whose commit failed is
+	// not visible.
 	Read(ctx context.Context, dir string) ([]File, error)
 	// List returns the paths of the files under the directory dir as they are in the current
 	// commit, ordered, without reading their content. A directory that is not in the current
 	// commit has no files. A caller that wants the content of a few files from a large
 	// directory lists it first and reads them one by one.
 	List(ctx context.Context, dir string) ([]string, error)
+	// Names returns every path under the directory dir that ever lay in it in the history of
+	// main, also the paths of files that were removed later. The paths are ordered and have no
+	// duplicates; the content is not read. History is never rewritten, so a name that is in the
+	// result stays in it. A part that numbers its files uses the highest number among the names
+	// as the lowest value that its next number may be built on, so that it never gives a number
+	// again that a removed file had. A directory that never held a file, or a repository without
+	// commits, has no names. Names fails if dir is not a valid path (see CheckPath). The cost is
+	// one walk through the history of the directory.
+	Names(ctx context.Context, dir string) ([]string, error)
 }
 
 // Archives gives the archive of each repository (concept-multi-tenancy). The hub has one
-// repository of its own, for the users, the tenants and the memberships, and each tenant has one
-// repository for its content. Every repository has its own commit queue, so a busy tenant does
-// not hold up another tenant or the hub repository.
+// repository of its own, for the users, the tenants and the memberships. Each tenant has two
+// repositories: one for its artifacts and records (Tenant) and one for its session logs
+// (SessionLogs). The session logs hold the original of sentences that are off the record
+// (dec-off-the-record), so they never share a repository with the artifacts: only the meeting
+// session uses the session-log repository, and no interface for participants reads it. Every
+// repository has its own commit queue, so a busy tenant does not hold up another tenant or the
+// hub repository, and a session write does not hold up a record.
 type Archives interface {
 	// Hub returns the archive of the hub repository.
 	Hub() Archive
-	// CreateTenant creates the repository of a tenant. It does nothing if the repository exists.
-	// It fails if id is not a valid tenant ID (see CheckTenantID).
+	// CreateTenant creates the artifact repository and the session-log repository of a tenant.
+	// It does nothing for a repository that exists. It fails if id is not a valid tenant ID
+	// (see CheckTenantID).
 	CreateTenant(ctx context.Context, id string) error
-	// Tenant returns the archive of the repository of a tenant. It fails with ErrNoTenant if
-	// the repository was not created.
+	// Tenant returns the archive of the artifact repository of a tenant: records, tasks,
+	// slides and documents. It fails with ErrNoTenant if the repository was not created.
 	Tenant(id string) (Archive, error)
+	// SessionLogs returns the archive of the session-log repository of a tenant. Only the
+	// meeting session uses it. It fails with ErrNoTenant if the repository was not created.
+	SessionLogs(id string) (Archive, error)
 }
 
 // ErrNoTenant is the error of Archives.Tenant for a tenant without a repository.
@@ -86,9 +102,6 @@ type Change struct {
 	// through). Empty means the hub itself.
 	Author Author
 	Files  []File
-	// Background marks a change that no caller waits for, such as a write of session logs. A
-	// waiting Background change goes after every waiting change that is not Background.
-	Background bool
 }
 
 // Author names the person or agent behind a change. Both fields are required when an Author is
@@ -116,7 +129,7 @@ type File struct {
 const NoFile = "none"
 
 // ConflictError is the error of a Commit whose Base of a file is not the version in the current
-// commit: another change came first. The author reads the file again and tries again.
+// commit, or whose file was changed by someone else during the commit: another change came first. The author reads the file again and tries again.
 type ConflictError struct {
 	Path string
 	// Current is the version of the file in the current commit, or "" if the file does not exist.

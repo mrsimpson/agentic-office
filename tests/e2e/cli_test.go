@@ -115,12 +115,12 @@ func TestTwoCLIParticipants(t *testing.T) {
 	if code != 0 || !strings.Contains(html, "<h2>Costs</h2>") || !strings.Contains(html, "<li>Rent: 4,000 EUR</li>") {
 		t.Fatalf("slides get: exit %d, %q, %q", code, html, errOut)
 	}
-	// The hub keeps the input and the rendered deck in its archive.
+	// The hub keeps only the input of the deck in its archive.
 	if y := contracttest.Git(t, srv.ArchiveDir(), "show", "HEAD:slides/000001.yaml"); !strings.Contains(y, "Rent: 4,000 EUR") {
 		t.Fatalf("input of the deck in the archive:\n%s", y)
 	}
-	if h := contracttest.Git(t, srv.ArchiveDir(), "show", "HEAD:slides/000001.html"); h != html {
-		t.Fatal("the rendered deck in the archive is not the one the hub returns")
+	if all := contracttest.Git(t, srv.ArchiveDir(), "ls-tree", "-r", "--name-only", "HEAD"); strings.Contains(all, ".html") {
+		t.Fatalf("the archive holds a rendered deck:\n%s", all)
 	}
 	// The stage of the session, opened with the link from the CLI, shows the slides, the raised
 	// hand and the minutes, and then the end of the session.

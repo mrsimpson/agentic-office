@@ -1,6 +1,8 @@
 // Command office-hub runs the office hub (bb-office-hub).
 //
-// All services are mounted, and the stage at /stage/<session>?token=<stage link token>. Every call
+// All services are mounted, and the stage at /stage/<session>?token=<stage link token>. The
+// artifact repository of a tenant is served over the Git smart protocol at /git/<tenant> (read
+// access only; the password of HTTP Basic is an access token). Every call
 // needs an access token from the identity block, except GetChallenge and ExchangeChallenge. The
 // server speaks only TLS.
 //
@@ -61,7 +63,10 @@ import (
 	adminweb "github.com/mrsimpson/agentic-office/hub/admin/web"
 	"github.com/mrsimpson/agentic-office/hub/archive"
 	"github.com/mrsimpson/agentic-office/hub/archive/api/archivev1connect"
+	"github.com/mrsimpson/agentic-office/hub/archive/changes/api/changesv1connect"
 	"github.com/mrsimpson/agentic-office/hub/documents/api/documentv1connect"
+	"github.com/mrsimpson/agentic-office/hub/gitaccess"
+	gitweb "github.com/mrsimpson/agentic-office/hub/gitaccess/web"
 	"github.com/mrsimpson/agentic-office/hub/health"
 	"github.com/mrsimpson/agentic-office/hub/identity"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
@@ -127,6 +132,9 @@ var (
 	tokenTTL        = flag.Duration("token-ttl", 15*time.Minute, "lifetime of access tokens; clients sign in again before they expire")
 	stageTTL        = flag.Duration("stage-link-ttl", 24*time.Hour, "lifetime of stage links (read-only links to the stage of one session)")
 	archiveInterval = flag.Duration("archive-interval", 30*time.Second, "time between two writes of changed sessions to the archive; sessions are also written when they end. Keep it above the usual commit time")
+	gitMaxPushMiB   = flag.Int64("git-max-push-mib", gitaccess.DefaultMaxPushBytes>>20, "largest push to the artifact repository, in MiB; a larger push is refused")
+	gitMaxFileKiB   = flag.Int64("git-max-file-kib", gitaccess.DefaultMaxFileBytes>>10, "largest artifact file in a push, in KiB; a larger file refuses the push")
+	gitMaxFiles     = flag.Int("git-max-files", gitaccess.DefaultMaxFiles, "most files that one push may change; a push that changes more is refused")
 	restoreWait     = flag.Duration("restore-wait", 10*time.Second, "after a restart, how long a restored session that has not ended waits for a peer to fill in the events after the last write to the archive")
 )
 
@@ -188,6 +196,8 @@ First start: the hub needs a signing key and the first system admin, who runs th
   certificate file.
 - The hub needs the "git" command line tool in PATH; its archive is Git repositories. It runs git
   without your system and global git configuration.
+- The artifact repository of a tenant can be fetched with Git at https://<hub>/git/<tenant>. The
+  password is an access token; the user name is ignored. Pushing is not allowed yet.
 - GET /healthz answers 200 and "ok" without a login, for a container probe.
 
 Files in the data directory (-data-dir):
@@ -222,6 +232,10 @@ func printHubHelp(w io.Writer) {
 }
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == gitaccess.SubcommandPreReceive {
+		// Git started the hub program as the pre-receive hook of the artifact repository.
+		os.Exit(gitaccess.RunPreReceive(os.Stdin, os.Stderr))
+	}
 	if len(os.Args) > 1 && os.Args[1] == "keygen" {
 		keygen(os.Args[2:])
 		return
@@ -275,7 +289,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("hub repository %s; one repository for each tenant below %s; push mocked", repos.HubDir(), filepath.Join(*dataDir, "repos", "tenants"))
+	log.Printf("hub repository %s; artifact repository of each tenant below %s, session-log repository below %s; push mocked", repos.HubDir(),
+		filepath.Join(*dataDir, "repos", "tenants"), filepath.Join(*dataDir, "repos", "session-logs"))
 	var bootstrap *identity.Bootstrap
 	var bootstrapErr error
 	if *firstAdmin != "" {
@@ -322,10 +337,24 @@ func main() {
 	slidesv1connect.RegisterSlidesServiceHandler(cs, slidesMux{rts})
 	documentv1connect.RegisterDocumentServiceHandler(cs, documentMux{rts})
 	archivev1connect.RegisterArchiveReadServiceHandler(cs, archiveReadMux{rts})
+	changesv1connect.RegisterArchiveChangesServiceHandler(cs, archiveChangesMux{rts})
 	mux := http.NewServeMux()
 	connecthttp.Mount(mux, cs)
 	// The health check needs no token and reads no state, so a container probe can use it.
 	mux.Handle("GET "+health.Path, health.Handler())
+	// Git access serves the artifact repository of each tenant at /git/<tenant>. It checks the
+	// token (the password of Basic) and the membership itself, then hands the request to Git.
+	gitHandler, err := gitaccess.New(gitaccess.Options{
+		Tokens: ids, Repositories: repos, Logf: log.Printf,
+		HooksDir:     filepath.Join(*dataDir, "git-hooks"),
+		MaxPushBytes: *gitMaxPushMiB << 20,
+		MaxFileBytes: *gitMaxFileKiB << 10,
+		MaxFiles:     *gitMaxFiles,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	mux.Handle(gitweb.PathPrefix, gitHandler)
 	// The admin view asks the identity part in-process, with the token of the admin.
 	mux.Handle(adminweb.PathPrefix, admin.New(admin.Options{Identity: connectinprocess.New(cs)}))
 	// The stage subscribes in-process through the token check, with the token of the link.

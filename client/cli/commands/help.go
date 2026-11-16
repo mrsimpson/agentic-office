@@ -32,6 +32,7 @@ const (
 	groupEars     = "Speech and vocabulary"
 	groupStage    = "Stage, slides and documents"
 	groupRecords  = "Decisions, notes, minutes and tasks"
+	groupSync     = "Artifacts in a local directory"
 	groupImport   = "Import"
 	groupAgents   = "Agents"
 	groupInternal = "Other"
@@ -248,7 +249,13 @@ With --mic or --wav FILE the client joins as captured: the ears transcribe your 
 locally with Whisper and the gateway view shows each sentence. Only text leaves your computer.
 Use a headset. A missing speech model is downloaded once; before join, the ears check the
 models, the WAV file or the recorder, and if something is missing you do not join. "office help
-ears" lists the flags and variables of the ears.`,
+ears" lists the flags and variables of the ears.
+
+If you run join in a directory that "office sync init" set up, or in a worktree of it, the
+replicator also keeps that clone up to date while it runs, like "office sync follow". Nothing
+is printed for it; a problem (hub away, commits of your own in main, no access) never stops the
+meeting and is written once to the output of the replicator. In any other directory join does
+nothing extra.`,
 		Examples: []string{`LOG=$(office meeting join weekly)   # prints the path of the local log`,
 			"office meeting join weekly --mic --language english", "office meeting join weekly --foreground &"}},
 	{Name: "meeting log", Group: groupMeeting, Summary: "print the path of the local log",
@@ -420,9 +427,93 @@ the author of the change. --session links the change to a session (artifact.chan
 	{Name: "document list", Group: groupStage, Summary: "list the files of a directory of the archive",
 		Usage: "document list [<dir>]",
 		Details: `The default directory is documents. The archive read interface lists Markdown and YAML files
-only, and never anything under sessions/, because the session logs keep the original of
-sentences that are off the record.`,
+only. The session logs lie in a repository that no participant can read.`,
 		Examples: []string{"office document list"}},
+
+	// Artifacts in a local directory.
+	{Name: "sync", Group: groupSync, Summary: "bring the directory up to date with the hub",
+		Usage: "sync [<directory>]",
+		Details: `Updates the main directory (default: the current directory) that "office sync init" set up:
+it fetches the hub and moves main forward. It never merges. Files that you changed and did not
+commit stay as they are.
+
+If the hub rewrote the history of main, nothing of yours is on main, so main moves to the new
+state of the hub. Files that you changed and did not commit stay, unless the move would
+overwrite them: then the command stops and changes nothing.
+
+The command also stops and changes nothing when
+  - main has commits of its own: the main directory mirrors the hub, so move them to a branch
+    in a worktree and push that branch;
+  - an incoming change would overwrite a file that you changed and did not commit: commit or
+    move the file, then run the command again.
+It refuses a directory that is not set up and a linked worktree (it works on the main directory
+only). Git gets its access token from the helper that "office sync init" wrote into the clone.
+
+To keep the directory up to date while you work, use "office sync follow".
+
+If the directory has the name of a command (init, follow, credential), write ./init, for
+example "office sync ./init".
+
+Git reads GIT_SSL_CAINFO before the certificate that "office sync init" wrote into the clone.
+If the variable is set and names another file, the command warns; see "office help sync init".
+
+--json prints {"directory", "updated", "from", "to", "rewritten"} (the commits of main; rewritten
+is true when the hub had rewritten the history).`,
+		Examples: []string{"office sync", "office sync ~/artifacts"}},
+	{Name: "sync follow", Group: groupSync, Summary: "keep the directory up to date until you stop the command",
+		Usage: "sync follow [<directory>] [--path P]...",
+		Details: `Updates the main directory once (as "office sync" does), then follows the hub and updates the
+directory after each change of an artifact, whether it came through the documents interface or
+through a push. Stop it with Ctrl-C or SIGTERM.
+
+It connects first, waits until the hub confirms that it is listening, and then updates, so no
+change gets lost between the two. A change is announced without its content; the update always
+takes everything that is new. When the connection ends or fails, the command waits (one second,
+then longer, up to 30 seconds), connects again and updates before it follows. An update that
+needs your action (own commits in main, a file that would be overwritten)
+is reported on stderr and does not stop the command; the next change tries again.
+
+--path limits the changes that start an update to artifacts under a directory or file of the
+repository, for example notes or notes/plan.md. You can repeat it. An update still brings
+everything.
+
+With --json, every update prints {"directory", "updated", "from", "to", "rewritten"} on stdout, and messages
+on stderr are {"progress": text}.`,
+		Examples: []string{"office sync follow", "office sync follow ~/artifacts --path documents --path notes/plan.md"}},
+	{Name: "sync init", Group: groupSync, Summary: "set up a directory with the artifacts of the tenant",
+		Usage: "sync init [<directory>]",
+		Details: `Clones the artifact repository of the tenant from the hub into the directory (default: the
+current directory) with the Git command line tool, which must be in PATH. The hub address and
+the tenant come from the active hub profile or configuration ("office help config"); you must
+be a member of the tenant.
+
+The directory must be empty, new, or a clone of this tenant that you set up before. Any other
+directory is refused and nothing is changed. Run the command again on a set-up directory to
+repair its configuration; it does not touch your files.
+
+The command writes into the configuration of the clone only, never into your global Git
+configuration: you as the author (your display name and <participant ID>@office.invalid), a
+helper that gets a fresh access token from the hub each time Git needs one (so no token is
+stored and none is in the address), the certificate that the hub profile trusts, and a guard
+that refuses a commit in this main directory. The main directory mirrors the hub. To change
+files, work in a worktree: git worktree add ../my-change -b my-change.
+
+If the environment sets GIT_SSL_CAINFO to another file than the certificate of the clone, plain
+Git uses that file and not the certificate of the hub, and the command warns. Unset the variable
+or point it at a bundle that also holds the certificate of the hub. Do not turn off the check.
+
+If the directory has the name of a command (init, follow, credential), write ./init, for
+example "office sync init ./init".
+
+--json prints {"directory", "repository", "cloned", "author"}.`,
+		Examples: []string{"office sync init ~/artifacts", "office sync init --tenant acme"}},
+	{Name: "sync credential", Group: groupSync, Summary: "Git credential helper (Git runs it, not you)",
+		Usage: "sync credential get|store|erase",
+		Details: `The program that "office sync init" writes into the configuration of the clone as the Git
+credential helper. For "get", Git sends the host on its input and the command prints the user
+name and a fresh access token of your key, but only for the hub of this connection. "store" and
+"erase" do nothing. You do not need to run it yourself.`,
+		Examples: []string{"printf 'protocol=https\nhost=hub.example.org:8740\n\n' | office sync credential get --hub https://hub.example.org:8740 --tenant acme"}},
 
 	// Decisions, notes, minutes and tasks.
 	{Name: "decision record", Group: groupRecords, Summary: "record a decision",

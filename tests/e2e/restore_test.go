@@ -94,7 +94,7 @@ func TestHubRestartRestoresFromArchiveAndPeers(t *testing.T) {
 	office(ada, "say", "One.")
 	office(bot, "say", "Two.")
 	waitLines(4)
-	contracttest.WaitArchived(t, srv.ArchiveDir(), sid, 10*time.Second, func(a *contracttest.ArchivedSession) bool {
+	contracttest.WaitArchived(t, srv.SessionLogsDir(), sid, 10*time.Second, func(a *contracttest.ArchivedSession) bool {
 		return len(a.Events) == 4
 	})
 	// The archive stops here. These events exist only on the hub and in the local logs.
@@ -188,7 +188,7 @@ func TestHubRestartRestoresFromArchiveAndPeers(t *testing.T) {
 	if err := merkle.VerifyEvents(local[:len(local)-1], local[len(local)-1].GetSessionEnded().GetTreeHead(), key.GetPublicKey()); err != nil {
 		t.Fatalf("the local log does not verify against session.ended: %v", err)
 	}
-	a := contracttest.WaitArchived(t, srv.ArchiveDir(), sid, 10*time.Second, (*contracttest.ArchivedSession).Ended)
+	a := contracttest.WaitArchived(t, srv.SessionLogsDir(), sid, 10*time.Second, (*contracttest.ArchivedSession).Ended)
 	a.Verify(t, sid, key.GetPublicKey())
 	if len(a.Events) != len(local) {
 		t.Fatalf("archive has %d events, the local log %d", len(a.Events), len(local))

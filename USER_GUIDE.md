@@ -159,6 +159,20 @@ office-hub -signing-key ~/office-hub/signing.key -addr 0.0.0.0:8740 \
 - `office-hub -h` lists every flag with its default and says what the hub keeps in its data
   directory: the certificate, the hub repository with the users, tenants and memberships, and one
   Git repository for each tenant. The hub needs the `git` command line tool.
+- Participants can push changes to the artifacts with Git (see
+  [Work on files in a local directory](#work-on-files-in-a-local-directory)). Three options set the
+  size limits of a push. A push over a limit is refused:
+
+  | Option | Default | Limit |
+  |---|---|---|
+  | `-git-max-push-mib` | 32 | Size of one push, in MiB |
+  | `-git-max-file-kib` | 1024 | Size of one file, in KiB |
+  | `-git-max-files` | 500 | Number of files that one push changes |
+
+- The hub needs the `git` command line tool in its `PATH`. Git runs a hook program to check every
+  push. This program is the hub binary itself: at start, the hub writes a small script that calls
+  the binary at its real path. Do not move or delete the binary while the hub runs, and restart
+  the hub after you replace it.
 - `-first-system-admin` names the first system admin at the first start. The hub ignores it later.
   A system admin is never a member of a tenant: if you also work in a tenant, use a second user
   with another key.
@@ -586,6 +600,175 @@ A change names the version that you read (`--base`). If someone else changed the
 meantime, the change fails with `aborted` and tells you the current version: read the document
 again and redo your change. Your name is recorded as the author of every change. Never put a
 sentence that is off the record into a document.
+
+To work on the files with your own tools, or to let an agent with a shell do it, see
+[Work on files in a local directory](#work-on-files-in-a-local-directory).
+
+### Work on files in a local directory
+
+The documents, notes, decisions, minutes, tasks and slides of your tenant are files in a Git
+repository on the hub. You can keep a copy of it in a directory on your computer and work on the
+files with your own tools: an editor, `grep`, or an agent with a shell. You need the `git` command
+line tool in your `PATH`.
+
+How it fits together:
+
+- The **main directory** is a mirror of the branch `main` on the hub. The office moves it forward
+  and never merges or commits there. A commit in it is refused.
+- You change files in a **worktree**: a second directory of the same clone, with its own branch.
+- You send your changes with plain `git push`. The hub checks every push and refuses a bad one.
+- A change of someone else (in a meeting, or by a push) reaches the main directory when you run
+  `office sync`, or at once while `office sync follow` runs.
+- The copy holds artifacts only. The session logs are never in it.
+
+**Set up once.** Use an empty or new directory. The command needs your hub profile and tenant
+(see [Set up once](#set-up-once)) and your key:
+
+```sh
+office sync init ~/artifacts
+```
+
+```text
+cloning https://hub.example.org:8740/git/acme into /home/ada/artifacts
+set up /home/ada/artifacts (https://hub.example.org:8740/git/acme)
+commits in this directory are refused; work in a worktree: git worktree add ../my-change -b my-change
+```
+
+The command writes into the Git configuration of this clone only. Your global Git configuration
+stays as it is. The clone gets:
+
+- you as the author: your display name and `<participant ID>@office.invalid`,
+- a helper that asks the hub for a fresh access token each time Git needs one, so no token is
+  stored and none is in the address,
+- the certificate that your hub profile trusts,
+- a guard that refuses commits in the main directory.
+
+Run `office sync init` again on a set-up directory to repair this configuration. It does not touch
+your files. It refuses any other directory that is not empty and changes nothing.
+
+**Update.** Run this in the main directory, or name the directory:
+
+```sh
+office sync                  # or: office sync ~/artifacts
+```
+
+```text
+updated /home/ada/artifacts: main moved from f7d208a to 4b6c66e
+```
+
+If nothing is new, it says `is up to date`. The command moves `main` forward. If the hub rewrote
+the history of `main`, nothing of yours is on `main`, so the command moves `main` to the new
+state of the hub. Files that you changed and did not commit stay, unless the move would overwrite
+them. It stops and
+changes nothing when:
+
+- `main` has commits of its own: move them to a branch in a worktree and push that branch,
+- an incoming change would overwrite a file that you changed and did not commit: commit or move
+  the file, then run the command again.
+
+If a directory has the name of a command (`init`, `follow` or `credential`), write `./init`
+instead of `init`. The command stops and asks for this form when both exist.
+
+**Follow.** To keep the directory up to date while you work, leave this running in a terminal:
+
+```sh
+office sync follow
+```
+
+```text
+following the changes of the hub
+updated /home/ada/artifacts: main moved from 4b6c66e to 74f44db
+```
+
+It updates once, then again after each change of an artifact, whether it came through a meeting
+or through a push. If the connection breaks, it connects again and updates. Stop it with Ctrl-C.
+`--path` limits which changes start an update, for example `--path documents --path notes/plan.md`.
+An update still brings everything.
+
+**Follow while you are in a meeting.** You do not need `office sync follow` in a meeting. If you
+run `office meeting join` (or an agent calls the MCP tool `meeting_join`) in a set-up directory, or
+in a worktree of one, the clone is followed for as long as the meeting process runs: the
+replicator of `join`, or the MCP server. It updates once and then after each change. Nothing is
+printed on your terminal; the messages go to the log of the replicator
+(`<participant>.replicator.log` in the runtime directory) or to the log of the MCP server. In any
+other directory, `join` does nothing extra.
+
+A problem with the clone never stops the meeting. It is written once to that log, in plain words,
+for example `artifact sync: update of /home/ada/artifacts failed: ... the main directory has commits
+of its own`. Fix it as described above. If a `join` finds a replicator that runs already, it reuses it
+and does not start a second follow.
+
+**Work in a worktree.** Create a worktree and a branch next to the main directory, change files
+there, commit, and push to `main` of the hub:
+
+```sh
+cd ~/artifacts
+git worktree add ../my-change -b my-change
+cd ../my-change
+printf '# Budget\n\nDraft.\n' > documents/budget.md
+git add documents/budget.md
+git commit -m "Add the budget"
+git push origin HEAD:main
+```
+
+```text
+To https://hub.example.org:8740/git/acme
+   f7d208a..41024fd  HEAD -> main
+```
+
+The push moves `main` forward, and everyone who follows the tenant sees the change. The file
+`documents/budget.md` is now a document of the tenant, as if it had been made with
+`office document create`.
+
+If you commit in the main directory, Git stops you and says where to work:
+
+```text
+office: no commit in the main directory of the artifacts.
+The main directory mirrors the hub. Work in a worktree instead:
+  git worktree add ../my-change -b my-change
+Commit there, then push the branch.
+```
+
+**Plain Git and the certificate of the hub.** `office sync init` writes the certificate that your
+hub profile trusts into the configuration of the clone (`http.sslCAInfo`). The variable
+`GIT_SSL_CAINFO` beats that setting. If it is set in your environment, plain `git push` and
+`git fetch` use the file of the variable and may say that the certificate is not trusted. The
+`office` commands ignore the variable for their own Git calls and print a warning when it is
+set and names another file. To fix plain Git, either:
+
+- unset the variable for this shell: `unset GIT_SSL_CAINFO`, or
+- point it at a bundle that holds the certificate of the hub as well as the authorities that you
+  need, for example `cat ca-bundle.crt hub-ca.pem > ~/my-bundle.pem`, then
+  `export GIT_SSL_CAINFO=~/my-bundle.pem`.
+
+Do not turn off the check of certificates (`GIT_SSL_NO_VERIFY`, `http.sslVerify=false`).
+
+**When the hub refuses a push.** The hub checks every push before it accepts it. A refused push
+changes nothing. The reasons are shown as `remote:` lines. Fix the cause and push again.
+
+| Reason | Message (shortened) | What to do |
+|---|---|---|
+| Wrong author | `commit c0028ab has the author Mallory <m@example.org>; every commit must have the author Ada Lovelace <ada@office.invalid>` | Set `user.name` and `user.email` as the message says, and amend the commits. A clone from `office sync init` has them right already. |
+| Wrong file type | `notes.txt: only Markdown (.md) and YAML (.yaml, .yml) files are allowed` | Push only `.md`, `.yaml` and `.yml` files. No hidden files or folders (names that start with a dot), no links. |
+| Invalid file | `documents/x.yaml: the schema "office.nothing.v1" is not known; the schemas are office.decision.v1, ...` | Fix the file. A file that names a schema must follow it. Any other `.md` or `.yaml` file only has to be valid text or YAML. |
+| Too large | `documents/big.md is 1500000 bytes; a file may have at most 1048576 bytes` | Make the file smaller, or push fewer files. See the limits below. |
+| Old base | `! [rejected] HEAD -> main (fetch first)` | Someone changed `main` meanwhile. Run `office sync`, then `git rebase main` in your worktree, then push again. |
+
+Only the end result of a push counts for the file checks. A file that is broken in one commit and
+fixed in the next one is fine.
+
+**What is not allowed.**
+
+- You can push to the branch `main` only. No other branch, no tag, no deletion, no forced push, no
+  rewrite of the history.
+- Only Markdown and YAML files change. You may remove them.
+- The session logs are not in the clone and cannot be pushed. They can hold sentences that are
+  off the record.
+- You need a key that is registered in the tenant. Another tenant looks as if it did not exist.
+
+**Limits.** The operator of the hub sets them (see
+[Start the hub with the binary](#start-the-hub-with-the-binary)). The defaults are 32 MiB for one
+push, 1 MiB for one file and 500 files changed in one push. Ask your operator if you need more.
 
 ### Record decisions, notes and tasks
 

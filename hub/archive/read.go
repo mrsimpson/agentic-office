@@ -3,7 +3,6 @@ package archive
 import (
 	"context"
 	"path"
-	"strings"
 
 	"connectrpc.com/connect/v2"
 
@@ -12,10 +11,6 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/archive/storage"
 	"github.com/mrsimpson/agentic-office/hub/identity/tokencheck"
 )
-
-// sessionLogs is the directory of the session logs. They hold the original of sentences that
-// are off the record, so nothing under it can be read through the read interface.
-const sessionLogs = "sessions"
 
 // ReadService implements the read interface of the archive (if-archive-read): ArchiveReadService
 // for clients and Load and List for other building blocks of the hub, for example the stage.
@@ -73,9 +68,6 @@ func (s *ReadService) List(ctx context.Context, req *archivev1.ListFilesRequest)
 	if err := storage.CheckPath(dir); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err.Error())
 	}
-	if underSessionLogs(dir) {
-		return nil, connect.NewError(connect.CodeInvalidArgument, "the session logs cannot be read")
-	}
 	files, err := s.arch.Read(ctx, dir)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, "the archive could not be read")
@@ -106,24 +98,14 @@ func checkReadable(p string) error {
 	if err := storage.CheckPath(p); err != nil {
 		return connect.NewError(connect.CodeInvalidArgument, err.Error())
 	}
-	if underSessionLogs(p) {
-		return connect.NewError(connect.CodeInvalidArgument, "the session logs cannot be read")
-	}
 	if !isArtifactFile(p) {
 		return connect.NewError(connect.CodeInvalidArgument, "only Markdown and YAML files can be read")
 	}
 	return nil
 }
 
-func underSessionLogs(p string) bool {
-	return p == sessionLogs || strings.HasPrefix(p, sessionLogs+"/")
-}
-
-// isArtifactFile reports whether p is a Markdown or YAML file outside the session logs.
+// isArtifactFile reports whether p is a Markdown or YAML file.
 func isArtifactFile(p string) bool {
-	if underSessionLogs(p) {
-		return false
-	}
 	switch path.Ext(p) {
 	case ".md", ".yaml", ".yml":
 		return true
