@@ -32,6 +32,7 @@ const (
 	groupEars     = "Speech and vocabulary"
 	groupStage    = "Stage, slides and documents"
 	groupRecords  = "Decisions, notes, minutes and tasks"
+	groupSync     = "Artifacts in a local directory"
 	groupImport   = "Import"
 	groupAgents   = "Agents"
 	groupInternal = "Other"
@@ -422,6 +423,35 @@ the author of the change. --session links the change to a session (artifact.chan
 		Details: `The default directory is documents. The archive read interface lists Markdown and YAML files
 only. The session logs lie in a repository that no participant can read.`,
 		Examples: []string{"office document list"}},
+
+	// Artifacts in a local directory.
+	{Name: "sync init", Group: groupSync, Summary: "set up a directory with the artifacts of the tenant",
+		Usage: "sync init [<directory>]",
+		Details: `Clones the artifact repository of the tenant from the hub into the directory (default: the
+current directory) with the Git command line tool, which must be in PATH. The hub address and
+the tenant come from the active hub profile or configuration ("office help config"); you must
+be a member of the tenant.
+
+The directory must be empty, new, or a clone of this tenant that you set up before. Any other
+directory is refused and nothing is changed. Run the command again on a set-up directory to
+repair its configuration; it does not touch your files.
+
+The command writes into the configuration of the clone only, never into your global Git
+configuration: you as the author (your display name and <participant ID>@office.invalid), a
+helper that gets a fresh access token from the hub each time Git needs one (so no token is
+stored and none is in the address), the certificate that the hub profile trusts, and a guard
+that refuses a commit in this main directory. The main directory mirrors the hub. To change
+files, work in a worktree: git worktree add ../my-change -b my-change.
+
+--json prints {"directory", "repository", "cloned", "author"}.`,
+		Examples: []string{"office sync init ~/artifacts", "office sync init --tenant acme"}},
+	{Name: "sync credential", Group: groupSync, Summary: "Git credential helper (Git runs it, not you)",
+		Usage: "sync credential get|store|erase",
+		Details: `The program that "office sync init" writes into the configuration of the clone as the Git
+credential helper. For "get", Git sends the host on its input and the command prints the user
+name and a fresh access token of your key, but only for the hub of this connection. "store" and
+"erase" do nothing. You do not need to run it yourself.`,
+		Examples: []string{"printf 'protocol=https\nhost=hub.example.org:8740\n\n' | office sync credential get --hub https://hub.example.org:8740 --tenant acme"}},
 
 	// Decisions, notes, minutes and tasks.
 	{Name: "decision record", Group: groupRecords, Summary: "record a decision",

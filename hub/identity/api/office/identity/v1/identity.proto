@@ -58,6 +58,8 @@ message ExchangeChallengeResponse {
   // participant_id is the identity the key belongs to. It is also the participant ID in every
   // session.
   string participant_id = 3;
+  // display_name is the name of the participant, for example as the author of a commit.
+  string display_name = 4;
 }
 
 message CreateAdminLinkRequest {

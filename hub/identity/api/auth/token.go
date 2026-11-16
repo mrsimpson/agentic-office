@@ -29,6 +29,7 @@ type TokenSource struct {
 	mu            sync.Mutex
 	token         string
 	participantID string
+	displayName   string
 	renewAt       time.Time
 }
 
@@ -60,7 +61,7 @@ func (ts *TokenSource) Token(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("exchange challenge: %w", err)
 	}
-	ts.token, ts.participantID = res.GetAccessToken(), res.GetParticipantId()
+	ts.token, ts.participantID, ts.displayName = res.GetAccessToken(), res.GetParticipantId(), res.GetDisplayName()
 	ts.renewAt = now.Add(res.GetExpiresAt().AsTime().Sub(now) * 4 / 5)
 	return ts.token, nil
 }
@@ -73,6 +74,17 @@ func (ts *TokenSource) ParticipantID(ctx context.Context) (string, error) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 	return ts.participantID, nil
+}
+
+// DisplayName returns the display name of the participant the key belongs to. It authenticates if
+// needed.
+func (ts *TokenSource) DisplayName(ctx context.Context) (string, error) {
+	if _, err := ts.Token(ctx); err != nil {
+		return "", err
+	}
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	return ts.displayName, nil
 }
 
 // Invalidate drops the current token, so the next call authenticates again. Bearer calls it when
