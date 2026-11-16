@@ -97,6 +97,13 @@ type Sync interface {
 	// refuses the participant for good (no member of the tenant).
 	Follow(ctx context.Context, dir string, opts FollowOptions) error
 
+	// MainDirectory finds the main directory of the set-up clone that dir belongs to: dir is the
+	// main directory, a directory inside it, or a linked worktree of it (also a directory inside
+	// the worktree). It returns the absolute path of the main directory, the one that Update and
+	// Follow take. It changes nothing. Errors: ErrNotSetUp (dir lies in no set-up clone, or is no
+	// Git repository), ErrNoGit.
+	MainDirectory(ctx context.Context, dir string) (string, error)
+
 	// Credential answers Git as a credential helper (the protocol of "git help credential"): op is
 	// the operation that Git passes, in holds the attributes that Git sends. For "get" it prints
 	// the user name and a fresh access token of the participant to out, if the attributes name the

@@ -67,6 +67,7 @@ func (s *Server) addTools(srv *sdk.Server) {
 			if err != nil {
 				return nil, err
 			}
+			s.followClone(c)
 			return map[string]any{"sessionId": j.SessionID, "participantId": j.ParticipantID, "logPath": j.Paths.Log,
 				"replicatorPid": pid, "event": coreapi.EventJSON(j.Result.GetEvent()), "duplicate": j.Result.GetDuplicate()}, nil
 		})

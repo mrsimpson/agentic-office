@@ -680,6 +680,19 @@ or through a push. If the connection breaks, it connects again and updates. Stop
 `--path` limits which changes start an update, for example `--path documents --path notes/plan.md`.
 An update still brings everything.
 
+**Follow while you are in a meeting.** You do not need `office sync follow` in a meeting. If you
+run `office meeting join` (or an agent calls the MCP tool `meeting_join`) in a set-up directory, or
+in a worktree of one, the clone is followed for as long as the meeting process runs: the
+replicator of `join`, or the MCP server. It updates once and then after each change. Nothing is
+printed on your terminal; the messages go to the log of the replicator
+(`<participant>.replicator.log` in the runtime directory) or to the log of the MCP server. In any
+other directory, `join` does nothing extra.
+
+A problem with the clone never stops the meeting. It is written once to that log, in plain words,
+for example `artifact sync: update of /home/ada/artifacts failed: ... the main directory has commits
+of its own`. Fix it as described above. If a `join` finds a replicator that runs already, it reuses it
+and does not start a second follow.
+
 **Work in a worktree.** Create a worktree and a branch next to the main directory, change files
 there, commit, and push to `main` of the hub:
 
