@@ -36,6 +36,10 @@ const (
 // number was already in the archive. Every attempt means that a push put a file there meanwhile.
 const maxCreateAttempts = 50
 
+// maxWriteAttempts is how often an update reads the file again after a conflict. Every attempt
+// means that a push changed the same file meanwhile.
+const maxWriteAttempts = 20
+
 // entry is a stored task with the command IDs that changed it, oldest first.
 type entry struct {
 	num      uint64
@@ -209,6 +213,17 @@ func (s *Service) loadAll(ctx context.Context, strict bool) error {
 	files, err := s.arch.Read(ctx, Dir)
 	if err != nil {
 		return fmt.Errorf("tasks: read %s: %w", Dir, err)
+	}
+	// The next number never goes below a number that ever lay in the directory, also not below
+	// the number of a file that a push removed.
+	names, err := s.arch.Names(ctx, Dir)
+	if err != nil {
+		return fmt.Errorf("tasks: list the names in %s: %w", Dir, err)
+	}
+	for _, p := range names {
+		if n, ok := numberOf(p); ok {
+			s.high = max(s.high, n)
+		}
 	}
 	present := map[uint64]bool{}
 	for _, f := range files {
@@ -531,46 +546,70 @@ func (s *Service) UpdateTask(ctx context.Context, req *taskv1.UpdateTaskRequest)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	e, n, err := s.find(req.GetRef())
-	if err != nil {
-		return nil, err
+	n, ok := check.LocalNumber(req.GetRef())
+	if !ok {
+		return nil, connect.NewError(connect.CodeNotFound, "no task "+req.GetRef())
 	}
-	if prev := s.byCmd[req.GetCommandId()]; prev != nil {
-		if prev != e || prev.commands[0] == req.GetCommandId() {
-			return nil, connect.NewError(connect.CodeAlreadyExists, "command_id was already used for another task or change")
+	// The file is written with the version that was read. If a push changed it meanwhile, the
+	// part reads it again, applies the request to the new state and tries again.
+	for attempt := 0; attempt < maxWriteAttempts; attempt++ {
+		files, err := s.arch.Read(ctx, check.FilePath(n))
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, "read the task from the archive: "+err.Error())
 		}
-		return &taskv1.UpdateTaskResponse{Task: e.task, Duplicate: true}, nil
-	}
-	t := proto.Clone(e.task).(*taskv1.Task)
-	var changed []string
-	set := func(name string, dst *string, v *string) {
-		if v != nil && *dst != *v {
-			*dst = *v
-			changed = append(changed, name)
+		if len(files) == 0 {
+			s.forget(n)
+			return nil, connect.NewError(connect.CodeNotFound, "no task "+req.GetRef())
 		}
+		if err := s.load(files[0]); err != nil {
+			return nil, connect.NewError(connect.CodeInternal, "the task file is not valid: "+err.Error())
+		}
+		e, _, err := s.find(req.GetRef())
+		if err != nil {
+			return nil, err
+		}
+		if prev := s.byCmd[req.GetCommandId()]; prev != nil {
+			if prev != e || prev.commands[0] == req.GetCommandId() {
+				return nil, connect.NewError(connect.CodeAlreadyExists, "command_id was already used for another task or change")
+			}
+			return &taskv1.UpdateTaskResponse{Task: e.task, Duplicate: true}, nil
+		}
+		t := proto.Clone(e.task).(*taskv1.Task)
+		var changed []string
+		set := func(name string, dst *string, v *string) {
+			if v != nil && *dst != *v {
+				*dst = *v
+				changed = append(changed, name)
+			}
+		}
+		set("title", &t.Title, req.Title)
+		set("description", &t.Description, req.Description)
+		set("assignee", &t.AssigneeParticipantId, req.AssigneeParticipantId)
+		set("session", &t.SessionId, req.SessionId)
+		if req.Status != nil && t.Status != req.GetStatus() {
+			t.Status = req.GetStatus()
+			changed = append(changed, "status")
+		}
+		if len(changed) == 0 {
+			// Nothing to store: the command ID is not kept, and a repeat is answered the same way.
+			return &taskv1.UpdateTaskResponse{Task: e.task}, nil
+		}
+		t.Revision++
+		t.UpdatedByParticipantId = req.GetParticipantId()
+		t.UpdateTime = timestamppb.Now()
+		next := &entry{task: t, commands: append(append([]string{}, e.commands...), req.GetCommandId())}
+		err = s.write(ctx, n, next, fmt.Sprintf("Task %s, revision %d: %s", t.GetRef(), t.GetRevision(),
+			strings.Join(changed, ", ")), files[0].Version)
+		if storage.IsConflict(err) {
+			continue // a push came first: read the file again
+		}
+		if err != nil {
+			return nil, err
+		}
+		// The entry keeps its identity, so byCmd stays valid for the older command IDs.
+		e.task, e.commands, e.version = next.task, next.commands, ""
+		s.byCmd[req.GetCommandId()] = e
+		return &taskv1.UpdateTaskResponse{Task: t}, nil
 	}
-	set("title", &t.Title, req.Title)
-	set("description", &t.Description, req.Description)
-	set("assignee", &t.AssigneeParticipantId, req.AssigneeParticipantId)
-	set("session", &t.SessionId, req.SessionId)
-	if req.Status != nil && t.Status != req.GetStatus() {
-		t.Status = req.GetStatus()
-		changed = append(changed, "status")
-	}
-	if len(changed) == 0 {
-		// Nothing to store: the command ID is not kept, and a repeat is answered the same way.
-		return &taskv1.UpdateTaskResponse{Task: e.task}, nil
-	}
-	t.Revision++
-	t.UpdatedByParticipantId = req.GetParticipantId()
-	t.UpdateTime = timestamppb.Now()
-	next := &entry{task: t, commands: append(append([]string{}, e.commands...), req.GetCommandId())}
-	if err := s.write(ctx, n, next, fmt.Sprintf("Task %s, revision %d: %s", t.GetRef(), t.GetRevision(),
-		strings.Join(changed, ", ")), ""); err != nil {
-		return nil, err
-	}
-	// The entry keeps its identity, so byCmd stays valid for the older command IDs.
-	e.task, e.commands, e.version = next.task, next.commands, ""
-	s.byCmd[req.GetCommandId()] = e
-	return &taskv1.UpdateTaskResponse{Task: t}, nil
+	return nil, connect.NewError(connect.CodeAborted, "the task was changed by pushes again and again; nothing was written, repeat the command")
 }
