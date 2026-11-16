@@ -682,7 +682,8 @@ path: hub/archive/api
 #### Archive storage
 
 The in-process interface of the archive: write a set of files as one commit, and list and read
-files as they are in the current commit. The archive keeps two git repositories for each tenant, one for its artifacts and one for its
+files as they are in the current commit, and list every name that ever lay in a directory, so that
+a part never gives a number again that a removed file had. The archive keeps two git repositories for each tenant, one for its artifacts and one for its
 session logs, and one for the hub itself, for the users, the tenants, the memberships and the system admins. Each
 repository has its own commit queue, so one tenant does not hold up another. A tenant repository is
 created with the tenant and stays when the tenant is removed. The artifact repository of a tenant
