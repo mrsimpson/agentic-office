@@ -45,6 +45,8 @@ type Repo struct {
 	logf func(string, ...any)
 
 	turn turn // one change at a time, records first
+
+	changes changeLog // the followers of main (if-artifact-changes)
 }
 
 // turn lets one change at a time into the repository. A change that is not Background goes
@@ -123,6 +125,11 @@ func Open(ctx context.Context, opts Options) (*Repo, error) {
 			return nil, fmt.Errorf("archive: %w", err)
 		}
 	}
+	head, err := r.head(ctx)
+	if err != nil {
+		return nil, err
+	}
+	r.changes.reset(head)
 	return r, nil
 }
 
@@ -274,6 +281,7 @@ func (r *Repo) Commit(ctx context.Context, c storage.Change) (string, error) {
 			old = now
 			continue
 		}
+		r.moved(old, id)
 		if err := r.push.Push(ctx, r.dir); err != nil {
 			r.logf("archive: push of %s failed, the next push takes it along: %v", id, err)
 		}

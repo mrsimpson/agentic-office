@@ -61,6 +61,7 @@ import (
 	adminweb "github.com/mrsimpson/agentic-office/hub/admin/web"
 	"github.com/mrsimpson/agentic-office/hub/archive"
 	"github.com/mrsimpson/agentic-office/hub/archive/api/archivev1connect"
+	"github.com/mrsimpson/agentic-office/hub/archive/changes/api/changesv1connect"
 	"github.com/mrsimpson/agentic-office/hub/documents/api/documentv1connect"
 	"github.com/mrsimpson/agentic-office/hub/health"
 	"github.com/mrsimpson/agentic-office/hub/identity"
@@ -322,6 +323,7 @@ func main() {
 	slidesv1connect.RegisterSlidesServiceHandler(cs, slidesMux{rts})
 	documentv1connect.RegisterDocumentServiceHandler(cs, documentMux{rts})
 	archivev1connect.RegisterArchiveReadServiceHandler(cs, archiveReadMux{rts})
+	changesv1connect.RegisterArchiveChangesServiceHandler(cs, archiveChangesMux{rts})
 	mux := http.NewServeMux()
 	connecthttp.Mount(mux, cs)
 	// The health check needs no token and reads no state, so a container probe can use it.

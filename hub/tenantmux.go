@@ -9,6 +9,8 @@ import (
 
 	archivev1 "github.com/mrsimpson/agentic-office/hub/archive/api"
 	"github.com/mrsimpson/agentic-office/hub/archive/api/archivev1connect"
+	changesv1 "github.com/mrsimpson/agentic-office/hub/archive/changes/api"
+	"github.com/mrsimpson/agentic-office/hub/archive/changes/api/changesv1connect"
 	documentv1 "github.com/mrsimpson/agentic-office/hub/documents/api"
 	"github.com/mrsimpson/agentic-office/hub/documents/api/documentv1connect"
 	decisionv1 "github.com/mrsimpson/agentic-office/hub/records/decision/api"
@@ -327,6 +329,18 @@ func (m archiveReadMux) ListFiles(ctx context.Context, req *archivev1.ListFilesR
 		return nil, err
 	}
 	return rt.archiveRead.ListFiles(ctx, req)
+}
+
+type archiveChangesMux struct{ *runtimes }
+
+var _ changesv1connect.ArchiveChangesServiceHandler = archiveChangesMux{}
+
+func (m archiveChangesMux) Follow(ctx context.Context, req *changesv1.FollowRequest, stream changesv1connect.ArchiveChangesServiceFollowServerStream) error {
+	rt, err := m.forCall(ctx)
+	if err != nil {
+		return err
+	}
+	return rt.archiveChanges.Follow(ctx, req, stream)
 }
 
 type streamMux struct{ *runtimes }

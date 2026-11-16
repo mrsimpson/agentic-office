@@ -13,6 +13,20 @@
 // its own commit queue, so a busy tenant does not hold up another tenant or the hub repository.
 // A tenant repository is created with the tenant and stays when the tenant is removed.
 //
+// It provides if-archive-read (ReadService, the Protobuf contract in package api), if-archive-repository
+// (Repos implements package repository: where Git finds the bare repository of a tenant, and the
+// notice that main moved) and if-artifact-changes (ChangesService, the contract in package
+// changes/api: the artifacts that changed on main).
+//
+// Reports of changes: every change of main of a repository gives one event to the followers of
+// the tenant, whether Commit made it or a push did and Git access reported it with MainMoved.
+// The repository remembers the last state of main that it told the followers. After a change, it
+// puts the move into a queue without waiting; one goroutine, which runs only while the queue is
+// not empty, compares the old and the new tree (git diff-tree) and sends the artifacts (Markdown
+// and YAML files outside the session logs) to each follower. Delivery to a follower never blocks:
+// a follower with a full buffer is dropped (see package changes). The state of main at start is
+// not reported.
+//
 // How it works:
 //
 //   - Open creates the directory and runs "git init --bare" if it is not a repository yet. The

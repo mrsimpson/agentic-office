@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/mrsimpson/agentic-office/hub/archive/repository"
 	"github.com/mrsimpson/agentic-office/hub/archive/storage"
 )
 
@@ -58,6 +59,44 @@ func (r *Repos) open(ctx context.Context, dir string) (*Repo, error) {
 	o := r.opts
 	o.Dir = dir
 	return Open(ctx, o)
+}
+
+var _ repository.Repositories = (*Repos)(nil)
+
+// Dir implements repository.Repositories.
+func (r *Repos) Dir(tenant string) (string, error) {
+	repo, err := r.tenant(tenant)
+	if err != nil {
+		return "", err
+	}
+	return repo.Dir(), nil
+}
+
+// MainMoved implements repository.Repositories.
+func (r *Repos) MainMoved(ctx context.Context, tenant string) error {
+	repo, err := r.tenant(tenant)
+	if err != nil {
+		return err
+	}
+	return repo.MainMoved(ctx)
+}
+
+// Changes returns the changes interface (if-artifact-changes) of a tenant.
+func (r *Repos) Changes(tenant string) (*ChangesService, error) {
+	repo, err := r.tenant(tenant)
+	if err != nil {
+		return nil, err
+	}
+	return NewChangesService(repo), nil
+}
+
+func (r *Repos) tenant(id string) (*Repo, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if repo := r.tenants[id]; repo != nil {
+		return repo, nil
+	}
+	return nil, repository.ErrNoTenant
 }
 
 // HubDir returns the directory of the hub repository.

@@ -11,7 +11,6 @@ import (
 	"connectrpc.com/connect/v2"
 
 	"github.com/mrsimpson/agentic-office/hub/archive"
-	"github.com/mrsimpson/agentic-office/hub/archive/storage"
 	"github.com/mrsimpson/agentic-office/hub/documents"
 	"github.com/mrsimpson/agentic-office/hub/identity/tokencheck"
 	"github.com/mrsimpson/agentic-office/hub/records"
@@ -32,14 +31,16 @@ type tenantRuntime struct {
 	// repository (dec-artifacts).
 	documents   *documents.Service
 	archiveRead *archive.ReadService
-	sessions    *session.Service
-	stop        context.CancelFunc
-	done        chan struct{}
+	// archiveChanges tells the followers of the tenant which artifacts changed (dec-artifact-sync).
+	archiveChanges *archive.ChangesService
+	sessions       *session.Service
+	stop           context.CancelFunc
+	done           chan struct{}
 }
 
 // runtimes holds the runtime of every tenant that has been used, and opens one on first use.
 type runtimes struct {
-	repos           storage.Archives
+	repos           *archive.Repos
 	signingKey      ed25519.PrivateKey
 	archiveInterval time.Duration
 	restoreWait     time.Duration
@@ -48,7 +49,7 @@ type runtimes struct {
 	m  map[string]*tenantRuntime
 }
 
-func newRuntimes(repos storage.Archives, key ed25519.PrivateKey, interval, restoreWait time.Duration) *runtimes {
+func newRuntimes(repos *archive.Repos, key ed25519.PrivateKey, interval, restoreWait time.Duration) *runtimes {
 	return &runtimes{repos: repos, signingKey: key, archiveInterval: interval, restoreWait: restoreWait,
 		m: map[string]*tenantRuntime{}}
 }
@@ -81,6 +82,9 @@ func (r *runtimes) get(ctx context.Context, tenant string) (*tenantRuntime, erro
 	rt.sessions = session.New(session.NewMemoryStore(), session.TokenCheck(), rt.records, r.signingKey)
 	rt.documents = documents.New(arch, rt.sessions)
 	rt.archiveRead = archive.NewReadService(arch)
+	if rt.archiveChanges, err = r.repos.Changes(tenant); err != nil {
+		return nil, err
+	}
 	if err := rt.sessions.UseArchive(ctx, session.ArchiveOptions{Archive: arch, Interval: r.archiveInterval,
 		RestoreWait: r.restoreWait, Logf: logf}); err != nil {
 		return nil, err
