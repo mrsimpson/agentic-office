@@ -408,12 +408,15 @@ func TestSyncInitHelp(t *testing.T) {
 	}
 }
 
-// A tenant without any artifact has no branch main yet. The error says so in plain words.
+// A new tenant has no artifact. The clone works and holds no document.
 func TestSyncInitEmptyTenant(t *testing.T) {
 	srv := startSyncHub(t)
 	u := syncMember(t, srv, "grace", "Grace Hopper")
-	_, errOut, code := u.office(u.work, "sync", "init", filepath.Join(u.work, "artifacts"))
-	if code == 0 || !strings.Contains(errOut, "no artifacts yet") {
-		t.Errorf("empty tenant: exit %d: %s", code, errOut)
+	dir := filepath.Join(u.work, "artifacts")
+	if out, errOut, code := u.office(u.work, "sync", "init", dir); code != 0 {
+		t.Fatalf("sync init: exit %d\nstdout: %s\nstderr: %s", code, out, errOut)
+	}
+	if files := strings.TrimSpace(contracttest.Git(t, dir, "ls-files")); files != "" {
+		t.Errorf("the clone of a new tenant holds files: %s", files)
 	}
 }

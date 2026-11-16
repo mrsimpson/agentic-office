@@ -411,6 +411,32 @@ func (r *Repo) Read(ctx context.Context, dir string) ([]storage.File, error) {
 	return files, nil
 }
 
+// firstCommit gives main its first commit if it has none: an empty commit that holds no file, by
+// office-hub. The artifact repository of a tenant starts with it, so main exists from the start.
+// The followers are not told: the state of main at start is not reported.
+func (r *Repo) firstCommit(ctx context.Context) error {
+	r.turn.Lock()
+	defer r.turn.Unlock()
+	old, err := r.head(ctx)
+	if err != nil || old != "" {
+		return err
+	}
+	tree, err := r.run(ctx, "mktree")
+	if err != nil {
+		return err
+	}
+	out, err := r.run(ctx, "commit-tree", strings.TrimSpace(tree), "-m", "Create the artifact repository")
+	if err != nil {
+		return err
+	}
+	id := strings.TrimSpace(out)
+	if _, err := r.run(ctx, "update-ref", "-m", "office-hub first commit", "refs/heads/main", id, ""); err != nil {
+		return err
+	}
+	r.changes.reset(id)
+	return nil
+}
+
 // head returns the ID of the commit that main points to, or "" in a repository without commits.
 func (r *Repo) head(ctx context.Context) (string, error) {
 	return r.rev(ctx, "refs/heads/main")

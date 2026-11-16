@@ -17,6 +17,11 @@
 // tenant and stay when the tenant is removed. At start, Repos opens both and creates the
 // session-log repository if a tenant has none yet.
 //
+// The artifact repository of a tenant starts with one first commit that holds no artifact: an
+// empty commit by office-hub, so the branch main exists from the start and a clone of a new tenant
+// works. The session-log repository and the hub repository have no such commit. CreateTenant
+// makes the first commit; Open does not, and a tenant repository without main is not supported.
+//
 // The session logs hold the original of sentences that are off the record (dec-off-the-record),
 // so they have a repository of their own: only the meeting session uses it (Archives.SessionLogs),
 // Git access never serves it, and no interface for participants reads it. if-archive-read,
