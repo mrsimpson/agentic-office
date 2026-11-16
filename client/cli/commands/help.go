@@ -420,8 +420,7 @@ the author of the change. --session links the change to a session (artifact.chan
 	{Name: "document list", Group: groupStage, Summary: "list the files of a directory of the archive",
 		Usage: "document list [<dir>]",
 		Details: `The default directory is documents. The archive read interface lists Markdown and YAML files
-only, and never anything under sessions/, because the session logs keep the original of
-sentences that are off the record.`,
+only. The session logs lie in a repository that no participant can read.`,
 		Examples: []string{"office document list"}},
 
 	// Decisions, notes, minutes and tasks.

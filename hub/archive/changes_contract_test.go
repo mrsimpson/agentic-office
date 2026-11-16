@@ -216,26 +216,23 @@ func TestSameEventForCommitAndPush(t *testing.T) {
 	next("CREATED a.yml "+ids["a.yml"], "CREATED m/n.md "+ids["m/n.md"], "CREATED z.md "+ids["z.md"])
 }
 
-// Only Markdown and YAML files are named, and never a file under the session logs or a hidden
-// path. A change without such a file gives no event.
+// Only Markdown and YAML files are named, and never a hidden path. A change without such a file gives no event.
 func TestChangesNameOnlyArtifacts(t *testing.T) {
 	f := newFixture(t)
 	fl := f.follow(t)
 	ids := f.push(t, map[string]string{
-		"sessions/s1/log.md": "off the record",
-		"sessions/s1/x.yaml": "a: 1\n",
-		"notes/a.txt":        "text",
-		"notes/b.html":       "<p>",
-		".github/c.md":       "hidden",
-		"notes/d.md":         "d",
+		"notes/a.txt":  "text",
+		"notes/b.html": "<p>",
+		".github/c.md": "hidden",
+		"notes/d.md":   "d",
 	})
 	f.moved(t)
 	equal(t, "event", fl.next(t), "CREATED notes/d.md "+ids["notes/d.md"])
 
 	// Changes that touch no artifact give no event: the next event is the next real change.
-	f.push(t, map[string]string{"notes/a.txt": "text 2", "sessions/s1/log.md": "more"})
+	f.push(t, map[string]string{"notes/a.txt": "text 2", ".github/f.md": "more"})
 	f.moved(t)
-	f.commit(t, storage.File{Path: "sessions/s2/log.yaml", Data: []byte("a: 1\n")})
+	f.commit(t, storage.File{Path: "notes/g.txt", Data: []byte("g")})
 	f.commit(t, storage.File{Path: "notes/e.md", Data: []byte("e")})
 	e := strings.TrimSpace(git(t, mustDir(t, f), "", "rev-parse", "main:notes/e.md"))
 	equal(t, "event after changes without an artifact", fl.next(t), "CREATED notes/e.md "+e)
