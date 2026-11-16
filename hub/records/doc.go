@@ -19,8 +19,11 @@
 //   - Storage (dec-yaml-git-storage): every record is one YAML file in the archive
 //     (if-archive-storage): decisions/NNNNNN.yaml, minutes/NNNNNN.yaml and notes/NNNNNN.yaml,
 //     where NNNNNN is the ID with at least six digits. The YAML has the field names of the
-//     contract (snake_case, enums by name, times in RFC 3339). A text with line breaks is
-//     written as a literal block. Every write is one commit, and a command returns only after
+//     contract (snake_case, enums by name, times in RFC 3339), after the field schema that names
+//     the schema of the type (office.decision.v1, office.minutes.v1, office.note.v1). A text with
+//     line breaks is written as a literal block. The check of the part (package check,
+//     if-records-check) decides what a valid file is. The part uses it for every file it writes
+//     and reads, and Git access uses it for a push, so every rule exists once. Every write is one commit, and a command returns only after
 //     its commit, so a record that a client got back is in the repository.
 //   - Open reads all records from the current commit of the archive and keeps them in memory, so
 //     records survive a restart of the hub. Reads use only the memory. A file that is not valid
