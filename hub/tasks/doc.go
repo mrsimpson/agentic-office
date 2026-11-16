@@ -31,14 +31,19 @@
 //     drops the watcher because the part was too slow, the part watches again and reads all its
 //     files. A file that bypasses the hook and is not valid still counts for the next number, so
 //     the part never takes its number.
-//   - Numbers: the next number is one above the highest number ever seen in this run, in a file or
-//     in memory. A number is never used twice while the hub runs, also after a push removed its
-//     file. The numbers can have gaps, because a push may bring any number. A part creates its file with "must not
+//   - Numbers: the next number is one above the highest number ever seen, in a file, in memory or
+//     in the names that ever lay in the directory in the history of main (Names of
+//     if-archive-storage; the part asks at start and when it reads all files again). A number is
+//     never used twice, also after a push removed its file and the hub restarted. The numbers can have gaps, because a push may bring any number. A part creates its file with "must not
 //     exist yet" (storage.NoFile). If a push put a file there first, the create fails inside the
 //     archive; the part reads that file, takes the next free number and tries again, so the
 //     caller sees no error.
-//     An update of a task rewrites its file without a check of the version: a pushed change of the
-//     same file that the part has not yet reloaded is replaced.
+//     An update reads the task file from the archive and writes the changed file with the version
+//     that it read as Base. If a push changed the file in between, the write fails inside the
+//     archive; the part reads the file again, applies the fields of the request to the new state
+//     and writes again, up to a fixed number of tries. The caller sees no error, and a field that
+//     the push changed and the request does not set stays as pushed. If every try fails, the
+//     update fails with Aborted and changes nothing.
 //     Close stops the part from following the archive.
 //   - Every call needs the caller from the identity token check (if-token-check).
 //     author_participant_id (create) and participant_id (update) must name the participant of
@@ -61,5 +66,6 @@
 //   - Error codes: a missing or bad field is InvalidArgument; a participant that is not the
 //     caller, or a stage link, is PermissionDenied; no valid token is Unauthenticated; a reused
 //     command_id is AlreadyExists; an unknown ref is NotFound; a failed write to the archive is
-//     Internal, and the client can repeat the command.
+//     Internal, and the client can repeat the command; an update that a stream of pushes kept
+//     from succeeding is Aborted, and the client can repeat it.
 package tasks
