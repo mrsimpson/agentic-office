@@ -44,6 +44,7 @@ func (s *syncer) Update(ctx context.Context, dir string) (control.UpdateResult, 
 	if err != nil {
 		return control.UpdateResult{}, err
 	}
+	s.warnTLS(git, abs)
 	return s.update(ctx, git, abs)
 }
 

@@ -140,7 +140,27 @@ func (s *syncer) Init(ctx context.Context, dir string) (control.Result, error) {
 	if err := s.configure(ctx, git, abs, conf); err != nil {
 		return res, err
 	}
+	s.warnTLS(git, abs)
 	return res, nil
+}
+
+// warnTLS warns when GIT_SSL_CAINFO is set and names another file than the certificate that Init
+// wrote into the clone: plain Git would use the variable and not the certificate of the hub. The
+// commands of this program strip the variable for their own Git calls.
+func (s *syncer) warnTLS(git, dir string) {
+	env := os.Getenv("GIT_SSL_CAINFO")
+	if env == "" {
+		return
+	}
+	out, _ := run(context.Background(), git, "", "config", "--file", filepath.Join(dir, ".git", "config"), "--get", "http.sslCAInfo")
+	want := strings.TrimSpace(out)
+	if want == "" || filepath.Clean(want) == filepath.Clean(env) {
+		return
+	}
+	s.logf("warning: your environment sets GIT_SSL_CAINFO=%s. Plain Git (git fetch, git push) uses that file and not the "+
+		"certificate of the hub (%s) that is set up in this clone, and may say that the certificate is not trusted. "+
+		"Unset the variable, or point it at a bundle that also holds the certificate of the hub. "+
+		"This command is not affected.", env, want)
 }
 
 // inspect checks the directory before anything is written. It returns true for a clone of this
