@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"path"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -17,6 +18,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/mrsimpson/agentic-office/hub/archive/storage"
+	"github.com/mrsimpson/agentic-office/hub/archive/watch"
 	"github.com/mrsimpson/agentic-office/hub/records/check"
 )
 
@@ -28,8 +30,13 @@ type record interface {
 	GetSessionId() string
 }
 
+// maxCreateAttempts is how often a create takes the next ID again because a file of that ID was
+// already in the archive. Every attempt means that a push put a file there in the meantime.
+const maxCreateAttempts = 50
+
 // collection is the list of records of one type. It keeps all records in memory and writes every
-// new record as one YAML file and one commit to the archive.
+// new record as one YAML file and one commit to the archive. It reloads the files that a push
+// changed (see reloadPaths).
 type collection[T record] struct {
 	kind   string // for messages, for example "decision"
 	dir    string // directory in the archive, for example "decisions"
@@ -37,45 +44,164 @@ type collection[T record] struct {
 	arch   storage.Archive
 	newT   func() T
 	setID  func(T, uint32)
+	logf   func(string, ...any)
 
-	mu    sync.Mutex // one write at a time; guards all and byCmd
-	all   []T        // ordered by ID
-	byCmd map[string]T
+	mu       sync.Mutex        // one write at a time; guards everything below
+	files    map[string]T      // the valid records by path
+	versions map[string]string // the version of the file that each record was read from
+	cmds     map[string]string // command_id to the path of its record
+	bad      map[string]string // path to the version of a file that was ignored and logged
+	high     uint32            // the highest number of any file ever seen, valid or not
+	all      []T               // the records ordered by ID; stale while dirty
+	dirty    bool
 }
 
-// openCollection reads the records of dir from the current commit of the archive.
-func openCollection[T record](ctx context.Context, arch storage.Archive, kind, dir, schema string, newT func() T, setID func(T, uint32)) (*collection[T], error) {
-	c := &collection[T]{kind: kind, dir: dir, schema: schema, arch: arch, newT: newT, setID: setID, byCmd: map[string]T{}}
-	files, err := arch.Read(ctx, dir)
-	if err != nil {
-		return nil, fmt.Errorf("records: read %s: %w", dir, err)
+func newCollection[T record](arch storage.Archive, kind, dir, schema string, newT func() T, setID func(T, uint32), logf func(string, ...any)) *collection[T] {
+	return &collection[T]{kind: kind, dir: dir, schema: schema, arch: arch, newT: newT, setID: setID, logf: logf,
+		files: map[string]T{}, versions: map[string]string{}, cmds: map[string]string{}, bad: map[string]string{}}
+}
+
+// numberOf returns the number in the name of a record file such as "decisions/000042.yaml".
+func numberOf(p string) (uint32, bool) {
+	n, err := strconv.ParseUint(strings.TrimSuffix(path.Base(p), ".yaml"), 10, 32)
+	return uint32(n), err == nil
+}
+
+// load reads one file into the collection. It returns an error and changes nothing if the file is
+// not valid. The caller holds c.mu. A file that is not valid still counts for the next ID, so
+// the part never takes its number.
+func (c *collection[T]) load(f storage.File) error {
+	if path.Ext(f.Path) != ".yaml" {
+		return nil
 	}
-	byID := map[uint32]string{}
+	if n, ok := numberOf(f.Path); ok && n > c.high {
+		c.high = n
+	}
+	if v, ok := c.versions[f.Path]; ok && v == f.Version {
+		return nil
+	}
+	// The check of the part: the same one that decides about a push.
+	if reasons := check.Validate(c.schema, f.Path, f.Data); len(reasons) > 0 {
+		return fmt.Errorf("%s: %s", f.Path, strings.Join(reasons, "; "))
+	}
+	r := c.newT()
+	if err := unmarshalYAML(f.Data, r); err != nil {
+		return fmt.Errorf("%s: %w", f.Path, err)
+	}
+	if p, dup := c.cmds[r.GetCommandId()]; dup && p != f.Path {
+		return fmt.Errorf("%s: command_id of %s %s", f.Path, c.kind, p)
+	}
+	c.forget(f.Path)
+	c.files[f.Path] = r
+	c.versions[f.Path] = f.Version
+	c.cmds[r.GetCommandId()] = f.Path
+	delete(c.bad, f.Path)
+	c.dirty = true
+	return nil
+}
+
+// loadLenient is load for a file that a push brought: a file that is not valid is logged once
+// for its version and ignored. The record that the path had before stays.
+func (c *collection[T]) loadLenient(f storage.File) {
+	if err := c.load(f); err != nil && c.bad[f.Path] != f.Version {
+		c.bad[f.Path] = f.Version
+		c.logf("records: ignore the pushed file %v", err)
+	}
+}
+
+// forget removes the record of a path. The caller holds c.mu.
+func (c *collection[T]) forget(p string) {
+	if r, ok := c.files[p]; ok {
+		if c.cmds[r.GetCommandId()] == p {
+			delete(c.cmds, r.GetCommandId())
+		}
+		delete(c.files, p)
+		c.dirty = true
+	}
+	delete(c.versions, p)
+	delete(c.bad, p)
+}
+
+// loadAll reads every file of the directory. With strict, the first file that is not valid fails
+// it (the start of the hub). Otherwise such a file is logged and ignored, and a record whose file
+// is gone is removed.
+func (c *collection[T]) loadAll(ctx context.Context, strict bool) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	files, err := c.arch.Read(ctx, c.dir)
+	if err != nil {
+		return fmt.Errorf("records: read %s: %w", c.dir, err)
+	}
+	present := map[string]bool{}
 	for _, f := range files {
-		if path.Ext(f.Path) != ".yaml" {
+		present[f.Path] = true
+		if strict {
+			if err := c.load(f); err != nil {
+				return fmt.Errorf("records: %w", err)
+			}
+		} else {
+			c.loadLenient(f)
+		}
+	}
+	for p := range c.files {
+		if !present[p] {
+			c.forget(p)
+		}
+	}
+	return nil
+}
+
+// reloadPaths reads the files at the paths again from the current commit: a file that is there is
+// loaded, a file that is gone is removed. The caller holds c.mu.
+func (c *collection[T]) reloadPaths(ctx context.Context, paths []string) error {
+	for _, p := range paths {
+		if path.Ext(p) != ".yaml" {
 			continue
 		}
-		// The check of the part: the same one that decides about a push.
-		if reasons := check.Validate(schema, f.Path, f.Data); len(reasons) > 0 {
-			return nil, fmt.Errorf("records: %s: %s", f.Path, strings.Join(reasons, "; "))
+		files, err := c.arch.Read(ctx, p)
+		if err != nil {
+			return fmt.Errorf("records: read %s: %w", p, err)
 		}
-		r := newT()
-		if err := unmarshalYAML(f.Data, r); err != nil {
-			return nil, fmt.Errorf("records: %s: %w", f.Path, err)
+		if len(files) == 0 {
+			c.forget(p)
+			continue
 		}
-		if prev, dup := byID[r.GetId()]; dup {
-			return nil, fmt.Errorf("records: %s and %s have the same id %d", prev, f.Path, r.GetId())
+		for _, f := range files {
+			c.loadLenient(f)
 		}
-		if prev, dup := c.byCmd[r.GetCommandId()]; dup {
-			return nil, fmt.Errorf("records: %s: command_id of %s %d", f.Path, kind, prev.GetId())
-		}
-		byID[r.GetId()] = f.Path
-		c.all = append(c.all, r)
-		c.byCmd[r.GetCommandId()] = r
 	}
-	// The paths sort by ID only up to six digits, so sort by ID.
-	slices.SortFunc(c.all, func(a, b T) int { return cmp.Compare(a.GetId(), b.GetId()) })
-	return c, nil
+	return nil
+}
+
+// reload is reloadPaths for the changes of a push or a commit under the directory of the
+// collection.
+func (c *collection[T]) reload(ctx context.Context, changes []watch.Change) error {
+	var paths []string
+	for _, ch := range changes {
+		if strings.HasPrefix(ch.Path, c.dir+"/") {
+			paths = append(paths, ch.Path)
+		}
+	}
+	if len(paths) == 0 {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.reloadPaths(ctx, paths)
+}
+
+// sorted returns the records ordered by ID. The caller holds c.mu.
+func (c *collection[T]) sorted() []T {
+	if c.dirty {
+		c.all = c.all[:0]
+		for _, r := range c.files {
+			c.all = append(c.all, r)
+		}
+		// The paths sort by ID only up to six digits, so sort by ID.
+		slices.SortFunc(c.all, func(a, b T) int { return cmp.Compare(a.GetId(), b.GetId()) })
+		c.dirty = false
+	}
+	return c.all
 }
 
 // path returns the file of the record with this ID.
@@ -84,41 +210,56 @@ func (c *collection[T]) path(id uint32) string { return check.FilePath(c.dir, id
 // add stores r as the next record, or returns the stored record of the same command and true.
 // same reports whether the stored record has the content of r. The commit message is title, the
 // ID and the first line of text.
+//
+// The file is created with "must not exist yet". If a push put a file with this ID there first,
+// add reads the file, takes the next free ID and tries again: the caller sees no error.
 func (c *collection[T]) add(ctx context.Context, r T, same func(stored, r T) bool, title, text string) (T, bool, error) {
 	var zero T
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if prev, ok := c.byCmd[r.GetCommandId()]; ok {
-		if !same(prev, r) {
-			return zero, false, connect.NewError(connect.CodeAlreadyExists,
-				"command_id was already used for another "+c.kind)
+	for attempt := 0; attempt < maxCreateAttempts; attempt++ {
+		if p, ok := c.cmds[r.GetCommandId()]; ok {
+			prev := c.files[p]
+			if !same(prev, r) {
+				return zero, false, connect.NewError(connect.CodeAlreadyExists,
+					"command_id was already used for another "+c.kind)
+			}
+			return prev, true, nil
 		}
-		return prev, true, nil
+		id := c.high + 1
+		c.setID(r, id)
+		data, err := marshalYAML(c.schema, r)
+		if err != nil {
+			return zero, false, connect.NewError(connect.CodeInternal, "encode the "+c.kind+": "+err.Error())
+		}
+		if reasons := check.Validate(c.schema, c.path(id), data); len(reasons) > 0 {
+			return zero, false, connect.NewError(connect.CodeInternal, "the "+c.kind+" is not valid: "+strings.Join(reasons, "; "))
+		}
+		// A cancelled commit could leave the repository locked, so the commit is not cancelled with
+		// the call.
+		_, err = c.arch.Commit(context.WithoutCancel(ctx), storage.Change{
+			Message: fmt.Sprintf("%s %d: %s", title, id, summary(text)),
+			Files:   []storage.File{{Path: c.path(id), Data: data, Base: storage.NoFile}},
+		})
+		if storage.IsConflict(err) {
+			// A push came first. Read what is there; its number is taken from now on.
+			if err := c.reloadPaths(context.WithoutCancel(ctx), []string{c.path(id)}); err != nil {
+				return zero, false, connect.NewError(connect.CodeInternal, err.Error())
+			}
+			c.high = max(c.high, id)
+			continue
+		}
+		if err != nil {
+			return zero, false, connect.NewError(connect.CodeInternal, "store the "+c.kind+" in the archive: "+err.Error())
+		}
+		c.high = id
+		c.forget(c.path(id))
+		c.files[c.path(id)] = r
+		c.cmds[r.GetCommandId()] = c.path(id)
+		c.dirty = true
+		return r, false, nil
 	}
-	var id uint32 = 1
-	if n := len(c.all); n > 0 {
-		id = c.all[n-1].GetId() + 1
-	}
-	c.setID(r, id)
-	data, err := marshalYAML(c.schema, r)
-	if err != nil {
-		return zero, false, connect.NewError(connect.CodeInternal, "encode the "+c.kind+": "+err.Error())
-	}
-	if reasons := check.Validate(c.schema, c.path(id), data); len(reasons) > 0 {
-		return zero, false, connect.NewError(connect.CodeInternal, "the "+c.kind+" is not valid: "+strings.Join(reasons, "; "))
-	}
-	// A cancelled commit could leave the repository locked, so the commit is not cancelled with
-	// the call.
-	_, err = c.arch.Commit(context.WithoutCancel(ctx), storage.Change{
-		Message: fmt.Sprintf("%s %d: %s", title, id, summary(text)),
-		Files:   []storage.File{{Path: c.path(id), Data: data}},
-	})
-	if err != nil {
-		return zero, false, connect.NewError(connect.CodeInternal, "store the "+c.kind+" in the archive: "+err.Error())
-	}
-	c.all = append(c.all, r)
-	c.byCmd[r.GetCommandId()] = r
-	return r, false, nil
+	return zero, false, connect.NewError(connect.CodeInternal, "store the "+c.kind+" in the archive: too many files were pushed meanwhile; repeat the command")
 }
 
 // summary returns the first line of a text, short enough for a commit message.
@@ -140,7 +281,7 @@ func (c *collection[T]) list(after uint32, sessionID string, limit uint32) []T {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	var out []T
-	for _, r := range c.all {
+	for _, r := range c.sorted() {
 		if len(out) >= n {
 			break
 		}
@@ -155,16 +296,17 @@ func (c *collection[T]) list(after uint32, sessionID string, limit uint32) []T {
 func (c *collection[T]) count() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return len(c.all)
+	return len(c.files)
 }
 
 // latest returns the newest record of a session, and false if there is none.
 func (c *collection[T]) latest(sessionID string) (T, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for i := len(c.all) - 1; i >= 0; i-- {
-		if c.all[i].GetSessionId() == sessionID {
-			return c.all[i], true
+	all := c.sorted()
+	for i := len(all) - 1; i >= 0; i-- {
+		if all[i].GetSessionId() == sessionID {
+			return all[i], true
 		}
 	}
 	var zero T
