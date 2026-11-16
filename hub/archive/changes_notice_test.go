@@ -1,13 +1,14 @@
 package archive_test
 
-// Contract tests of the two in-process and stream interfaces of the archive that report changes of
-// main: if-archive-repository (the notice "main moved") and if-artifact-changes. They need the
-// notice, which is an in-process call that a test in another process cannot make, so they live
-// here and use only the interfaces: repository.Repositories, storage.Archive, and the Connect
-// client of the changes service. A change that is not the archive's own is made with the real git
-// command line tool. The tests of the same service through a real hub are in
-// tests/contract/archive_changes_test.go. The tests wait on channels with generous deadlines and
-// never check how long something takes.
+// Contract tests of the in-process interface if-archive-repository (the notice "main moved") and
+// of the changes stream (if-artifact-changes) for the cases that a real hub cannot show from
+// outside. A real "git push" sends the notice right after Git accepted the push, so a test in
+// tests/contract cannot make the late notice, the repeated notice, a notice for an unknown
+// tenant or a stream that blocks at once. Everything else about the changes of the archive is
+// tested through the real hub in tests/contract (archive_changes_test.go,
+// archive_changes_push_test.go). These tests use only the interfaces: repository.Repositories,
+// storage.Archive, the Connect client of the changes service and the real git tool. They wait
+// on channels with generous deadlines and never check how long something takes.
 
 import (
 	"context"
@@ -184,81 +185,6 @@ func equal(t *testing.T, what string, got []string, want ...string) {
 	}
 }
 
-// A commit of the archive and a change by git with the notice give the same kind of event:
-// created, changed and removed artifacts with the new version, the same for every follower.
-func TestSameEventForCommitAndPush(t *testing.T) {
-	f := newFixture(t)
-	a, b := f.follow(t), f.follow(t)
-	next := func(want ...string) {
-		t.Helper()
-		equal(t, "follower 1", a.next(t), want...)
-		equal(t, "follower 2", b.next(t), want...)
-	}
-
-	f.commit(t, storage.File{Path: "notes/one.md", Data: []byte("one")})
-	one := strings.TrimSpace(git(t, mustDir(t, f), "", "rev-parse", "main:notes/one.md"))
-	next("CREATED notes/one.md " + one)
-
-	ids := f.push(t, map[string]string{"notes/two.yaml": "two: 2\n"})
-	f.moved(t)
-	next("CREATED notes/two.yaml " + ids["notes/two.yaml"])
-
-	// Changed by the archive and by git.
-	f.commit(t, storage.File{Path: "notes/one.md", Data: []byte("one, changed")})
-	one = strings.TrimSpace(git(t, mustDir(t, f), "", "rev-parse", "main:notes/one.md"))
-	next("CHANGED notes/one.md " + one)
-	ids = f.push(t, map[string]string{"notes/two.yaml": "two: 22\n"})
-	f.moved(t)
-	next("CHANGED notes/two.yaml " + ids["notes/two.yaml"])
-
-	// Removed by git, and several files in one change, ordered by path.
-	f.push(t, map[string]string{"notes/one.md": ""})
-	f.moved(t)
-	next("REMOVED notes/one.md ")
-	ids = f.push(t, map[string]string{"z.md": "z", "a.yml": "a: 1\n", "m/n.md": "n"})
-	f.moved(t)
-	next("CREATED a.yml "+ids["a.yml"], "CREATED m/n.md "+ids["m/n.md"], "CREATED z.md "+ids["z.md"])
-}
-
-// Only Markdown and YAML files are named, and never a hidden path. A change without such a file gives no event.
-func TestChangesNameOnlyArtifacts(t *testing.T) {
-	f := newFixture(t)
-	fl := f.follow(t)
-	ids := f.push(t, map[string]string{
-		"notes/a.txt":  "text",
-		"notes/b.html": "<p>",
-		".github/c.md": "hidden",
-		"notes/d.md":   "d",
-	})
-	f.moved(t)
-	equal(t, "event", fl.next(t), "CREATED notes/d.md "+ids["notes/d.md"])
-
-	// Changes that touch no artifact give no event: the next event is the next real change.
-	f.push(t, map[string]string{"notes/a.txt": "text 2", ".github/f.md": "more"})
-	f.moved(t)
-	f.commit(t, storage.File{Path: "notes/g.txt", Data: []byte("g")})
-	f.commit(t, storage.File{Path: "notes/e.md", Data: []byte("e")})
-	e := strings.TrimSpace(git(t, mustDir(t, f), "", "rev-parse", "main:notes/e.md"))
-	equal(t, "event after changes without an artifact", fl.next(t), "CREATED notes/e.md "+e)
-}
-
-// A follower with prefixes gets only the artifacts below them; an event with none of them is not
-// sent to it.
-func TestChangesPathPrefix(t *testing.T) {
-	f := newFixture(t)
-	all, notes := f.follow(t), f.follow(t, "notes", "plan.md")
-	ids := f.push(t, map[string]string{"notes-old/x.md": "x", "notes/y.md": "y", "plan.md": "p", "other/z.md": "z"})
-	f.moved(t)
-	equal(t, "all", all.next(t), "CREATED notes-old/x.md "+ids["notes-old/x.md"], "CREATED notes/y.md "+ids["notes/y.md"],
-		"CREATED other/z.md "+ids["other/z.md"], "CREATED plan.md "+ids["plan.md"])
-	equal(t, "prefixes", notes.next(t), "CREATED notes/y.md "+ids["notes/y.md"], "CREATED plan.md "+ids["plan.md"])
-	f.commit(t, storage.File{Path: "other/w.md", Data: []byte("w")})
-	f.commit(t, storage.File{Path: "notes/v.md", Data: []byte("v")})
-	if got := notes.next(t); len(got) != 1 || !strings.Contains(got[0], "notes/v.md") {
-		t.Errorf("prefixes: %q, want only notes/v.md", got)
-	}
-}
-
 // A change by git whose notice has not come yet is not lost: it is reported before the next
 // change, and a notice for a state that is known gives no second event.
 func TestChangesNoticeIsNotNeededForOrderAndNotRepeated(t *testing.T) {
@@ -323,30 +249,10 @@ func TestSlowFollowerIsDroppedAndNeverBlocks(t *testing.T) {
 	}
 }
 
-// A follower that has gone is removed and does not disturb a commit.
-func TestGoneFollowerDoesNotDisturb(t *testing.T) {
+// A tenant without a repository is refused. A real hub never asks for one, because Git access
+// checks the tenant first, so only a call in the same process can reach this case.
+func TestRepositoriesUnknownTenant(t *testing.T) {
 	f := newFixture(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	st, err := f.client.Follow(ctx, &changesv1.FollowRequest{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := st.Receive(); err != nil {
-		t.Fatal(err)
-	}
-	cancel()
-	other := f.follow(t)
-	f.commit(t, storage.File{Path: "a.md", Data: []byte("a")})
-	other.next(t)
-}
-
-// Git access asks for the directory of a tenant, and a tenant without a repository is refused.
-func TestRepositoryDirAndUnknownTenant(t *testing.T) {
-	f := newFixture(t)
-	dir := mustDir(t, f)
-	if out := strings.TrimSpace(git(t, dir, "", "rev-parse", "--is-bare-repository")); out != "true" {
-		t.Errorf("the repository is not bare: %q", out)
-	}
 	if _, err := f.repos.Dir("globex"); err != repository.ErrNoTenant {
 		t.Errorf("Dir of an unknown tenant: %v", err)
 	}
