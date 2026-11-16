@@ -191,6 +191,51 @@ mitigation: Every push passes the rules of Git access: author, ref, file types a
 :::
 ```
 
+## A large push holds up the hub
+
+A push can carry a large upload. Git reads it into the repository before the rules of Git access
+run, so a participant, or a faulty tool, can use up disk space or slow the hub down.
+
+```arc42
+:::risk
+id: risk-push-size
+title: A large push holds up the hub
+severity: medium
+mitigation: Only participants of the tenant can push, and the access token lives one hour; a size limit for a push is still to be set (dec-artifact-sync)
+:::
+```
+
+## The author of a pushed commit has no signature
+
+The hub checks the author of every pushed commit against the access token. The commit itself carries
+no signature. A copy of the repository outside the hub cannot prove who wrote a commit. Signed
+commits with the key of the participant would close this. A login over SSH was left out.
+
+```arc42
+:::risk
+id: risk-unsigned-commits
+title: The author of a pushed commit has no signature
+severity: low
+mitigation: The hub accepts a push only for the participant that the token names, and the token is bound to the key; signed commits are a later option (dec-artifact-sync)
+:::
+```
+
+## A push makes the memory of a part stale
+
+The records, tasks and slides parts read their files from the archive when the hub starts and
+answer reads from memory. A file that a participant pushes is not in this memory until the hub
+restarts. A part that allocates IDs in memory may also choose an ID that a pushed file already
+uses. The maintainer accepted this risk on 2026-11-16.
+
+```arc42
+:::risk
+id: risk-stale-memory
+title: A push makes the memory of a part stale
+severity: medium
+mitigation: Accepted for now; the change event of the archive can later make the parts reload or refuse a conflicting file (dec-artifact-sync)
+:::
+```
+
 ## Memory grows with all sessions of all tenants
 
 The session log stays in memory after it is archived, and the restore loads every session at start.

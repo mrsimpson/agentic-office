@@ -1081,7 +1081,8 @@ branches, and the participant pushes with plain Git. The office CLI sets up, upd
 the clone and passes no other Git command on. The hub accepts a push only when it moves main
 forward without rewriting history, when the author of every new commit is the participant of the
 token, when only artifact files change and none of them lies under the session logs, and when each
-file with a schema is valid against the schema that it names. The schema belongs to its type: the part of the hub that owns a type owns its schemas and
+file with a schema is valid against the schema that it names; a file without a schema only has to be valid Markdown
+or YAML. The schema belongs to its type: the part of the hub that owns a type owns its schemas and
 checks its files. A small part of the hub knows which type owns which schema and hands a check
 to it, and Git access knows no schema. Git refuses a push on an old base,
 which is the base version of the interfaces. The archive keeps the tenant repository without a work
@@ -1098,9 +1099,7 @@ login over SSH (a second port and a second way to give access); a sync in both d
 client (the participant solves conflicts anyway, and it would be a second writer); a lock around
 every push (it holds up the records for as long as an upload takes); branches and proposals on the
 hub (`dec-artifacts`); a part that owns all schemas (a schema belongs to its type); JSON as an
-artifact type (not now). OPEN: whether a YAML file without a
-schema is accepted; signed commits with the key of the participant; a size limit for a push; which
-parts of the hub keep an index that a push makes stale.
+artifact type (not now).
 
 ```arc42
 :::decision
@@ -1108,7 +1107,7 @@ id: dec-artifact-sync
 title: Artifacts reach the participant's computer through Git
 status: proposed
 date: 2026-11-16
-addresses: qg-usability, qg-confidentiality, risk-push-bypass
+addresses: qg-usability, qg-confidentiality, risk-push-bypass, risk-push-size, risk-unsigned-commits, risk-stale-memory
 :::
 ```
 
