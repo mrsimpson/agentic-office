@@ -109,7 +109,7 @@ id: dn-office-hub
 title: Office hub
 type: server
 parent: env-mvp
-hosts: bb-session-service, bb-records, bb-tasks, bb-slides, bb-documents, bb-stage, bb-admin, bb-identity, bb-tenants, bb-archive, bb-git-access
+hosts: bb-session-service, bb-records, bb-tasks, bb-slides, bb-documents, bb-stage, bb-admin, bb-identity, bb-tenants, bb-archive, bb-git-access, bb-artifacts
 :::
 ```
 

@@ -67,7 +67,7 @@ id: bb-office-hub-whitebox
 view: building-block
 notation: mermaid
 roots: bb-office-hub
-aliases: bb_office_hub=bb-office-hub, bb_admin=bb-admin, bb_archive=bb-archive, bb_documents=bb-documents, bb_git_access=bb-git-access, bb_identity=bb-identity, bb_records=bb-records, bb_session_service=bb-session-service, bb_slides=bb-slides, bb_stage=bb-stage, bb_tasks=bb-tasks, bb_tenants=bb-tenants
+aliases: bb_office_hub=bb-office-hub, bb_admin=bb-admin, bb_archive=bb-archive, bb_artifacts=bb-artifacts, bb_documents=bb-documents, bb_git_access=bb-git-access, bb_identity=bb-identity, bb_records=bb-records, bb_session_service=bb-session-service, bb_slides=bb-slides, bb_stage=bb-stage, bb_tasks=bb-tasks, bb_tenants=bb-tenants
 :::
 ```
 
@@ -76,6 +76,7 @@ flowchart LR
     subgraph bb_office_hub [Office hub]
         bb_admin[Admin view]
         bb_archive[Archive]
+        bb_artifacts[Artifacts]
         bb_documents[Documents]
         bb_git_access[Git access]
         bb_identity[Identity]
@@ -109,9 +110,10 @@ flowchart LR
     bb_tenants -->|if-tenant-roster| bb_identity
     bb_tenants -->|if-token-check| bb_identity
     bb_git_access -->|if-archive-repository| bb_archive
-    bb_git_access -->|if-records-check| bb_records
-    bb_git_access -->|if-slides-check| bb_slides
-    bb_git_access -->|if-tasks-check| bb_tasks
+    bb_git_access -->|if-artifact-check| bb_artifacts
+    bb_artifacts -->|if-records-check| bb_records
+    bb_artifacts -->|if-slides-check| bb_slides
+    bb_artifacts -->|if-tasks-check| bb_tasks
     bb_git_access -->|if-token-check| bb_identity
 ```
 
@@ -511,10 +513,10 @@ requires: if-token-check, if-archive-storage
 
 #### Records check
 
-Lets Git access check a file of a record type (decision, minutes or note) before it accepts a push. The part owns the schemas of
-its types, and the same check serves its own interface, so every rule exists once. The call
-gives the path and the content of one file. The part answers that the file names none of its
-schemas, that it is valid, or that it is invalid, with the reasons in plain words.
+Lets the artifacts part check a file of a record type (decision, minutes or note) before it accepts a push. The part owns the schemas of
+its types, and the same check serves its own interface, so every rule exists once. The part names the schemas that it owns. A call
+gives the path, the content and the name of the schema; the part answers that the file is valid, or
+that it is invalid, with the reasons in plain words.
 
 ```arc42
 :::interface
@@ -547,10 +549,10 @@ requires: if-token-check, if-archive-storage
 
 #### Tasks check
 
-Lets Git access check a file of a task before it accepts a push. The part owns the schemas of
-its types, and the same check serves its own interface, so every rule exists once. The call
-gives the path and the content of one file. The part answers that the file names none of its
-schemas, that it is valid, or that it is invalid, with the reasons in plain words.
+Lets the artifacts part check a file of a task before it accepts a push. The part owns the schemas of
+its types, and the same check serves its own interface, so every rule exists once. The part names the schemas that it owns. A call
+gives the path, the content and the name of the schema; the part answers that the file is valid, or
+that it is invalid, with the reasons in plain words.
 
 ```arc42
 :::interface
@@ -604,10 +606,10 @@ requires: if-token-check, if-archive-storage
 
 #### Slides check
 
-Lets Git access check a file of a slide deck before it accepts a push. The part owns the schemas of
-its types, and the same check serves its own interface, so every rule exists once. The call
-gives the path and the content of one file. The part answers that the file names none of its
-schemas, that it is valid, or that it is invalid, with the reasons in plain words.
+Lets the artifacts part check a file of a slide deck before it accepts a push. The part owns the schemas of
+its types, and the same check serves its own interface, so every rule exists once. The part names the schemas that it owns. A call
+gives the path, the content and the name of the schema; the part answers that the file is valid, or
+that it is invalid, with the reasons in plain words.
 
 ```arc42
 :::interface
@@ -731,8 +733,9 @@ rules. It does three things:
 - Rules for every push, which Git runs before it accepts the push: the author of every new commit
   is the participant of the token; only the branch main changes and no history is rewritten; only
   artifact files change and none of them lies under the session logs; and every file with a schema
-  is valid against the schema that it names. The part of the hub that owns the schema does this
-  check; Git access knows no schema. A refused push shows its reason to the participant.
+  is valid against the schema that it names. Git access knows no schema: it asks the artifacts
+  part, which hands the check to the part of the hub that owns the schema. A refused push shows
+  its reason to the participant.
 - After an accepted push, it tells the archive that main moved.
 
 Git alone decides whether a push builds on the current state: a push on an old base is refused,
@@ -744,7 +747,7 @@ id: bb-git-access
 title: Git access
 technology: Go / Git (smart HTTP)
 parent: bb-office-hub
-requires: if-token-check, if-archive-repository, if-records-check, if-slides-check, if-tasks-check
+requires: if-token-check, if-archive-repository, if-artifact-check
 implements: concept-multi-tenancy
 path: hub/gitaccess
 :::
@@ -766,6 +769,41 @@ title: Git access
 provider: bb-git-access
 protocol: Git over HTTPS (smart protocol), access token as password
 path: hub/gitaccess/web
+:::
+```
+
+### Artifacts
+
+Knows which part of the hub owns which schema and passes the check of a file to that part. It
+owns no schema, because a schema belongs to its type (`dec-artifacts`). It finds the owner by the
+name of the schema that the file names. A file that names no schema is plain text, and a file
+that names a schema that no part owns is invalid. A new type needs a check in its own part and a
+line in this part.
+
+```arc42
+:::building-block
+id: bb-artifacts
+title: Artifacts
+technology: Go
+parent: bb-office-hub
+requires: if-records-check, if-slides-check, if-tasks-check
+implements: concept-module-boundaries
+path: hub/artifacts
+:::
+```
+
+#### Artifact check
+
+Checks the content of one file against the schema that the file names, whichever part owns the
+schema. The answer is valid, or invalid with the reasons in plain words.
+
+```arc42
+:::interface
+id: if-artifact-check
+title: Artifact check
+provider: bb-artifacts
+protocol: In-process Go call
+path: hub/artifacts/check
 :::
 ```
 

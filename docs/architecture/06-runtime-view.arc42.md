@@ -352,8 +352,8 @@ sequenceDiagram
 
 A participant commits in a worktree and pushes the branch main with plain Git. Git access checks
 the token and the tenant before Git reads the upload. Then Git runs the rules of Git access on the
-new commits. The part of the hub that owns the schema of a changed file checks it; the diagram
-shows the records part. When all of them hold, Git moves main in one step, and Git access tells the archive,
+new commits. The artifacts part passes the check of a changed file to the part of the hub that owns its
+schema; the diagram shows the records part. When all of them hold, Git moves main in one step, and Git access tells the archive,
 which tells the clients that follow the tenant. A push that breaks a rule is refused as a whole and
 shows the reason. A push on an old base is refused by Git, and the participant fetches and merges
 by hand first.
@@ -363,7 +363,7 @@ by hand first.
 id: rs-git-push
 title: Participant pushes a change with Git
 trigger: A participant pushes the branch main of the tenant repository
-involves: bb-git-access, bb-identity, bb-records, bb-tasks, bb-slides, bb-archive, bb-sync, bb-participant-client, bb-office-hub
+involves: bb-git-access, bb-identity, bb-artifacts, bb-records, bb-tasks, bb-slides, bb-archive, bb-sync, bb-participant-client, bb-office-hub
 :::
 ```
 
@@ -372,7 +372,7 @@ involves: bb-git-access, bb-identity, bb-records, bb-tasks, bb-slides, bb-archiv
 id: seq-git-push
 notation: mermaid-sequence
 scenario: rs-git-push
-aliases: actor_human=actor-human, bb_git_access=bb-git-access, bb_identity=bb-identity, bb_records=bb-records, bb_archive=bb-archive, bb_sync=bb-sync
+aliases: actor_human=actor-human, bb_git_access=bb-git-access, bb_identity=bb-identity, bb_artifacts=bb-artifacts, bb_records=bb-records, bb_archive=bb-archive, bb_sync=bb-sync
 :::
 ```
 
@@ -381,6 +381,7 @@ sequenceDiagram
     participant actor_human as Human participant
     participant bb_git_access as Git access
     participant bb_identity as Identity
+    participant bb_artifacts as Artifacts
     participant bb_records as Records
     participant bb_archive as Archive
     participant bb_sync as Artifact sync
@@ -388,8 +389,10 @@ sequenceDiagram
     bb_git_access->>bb_identity: check token and tenant
     bb_git_access->>bb_archive: find the repository of the tenant
     Note over bb_git_access: rules before Git accepts: author is the participant, only main, no rewrite, only artifact files, none under the session logs
-    bb_git_access->>bb_records: check a changed file with a schema, here of a record type
-    bb_records-->>bb_git_access: valid, or invalid with reasons
+    bb_git_access->>bb_artifacts: check a changed file with a schema
+    bb_artifacts->>bb_records: pass the check to the owner of the schema, here a record type
+    bb_records-->>bb_artifacts: valid, or invalid with reasons
+    bb_artifacts-->>bb_git_access: the answer of the owner
     Note over bb_git_access: Git moves main in one step, or the push is refused with the reason
     bb_git_access->>bb_archive: main moved
     bb_archive-->>bb_sync: changed artifacts, to the clients that follow
