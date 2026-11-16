@@ -276,7 +276,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("hub repository %s; one repository for each tenant below %s; push mocked", repos.HubDir(), filepath.Join(*dataDir, "repos", "tenants"))
+	log.Printf("hub repository %s; artifact repository of each tenant below %s, session-log repository below %s; push mocked", repos.HubDir(),
+		filepath.Join(*dataDir, "repos", "tenants"), filepath.Join(*dataDir, "repos", "session-logs"))
 	var bootstrap *identity.Bootstrap
 	var bootstrapErr error
 	if *firstAdmin != "" {

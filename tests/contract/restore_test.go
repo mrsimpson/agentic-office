@@ -88,7 +88,7 @@ func loseTail(t *testing.T, restoreWait string) *lost {
 	}
 	m.say("ada", "Archived one.")
 	last := m.say("ada", "Archived two.")
-	contracttest.WaitArchived(t, srv.ArchiveDir(), m.sid, 10*time.Second, func(a *contracttest.ArchivedSession) bool {
+	contracttest.WaitArchived(t, srv.SessionLogsDir(), m.sid, 10*time.Second, func(a *contracttest.ArchivedSession) bool {
 		return len(a.Events) == int(last.GetId())
 	})
 	l := &lost{t: t, sid: m.sid, key: hubKey(t, ada.Commands), archived: int(last.GetId())}
@@ -270,7 +270,7 @@ func TestRestoreFromArchiveThenPeer(t *testing.T) {
 		CommandId: coreapi.NewCommandID(), ParticipantId: "ada"}); err != nil {
 		t.Fatal(err)
 	}
-	a := contracttest.WaitArchived(t, l.srv.ArchiveDir(), l.sid, 10*time.Second, (*contracttest.ArchivedSession).Ended)
+	a := contracttest.WaitArchived(t, l.srv.SessionLogsDir(), l.sid, 10*time.Second, (*contracttest.ArchivedSession).Ended)
 	a.Verify(t, l.sid, l.key)
 	if len(a.Events) != n+2 {
 		t.Fatalf("archive has %d events, want %d", len(a.Events), n+2)

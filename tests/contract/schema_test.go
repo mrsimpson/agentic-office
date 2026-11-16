@@ -195,7 +195,7 @@ func TestSchemaStoredSessionOfAnotherSchema(t *testing.T) {
 	}
 
 	// The stored session keeps its schema in the tree head file.
-	repo := srv.ArchiveDir()
+	repo := srv.SessionLogsDir()
 	for _, sid := range []string{oldSID, newSID} {
 		c := contracttest.SessionCommits(t, repo, sid)
 		if len(c) == 0 {

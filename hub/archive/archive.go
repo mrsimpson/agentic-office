@@ -44,44 +44,9 @@ type Repo struct {
 	push Pusher
 	logf func(string, ...any)
 
-	turn turn // one change at a time, records first
+	turn sync.Mutex // one change at a time
 
 	changes changeLog // the followers of main (if-artifact-changes)
-}
-
-// turn lets one change at a time into the repository. A change that is not Background goes
-// before a waiting Background change (dec-records-synchronous); the change in progress is not
-// interrupted.
-type turn struct {
-	mu      sync.Mutex
-	free    *sync.Cond // signalled when busy becomes false
-	busy    bool       // a change is in progress
-	records int        // changes that are not Background and wait for their turn
-}
-
-// take waits until the change may go. A Background change also waits while a record waits.
-func (t *turn) take(background bool) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.free == nil {
-		t.free = sync.NewCond(&t.mu)
-	}
-	if !background {
-		t.records++
-		defer func() { t.records-- }()
-	}
-	for t.busy || (background && t.records > 0) {
-		t.free.Wait()
-	}
-	t.busy = true
-}
-
-// give ends the change in progress and lets the next change go.
-func (t *turn) give() {
-	t.mu.Lock()
-	t.busy = false
-	t.mu.Unlock()
-	t.free.Broadcast()
 }
 
 var _ storage.Archive = (*Repo)(nil)
@@ -217,8 +182,8 @@ func (r *Repo) Commit(ctx context.Context, c storage.Change) (string, error) {
 	if a := c.Author; a != (storage.Author{}) && (a.Name == "" || a.Email == "") {
 		return "", errors.New("archive: an author needs a name and an email")
 	}
-	r.turn.take(c.Background)
-	defer r.turn.give()
+	r.turn.Lock()
+	defer r.turn.Unlock()
 	// Write the files as objects once; a retry reuses them.
 	blobs := make([]string, len(c.Files))
 	for i, f := range c.Files {

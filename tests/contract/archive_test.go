@@ -37,7 +37,7 @@ func TestArchiveSessionAfterEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.end(ada)
-	repo := m.srv.ArchiveDir()
+	repo := m.srv.SessionLogsDir()
 	a := contracttest.WaitArchived(t, repo, m.sid, 10*time.Second, (*contracttest.ArchivedSession).Ended)
 	a.Verify(t, m.sid, hubKey(t, m.reader.Commands))
 
@@ -74,7 +74,7 @@ func TestArchiveWritesAtInterval(t *testing.T) {
 	m := newMeetingArgs(t, "-archive-interval", "200ms")
 	ada := m.join("Ada", sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_HUMAN)
 	m.say(ada, "One.")
-	repo := m.srv.ArchiveDir()
+	repo := m.srv.SessionLogsDir()
 	contracttest.WaitArchived(t, repo, m.sid, 10*time.Second, func(a *contracttest.ArchivedSession) bool {
 		return len(a.Events) >= 2
 	})
@@ -111,7 +111,7 @@ func TestArchiveWritesAtInterval(t *testing.T) {
 // as a file name is stored under "=" plus its base64url form.
 func TestArchiveOnStopAndUnsafeName(t *testing.T) {
 	srv := contracttest.StartHub(t, nil, "-archive-interval", "1h")
-	repo := srv.ArchiveDir()
+	repo := srv.SessionLogsDir()
 	ada := srv.Participant(t, "ada", "Ada", identityv1.ActorKind_ACTOR_KIND_HUMAN)
 	sid := "team/weekly 1"
 	m := &meeting{t: t, srv: srv, sid: sid, actors: map[string]*contracttest.Actor{"ada": ada}, reader: ada}

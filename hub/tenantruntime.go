@@ -66,6 +66,10 @@ func (r *runtimes) get(ctx context.Context, tenant string) (*tenantRuntime, erro
 	if err != nil {
 		return nil, fmt.Errorf("tenant %s: %w", tenant, err)
 	}
+	logs, err := r.repos.SessionLogs(tenant)
+	if err != nil {
+		return nil, fmt.Errorf("tenant %s: %w", tenant, err)
+	}
 	logf := func(format string, args ...any) { log.Printf("tenant "+tenant+": "+format, args...) }
 	rt := &tenantRuntime{id: tenant, done: make(chan struct{})}
 	if rt.records, err = records.Open(ctx, arch); err != nil {
@@ -85,7 +89,7 @@ func (r *runtimes) get(ctx context.Context, tenant string) (*tenantRuntime, erro
 	if rt.archiveChanges, err = r.repos.Changes(tenant); err != nil {
 		return nil, err
 	}
-	if err := rt.sessions.UseArchive(ctx, session.ArchiveOptions{Archive: arch, Interval: r.archiveInterval,
+	if err := rt.sessions.UseArchive(ctx, session.ArchiveOptions{Archive: logs, Interval: r.archiveInterval,
 		RestoreWait: r.restoreWait, Logf: logf}); err != nil {
 		return nil, err
 	}

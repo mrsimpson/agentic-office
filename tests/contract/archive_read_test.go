@@ -83,10 +83,6 @@ func TestArchiveReadRefuses(t *testing.T) {
 	wantCode(t, "no directory", read(ada.Clients, "plan.md"), connect.CodeInvalidArgument)
 	wantCode(t, "path outside the repository", read(ada.Clients, "../etc/x.md"), connect.CodeInvalidArgument)
 	wantCode(t, "hidden path", read(ada.Clients, ".git/x.md"), connect.CodeInvalidArgument)
-	// The session logs hold the original of off-the-record sentences.
-	wantCode(t, "session log", read(ada.Clients, "sessions/s1/log.yaml"), connect.CodeInvalidArgument)
-	_, err := ada.Archive.ListFiles(ctx, &archivev1.ListFilesRequest{Dir: "sessions"})
-	wantCode(t, "list of the session logs", err, connect.CodeInvalidArgument)
 
 	// No token, and the token of a stage link.
 	anon := srv.Anonymous(t)

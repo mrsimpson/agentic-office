@@ -149,7 +149,7 @@ func TestRestartLeavesEndedSessionsInTheArchive(t *testing.T) {
 	open := &meeting{t: t, srv: m.srv, sid: "open-" + coreapi.NewCommandID(), actors: m.actors, reader: m.reader}
 	open.join("Bea", sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_HUMAN)
 	open.say("bea", "Still talking.")
-	contracttest.WaitArchived(t, m.srv.ArchiveDir(), open.sid, 20*time.Second, func(a *contracttest.ArchivedSession) bool { return len(a.Events) == 2 })
+	contracttest.WaitArchived(t, m.srv.SessionLogsDir(), open.sid, 20*time.Second, func(a *contracttest.ArchivedSession) bool { return len(a.Events) == 2 })
 
 	if code, err := m.srv.Stop(10 * time.Second); err != nil || code != 0 {
 		t.Fatalf("stop: %d, %v", code, err)

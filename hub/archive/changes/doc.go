@@ -14,9 +14,8 @@
 //     changed or removed, with the new version (the Git object ID of the content, the same
 //     version as in if-archive-read). An event holds no content and no position. There is no
 //     cursor and no replay.
-//   - Only Markdown (.md) and YAML (.yaml, .yml) files are named, and nothing under the
-//     session logs (directory sessions), which hold sentences that are off the record. A
-//     change without such a file gives no event.
+//   - Only Markdown (.md) and YAML (.yaml, .yml) files are named. A change without such a
+//     file gives no event. The session logs lie in their own repository and never give an event.
 //   - The caller needs the access token of a participant who belongs to the tenant. A caller
 //     who is no member gets the answer for a tenant that does not exist; a stage link cannot
 //     call. The caller may name path prefixes and then only gets artifacts under them.

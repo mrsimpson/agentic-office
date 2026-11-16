@@ -80,10 +80,15 @@ through its interfaces:
   of an off-the-record sentence and its mark, and a tree head that verifies; at a short interval
   every write is one commit whose log extends the one before; the hub writes once more when it
   stops; session IDs that are not safe as file names are encoded. The harness reads the
-  repository with `contracttest.SessionCommits` and `ReadArchivedSession`.
+  session-log repository of the tenant (`Hub.SessionLogsDir`, `TenantSessionLogsDir`) with
+  `contracttest.SessionCommits` and `ReadArchivedSession`.
+- `tests/contract/sessionlogs_repo_test.go` checks that the session logs lie in a second
+  repository of the tenant: a clone of the artifact repository has no `sessions/` directory and no
+  original of an off-the-record sentence, the session-log repository holds the logs and verifies,
+  records land in the artifact repository, and each tenant has its own two repositories.
 - `tests/contract/archive_changes_test.go` checks `if-artifact-changes` through the real hub: the
   event of a commit of the archive (created, changed, with the version of the read interface),
-  every follower gets every event, path prefixes, only Markdown and YAML and never a session log,
+  every follower gets every event, path prefixes, only Markdown and YAML,
   outsiders, other tenants and stage links, and a follower that never reads does not hold up the
   commits. `hub/archive/changes_contract_test.go` tests the same service and
   `if-archive-repository` in one process, because the notice "main moved" is an in-process call:

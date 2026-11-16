@@ -183,7 +183,7 @@ func TestImportInPages(t *testing.T) {
 		t.Fatalf("stream: %v (head %v)", err, c.head)
 	}
 	// The end of the import starts a write to the archive, long before the interval.
-	a := contracttest.WaitArchived(t, srv.ArchiveDir(), im.sid, 10*time.Second, func(a *contracttest.ArchivedSession) bool {
+	a := contracttest.WaitArchived(t, srv.SessionLogsDir(), im.sid, 10*time.Second, func(a *contracttest.ArchivedSession) bool {
 		return len(a.Events) == len(evs)
 	})
 	a.Verify(t, im.sid, key)
