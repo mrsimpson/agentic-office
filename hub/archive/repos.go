@@ -116,7 +116,8 @@ func (r *Repos) HubDir() string { return r.hub.Dir() }
 // Hub implements storage.Archives.
 func (r *Repos) Hub() storage.Archive { return r.hub }
 
-// CreateTenant implements storage.Archives.
+// CreateTenant implements storage.Archives. The artifact repository starts with one first commit
+// that holds no artifact, so main exists from the start. The session-log repository stays empty.
 func (r *Repos) CreateTenant(ctx context.Context, id string) error {
 	if err := storage.CheckTenantID(id); err != nil {
 		return err
@@ -128,6 +129,9 @@ func (r *Repos) CreateTenant(ctx context.Context, id string) error {
 	}
 	repo, err := r.open(ctx, filepath.Join(r.root, tenantsName, id))
 	if err != nil {
+		return err
+	}
+	if err := repo.firstCommit(ctx); err != nil {
 		return err
 	}
 	logs, err := r.open(ctx, filepath.Join(r.root, sessionLogsName, id))

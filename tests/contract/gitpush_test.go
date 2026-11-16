@@ -100,7 +100,6 @@ func (p *pusher) mustPush() {
 
 func mainOf(t *testing.T, srv *contracttest.Hub, tenant string) string {
 	t.Helper()
-	// An empty repository has no main yet: the answer is then empty.
 	out, _ := exec.Command("git", "-C", srv.TenantRepoDir(tenant), "rev-parse", "-q", "--verify", "refs/heads/main").Output()
 	return strings.TrimSpace(string(out))
 }
@@ -179,20 +178,23 @@ func TestGitPushAccepted(t *testing.T) {
 	expect(changesv1.ChangeKind_CHANGE_KIND_CREATED, "documents/after.md")
 }
 
-// The first push to an empty repository creates main.
+// A new tenant has a first commit without an artifact. The first push goes on top of it.
 func TestGitPushFirstCommit(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
 	f := followChanges(t, ada.Clients)
 	p := newPusher(t, srv, ada, "Ada", contracttest.DefaultTenant)
-	if mainOf(t, srv, contracttest.DefaultTenant) != "" {
-		t.Fatal("the new repository has a main")
+	first := mainOf(t, srv, contracttest.DefaultTenant)
+	if first == "" {
+		t.Fatal("the new repository has no main")
 	}
-	p.mustGit("checkout", "-q", "-b", "main")
+	if files := strings.TrimSpace(contracttest.Git(t, srv.TenantRepoDir(contracttest.DefaultTenant), "ls-tree", "-r", "--name-only", first)); files != "" {
+		t.Fatalf("the first commit holds files: %s", files)
+	}
 	p.commitFile("docs/first.md", "first\n")
 	p.mustPush()
-	if mainOf(t, srv, contracttest.DefaultTenant) == "" {
-		t.Fatal("main was not created")
+	if got := mainOf(t, srv, contracttest.DefaultTenant); got == first {
+		t.Fatal("main did not move")
 	}
 	if got := f.next(t).GetChanges().GetChanges(); len(got) != 1 || got[0].GetPath() != "docs/first.md" {
 		t.Errorf("event %v", got)

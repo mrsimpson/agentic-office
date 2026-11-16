@@ -70,7 +70,8 @@ type commitSpan struct {
 	session    bool
 }
 
-// commitSpans reads the commits from the log of slowGit, oldest first.
+// commitSpans reads the commits from the log of slowGit, oldest first, without the first commit of
+// the tenant repository.
 func commitSpans(t *testing.T, logFile string) []commitSpan {
 	t.Helper()
 	b, err := os.ReadFile(logFile)
@@ -102,6 +103,13 @@ func commitSpans(t *testing.T, logFile string) []commitSpan {
 				t.Fatalf("two commits at the same time in one repository (an end without its start):\n%s", b)
 			}
 			spans[i].end = at
+		}
+	}
+	// The first record commit is the first commit of the tenant repository, which the hub makes when
+	// it creates the tenant. It is no write of a record.
+	for i, sp := range spans {
+		if !sp.session {
+			return append(spans[:i:i], spans[i+1:]...)
 		}
 	}
 	return spans

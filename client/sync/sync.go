@@ -319,8 +319,6 @@ func run(ctx context.Context, git, dir string, args ...string) (string, error) {
 func cloneError(repo, out string, err error) error {
 	low := strings.ToLower(out)
 	switch {
-	case strings.Contains(low, "remote branch main not found"):
-		return fmt.Errorf("the repository %s has no artifacts yet (no branch main): create the first document, then run the command again", repo)
 	case strings.Contains(low, "authentication failed") || strings.Contains(low, "401"):
 		return fmt.Errorf("the hub did not accept the access token for %s: check your key with \"office whoami\"", repo)
 	case strings.Contains(low, "not found") || strings.Contains(low, "404"):
