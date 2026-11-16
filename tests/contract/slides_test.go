@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -540,8 +541,11 @@ func TestSlidesBadArchive(t *testing.T) {
 		t.Fatalf("stop: %d, %v", code, err)
 	}
 	repo := srv.ArchiveDir()
-	contracttest.Git(t, repo, "rm", "-q", "slides/000001.html")
-	contracttest.Git(t, repo, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", "remove the output")
+	contracttest.Edit(t, repo, "remove the output", func(work string) {
+		if err := os.Remove(filepath.Join(work, "slides", "000001.html")); err != nil {
+			t.Fatal(err)
+		}
+	})
 
 	p := contracttest.Start(t, "office-hub", nil, "-addr", "127.0.0.1:0", "-data-dir", srv.DataDir,
 		"-signing-key", srv.SigningKeyFile)

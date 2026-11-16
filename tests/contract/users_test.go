@@ -5,7 +5,6 @@ package contract
 // repository (dec-multi-tenancy, concept-multi-tenancy).
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -316,15 +315,7 @@ func TestHubRepositoryBreakingARuleStopsTheHub(t *testing.T) {
 		return errOut, code
 	}
 	edit := func(file, content string) {
-		p := filepath.Join(repo, filepath.FromSlash(file))
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		contracttest.Git(t, repo, "add", "-A")
-		contracttest.Git(t, repo, "-c", "user.name=editor", "-c", "user.email=e@example.org", "commit", "-q", "-m", "manual edit")
+		contracttest.Edit(t, repo, "manual edit", func(work string) { contracttest.WriteFile(t, work, file, content) })
 	}
 
 	// The first system admin becomes a member of a tenant.
@@ -334,7 +325,7 @@ func TestHubRepositoryBreakingARuleStopsTheHub(t *testing.T) {
 	if code == 0 || !strings.Contains(errOut, "tenant member") {
 		t.Fatalf("hub started with a system admin in a tenant (exit %d):\n%s", code, errOut)
 	}
-	contracttest.Git(t, repo, "reset", "-q", "--hard", "HEAD~1")
+	contracttest.Git(t, repo, "update-ref", "refs/heads/main", "main~1")
 
 	// A file with a field that nobody knows (a typo) is not ignored.
 	edit("system/memberships/acme/ada.yaml", "role: tenant_admin\nvalid_form: 2026-01-01T00:00:00Z\n")
@@ -342,7 +333,7 @@ func TestHubRepositoryBreakingARuleStopsTheHub(t *testing.T) {
 	if code == 0 || !strings.Contains(errOut, "valid_form") {
 		t.Fatalf("hub started with a file that has an unknown field (exit %d):\n%s", code, errOut)
 	}
-	contracttest.Git(t, repo, "reset", "-q", "--hard", "HEAD~1")
+	contracttest.Git(t, repo, "update-ref", "refs/heads/main", "main~1")
 
 	// The repository as the hub wrote it starts again.
 	srv = contracttest.StartHubIn(t, srv.DataDir, srv.AdminKey, nil)
