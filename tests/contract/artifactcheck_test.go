@@ -9,8 +9,6 @@ package contract
 // rejects does not start and gives the reasons of the check.
 
 import (
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -312,11 +310,9 @@ func stopAndCorrupt(t *testing.T, srv *contracttest.Hub, rel, content string) {
 	if code, err := srv.Stop(5 * time.Second); err != nil || code != 0 {
 		t.Fatalf("stop: %d, %v", code, err)
 	}
-	repo := srv.ArchiveDir()
-	if err := os.WriteFile(filepath.Join(repo, filepath.FromSlash(rel)), []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	contracttest.Git(t, repo, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-a", "-m", "break "+rel)
+	contracttest.Edit(t, srv.ArchiveDir(), "break "+rel, func(work string) {
+		contracttest.WriteFile(t, work, rel, content)
+	})
 }
 
 // wantNoStart starts the hub on the data directory and fails the test unless it stops with an
