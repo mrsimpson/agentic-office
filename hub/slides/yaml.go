@@ -11,14 +11,15 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	slidesv1 "github.com/mrsimpson/agentic-office/hub/slides/api"
+	"github.com/mrsimpson/agentic-office/hub/slides/check"
 )
 
 // outputFields are the fields of a deck that are not in its YAML file: the rendered output is
 // the HTML file next to it.
 var outputFields = map[string]bool{"media_type": true, "content": true}
 
-// encode returns the YAML file of a deck: the fields of the contract in their order, in block
-// style, without the output. Strings keep their quotes, so a title such as "2027" stays a string;
+// encode returns the YAML file of a deck: the name of its schema, the fields of the contract in
+// their order, in block style, without the output. Strings keep their quotes, so a title such as "2027" stays a string;
 // a text with line breaks is a literal block if it reads back the same.
 func encode(d *slidesv1.Deck) ([]byte, error) {
 	input := proto.Clone(d).(*slidesv1.Deck)
@@ -43,7 +44,10 @@ func encode(d *slidesv1.Deck) ([]byte, error) {
 				kept = append(kept, m.Content[i], m.Content[i+1])
 			}
 		}
-		m.Content = kept
+		m.Content = append([]*yaml.Node{
+			{Kind: yaml.ScalarNode, Tag: "!!str", Value: check.SchemaKey},
+			{Kind: yaml.ScalarNode, Tag: "!!str", Value: check.SchemaDeck},
+		}, kept...)
 		style(&doc, literal)
 		out, err := yaml.Marshal(&doc)
 		if err != nil {

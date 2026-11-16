@@ -9,6 +9,7 @@ import (
 
 	"github.com/mrsimpson/agentic-office/hub/archive/storage"
 	"github.com/mrsimpson/agentic-office/hub/identity/tokencheck"
+	"github.com/mrsimpson/agentic-office/hub/records/check"
 	decisionv1 "github.com/mrsimpson/agentic-office/hub/records/decision/api"
 	"github.com/mrsimpson/agentic-office/hub/records/decision/api/decisionv1connect"
 	minutesv1 "github.com/mrsimpson/agentic-office/hub/records/minutes/api"
@@ -26,9 +27,9 @@ const (
 
 // Directories of the record types in the archive.
 const (
-	DecisionsDir = "decisions"
-	MinutesDir   = "minutes"
-	NotesDir     = "notes"
+	DecisionsDir = check.DecisionsDir
+	MinutesDir   = check.MinutesDir
+	NotesDir     = check.NotesDir
 )
 
 // Service implements the decisions, the minutes and the notes (if-decision-api, if-minutes-api,
@@ -47,17 +48,17 @@ var (
 
 // Open reads all records from the archive and returns the service that stores new records there.
 func Open(ctx context.Context, arch storage.Archive) (*Service, error) {
-	d, err := openCollection(ctx, arch, "decision", DecisionsDir, func() *decisionv1.Decision { return &decisionv1.Decision{} },
+	d, err := openCollection(ctx, arch, "decision", DecisionsDir, check.SchemaDecision, func() *decisionv1.Decision { return &decisionv1.Decision{} },
 		func(r *decisionv1.Decision, id uint32) { r.Id = id })
 	if err != nil {
 		return nil, err
 	}
-	m, err := openCollection(ctx, arch, "minutes", MinutesDir, func() *minutesv1.Minutes { return &minutesv1.Minutes{} },
+	m, err := openCollection(ctx, arch, "minutes", MinutesDir, check.SchemaMinutes, func() *minutesv1.Minutes { return &minutesv1.Minutes{} },
 		func(r *minutesv1.Minutes, id uint32) { r.Id = id })
 	if err != nil {
 		return nil, err
 	}
-	n, err := openCollection(ctx, arch, "note", NotesDir, func() *notev1.Note { return &notev1.Note{} },
+	n, err := openCollection(ctx, arch, "note", NotesDir, check.SchemaNote, func() *notev1.Note { return &notev1.Note{} },
 		func(r *notev1.Note, id uint32) { r.Id = id })
 	if err != nil {
 		return nil, err

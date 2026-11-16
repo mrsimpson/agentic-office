@@ -11,14 +11,13 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	taskv1 "github.com/mrsimpson/agentic-office/hub/tasks/api"
+	"github.com/mrsimpson/agentic-office/hub/tasks/check"
 )
 
-// commandsKey is the field of the stored form that holds the command IDs of a task. It is not
-// part of the contract.
-const commandsKey = "command_ids"
+const commandsKey = check.CommandsKey
 
-// encode returns the stored form of a task: the fields of the contract in their order, in block
-// style, then command_ids. Strings keep their quotes, so an ID such as "123" stays a string; a
+// encode returns the stored form of a task: the name of its schema, the fields of the contract in
+// their order, in block style, then command_ids. Strings keep their quotes, so an ID such as "123" stays a string; a
 // text with line breaks is a literal block if it reads back the same.
 func encode(t *taskv1.Task, commands []string) ([]byte, error) {
 	raw, err := protojson.MarshalOptions{UseProtoNames: true, EmitUnpopulated: true}.Marshal(t)
@@ -39,6 +38,10 @@ func encode(t *taskv1.Task, commands []string) ([]byte, error) {
 			seq.Content = append(seq.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: c, Style: yaml.DoubleQuotedStyle})
 		}
 		m := doc.Content[0]
+		m.Content = append([]*yaml.Node{
+			{Kind: yaml.ScalarNode, Tag: "!!str", Value: check.SchemaKey},
+			{Kind: yaml.ScalarNode, Tag: "!!str", Value: check.SchemaTask},
+		}, m.Content...)
 		m.Content = append(m.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: commandsKey}, seq)
 		style(&doc, literal)
 		out, err := yaml.Marshal(&doc)

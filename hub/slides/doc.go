@@ -21,10 +21,13 @@
 //     document has no scripts and loads nothing: all text is HTML-escaped, and a
 //     Content-Security-Policy allows only the inline style sheet.
 //   - Storage: every deck is two files in the archive (if-archive-storage), written in one
-//     commit: slides/NNNNNN.yaml holds the input (id, title, slides, author, author kind, time,
-//     command ID) with the field names of the contract (snake_case, enums by name, times in RFC
-//     3339; a text with line breaks is a literal block), and slides/NNNNNN.html holds the
-//     rendered document. NNNNNN is n with at least six digits. RenderDeck returns only after the
+//     commit: slides/NNNNNN.yaml holds the input (schema,
+//     id, title, slides, author, author kind, time, command ID). schema is office.slides.v1; the
+//     other field names are those of the contract (snake_case, enums by name, times in RFC 3339;
+//     a text with line breaks is a literal block). slides/NNNNNN.html holds the rendered
+//     document. The check of the part (package check, if-slides-check) decides what a valid YAML
+//     file is. The part uses it for every file it writes and reads, and Git access uses it for a
+//     push, so every rule exists once. NNNNNN is n with at least six digits. RenderDeck returns only after the
 //     commit.
 //   - The output is stored, not rendered again on read. So a deck stays exactly what was shown
 //     in a meeting, even if a later hub renders differently, and a reader of the archive can open

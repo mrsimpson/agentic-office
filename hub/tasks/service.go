@@ -16,6 +16,7 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/identity/tokencheck"
 	taskv1 "github.com/mrsimpson/agentic-office/hub/tasks/api"
 	"github.com/mrsimpson/agentic-office/hub/tasks/api/taskv1connect"
+	"github.com/mrsimpson/agentic-office/hub/tasks/check"
 )
 
 const (
@@ -24,9 +25,7 @@ const (
 	// MaxLimit is the largest number of tasks ListTasks returns. A larger limit is reduced.
 	MaxLimit = 1000
 	// Dir is the directory of the tasks in the archive.
-	Dir = "tasks"
-	// localScheme is the scheme of the refs of local drafts.
-	localScheme = "local:"
+	Dir = check.Dir
 )
 
 // entry is a stored task with the command IDs that changed it, oldest first.
@@ -58,20 +57,17 @@ func Open(ctx context.Context, arch storage.Archive) (*Service, error) {
 		if path.Ext(f.Path) != ".yaml" {
 			continue
 		}
+		// The check of the part: the same one that decides about a push.
+		if reasons := check.Validate(check.SchemaTask, f.Path, f.Data); len(reasons) > 0 {
+			return nil, fmt.Errorf("tasks: %s: %s", f.Path, strings.Join(reasons, "; "))
+		}
 		t, cmds, err := decode(f.Data)
 		if err != nil {
 			return nil, fmt.Errorf("tasks: %s: %w", f.Path, err)
 		}
-		n, ok := localNumber(t.GetRef())
-		switch {
-		case !ok:
-			return nil, fmt.Errorf("tasks: %s: ref %q is not a local task", f.Path, t.GetRef())
-		case f.Path != filePath(n):
-			return nil, fmt.Errorf("tasks: %s: ref %q belongs in %s", f.Path, t.GetRef(), filePath(n))
-		case byNum[n] != nil:
+		n, _ := check.LocalNumber(t.GetRef())
+		if byNum[n] != nil {
 			return nil, fmt.Errorf("tasks: %s: ref %q is twice", f.Path, t.GetRef())
-		case len(cmds) == 0 || cmds[0] != t.GetCommandId() || t.GetCommandId() == "":
-			return nil, fmt.Errorf("tasks: %s: command_ids must start with the command_id", f.Path)
 		}
 		e := &entry{task: t, commands: cmds}
 		byNum[n] = e
@@ -85,7 +81,7 @@ func Open(ctx context.Context, arch storage.Archive) (*Service, error) {
 	// The numbers have no gaps: a task is never deleted.
 	for n := uint64(1); n <= uint64(len(byNum)); n++ {
 		if byNum[n] == nil {
-			return nil, fmt.Errorf("tasks: %s is missing", filePath(n))
+			return nil, fmt.Errorf("tasks: %s is missing", check.FilePath(n))
 		}
 		s.all = append(s.all, byNum[n])
 	}
@@ -97,20 +93,6 @@ func (s *Service) Count() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.all)
-}
-
-func filePath(n uint64) string { return fmt.Sprintf("%s/%06d.yaml", Dir, n) }
-
-func localRef(n uint64) string { return localScheme + strconv.FormatUint(n, 10) }
-
-// localNumber returns the number of a local ref such as "local:42".
-func localNumber(ref string) (uint64, bool) {
-	rest, ok := strings.CutPrefix(ref, localScheme)
-	if !ok || rest == "" || rest[0] == '0' || rest[0] == '+' {
-		return 0, false
-	}
-	n, err := strconv.ParseUint(rest, 10, 64)
-	return n, err == nil
 }
 
 func invalid(msg string) error { return connect.NewError(connect.CodeInvalidArgument, msg) }
@@ -191,7 +173,7 @@ func (s *Service) CreateTask(ctx context.Context, req *taskv1.CreateTaskRequest)
 	}
 	n := uint64(len(s.all)) + 1
 	now := timestamppb.Now()
-	t := &taskv1.Task{Ref: localRef(n), Source: taskv1.TaskSource_TASK_SOURCE_LOCAL, Title: req.GetTitle(),
+	t := &taskv1.Task{Ref: check.LocalRef(n), Source: taskv1.TaskSource_TASK_SOURCE_LOCAL, Title: req.GetTitle(),
 		Description: req.GetDescription(), AssigneeParticipantId: req.GetAssigneeParticipantId(), Status: status,
 		SessionId: req.GetSessionId(), AuthorParticipantId: req.GetAuthorParticipantId(), AuthorKind: kind,
 		CreateTime: now, UpdatedByParticipantId: req.GetAuthorParticipantId(), UpdateTime: now, Revision: 1,
@@ -211,10 +193,13 @@ func (s *Service) write(ctx context.Context, n uint64, e *entry, message string)
 	if err != nil {
 		return connect.NewError(connect.CodeInternal, "encode the task: "+err.Error())
 	}
+	if reasons := check.Validate(check.SchemaTask, check.FilePath(n), data); len(reasons) > 0 {
+		return connect.NewError(connect.CodeInternal, "the task is not valid: "+strings.Join(reasons, "; "))
+	}
 	// A cancelled commit could leave the repository locked, so the commit is not cancelled with
 	// the call.
 	if _, err := s.arch.Commit(context.WithoutCancel(ctx), storage.Change{Message: message,
-		Files: []storage.File{{Path: filePath(n), Data: data}}}); err != nil {
+		Files: []storage.File{{Path: check.FilePath(n), Data: data}}}); err != nil {
 		return connect.NewError(connect.CodeInternal, "store the task in the archive: "+err.Error())
 	}
 	return nil
@@ -234,7 +219,7 @@ func (s *Service) find(ref string) (*entry, uint64, error) {
 	if ref == "" {
 		return nil, 0, invalid("ref is required")
 	}
-	n, ok := localNumber(ref)
+	n, ok := check.LocalNumber(ref)
 	if !ok || n > uint64(len(s.all)) {
 		return nil, 0, connect.NewError(connect.CodeNotFound, "no task "+ref)
 	}

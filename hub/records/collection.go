@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path"
 	"slices"
@@ -16,6 +17,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/mrsimpson/agentic-office/hub/archive/storage"
+	"github.com/mrsimpson/agentic-office/hub/records/check"
 )
 
 // record is what every record type has.
@@ -29,11 +31,12 @@ type record interface {
 // collection is the list of records of one type. It keeps all records in memory and writes every
 // new record as one YAML file and one commit to the archive.
 type collection[T record] struct {
-	kind  string // for messages, for example "decision"
-	dir   string // directory in the archive, for example "decisions"
-	arch  storage.Archive
-	newT  func() T
-	setID func(T, uint32)
+	kind   string // for messages, for example "decision"
+	dir    string // directory in the archive, for example "decisions"
+	schema string // the schema that every file of the collection names, for example "office.decision.v1"
+	arch   storage.Archive
+	newT   func() T
+	setID  func(T, uint32)
 
 	mu    sync.Mutex // one write at a time; guards all and byCmd
 	all   []T        // ordered by ID
@@ -41,8 +44,8 @@ type collection[T record] struct {
 }
 
 // openCollection reads the records of dir from the current commit of the archive.
-func openCollection[T record](ctx context.Context, arch storage.Archive, kind, dir string, newT func() T, setID func(T, uint32)) (*collection[T], error) {
-	c := &collection[T]{kind: kind, dir: dir, arch: arch, newT: newT, setID: setID, byCmd: map[string]T{}}
+func openCollection[T record](ctx context.Context, arch storage.Archive, kind, dir, schema string, newT func() T, setID func(T, uint32)) (*collection[T], error) {
+	c := &collection[T]{kind: kind, dir: dir, schema: schema, arch: arch, newT: newT, setID: setID, byCmd: map[string]T{}}
 	files, err := arch.Read(ctx, dir)
 	if err != nil {
 		return nil, fmt.Errorf("records: read %s: %w", dir, err)
@@ -52,17 +55,16 @@ func openCollection[T record](ctx context.Context, arch storage.Archive, kind, d
 		if path.Ext(f.Path) != ".yaml" {
 			continue
 		}
+		// The check of the part: the same one that decides about a push.
+		if reasons := check.Validate(schema, f.Path, f.Data); len(reasons) > 0 {
+			return nil, fmt.Errorf("records: %s: %s", f.Path, strings.Join(reasons, "; "))
+		}
 		r := newT()
 		if err := unmarshalYAML(f.Data, r); err != nil {
 			return nil, fmt.Errorf("records: %s: %w", f.Path, err)
 		}
-		switch prev, dup := byID[r.GetId()]; {
-		case r.GetId() == 0:
-			return nil, fmt.Errorf("records: %s: no id", f.Path)
-		case dup:
+		if prev, dup := byID[r.GetId()]; dup {
 			return nil, fmt.Errorf("records: %s and %s have the same id %d", prev, f.Path, r.GetId())
-		case r.GetCommandId() == "":
-			return nil, fmt.Errorf("records: %s: no command_id", f.Path)
 		}
 		if prev, dup := c.byCmd[r.GetCommandId()]; dup {
 			return nil, fmt.Errorf("records: %s: command_id of %s %d", f.Path, kind, prev.GetId())
@@ -77,7 +79,7 @@ func openCollection[T record](ctx context.Context, arch storage.Archive, kind, d
 }
 
 // path returns the file of the record with this ID.
-func (c *collection[T]) path(id uint32) string { return fmt.Sprintf("%s/%06d.yaml", c.dir, id) }
+func (c *collection[T]) path(id uint32) string { return check.FilePath(c.dir, id) }
 
 // add stores r as the next record, or returns the stored record of the same command and true.
 // same reports whether the stored record has the content of r. The commit message is title, the
@@ -98,9 +100,12 @@ func (c *collection[T]) add(ctx context.Context, r T, same func(stored, r T) boo
 		id = c.all[n-1].GetId() + 1
 	}
 	c.setID(r, id)
-	data, err := marshalYAML(r)
+	data, err := marshalYAML(c.schema, r)
 	if err != nil {
 		return zero, false, connect.NewError(connect.CodeInternal, "encode the "+c.kind+": "+err.Error())
+	}
+	if reasons := check.Validate(c.schema, c.path(id), data); len(reasons) > 0 {
+		return zero, false, connect.NewError(connect.CodeInternal, "the "+c.kind+" is not valid: "+strings.Join(reasons, "; "))
 	}
 	// A cancelled commit could leave the repository locked, so the commit is not cancelled with
 	// the call.
@@ -166,10 +171,10 @@ func (c *collection[T]) latest(sessionID string) (T, bool) {
 	return zero, false
 }
 
-// marshalYAML returns the YAML form of a record: the fields of the contract in their order, in
-// block style. Strings keep their quotes, so an ID such as "123" stays a string; a text with line
+// marshalYAML returns the YAML form of a record: the name of its schema, then the fields of the
+// contract in their order, in block style. Strings keep their quotes, so an ID such as "123" stays a string; a text with line
 // breaks is a literal block if it reads back the same.
-func marshalYAML(m proto.Message) ([]byte, error) {
+func marshalYAML(schema string, m proto.Message) ([]byte, error) {
 	raw, err := protojson.MarshalOptions{UseProtoNames: true, EmitUnpopulated: true}.Marshal(m)
 	if err != nil {
 		return nil, err
@@ -180,6 +185,14 @@ func marshalYAML(m proto.Message) ([]byte, error) {
 		if err := yaml.Unmarshal(raw, &doc); err != nil {
 			return nil, err
 		}
+		if len(doc.Content) != 1 || doc.Content[0].Kind != yaml.MappingNode {
+			return nil, errors.New("the record is not a mapping")
+		}
+		mapping := doc.Content[0]
+		mapping.Content = append([]*yaml.Node{
+			{Kind: yaml.ScalarNode, Tag: "!!str", Value: check.SchemaKey},
+			{Kind: yaml.ScalarNode, Tag: "!!str", Value: schema},
+		}, mapping.Content...)
 		style(&doc, literal)
 		out, err := yaml.Marshal(&doc)
 		if err != nil {

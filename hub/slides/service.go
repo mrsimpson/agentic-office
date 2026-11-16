@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"path"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -17,12 +16,13 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/identity/tokencheck"
 	slidesv1 "github.com/mrsimpson/agentic-office/hub/slides/api"
 	"github.com/mrsimpson/agentic-office/hub/slides/api/slidesv1connect"
+	"github.com/mrsimpson/agentic-office/hub/slides/check"
 )
 
 const (
 	// Kind is the first part of the ID of a deck, for example "slides/42". It is also the
 	// directory of the decks in the archive.
-	Kind = "slides"
+	Kind = check.Kind
 	// MaxContentBytes is the largest rendered deck. A larger deck fails with InvalidArgument.
 	MaxContentBytes = 1 << 20
 )
@@ -60,26 +60,24 @@ func Open(ctx context.Context, arch storage.Archive) (*Service, error) {
 		if path.Ext(f.Path) != ".yaml" {
 			continue
 		}
+		// The check of the part: the same one that decides about a push.
+		if reasons := check.Validate(check.SchemaDeck, f.Path, f.Data); len(reasons) > 0 {
+			return nil, fmt.Errorf("slides: %s: %s", f.Path, strings.Join(reasons, "; "))
+		}
 		d, err := decode(f.Data)
 		if err != nil {
 			return nil, fmt.Errorf("slides: %s: %w", f.Path, err)
 		}
-		n, ok := number(d.GetId())
+		n, _ := check.Number(d.GetId())
 		switch {
-		case !ok:
-			return nil, fmt.Errorf("slides: %s: %q is not the ID of a deck", f.Path, d.GetId())
-		case f.Path != filePath(n, ".yaml"):
-			return nil, fmt.Errorf("slides: %s: deck %q belongs in %s", f.Path, d.GetId(), filePath(n, ".yaml"))
 		case byNum[n] != nil:
 			return nil, fmt.Errorf("slides: %s: deck %q is twice", f.Path, d.GetId())
-		case d.GetCommandId() == "":
-			return nil, fmt.Errorf("slides: %s: command_id is missing", f.Path)
 		case s.byCmd[d.GetCommandId()] != nil:
 			return nil, fmt.Errorf("slides: %s: command ID %q is used twice", f.Path, d.GetCommandId())
 		}
 		content, ok := contents[strings.TrimSuffix(f.Path, ".yaml")]
 		if !ok {
-			return nil, fmt.Errorf("slides: %s is missing", filePath(n, ".html"))
+			return nil, fmt.Errorf("slides: %s is missing", check.FilePath(n, ".html"))
 		}
 		d.MediaType, d.Content = MediaType, content
 		byNum[n] = d
@@ -88,7 +86,7 @@ func Open(ctx context.Context, arch storage.Archive) (*Service, error) {
 	// The numbers have no gaps: a deck is never deleted.
 	for n := uint64(1); n <= uint64(len(byNum)); n++ {
 		if byNum[n] == nil {
-			return nil, fmt.Errorf("slides: %s is missing", filePath(n, ".yaml"))
+			return nil, fmt.Errorf("slides: %s is missing", check.FilePath(n, ".yaml"))
 		}
 		s.all = append(s.all, byNum[n])
 	}
@@ -100,21 +98,6 @@ func (s *Service) Count() int {
 	s.rmu.RLock()
 	defer s.rmu.RUnlock()
 	return len(s.all)
-}
-
-// filePath returns the path of a file of deck n in the archive, with the ending ext.
-func filePath(n uint64, ext string) string { return fmt.Sprintf("%s/%06d%s", Kind, n, ext) }
-
-func deckID(n uint64) string { return Kind + "/" + strconv.FormatUint(n, 10) }
-
-// number returns the number of a deck ID such as "slides/42".
-func number(id string) (uint64, bool) {
-	rest, ok := strings.CutPrefix(id, Kind+"/")
-	if !ok || rest == "" || rest[0] == '0' || rest[0] == '+' {
-		return 0, false
-	}
-	n, err := strconv.ParseUint(rest, 10, 64)
-	return n, err == nil
 }
 
 func invalid(msg string) error { return connect.NewError(connect.CodeInvalidArgument, msg) }
@@ -193,7 +176,7 @@ func (s *Service) RenderDeck(ctx context.Context, req *slidesv1.RenderDeckReques
 		return nil, invalid("the deck is too large")
 	}
 	n := uint64(len(s.all)) + 1
-	d := &slidesv1.Deck{Id: deckID(n), Title: req.GetTitle(), AuthorParticipantId: pid, AuthorKind: kind,
+	d := &slidesv1.Deck{Id: check.DeckID(n), Title: req.GetTitle(), AuthorParticipantId: pid, AuthorKind: kind,
 		CreateTime: timestamppb.Now(), CommandId: req.GetCommandId(), MediaType: MediaType, Content: content}
 	for _, sl := range req.GetSlides() {
 		d.Slides = append(d.Slides, proto.Clone(sl).(*slidesv1.Slide))
@@ -214,6 +197,9 @@ func (s *Service) write(ctx context.Context, n uint64, d *slidesv1.Deck) error {
 	if err != nil {
 		return connect.NewError(connect.CodeInternal, "encode the deck: "+err.Error())
 	}
+	if reasons := check.Validate(check.SchemaDeck, check.FilePath(n, ".yaml"), data); len(reasons) > 0 {
+		return connect.NewError(connect.CodeInternal, "the deck is not valid: "+strings.Join(reasons, "; "))
+	}
 	title := d.GetTitle()
 	if strings.TrimSpace(title) == "" {
 		title = d.GetSlides()[0].GetTitle()
@@ -222,8 +208,8 @@ func (s *Service) write(ctx context.Context, n uint64, d *slidesv1.Deck) error {
 	// the call.
 	if _, err := s.arch.Commit(context.WithoutCancel(ctx), storage.Change{
 		Message: fmt.Sprintf("Slides %s: %s", d.GetId(), summary(title)),
-		Files: []storage.File{{Path: filePath(n, ".yaml"), Data: data},
-			{Path: filePath(n, ".html"), Data: bytes.Clone(d.GetContent())}},
+		Files: []storage.File{{Path: check.FilePath(n, ".yaml"), Data: data},
+			{Path: check.FilePath(n, ".html"), Data: bytes.Clone(d.GetContent())}},
 	}); err != nil {
 		return connect.NewError(connect.CodeInternal, "store the deck in the archive: "+err.Error())
 	}
@@ -260,7 +246,7 @@ func (s *Service) GetDeck(ctx context.Context, req *slidesv1.GetDeckRequest) (*s
 func (s *Service) Load(_ context.Context, id string) (*slidesv1.Deck, error) {
 	s.rmu.RLock()
 	defer s.rmu.RUnlock()
-	n, ok := number(id)
+	n, ok := check.Number(id)
 	if !ok || n > uint64(len(s.all)) {
 		return nil, connect.NewError(connect.CodeNotFound, "no deck "+id)
 	}
