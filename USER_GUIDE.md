@@ -656,13 +656,18 @@ office sync                  # or: office sync ~/artifacts
 updated /home/ada/artifacts: main moved from f7d208a to 4b6c66e
 ```
 
-If nothing is new, it says `is up to date`. The command only moves `main` forward. It stops and
+If nothing is new, it says `is up to date`. The command moves `main` forward. If the hub rewrote
+the history of `main`, nothing of yours is on `main`, so the command moves `main` to the new
+state of the hub. Files that you changed and did not commit stay, unless the move would overwrite
+them. It stops and
 changes nothing when:
 
 - `main` has commits of its own: move them to a branch in a worktree and push that branch,
-- the hub rewrote the history of `main`: clone again into a new directory,
 - an incoming change would overwrite a file that you changed and did not commit: commit or move
   the file, then run the command again.
+
+If a directory has the name of a command (`init`, `follow` or `credential`), write `./init`
+instead of `init`. The command stops and asks for this form when both exist.
 
 **Follow.** To keep the directory up to date while you work, leave this running in a terminal:
 
@@ -723,6 +728,20 @@ The main directory mirrors the hub. Work in a worktree instead:
   git worktree add ../my-change -b my-change
 Commit there, then push the branch.
 ```
+
+**Plain Git and the certificate of the hub.** `office sync init` writes the certificate that your
+hub profile trusts into the configuration of the clone (`http.sslCAInfo`). The variable
+`GIT_SSL_CAINFO` beats that setting. If it is set in your environment, plain `git push` and
+`git fetch` use the file of the variable and may say that the certificate is not trusted. The
+`office` commands ignore the variable for their own Git calls and print a warning when it is
+set and names another file. To fix plain Git, either:
+
+- unset the variable for this shell: `unset GIT_SSL_CAINFO`, or
+- point it at a bundle that holds the certificate of the hub as well as the authorities that you
+  need, for example `cat ca-bundle.crt hub-ca.pem > ~/my-bundle.pem`, then
+  `export GIT_SSL_CAINFO=~/my-bundle.pem`.
+
+Do not turn off the check of certificates (`GIT_SSL_NO_VERIFY`, `http.sslVerify=false`).
 
 **When the hub refuses a push.** The hub checks every push before it accepts it. A refused push
 changes nothing. The reasons are shown as `remote:` lines. Fix the cause and push again.
