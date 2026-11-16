@@ -1,6 +1,7 @@
 package cli
 
 // The commands of the artifact sync (dec-artifact-sync): office sync init sets up a directory,
+// office sync updates it, office sync follow keeps it up to date,
 // office sync credential answers Git when it asks for a password. The work lies in the building
 // block Artifact sync (client/sync); this file only connects it to the command line.
 
@@ -10,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/mrsimpson/agentic-office/client/sync/control"
 )
@@ -91,6 +93,86 @@ func cmdSyncInit(e *env, fs *flag.FlagSet) func([]string) error {
 		fmt.Fprintf(e.stdout, "%s %s (%s)\ncommits in this directory are refused; work in a worktree: git worktree add ../my-change -b my-change\n",
 			verb, res.Dir, res.Repository)
 		return nil
+	}
+}
+
+// printUpdate tells the participant what an update did.
+func (e *env) printUpdate(res control.UpdateResult) {
+	if e.json {
+		e.printJSON(map[string]any{"directory": res.Dir, "updated": res.Updated, "from": res.From, "to": res.To})
+		return
+	}
+	if res.Updated {
+		fmt.Fprintf(e.stdout, "updated %s: main moved from %s to %s\n", res.Dir, short(res.From), short(res.To))
+		return
+	}
+	fmt.Fprintf(e.stdout, "%s is up to date (%s)\n", res.Dir, short(res.To))
+}
+
+func short(id string) string {
+	if len(id) > 7 {
+		return id[:7]
+	}
+	return id
+}
+
+// cmdSyncUpdate is "office sync [<directory>]".
+func cmdSyncUpdate(e *env, fs *flag.FlagSet) func([]string) error {
+	return func(args []string) error {
+		dir, err := syncDirectory(args, "usage: office sync [<directory>]")
+		if err != nil {
+			return err
+		}
+		s, err := e.sync(nil)
+		if err != nil {
+			return err
+		}
+		res, err := s.Update(e.ctx, dir)
+		if err != nil {
+			return err
+		}
+		e.printUpdate(res)
+		return nil
+	}
+}
+
+func syncDirectory(args []string, usage string) (string, error) {
+	switch len(args) {
+	case 0:
+		return ".", nil
+	case 1:
+		return args[0], nil
+	}
+	return "", usagef("%s", usage)
+}
+
+// prefixList is a flag that may repeat.
+type prefixList []string
+
+func (p *prefixList) String() string     { return strings.Join(*p, ",") }
+func (p *prefixList) Set(v string) error { *p = append(*p, v); return nil }
+
+// cmdSyncFollow is "office sync follow [<directory>]": it runs until Ctrl-C or SIGTERM.
+func cmdSyncFollow(e *env, fs *flag.FlagSet) func([]string) error {
+	var prefixes prefixList
+	fs.Var(&prefixes, "path", "only changes under this path start an update; repeat for more paths")
+	return func(args []string) error {
+		dir, err := syncDirectory(args, "usage: office sync follow [<directory>] [--path P]...")
+		if err != nil {
+			return err
+		}
+		s, err := e.sync(nil)
+		if err != nil {
+			return err
+		}
+		return s.Follow(e.ctx, dir, control.FollowOptions{PathPrefixes: prefixes,
+			Updated: func(res control.UpdateResult, err error) {
+				if err != nil {
+					e.progress("update failed: " + err.Error())
+					return
+				}
+				e.printUpdate(res)
+			}})
 	}
 }
 

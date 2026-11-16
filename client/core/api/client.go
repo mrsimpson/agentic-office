@@ -1,6 +1,7 @@
 package coreapi
 
 import (
+	"connectrpc.com/connect/v2"
 	"context"
 	"errors"
 	"time"
@@ -55,6 +56,10 @@ type Joined struct {
 type Client interface {
 	// Config returns the configuration the client was dialled with.
 	Config() Config
+	// Connection returns the Connect client of the hub with the access token and the tenant of
+	// this client. A caller that needs a service that this interface does not wrap builds its
+	// own service client on it (for example if-artifact-changes).
+	Connection() *connect.Client
 	// KeyID returns the ID of the public key of the actor.
 	KeyID() string
 	// ParticipantID authenticates if needed and returns the participant of the key.
