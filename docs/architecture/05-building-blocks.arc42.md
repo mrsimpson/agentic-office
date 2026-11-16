@@ -203,7 +203,9 @@ path: hub/session/importapi
 ### Auth API
 
 Proves who a caller is: the client signs a challenge from the hub with its private key and gets a
-short-lived access token that is bound to its key. The interface also creates the read-only links
+short-lived access token that is bound to its key. The answer names the participant and the
+display name of the participant, which the client uses as the author of commits
+(`dec-artifact-sync`). The interface also creates the read-only links
 for the stage. The calls of the meeting session, the records, the tasks and the slides name a
 tenant, and Identity checks that the caller is a member of it. The auth, user and tenant APIs name
 no tenant, because they work across tenants.
@@ -676,7 +678,9 @@ The in-process interface of the archive: write a set of files as one commit, and
 files as they are in the current commit. The archive keeps two git repositories for each tenant, one for its artifacts and one for its
 session logs, and one for the hub itself, for the users, the tenants, the memberships and the system admins. Each
 repository has its own commit queue, so one tenant does not hold up another. A tenant repository is
-created with the tenant and stays when the tenant is removed.
+created with the tenant and stays when the tenant is removed. The artifact repository of a tenant
+starts with one first commit that holds no artifact, so the branch main exists from the start and
+every clone has something to follow (`dec-artifact-sync`).
 
 ```arc42
 :::interface
