@@ -69,6 +69,9 @@ func cmdSyncInit(e *env, fs *flag.FlagSet) func([]string) error {
 		default:
 			return usagef("usage: office sync init [<directory>]")
 		}
+		if err := guardCommandName(dir); err != nil {
+			return err
+		}
 		helper, err := e.credentialHelper()
 		if err != nil {
 			return err
@@ -99,7 +102,13 @@ func cmdSyncInit(e *env, fs *flag.FlagSet) func([]string) error {
 // printUpdate tells the participant what an update did.
 func (e *env) printUpdate(res control.UpdateResult) {
 	if e.json {
-		e.printJSON(map[string]any{"directory": res.Dir, "updated": res.Updated, "from": res.From, "to": res.To})
+		e.printJSON(map[string]any{"directory": res.Dir, "updated": res.Updated, "from": res.From, "to": res.To,
+			"rewritten": res.Rewritten})
+		return
+	}
+	if res.Rewritten {
+		fmt.Fprintf(e.stdout, "updated %s: the hub rewrote the history of main; main moved from %s to the new state %s\n",
+			res.Dir, short(res.From), short(res.To))
 		return
 	}
 	if res.Updated {
@@ -141,9 +150,28 @@ func syncDirectory(args []string, usage string) (string, error) {
 	case 0:
 		return ".", nil
 	case 1:
-		return args[0], nil
+		return args[0], guardCommandName(args[0])
 	}
 	return "", usagef("%s", usage)
+}
+
+// syncCommandNames are the sub-commands of "office sync".
+var syncCommandNames = []string{"init", "follow", "credential"}
+
+// guardCommandName stops when the argument has the name of a sub-command of "office sync" and a
+// directory with that name exists in the current directory: the participant may mean the command
+// or the directory, and the program does not guess.
+func guardCommandName(arg string) error {
+	for _, name := range syncCommandNames {
+		if arg != name {
+			continue
+		}
+		if fi, err := os.Stat(arg); err == nil && fi.IsDir() {
+			return usagef("%q is the name of a command (office sync %s) and of a directory here: "+
+				"write ./%s to mean the directory", arg, name, name)
+		}
+	}
+	return nil
 }
 
 // prefixList is a flag that may repeat.
@@ -182,6 +210,9 @@ func cmdSyncCredential(e *env, fs *flag.FlagSet) func([]string) error {
 	return func(args []string) error {
 		if len(args) != 1 {
 			return usagef("usage: office sync credential get|store|erase")
+		}
+		if err := guardCommandName(args[0]); err != nil {
+			return err
 		}
 		s, err := e.sync([]string{"office"})
 		if err != nil {

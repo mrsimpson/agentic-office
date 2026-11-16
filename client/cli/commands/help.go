@@ -431,10 +431,13 @@ only. The session logs lie in a repository that no participant can read.`,
 it fetches the hub and moves main forward. It never merges. Files that you changed and did not
 commit stay as they are.
 
-The command stops and changes nothing when
+If the hub rewrote the history of main, nothing of yours is on main, so main moves to the new
+state of the hub. Files that you changed and did not commit stay, unless the move would
+overwrite them: then the command stops and changes nothing.
+
+The command also stops and changes nothing when
   - main has commits of its own: the main directory mirrors the hub, so move them to a branch
     in a worktree and push that branch;
-  - the hub rewrote the history of main: clone the hub again into a new directory;
   - an incoming change would overwrite a file that you changed and did not commit: commit or
     move the file, then run the command again.
 It refuses a directory that is not set up and a linked worktree (it works on the main directory
@@ -442,7 +445,14 @@ only). Git gets its access token from the helper that "office sync init" wrote i
 
 To keep the directory up to date while you work, use "office sync follow".
 
---json prints {"directory", "updated", "from", "to"} (the commits of main).`,
+If the directory has the name of a command (init, follow, credential), write ./init, for
+example "office sync ./init".
+
+Git reads GIT_SSL_CAINFO before the certificate that "office sync init" wrote into the clone.
+If the variable is set and names another file, the command warns; see "office help sync init".
+
+--json prints {"directory", "updated", "from", "to", "rewritten"} (the commits of main; rewritten
+is true when the hub had rewritten the history).`,
 		Examples: []string{"office sync", "office sync ~/artifacts"}},
 	{Name: "sync follow", Group: groupSync, Summary: "keep the directory up to date until you stop the command",
 		Usage: "sync follow [<directory>] [--path P]...",
@@ -454,14 +464,14 @@ It connects first, waits until the hub confirms that it is listening, and then u
 change gets lost between the two. A change is announced without its content; the update always
 takes everything that is new. When the connection ends or fails, the command waits (one second,
 then longer, up to 30 seconds), connects again and updates before it follows. An update that
-needs your action (own commits in main, rewritten history, a file that would be overwritten)
+needs your action (own commits in main, a file that would be overwritten)
 is reported on stderr and does not stop the command; the next change tries again.
 
 --path limits the changes that start an update to artifacts under a directory or file of the
 repository, for example notes or notes/plan.md. You can repeat it. An update still brings
 everything.
 
-With --json, every update prints {"directory", "updated", "from", "to"} on stdout, and messages
+With --json, every update prints {"directory", "updated", "from", "to", "rewritten"} on stdout, and messages
 on stderr are {"progress": text}.`,
 		Examples: []string{"office sync follow", "office sync follow ~/artifacts --path documents --path notes/plan.md"}},
 	{Name: "sync init", Group: groupSync, Summary: "set up a directory with the artifacts of the tenant",
@@ -481,6 +491,13 @@ helper that gets a fresh access token from the hub each time Git needs one (so n
 stored and none is in the address), the certificate that the hub profile trusts, and a guard
 that refuses a commit in this main directory. The main directory mirrors the hub. To change
 files, work in a worktree: git worktree add ../my-change -b my-change.
+
+If the environment sets GIT_SSL_CAINFO to another file than the certificate of the clone, plain
+Git uses that file and not the certificate of the hub, and the command warns. Unset the variable
+or point it at a bundle that also holds the certificate of the hub. Do not turn off the check.
+
+If the directory has the name of a command (init, follow, credential), write ./init, for
+example "office sync init ./init".
 
 --json prints {"directory", "repository", "cloned", "author"}.`,
 		Examples: []string{"office sync init ~/artifacts", "office sync init --tenant acme"}},
