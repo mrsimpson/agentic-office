@@ -14,8 +14,6 @@ import (
 	"crypto/ed25519"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -216,11 +214,9 @@ func TestSchemaStoredSessionOfAnotherSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	headFile := contracttest.ArchivedSessionDir(oldSID) + "/tree-head.yaml"
-	if err := os.WriteFile(filepath.Join(repo, filepath.FromSlash(headFile)), data, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	contracttest.Git(t, repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
-		"commit", "-q", "--no-verify", "-m", "Test: a session of another schema", "--", headFile)
+	contracttest.Edit(t, repo, "Test: a session of another schema", func(work string) {
+		contracttest.WriteFile(t, work, headFile, string(data))
+	})
 
 	srv = contracttest.StartHubIn(t, srv.DataDir, srv.AdminKey, nil, "-archive-interval", "1h", "-restore-wait", "1h")
 	ada = srv.WithKey(t, ada.Key)

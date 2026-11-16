@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// GitGate is a git wrapper first in PATH that can make every "git commit" fail. With it a test
+// GitGate is a git wrapper first in PATH that can make every "git commit-tree" fail. With it a test
 // stops the writes of the hub to the archive while the session goes on, for example to lose the
 // events after the last write in a crash (dec-restore-from-peers).
 type GitGate struct {
@@ -31,7 +31,7 @@ func NewGitGate(t testing.TB) *GitGate {
 	}
 	flag := filepath.Join(dir, "closed")
 	script := fmt.Sprintf(`#!/bin/sh
-if [ "$1" = commit ] && [ -e %[1]q ]; then
+if [ "$1" = commit-tree ] && [ -e %[1]q ]; then
   echo "git-gate: commits are closed" >&2
   exit 1
 fi

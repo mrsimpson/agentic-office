@@ -28,15 +28,17 @@ import (
 type Archive interface {
 	// Commit writes the files of c and records them as one commit with the message of c. It
 	// returns the ID of the commit. A change with a stale Base of a file fails with a *ConflictError and
-	// writes nothing. A change that does not alter any file creates no commit and
+	// writes nothing. The same error follows when someone else moved the repository during the
+	// commit and changed a file of this change; if they changed other files, Commit builds the
+	// change on the new state and succeeds. A change that does not alter any file creates no commit and
 	// returns the ID of the current commit. Commit fails if a path is not valid (see CheckPath).
 	// Commit may take a long time; callers that must not wait call it in the background and mark
 	// the change as Background.
 	Commit(ctx context.Context, c Change) (string, error)
 	// Read returns the files under the directory dir as they are in the current commit, ordered
 	// by path. dir is a valid path (see CheckPath); if it names a file, Read returns this file. A directory that is not in the current
-	// commit, or a repository without commits, has no files. Files of a change whose commit
-	// failed are not returned.
+	// commit, or a repository without commits, has no files. A change whose commit failed is
+	// not visible.
 	Read(ctx context.Context, dir string) ([]File, error)
 	// List returns the paths of the files under the directory dir as they are in the current
 	// commit, ordered, without reading their content. A directory that is not in the current
@@ -116,7 +118,7 @@ type File struct {
 const NoFile = "none"
 
 // ConflictError is the error of a Commit whose Base of a file is not the version in the current
-// commit: another change came first. The author reads the file again and tries again.
+// commit, or whose file was changed by someone else during the commit: another change came first. The author reads the file again and tries again.
 type ConflictError struct {
 	Path string
 	// Current is the version of the file in the current commit, or "" if the file does not exist.

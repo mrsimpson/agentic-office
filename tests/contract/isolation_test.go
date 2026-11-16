@@ -6,8 +6,6 @@ package contract
 
 import (
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -228,16 +226,7 @@ func TestTenantContentLivesInTheTenantRepository(t *testing.T) {
 	contracttest.WaitArchived(t, m.srv.TenantRepoDir("globex"), "weekly", 20*time.Second, func(a *contracttest.ArchivedSession) bool { return len(a.Events) == 1 })
 
 	read := func(tenant string) string {
-		dir := m.srv.TenantRepoDir(tenant)
-		var all strings.Builder
-		_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
-			if err == nil && !d.IsDir() && !strings.Contains(p, "/.git/") {
-				b, _ := os.ReadFile(p)
-				all.Write(b)
-			}
-			return nil
-		})
-		return all.String()
+		return contracttest.AllText(t, m.srv.TenantRepoDir(tenant))
 	}
 	acme, globex := read("acme"), read("globex")
 	if !strings.Contains(acme, "Acme ships.") || strings.Contains(acme, "Globex") || strings.Contains(acme, "bob") {

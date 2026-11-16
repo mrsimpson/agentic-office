@@ -153,17 +153,9 @@ func TestHubRepositoryWithBrokenTenantsStopsTheHub(t *testing.T) {
 		return errOut, code
 	}
 	edit := func(file, content string) {
-		p := filepath.Join(repo, filepath.FromSlash(file))
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		contracttest.Git(t, repo, "add", "-A")
-		contracttest.Git(t, repo, "-c", "user.name=editor", "-c", "user.email=e@example.org", "commit", "-q", "-m", "manual edit")
+		contracttest.Edit(t, repo, "manual edit", func(work string) { contracttest.WriteFile(t, work, file, content) })
 	}
-	undo := func() { contracttest.Git(t, repo, "reset", "-q", "--hard", "HEAD~1") }
+	undo := func() { contracttest.Git(t, repo, "update-ref", "refs/heads/main", "main~1") }
 
 	// A tenant without a tenant admin.
 	edit("system/tenants/globex.yaml", "display_name: Globex\nvalid_from: 2026-01-01T00:00:00Z\n")
@@ -210,16 +202,16 @@ func TestTenantRepositories(t *testing.T) {
 	}
 	for _, id := range []string{"acme", "globex"} {
 		dir := srv.TenantRepoDir(id)
-		if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
+		if _, err := os.Stat(filepath.Join(dir, "HEAD")); err != nil {
 			t.Fatalf("repository of %s: %v", id, err)
 		}
 		// Nothing of the users or memberships is in a tenant repository.
-		if files := contracttest.Git(t, dir, "ls-files"); strings.TrimSpace(files) != "" {
-			t.Errorf("files in the repository of %s: %s", id, files)
+		if files := contracttest.Files(t, dir); len(files) != 0 {
+			t.Errorf("files in the repository of %s: %v", id, files)
 		}
 	}
 	// The hub repository has the users, tenants and memberships of both.
-	files := contracttest.Git(t, srv.HubRepoDir(), "ls-files")
+	files := strings.Join(contracttest.Files(t, srv.HubRepoDir()), "\n")
 	for _, want := range []string{"system/tenants/acme.yaml", "system/tenants/globex.yaml", "system/users/ada.yaml",
 		"system/memberships/acme/ada.yaml", "system/memberships/globex/bob.yaml"} {
 		if !strings.Contains(files, want) {
@@ -230,7 +222,7 @@ func TestTenantRepositories(t *testing.T) {
 	if err := removeTenant(t, admin, "globex"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(srv.TenantRepoDir("globex"), ".git")); err != nil {
+	if _, err := os.Stat(filepath.Join(srv.TenantRepoDir("globex"), "HEAD")); err != nil {
 		t.Fatalf("repository of a removed tenant: %v", err)
 	}
 	// Creating a tenant is one commit, with the tenant and its first membership.
