@@ -109,7 +109,8 @@ func (s *syncer) update(ctx context.Context, git, dir string) (control.UpdateRes
 				short(head), short(after), control.ErrOwnCommits, control.ErrHistoryRewritten)
 		}
 	}
-	if out, err := run(ctx, git, dir, "merge", "--ff-only", "--quiet", remoteMain); err != nil {
+	// The merge is short and changes the files and HEAD. It runs to its end, also when ctx ends.
+	if out, err := run(context.WithoutCancel(ctx), git, dir, "merge", "--ff-only", "--quiet", remoteMain); err != nil {
 		if strings.Contains(out, "would be overwritten") {
 			return res, fmt.Errorf("%w: commit or move these files, then run the command again. Nothing was changed.\n%s",
 				control.ErrLocalChanges, strings.TrimSpace(out))

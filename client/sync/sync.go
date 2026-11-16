@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
+	"time"
 
 	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
 	"github.com/mrsimpson/agentic-office/client/sync/control"
@@ -302,6 +304,9 @@ func (s *syncer) Credential(ctx context.Context, op string, in io.Reader, out io
 func run(ctx context.Context, git, dir string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, git, args...)
 	cmd.Dir = dir
+	// End the command with SIGTERM, not SIGKILL, so that it removes its lock files.
+	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
+	cmd.WaitDelay = 10 * time.Second
 	// GIT_SSL_CAINFO would override the certificate in the configuration of the clone.
 	cmd.Env = []string{"GIT_TERMINAL_PROMPT=0", "LC_ALL=C"}
 	for _, kv := range os.Environ() {
