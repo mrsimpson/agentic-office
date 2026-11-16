@@ -171,7 +171,38 @@ Each agent has its own key (step 3), its own folder and its own role.
 - Keys never go into the role file or the config file, only paths. API keys of a decision model go
   in an environment variable named by `key-env`; see `office help config`.
 
-## 8. Final check
+## 8. Local copy of the artifacts (optional)
+
+Agents with a shell can read and change the documents, notes, decisions, minutes and tasks of the
+tenant as files. Ask the human where the copy may go, for example `~/artifacts`. Needs the `git`
+command line tool.
+
+```sh
+office sync init ~/artifacts
+cd ~/artifacts && office sync
+```
+
+- Check: `office sync init` prints `set up <directory>`. It writes only into the Git configuration
+  of the clone: your global Git configuration stays as it is. It refuses a directory that is not
+  empty.
+- The main directory mirrors `main` of the hub. Commits there are refused. Never commit there.
+  Change files in a worktree and push with plain Git:
+
+  ```sh
+  git worktree add ../my-change -b my-change
+  cd ../my-change   # change .md and .yaml files, then:
+  git add <files> && git commit -m "<message>" && git push origin HEAD:main
+  ```
+
+- A refused push prints the reasons as `remote:` lines and changes nothing. Read them, fix the
+  cause and push again. `fetch first` means: run `office sync` in the main directory, run
+  `git rebase main` in the worktree, then push again. Only Markdown and YAML files, only the
+  branch `main`, and the author must be the one that `office sync init` configured.
+- To get changes of others while you work, run `office sync follow` in its own terminal, or run
+  `office sync` before you read.
+- Session logs are not in the copy. Never put a sentence that is off the record into a file.
+
+## 9. Final check
 
 1. `office whoami` prints the ID of the human, and each agent key prints the ID of the agent.
 2. Start the agents (step 7), join as the human (step 6) and say "Hello, <agent>". The agent
