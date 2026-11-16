@@ -1,0 +1,63 @@
+// Archive changes (if-artifact-changes): follow the changes of the artifacts of a tenant
+// (dec-artifact-sync).
+//
+// After every change of the branch main of the repository of the tenant, the hub sends one
+// event to every follower of the tenant. It does not matter whether the archive committed the
+// change (for example through the documents interface) or a push moved the branch: both give the
+// same event. An artifact is a Markdown or YAML file. Nothing under the session logs is ever
+// named, because they hold the original of sentences that are off the record
+// (dec-off-the-record).
+//
+// An event holds no content and no position, and the stream has no cursor and no replay: a client
+// that connects, or connects again, first updates its clone through Git and then follows.
+//
+// Every call needs the access token of a participant who belongs to the tenant, and the tenant in
+// the header Office-Tenant (see identity.proto). A caller who is not a member gets the answer for a
+// tenant that does not exist. A stage link cannot use this interface.
+syntax = "proto3";
+
+package office.archive.v1;
+
+option go_package = "github.com/mrsimpson/agentic-office/hub/archive/changes/api;changesv1";
+
+service ArchiveChangesService {
+  // Follow first sends one FollowResponse without changes: it says that the hub has registered
+  // the call, so the client receives every change of main from now on. A client that wants a
+  // complete clone waits for it and then updates its clone through Git. After that, Follow sends
+  // one FollowResponse for each change of main that touches an artifact that matches the
+  // request, until the client ends the call or the access token ends.
+  //
+  // The hub never waits for a follower. A follower that does not read fast enough is dropped: its
+  // stream fails with resource_exhausted, and the client connects again and updates its clone.
+  rpc Follow(FollowRequest) returns (stream FollowResponse);
+}
+
+message FollowRequest {
+  // path_prefixes limit the events to artifacts under these paths. A prefix is a directory or a
+  // file path of the repository, for example "notes" or "notes/plan.md". "notes" matches
+  // "notes/plan.md" but not "notes-old/plan.md". No prefix means all artifacts. A prefix must be
+  // a valid path of the archive, otherwise the call fails with invalid_argument.
+  repeated string path_prefixes = 1;
+}
+
+message FollowResponse {
+  // changes are the artifacts of one change of main that match the request, ordered by path.
+  // Every message has at least one entry, except the first one (see Follow).
+  repeated ArtifactChange changes = 1;
+}
+
+message ArtifactChange {
+  // path is relative to the root of the repository, with slashes.
+  string path = 1;
+  ChangeKind kind = 2;
+  // version is the new version of the artifact: the Git object ID of its content, the same
+  // version that the read interface gives. It is empty when the artifact was removed.
+  string version = 3;
+}
+
+enum ChangeKind {
+  CHANGE_KIND_UNSPECIFIED = 0;
+  CHANGE_KIND_CREATED = 1;
+  CHANGE_KIND_CHANGED = 2;
+  CHANGE_KIND_REMOVED = 3;
+}
