@@ -47,7 +47,7 @@
 //     example a push from a clone. Open removes the lock files and the temporary index that a hub
 //     left when it died during a commit. On Linux, git stops when the hub dies.
 //   - Commit carries out one change at a time in each repository. Session writes lie in the
-//     session-log repository, so a record never waits for them (dec-records-synchronous).
+//     session-log repository, so a record is written synchronously and never waits behind them.
 //   - Commit writes every file as a Git object, builds the new tree on the current commit with a
 //     temporary index, creates the commit object and then moves main to it in one atomic step
 //     that names the commit main must still have (git update-ref with the old value). A change

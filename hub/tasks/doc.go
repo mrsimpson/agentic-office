@@ -39,7 +39,7 @@
 //     means DefaultLimit (100), and more than MaxLimit (1000) is reduced to MaxLimit.
 //     next_page_token is set if more tasks match.
 //   - One write at a time: a write holds the lock of the tasks while its commit runs. The commit
-//     waits for a session write that the archive is carrying out (#45).
+//     does not wait behind session writes: the session logs lie in their own repository.
 //   - Error codes: a missing or bad field is InvalidArgument; a participant that is not the
 //     caller, or a stage link, is PermissionDenied; no valid token is Unauthenticated; a reused
 //     command_id is AlreadyExists; an unknown ref is NotFound; a failed write to the archive is

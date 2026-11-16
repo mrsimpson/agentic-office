@@ -118,7 +118,7 @@ through its interfaces:
   there are far fewer commits than intervals (no queue), and that the last commit has the whole
   session. Only `make performance` fails on the latency of commands and the stream (maximum
   < 200 ms). `QS_ARCHIVE_DURATION` sets how long Ada speaks (default `12s`).
-  `TestArchiveRecordsBeforeSessionWrites` (`dec-records-synchronous`) uses the same wrapper with
+  `TestArchiveRecordsDoNotWaitForSessionWrites` uses the same wrapper with
   commits of 2 s, an interval of 100 ms and Ada speaking every 50 ms. In three rounds it records
   a decision while a session write runs and a note while the decision is committed. It checks
   from the commit log of the wrapper that no record waits for a session write that started after

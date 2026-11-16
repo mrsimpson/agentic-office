@@ -46,8 +46,8 @@
 //     PermissionDenied. The hub sets author_kind from the token. Any participant can fetch
 //     every deck. A stage link cannot use the slides interface (PermissionDenied): the stage
 //     renders on the hub and loads decks through Service.Load, so the browser never needs them.
-//   - One write at a time: a render holds the write lock while its commit runs. The commit waits
-//     for a session write that the archive is carrying out (#45).
+//   - One write at a time: a render holds the write lock while its commit runs. The commit
+//     does not wait behind session writes: the session logs lie in their own repository.
 //   - Error codes: a missing or bad field, or a rendered deck larger than MaxContentBytes, is
 //     InvalidArgument; an unknown ID is NotFound; a participant that is not the caller, or a stage
 //     link, is PermissionDenied; no valid token is Unauthenticated; a reused command_id is
