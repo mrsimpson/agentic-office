@@ -7,7 +7,7 @@
 // The rules:
 //
 //   - An artifact is a Markdown file (.md) or a YAML file (.yaml or .yml). A file with another
-//     ending is invalid. A file under the session logs (the directory sessions) is invalid.
+//     ending is invalid.
 //   - A YAML file names its schema in the top-level field "schema". A Markdown file names it in
 //     the field "schema" of its YAML front matter, which is the YAML between a first line "---"
 //     and the next line "---".
@@ -34,9 +34,6 @@ import (
 // SchemaKey is the field that names the schema of a file.
 const SchemaKey = "schema"
 
-// SessionLogsDir is the directory of the session logs. No artifact lies under it.
-const SessionLogsDir = "sessions"
-
 // Validate checks the file at filePath, a path relative to the repository of the tenant, with the
 // given content. It returns the reasons in plain words, or nothing when the file is valid.
 func Validate(filePath string, content []byte) []string {
@@ -44,8 +41,6 @@ func Validate(filePath string, content []byte) []string {
 	switch {
 	case filePath == "" || path.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, "../"):
 		return []string{fmt.Sprintf("the path %q is not a path inside the repository", filePath)}
-	case clean == SessionLogsDir || strings.HasPrefix(clean, SessionLogsDir+"/"):
-		return []string{"a file under the session logs is not an artifact"}
 	}
 	var (
 		schema string

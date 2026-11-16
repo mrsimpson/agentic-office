@@ -6,8 +6,8 @@
 // the change when the file has another version by then.
 //
 // Every call needs an access token of a participant (see identity.proto). A stage link cannot
-// use this interface: the stage reads inside the hub. Nothing under the session logs can be read,
-// because they hold the original of sentences that are off the record (dec-off-the-record).
+// use this interface: the stage reads inside the hub. The session logs lie in a
+// repository of their own that no interface for participants reads (dec-off-the-record).
 syntax = "proto3";
 
 package office.archive.v1;

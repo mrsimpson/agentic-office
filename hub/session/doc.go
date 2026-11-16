@@ -80,10 +80,14 @@
 //     page. The state knows the importer and whether the import runs; while it runs, every session
 //     command fails with FailedPrecondition. import.completed wakes the archive writer like
 //     session.ended. After the import the session is like any other.
+//   - Where the archive lies: the session uses only the session-log repository of the tenant
+//     (storage.Archives.SessionLogs) for everything it stores, restores, lists and reads. The
+//     artifact repository of the tenant never holds a session log, because the log holds the
+//     original of sentences that are off the record (dec-off-the-record).
 //   - Check a stored session: logfile.UnmarshalLines and logfile.UnmarshalTreeHead read the two
 //     files, and merkle.VerifyEvents(events, head, hubKey) checks them (the hub key comes from
-//     GetHubKey). "git log -- sessions/<name>/log.jsonl" in the repository of the tenant lists
-//     the writes of a session; every commit extends the log of the one before. The file
+//     GetHubKey). "git log -- sessions/<name>/log.jsonl" in the session-log repository of the tenant
+//     lists the writes of a session; every commit extends the log of the one before. The file
 //     sessions/+state.yaml says whether the archive is complete: "complete: true" when the hub
 //     stopped after a last write of every session, false from the next start on. No session name
 //     starts with "+".

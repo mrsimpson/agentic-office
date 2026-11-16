@@ -4,9 +4,8 @@
 // After every change of the branch main of the repository of the tenant, the hub sends one
 // event to every follower of the tenant. It does not matter whether the archive committed the
 // change (for example through the documents interface) or a push moved the branch: both give the
-// same event. An artifact is a Markdown or YAML file. Nothing under the session logs is ever
-// named, because they hold the original of sentences that are off the record
-// (dec-off-the-record).
+// same event. An artifact is a Markdown or YAML file. The session logs lie in a repository of
+// their own and never give an event (dec-off-the-record).
 //
 // An event holds no content and no position, and the stream has no cursor and no replay: a client
 // that connects, or connects again, first updates its clone through Git and then follows.

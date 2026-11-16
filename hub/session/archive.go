@@ -168,7 +168,7 @@ func (s *Service) writeArchive(ctx context.Context, final bool) {
 		return
 	}
 	msg := "Sessions: " + strings.Join(summary, ", ")
-	if _, err := s.arch.opts.Archive.Commit(ctx, storage.Change{Message: msg, Files: files, Background: true}); err != nil {
+	if _, err := s.arch.opts.Archive.Commit(ctx, storage.Change{Message: msg, Files: files}); err != nil {
 		s.logf("archive: write failed, the next write repeats it: %v", err)
 		s.archMu.Lock()
 		for _, id := range ids {

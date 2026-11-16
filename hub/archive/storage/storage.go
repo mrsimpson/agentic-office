@@ -18,10 +18,8 @@ import (
 // Archive stores files in a repository. An Archive is safe for use by many goroutines; it
 // carries out one change at a time.
 //
-// Records go first (dec-records-synchronous): when changes wait, the archive carries out every
-// waiting change that is not Background before a waiting Background change. A change that is in
-// progress is never interrupted. So a record waits at most for the one background change that is
-// in progress, never for a queue of them.
+// Records are not held up by session writes (dec-records-synchronous): the session logs have
+// their own repository and so their own queue (see Archives).
 //
 // A part of the hub reads its records back with Read, for example to rebuild its index when the
 // hub starts.
@@ -32,8 +30,7 @@ type Archive interface {
 	// commit and changed a file of this change; if they changed other files, Commit builds the
 	// change on the new state and succeeds. A change that does not alter any file creates no commit and
 	// returns the ID of the current commit. Commit fails if a path is not valid (see CheckPath).
-	// Commit may take a long time; callers that must not wait call it in the background and mark
-	// the change as Background.
+	// Commit may take a long time; callers that must not wait call it in the background.
 	Commit(ctx context.Context, c Change) (string, error)
 	// Read returns the files under the directory dir as they are in the current commit, ordered
 	// by path. dir is a valid path (see CheckPath); if it names a file, Read returns this file. A directory that is not in the current
@@ -48,18 +45,26 @@ type Archive interface {
 }
 
 // Archives gives the archive of each repository (concept-multi-tenancy). The hub has one
-// repository of its own, for the users, the tenants and the memberships, and each tenant has one
-// repository for its content. Every repository has its own commit queue, so a busy tenant does
-// not hold up another tenant or the hub repository.
+// repository of its own, for the users, the tenants and the memberships. Each tenant has two
+// repositories: one for its artifacts and records (Tenant) and one for its session logs
+// (SessionLogs). The session logs hold the original of sentences that are off the record
+// (dec-off-the-record), so they never share a repository with the artifacts: only the meeting
+// session uses the session-log repository, and no interface for participants reads it. Every
+// repository has its own commit queue, so a busy tenant does not hold up another tenant or the
+// hub repository, and a session write does not hold up a record.
 type Archives interface {
 	// Hub returns the archive of the hub repository.
 	Hub() Archive
-	// CreateTenant creates the repository of a tenant. It does nothing if the repository exists.
-	// It fails if id is not a valid tenant ID (see CheckTenantID).
+	// CreateTenant creates the artifact repository and the session-log repository of a tenant.
+	// It does nothing for a repository that exists. It fails if id is not a valid tenant ID
+	// (see CheckTenantID).
 	CreateTenant(ctx context.Context, id string) error
-	// Tenant returns the archive of the repository of a tenant. It fails with ErrNoTenant if
-	// the repository was not created.
+	// Tenant returns the archive of the artifact repository of a tenant: records, tasks,
+	// slides and documents. It fails with ErrNoTenant if the repository was not created.
 	Tenant(id string) (Archive, error)
+	// SessionLogs returns the archive of the session-log repository of a tenant. Only the
+	// meeting session uses it. It fails with ErrNoTenant if the repository was not created.
+	SessionLogs(id string) (Archive, error)
 }
 
 // ErrNoTenant is the error of Archives.Tenant for a tenant without a repository.
@@ -88,9 +93,6 @@ type Change struct {
 	// through). Empty means the hub itself.
 	Author Author
 	Files  []File
-	// Background marks a change that no caller waits for, such as a write of session logs. A
-	// waiting Background change goes after every waiting change that is not Background.
-	Background bool
 }
 
 // Author names the person or agent behind a change. Both fields are required when an Author is
