@@ -132,6 +132,9 @@ var (
 	tokenTTL        = flag.Duration("token-ttl", 15*time.Minute, "lifetime of access tokens; clients sign in again before they expire")
 	stageTTL        = flag.Duration("stage-link-ttl", 24*time.Hour, "lifetime of stage links (read-only links to the stage of one session)")
 	archiveInterval = flag.Duration("archive-interval", 30*time.Second, "time between two writes of changed sessions to the archive; sessions are also written when they end. Keep it above the usual commit time")
+	gitMaxPushMiB   = flag.Int64("git-max-push-mib", gitaccess.DefaultMaxPushBytes>>20, "largest push to the artifact repository, in MiB; a larger push is refused")
+	gitMaxFileKiB   = flag.Int64("git-max-file-kib", gitaccess.DefaultMaxFileBytes>>10, "largest artifact file in a push, in KiB; a larger file refuses the push")
+	gitMaxFiles     = flag.Int("git-max-files", gitaccess.DefaultMaxFiles, "most files that one push may change; a push that changes more is refused")
 	restoreWait     = flag.Duration("restore-wait", 10*time.Second, "after a restart, how long a restored session that has not ended waits for a peer to fill in the events after the last write to the archive")
 )
 
@@ -229,6 +232,10 @@ func printHubHelp(w io.Writer) {
 }
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == gitaccess.SubcommandPreReceive {
+		// Git started the hub program as the pre-receive hook of the artifact repository.
+		os.Exit(gitaccess.RunPreReceive(os.Stdin, os.Stderr))
+	}
 	if len(os.Args) > 1 && os.Args[1] == "keygen" {
 		keygen(os.Args[2:])
 		return
@@ -337,7 +344,13 @@ func main() {
 	mux.Handle("GET "+health.Path, health.Handler())
 	// Git access serves the artifact repository of each tenant at /git/<tenant>. It checks the
 	// token (the password of Basic) and the membership itself, then hands the request to Git.
-	gitHandler, err := gitaccess.New(gitaccess.Options{Tokens: ids, Repositories: repos, Logf: log.Printf})
+	gitHandler, err := gitaccess.New(gitaccess.Options{
+		Tokens: ids, Repositories: repos, Logf: log.Printf,
+		HooksDir:     filepath.Join(*dataDir, "git-hooks"),
+		MaxPushBytes: *gitMaxPushMiB << 20,
+		MaxFileBytes: *gitMaxFileKiB << 10,
+		MaxFiles:     *gitMaxFiles,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -1,12 +1,14 @@
 package gitaccess
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/cgi"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/mrsimpson/agentic-office/hub/archive/repository"
@@ -26,9 +28,26 @@ type Options struct {
 	Tokens TokenChecker
 	// Repositories finds the artifact repository of a tenant.
 	Repositories repository.Repositories
+	// HooksDir is a directory that Git access owns. It writes the hook of Git into it when it
+	// starts.
+	HooksDir string
+	// MaxPushBytes is the largest pack of one push. Zero means DefaultMaxPushBytes.
+	MaxPushBytes int64
+	// MaxFileBytes is the largest size of one artifact file. Zero means DefaultMaxFileBytes.
+	MaxFileBytes int64
+	// MaxFiles is the largest number of files that one push may change. Zero means
+	// DefaultMaxFiles.
+	MaxFiles int
 	// Logf logs what Git writes to its error output. It may be nil.
 	Logf func(format string, args ...any)
 }
+
+// The default limits of a push (risk-push-size).
+const (
+	DefaultMaxPushBytes = 32 << 20
+	DefaultMaxFileBytes = 1 << 20
+	DefaultMaxFiles     = 500
+)
 
 // Handler serves the repositories under web.PathPrefix.
 type Handler struct {
@@ -41,6 +60,21 @@ func New(o Options) (*Handler, error) {
 	git, err := exec.LookPath("git")
 	if err != nil {
 		return nil, fmt.Errorf("git access needs the git command line tool: %w", err)
+	}
+	if o.HooksDir == "" {
+		return nil, errors.New("git access needs a directory for its hook")
+	}
+	if o.MaxPushBytes <= 0 {
+		o.MaxPushBytes = DefaultMaxPushBytes
+	}
+	if o.MaxFileBytes <= 0 {
+		o.MaxFileBytes = DefaultMaxFileBytes
+	}
+	if o.MaxFiles <= 0 {
+		o.MaxFiles = DefaultMaxFiles
+	}
+	if err := writeHook(o.HooksDir); err != nil {
+		return nil, err
 	}
 	return &Handler{opts: o, git: git}, nil
 }
@@ -88,13 +122,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Gate 3: only the fetch of the smart protocol. Git is never started for anything else.
+	// Gate 3: only the smart protocol, for fetch and push. Git is never started for anything else.
 	service := r.URL.Query().Get("service")
+	push := false
 	switch {
 	case r.Method == http.MethodGet && tail == "info/refs" && service == receivePack,
 		r.Method == http.MethodPost && tail == receivePack:
-		http.Error(w, "push is not allowed", http.StatusForbidden)
-		return
+		push = true
 	case r.Method == http.MethodGet && tail == "info/refs" && service == uploadPack,
 		r.Method == http.MethodPost && tail == uploadPack:
 	default:
@@ -102,22 +136,39 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.serveGit(w, r, tenant, dir)
+	h.serveGit(w, r, tenant, dir, caller)
+	if push && r.Method == http.MethodPost {
+		// Git has finished the push. Tell the archive that main may have moved; it does
+		// nothing if it did not. The request may be gone already, so it gets its own context.
+		if err := h.opts.Repositories.MainMoved(context.WithoutCancel(r.Context()), tenant); err != nil && h.opts.Logf != nil {
+			h.opts.Logf("git access: tenant %s: report of the push: %v", tenant, err)
+		}
+	}
 }
 
 // serveGit hands the request to git http-backend. GIT_PROJECT_ROOT is the repository of the
 // tenant, and only the two addresses above reach it.
-func (h *Handler) serveGit(w http.ResponseWriter, r *http.Request, tenant, dir string) {
+func (h *Handler) serveGit(w http.ResponseWriter, r *http.Request, tenant, dir string, caller tokencheck.Caller) {
 	req := r.Clone(r.Context())
 	req.Header.Del("Authorization")
 	req.Header.Del("Proxy-Authorization")
 	cfg := [][2]string{
-		{"core.hooksPath", os.DevNull},
-		{"http.receivepack", "false"},
+		{"core.hooksPath", h.opts.HooksDir},
+		{"http.receivepack", "true"},
 		{"http.uploadpack", "true"},
 		// Only the branch main is served.
 		{"uploadpack.hideRefs", "refs/"},
 		{"uploadpack.hideRefs", "!refs/heads/main"},
+		{"receive.hideRefs", "refs/"},
+		{"receive.hideRefs", "!refs/heads/main"},
+		{"receive.denyNonFastForwards", "true"},
+		{"receive.denyDeletes", "true"},
+		{"receive.fsckObjects", "true"},
+		{"receive.maxInputSize", strconv.FormatInt(h.opts.MaxPushBytes, 10)},
+	}
+	name := caller.DisplayName
+	if name == "" {
+		name = caller.ParticipantID
 	}
 	env := []string{
 		"GIT_PROJECT_ROOT=" + dir,
@@ -125,6 +176,16 @@ func (h *Handler) serveGit(w http.ResponseWriter, r *http.Request, tenant, dir s
 		"GIT_CONFIG_NOSYSTEM=1",
 		"GIT_CONFIG_GLOBAL=" + os.DevNull,
 		"GIT_TERMINAL_PROMPT=0",
+		// The participant and the tenant come from the token check and the address, never from
+		// the client. The hook reads them from here.
+		"REMOTE_USER=" + caller.ParticipantID,
+		"GIT_COMMITTER_NAME=" + name,
+		"GIT_COMMITTER_EMAIL=" + AuthorEmail(caller.ParticipantID),
+		EnvTenant + "=" + tenant,
+		EnvParticipant + "=" + caller.ParticipantID,
+		EnvName + "=" + name,
+		EnvMaxFileBytes + "=" + strconv.FormatInt(h.opts.MaxFileBytes, 10),
+		EnvMaxFiles + "=" + strconv.Itoa(h.opts.MaxFiles),
 		fmt.Sprintf("GIT_CONFIG_COUNT=%d", len(cfg)),
 	}
 	for i, kv := range cfg {
