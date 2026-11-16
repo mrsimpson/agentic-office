@@ -1,6 +1,8 @@
 // Command office-hub runs the office hub (bb-office-hub).
 //
-// All services are mounted, and the stage at /stage/<session>?token=<stage link token>. Every call
+// All services are mounted, and the stage at /stage/<session>?token=<stage link token>. The
+// artifact repository of a tenant is served over the Git smart protocol at /git/<tenant> (read
+// access only; the password of HTTP Basic is an access token). Every call
 // needs an access token from the identity block, except GetChallenge and ExchangeChallenge. The
 // server speaks only TLS.
 //
@@ -63,6 +65,8 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/archive/api/archivev1connect"
 	"github.com/mrsimpson/agentic-office/hub/archive/changes/api/changesv1connect"
 	"github.com/mrsimpson/agentic-office/hub/documents/api/documentv1connect"
+	"github.com/mrsimpson/agentic-office/hub/gitaccess"
+	gitweb "github.com/mrsimpson/agentic-office/hub/gitaccess/web"
 	"github.com/mrsimpson/agentic-office/hub/health"
 	"github.com/mrsimpson/agentic-office/hub/identity"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
@@ -189,6 +193,8 @@ First start: the hub needs a signing key and the first system admin, who runs th
   certificate file.
 - The hub needs the "git" command line tool in PATH; its archive is Git repositories. It runs git
   without your system and global git configuration.
+- The artifact repository of a tenant can be fetched with Git at https://<hub>/git/<tenant>. The
+  password is an access token; the user name is ignored. Pushing is not allowed yet.
 - GET /healthz answers 200 and "ok" without a login, for a container probe.
 
 Files in the data directory (-data-dir):
@@ -329,6 +335,13 @@ func main() {
 	connecthttp.Mount(mux, cs)
 	// The health check needs no token and reads no state, so a container probe can use it.
 	mux.Handle("GET "+health.Path, health.Handler())
+	// Git access serves the artifact repository of each tenant at /git/<tenant>. It checks the
+	// token (the password of Basic) and the membership itself, then hands the request to Git.
+	gitHandler, err := gitaccess.New(gitaccess.Options{Tokens: ids, Repositories: repos, Logf: log.Printf})
+	if err != nil {
+		log.Fatal(err)
+	}
+	mux.Handle(gitweb.PathPrefix, gitHandler)
 	// The admin view asks the identity part in-process, with the token of the admin.
 	mux.Handle(adminweb.PathPrefix, admin.New(admin.Options{Identity: connectinprocess.New(cs)}))
 	// The stage subscribes in-process through the token check, with the token of the link.
