@@ -256,7 +256,8 @@ func (s *ChangesService) Follow(ctx context.Context, req *changesv1.FollowReques
 	caller, _ := tokencheck.CallerFrom(ctx)
 	f := s.repo.follow(prefixes)
 	defer s.repo.unfollow(f)
-	if err := stream.SendHeaders(); err != nil {
+	// The first message says that the follower is registered (see the contract).
+	if err := stream.Send(&changesv1.FollowResponse{}); err != nil {
 		return err
 	}
 	for {

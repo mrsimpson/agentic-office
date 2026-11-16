@@ -25,6 +25,7 @@
 //     is dropped: its stream fails with resource_exhausted and it connects again. A follower
 //     whose client has gone is removed when its call ends. A slow or gone follower never holds
 //     up a commit or another follower.
-//   - The hub sends the response headers when it has registered the follower, so a client that
-//     has returned from Follow receives every later change.
+//   - The first message of a call has no changes. The hub sends it when it has registered the
+//     follower, so a client that has received it gets every later change. A client that wants a
+//     complete clone connects, waits for this message and then updates its clone through Git.
 package changes

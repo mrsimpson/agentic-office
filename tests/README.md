@@ -81,6 +81,14 @@ through its interfaces:
   every write is one commit whose log extends the one before; the hub writes once more when it
   stops; session IDs that are not safe as file names are encoded. The harness reads the
   repository with `contracttest.SessionCommits` and `ReadArchivedSession`.
+- `tests/contract/archive_changes_test.go` checks `if-artifact-changes` through the real hub: the
+  event of a commit of the archive (created, changed, with the version of the read interface),
+  every follower gets every event, path prefixes, only Markdown and YAML and never a session log,
+  outsiders, other tenants and stage links, and a follower that never reads does not hold up the
+  commits. `hub/archive/changes_contract_test.go` tests the same service and
+  `if-archive-repository` in one process, because the notice "main moved" is an in-process call:
+  a change by the real `git` tool plus the notice gives the same event as a commit of the
+  archive; created, changed and removed artifacts; a follower that cannot keep up is dropped.
 - `tests/contract/restore_test.go` checks the restore after a restart. `contracttest.NewGitGate`
   puts a `git` wrapper first in the `PATH` of the hub that can make every commit fail; the test
   writes a session, closes the gate, adds events and kills the hub, so the hub loses the tail.

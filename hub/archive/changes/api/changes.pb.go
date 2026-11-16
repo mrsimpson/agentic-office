@@ -141,7 +141,7 @@ func (x *FollowRequest) GetPathPrefixes() []string {
 type FollowResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// changes are the artifacts of one change of main that match the request, ordered by path.
-	// An event always has at least one entry.
+	// Every message has at least one entry, except the first one (see Follow).
 	Changes       []*ArtifactChange `protobuf:"bytes,1,rep,name=changes,proto3" json:"changes,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
