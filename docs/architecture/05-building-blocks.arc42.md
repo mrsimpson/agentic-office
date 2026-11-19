@@ -297,13 +297,12 @@ path: hub/records/minutes/api
 
 ### Notes
 
-Writes the pages of the wiki of a tenant (`dec-notes-as-wiki`, `concept-wiki`). A note is a page:
-a Markdown file with a title, a one-line summary, its author, whether the author is a human or an
-agent, and the sources that it cites. The path of a page is its identity. The interface creates a
-page, changes a page with the version that its author read, and lists the pages with their title,
-summary and tags, which is the index of the wiki. For one page, it also gives the pages that link
-to it. A note without a page name lands as a new page in the
-inbox of the wiki. A page may name a session. A sentence that is off the record must not go into a
+Writes the notes: the pages of the wiki that agents keep (`dec-wiki`, `concept-wiki`). A note is a
+Markdown file with a title, a one-line summary, tags, its author, whether the author is a human or
+an agent, the time and the sources that it cites. The path of a note is its identity. The
+interface creates a note, changes a note with the version that its author read, and lists the
+notes. A note without a page name lands as a new page in the inbox of the wiki. A note may name a
+session. A sentence that is off the record must not go into a
 note.
 
 ```arc42
@@ -504,8 +503,7 @@ of every session; then nothing is lost and there is no wait.
 
 The memory of the team: decisions, minutes and notes (`dec-records-per-type`). Each type has its
 own interface and its own types, and each record keeps who wrote it and whether that was a human
-or an agent. The notes are the pages of the wiki of the tenant (`dec-notes-as-wiki`); the part
-checks that the links between pages and the cited sources exist. Tasks are not part of this block; they have their own part of the hub.
+or an agent. The notes are the pages of the wiki that agents keep (`dec-wiki`). Tasks are not part of this block; they have their own part of the hub.
 
 Every new record is one commit in the archive (`dec-yaml-git-storage`). A command returns only
 after its commit, so a record that a client got back is stored. Local commits are fast, so this

@@ -432,13 +432,13 @@ definition: The local git repository of a tenant, with a directory for each kind
 
 ## Wiki
 
-The knowledge of a tenant in linked pages (`concept-wiki`).
+The knowledge of a tenant in linked artifacts (`concept-wiki`).
 
 ```arc42
 :::glossary-term
 id: term-wiki
 title: Wiki
-definition: The notes of a tenant as linked Markdown pages that agents keep up to date from the sources, such as minutes, decisions and documents
+definition: All artifacts of a tenant with the links between them; agents keep its notes up to date from the sources, such as minutes, decisions and documents
 :::
 ```
 
@@ -450,7 +450,7 @@ How knowledge enters the wiki (`concept-wiki`).
 :::glossary-term
 id: term-ingest
 title: Ingest
-definition: An agent reads a new source and writes or updates the wiki pages that it touches, with links between them and a citation of the source
+definition: An agent reads a new source and writes or updates the notes that it touches, with links between them and a citation of the source
 :::
 ```
 
@@ -462,6 +462,6 @@ How the wiki stays healthy (`concept-wiki`).
 :::glossary-term
 id: term-wiki-lint
 title: Lint of the wiki
-definition: An agent checks the wiki for contradictions, outdated statements, pages without links to them and missing pages, and fixes or reports what it finds
+definition: An agent checks the wiki for contradictions, outdated statements, notes without links to them and missing notes, and fixes or reports what it finds
 :::
 ```
