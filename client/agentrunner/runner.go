@@ -18,6 +18,7 @@ import (
 
 	acp "github.com/coder/acp-go-sdk"
 
+	"github.com/mrsimpson/agentic-office/hub/session/activityapi/sessionactivityv1connect"
 	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
 )
 
@@ -117,6 +118,13 @@ func Run(ctx context.Context, o Options) error {
 	logf("%s", wake)
 	r := &runner{o: o, wake: wake, m: m, h: h, logf: logf, self: m.joined.ParticipantID,
 		start: m.joined.Result.GetEvent().GetId(), names: map[string]participant{}}
+	// The activity of the agent for the stage (dec-agent-activity).
+	r.rep = newReporter(sessionactivityv1connect.NewSessionActivityServiceClient(m.client.Connection()),
+		o.Session, r.self, logf)
+	go r.rep.run(ctx)
+	h.OnToolCall(func(title string, kind acp.ToolKind) {
+		r.rep.set(activity{working: true, tool: shortToolName(title, kind)})
+	})
 	err = r.loop(ctx)
 	if errors.Is(err, context.Canceled) && ctx.Err() != nil {
 		return nil
@@ -164,6 +172,8 @@ type runner struct {
 	waiting  int  // how many waiting utterances the log named last while the agent was busy
 	// spoke: the agent spoke or raised its hand since the last prompt began, by the log.
 	spoke bool
+	// rep reports the activity of the agent to the hub.
+	rep *reporter
 }
 
 // turn is the end of one prompt.
@@ -221,9 +231,14 @@ func (r *runner) loop(ctx context.Context) error {
 			if t.final {
 				return nil
 			}
-			if r.unspoken(t) {
+			switch r.unspoken(t) {
+			case replyAsk:
 				busy = true
 				r.send(ctx, done, r.unspokenPrompt(t.Reply), turn{asked: true})
+			case replyLost:
+				r.rep.set(activity{unspoken: true})
+			default:
+				r.rep.set(activity{})
 			}
 		case c := <-checked:
 			r.checking = false
@@ -234,6 +249,9 @@ func (r *runner) loop(ctx context.Context) error {
 			if ev.GetId() > r.start {
 				r.take(ev)
 			}
+		}
+		if r.d.left || r.d.ended {
+			r.rep.stop()
 		}
 		if r.d.left {
 			r.logf("the agent left the session")
@@ -339,6 +357,7 @@ func (r *runner) judge(c check) {
 // send runs one prompt in the background and reports its end on done, with the flags of t.
 func (r *runner) send(ctx context.Context, done chan<- turn, text string, t turn) {
 	r.spoke = false
+	r.rep.set(activity{working: true})
 	go func() {
 		t.Turn, t.err = r.h.Prompt(ctx, text)
 		done <- t
@@ -359,13 +378,21 @@ func (r *runner) noteSpoken(ev *sessionstreamv1.Event) {
 	}
 }
 
-// unspoken reports whether the agent ended a turn with a reply in its chat and without
-// speaking: the reply reached nobody in the meeting. It logs the reply. It is true once per
-// prompt; after the prompt that asked the agent to speak, the reply is lost, and the runner
-// says so.
-func (r *runner) unspoken(t turn) bool {
+// replyFate is what became of the reply that the agent wrote in its chat in a turn.
+type replyFate int
+
+const (
+	replyNone replyFate = iota // no reply, or a reply next to a spoken answer
+	replyAsk                   // nobody heard it: ask the agent once whether it was meant for the meeting
+	replyLost                  // nobody heard it, and the agent was asked already
+)
+
+// unspoken says whether the agent ended a turn with a reply in its chat and without speaking:
+// the reply reached nobody in the meeting. It logs the reply. The runner asks once per prompt;
+// after the prompt that asked the agent to speak, the reply is lost, and the runner says so.
+func (r *runner) unspoken(t turn) replyFate {
 	if t.Reply == "" {
-		return false
+		return replyNone
 	}
 	spoke := r.spoke
 	for _, title := range t.Tools {
@@ -374,14 +401,14 @@ func (r *runner) unspoken(t turn) bool {
 	switch {
 	case spoke:
 		r.logf("the agent's reply in its chat (not spoken): %s", oneLine(t.Reply, 300))
-		return false
+		return replyNone
 	case t.asked:
 		r.logf("WARNING: the agent again did not speak; this reply reached nobody in the meeting: %s", oneLine(t.Reply, 300))
-		return false
+		return replyLost
 	default:
 		r.logf("WARNING: the agent wrote a reply in its chat but did not speak it; asking it once whether it was meant for the meeting: %s",
 			oneLine(t.Reply, 300))
-		return true
+		return replyAsk
 	}
 }
 

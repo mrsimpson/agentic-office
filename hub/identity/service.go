@@ -200,7 +200,7 @@ func (s *Service) Interceptor() connect.ServerInterceptor {
 			}
 			if c.StageSessionID != "" {
 				if !s.stageProcedures[spec.Procedure] {
-					return denied("a stage link only allows reading the session stream")
+					return denied("a stage link only allows reading the session")
 				}
 				return next(tokencheck.WithCaller(ctx, c), spec, stream)
 			}

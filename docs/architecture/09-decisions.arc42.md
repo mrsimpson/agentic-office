@@ -142,6 +142,40 @@ addresses: qg-resumability, qg-usability, risk-retraction-leak, risk-agent-wakeu
 :::
 ```
 
+## The activity of an agent is short-lived and not part of the log
+
+**Context:** While an agent works, for example searches the web or writes the minutes, nobody in
+the meeting sees it. With a slow tool call the agent seems to hang or to ignore the question, and
+an answer that the agent wrote only in its own chat is lost without a trace. The agent runner
+knows these facts. The session log is the wrong place for them: it is append-only, signed,
+replicated to every peer and kept forever, and the details of a tool call can carry sentences that
+are off the record. **Decision:** The activity of a participant is a short-lived state next to the
+log (`if-session-activity`). The agent runner reports what its agent does: working, with the short
+name of the tool it calls; waiting; or that its last reply reached nobody. A report names a tool by
+its name only, never by its arguments. The meeting session keeps only the latest activity of each
+participant, in memory. An activity lives a short time unless the runner renews it, and it ends
+when the participant leaves or the session ends. The stage shows it next to the participant.
+Only the participant itself reports its activity. **Consequences:** The humans see that an agent
+works and with which tool, and that an answer got lost. The log, the archive and the copies of the
+peers stay free of it, so it costs no storage and cannot leak into them. After a restart of the
+hub the activities are gone until the runners renew them. Whoever holds a stage link sees the tool
+names. OPEN: whether other agents should see the activities as well; whether partials, which the
+log does not carry either (`dec-no-partials-in-log`), should take the same way.
+**Rejected:** an event for the activity in the log (stored forever, replicated to every peer,
+grows the log with noise, and its details could leak); the title or the arguments of a tool call
+on the stage (can carry what was said off the record); a channel outside the hub (a second server
+next to the hub).
+
+```arc42
+:::decision
+id: dec-agent-activity
+title: The activity of an agent is short-lived and not part of the log
+status: accepted
+date: 2026-11-19
+addresses: qg-usability, qg-confidentiality, risk-retraction-leak
+:::
+```
+
 ## A forwarding judge or a decision model that the user brings
 
 **Context:** The runner checks after each utterance whether to wake the agent

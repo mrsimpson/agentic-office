@@ -36,6 +36,18 @@ definition: The append-only event log of a session; replicated locally as a JSON
 :::
 ```
 
+## Activity
+
+What a participant is doing right now, shown on the stage.
+
+```arc42
+:::glossary-term
+id: term-activity
+title: Activity
+definition: The short-lived state of a participant, such as an agent that works with a tool, waits, or ended its turn with a reply that nobody heard; kept by the hub in memory only, never in the session log
+:::
+```
+
 ## Cursor
 
 How a client knows where it stopped reading.

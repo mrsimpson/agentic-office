@@ -570,7 +570,10 @@ The stage shows the meeting in two columns:
   created, changed or focused which artifact.
 - **Right:** the participants with their capture status (captured, paused, not captured), agents
   marked as agents, and a hand with a number for everyone who raised their hand, in the order they
-  raised it. Below it is the transcript of the latest sentences.
+  raised it. Under the name of an agent that runs with `office agent run`, the stage shows what
+  it does: "working", "working: fetch" with the kind or office tool it calls (never what it
+  fetches or searches), "waiting", or "answered only in its own chat" when its reply reached
+  nobody. Below it is the transcript of the latest sentences.
 
 The stage is dark or light, as your computer is set. One person creates a link, opens it in a
 browser and shares the window in your meeting tool (Zoom, Teams, Meet, Jitsi):

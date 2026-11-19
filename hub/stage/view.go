@@ -13,6 +13,7 @@ import (
 
 	"connectrpc.com/connect/v2"
 
+	sessionactivityv1 "github.com/mrsimpson/agentic-office/hub/session/activityapi"
 	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
 )
 
@@ -23,19 +24,21 @@ const recentUtterances = 8
 type view struct {
 	participants []*participantView // in the order of their first join
 	byID         map[string]*participantView
-	hands        []handView // in the order they were raised
-	artifactLog  []logEntry // the events about artifacts, oldest first
-	artifact     artifactView
-	focus        string           // path or ID of the artifact in focus
-	entries      []*artifactEntry // the artifacts of the session in the order they first appeared
-	loaded       string           // focus and version of the artifact that v.artifact holds
-	minutes      string
-	utterances   []*utteranceView // in log order
-	byEvent      map[uint32]*utteranceView
-	ended        bool
-	imported     *importView // set when the log starts with session.imported
-	live         bool        // the stream delivered its first events or is caught up
-	stopped      string      // why the live view stopped, if it did
+	// activities are the current activities by participant, from the activity stream.
+	activities  map[string]*sessionactivityv1.Activity
+	hands       []handView // in the order they were raised
+	artifactLog []logEntry // the events about artifacts, oldest first
+	artifact    artifactView
+	focus       string           // path or ID of the artifact in focus
+	entries     []*artifactEntry // the artifacts of the session in the order they first appeared
+	loaded      string           // focus and version of the artifact that v.artifact holds
+	minutes     string
+	utterances  []*utteranceView // in log order
+	byEvent     map[uint32]*utteranceView
+	ended       bool
+	imported    *importView // set when the log starts with session.imported
+	live        bool        // the stream delivered its first events or is caught up
+	stopped     string      // why the live view stopped, if it did
 }
 
 // importView says where an imported session comes from (dec-session-import).
@@ -54,6 +57,32 @@ type participantView struct {
 	captured  bool
 	paused    bool
 	left      bool
+	activity  *sessionactivityv1.Activity // what the participant does right now, or nil
+}
+
+// activityView is the activity of a participant as the audience reads it (dec-agent-activity).
+type activityView struct {
+	State string // "working", "waiting" or "unspoken"
+	Tool  string
+	Text  string
+}
+
+// Activity returns the activity of the participant, or nil.
+func (p *participantView) Activity() *activityView {
+	a := p.activity
+	if a == nil || p.left {
+		return nil
+	}
+	switch {
+	case a.GetState() == sessionactivityv1.ActivityState_ACTIVITY_STATE_WORKING && a.GetTool() != "":
+		return &activityView{State: "working", Tool: a.GetTool(), Text: "working: " + a.GetTool()}
+	case a.GetState() == sessionactivityv1.ActivityState_ACTIVITY_STATE_WORKING:
+		return &activityView{State: "working", Text: "working"}
+	case a.GetUnspokenReply():
+		return &activityView{State: "unspoken", Text: "answered only in its own chat"}
+	default:
+		return &activityView{State: "waiting", Text: "waiting"}
+	}
 }
 
 // Status is one of "imported", "captured", "paused", "not-captured" and "left".
@@ -156,6 +185,15 @@ type utteranceView struct {
 
 func newView() *view {
 	return &view{byID: map[string]*participantView{}, byEvent: map[uint32]*utteranceView{}}
+}
+
+// setActivities replaces the activities of the participants (if-session-activity). They are not
+// part of the log; the stage shows them next to the participants.
+func (v *view) setActivities(as []*sessionactivityv1.Activity) {
+	v.activities = map[string]*sessionactivityv1.Activity{}
+	for _, a := range as {
+		v.activities[a.GetParticipantId()] = a
+	}
 }
 
 // participant returns the participant with this ID. It adds a placeholder for an ID that has not
@@ -373,7 +411,7 @@ func (v *view) StatusText() string {
 func (v *view) Imported() *importView { return v.imported }
 func (v *view) Participants() []*participantView {
 	for _, p := range v.participants {
-		p.hand, p.handTopic = 0, ""
+		p.hand, p.handTopic, p.activity = 0, "", v.activities[p.ID]
 	}
 	for i, h := range v.hands {
 		h.Participant.hand, h.Participant.handTopic = i+1, h.Topic
