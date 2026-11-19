@@ -75,6 +75,7 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/records/decision/api/decisionv1connect"
 	"github.com/mrsimpson/agentic-office/hub/records/minutes/api/minutesv1connect"
 	"github.com/mrsimpson/agentic-office/hub/records/note/api/notev1connect"
+	"github.com/mrsimpson/agentic-office/hub/session/activityapi/sessionactivityv1connect"
 	"github.com/mrsimpson/agentic-office/hub/session/commandsapi/sessioncommandsv1connect"
 	"github.com/mrsimpson/agentic-office/hub/session/importapi/sessionimportv1connect"
 	"github.com/mrsimpson/agentic-office/hub/session/streamapi/sessionstreamv1connect"
@@ -301,7 +302,8 @@ func main() {
 	ids, err := identity.New(context.Background(), identity.Options{TokenTTL: *tokenTTL, StageLinkTTL: *stageTTL,
 		PublicURL: *publicURL, Archive: repos.Hub(), Bootstrap: bootstrap, BootstrapErr: bootstrapErr, Logf: log.Printf,
 		TenantFreeServices: []string{tenantv1connect.TenantServiceName},
-		StageProcedures:    []string{sessionstreamv1connect.SessionStreamServiceSubscribeProcedure}})
+		StageProcedures: []string{sessionstreamv1connect.SessionStreamServiceSubscribeProcedure,
+			sessionactivityv1connect.SessionActivityServiceWatchActivityProcedure}})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -327,6 +329,7 @@ func main() {
 	sessioncommandsv1connect.RegisterSessionCommandsServiceHandler(cs, commandsMux{rts})
 	sessionstreamv1connect.RegisterSessionStreamServiceHandler(cs, streamMux{rts})
 	sessionimportv1connect.RegisterSessionImportServiceHandler(cs, importMux{rts})
+	sessionactivityv1connect.RegisterSessionActivityServiceHandler(cs, activityMux{rts})
 	identityv1connect.RegisterIdentityServiceHandler(cs, ids)
 	userv1connect.RegisterUserServiceHandler(cs, ids)
 	tenantv1connect.RegisterTenantServiceHandler(cs, tenant.New(ids, repos))

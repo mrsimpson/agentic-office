@@ -19,6 +19,8 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/records/minutes/api/minutesv1connect"
 	notev1 "github.com/mrsimpson/agentic-office/hub/records/note/api"
 	"github.com/mrsimpson/agentic-office/hub/records/note/api/notev1connect"
+	activityapi "github.com/mrsimpson/agentic-office/hub/session/activityapi"
+	"github.com/mrsimpson/agentic-office/hub/session/activityapi/sessionactivityv1connect"
 	commandsapi "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
 	"github.com/mrsimpson/agentic-office/hub/session/commandsapi/sessioncommandsv1connect"
 	importapi "github.com/mrsimpson/agentic-office/hub/session/importapi"
@@ -173,6 +175,26 @@ func (m importMux) ImportConversation(ctx context.Context, req *importapi.Import
 		return nil, err
 	}
 	return rt.sessions.ImportConversation(ctx, req)
+}
+
+type activityMux struct{ *runtimes }
+
+var _ sessionactivityv1connect.SessionActivityServiceHandler = activityMux{}
+
+func (m activityMux) ReportActivity(ctx context.Context, req *activityapi.ReportActivityRequest) (*activityapi.ReportActivityResponse, error) {
+	rt, err := m.forCall(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return rt.sessions.ReportActivity(ctx, req)
+}
+
+func (m activityMux) WatchActivity(ctx context.Context, req *activityapi.WatchActivityRequest, stream sessionactivityv1connect.SessionActivityServiceWatchActivityServerStream) error {
+	rt, err := m.forCall(ctx)
+	if err != nil {
+		return err
+	}
+	return rt.sessions.WatchActivity(ctx, req, stream)
 }
 
 type decisionMux struct{ *runtimes }

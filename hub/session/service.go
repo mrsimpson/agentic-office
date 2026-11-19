@@ -75,6 +75,9 @@ type Service struct {
 	mu       sync.Mutex
 	sessions map[string]*state
 
+	// activity keeps the short-lived activities of the participants (if-session-activity).
+	activity activities
+
 	// The archive (dec-session-persistence), set by UseArchive. See RunArchive.
 	arch   *archiver
 	archMu sync.Mutex
@@ -411,6 +414,7 @@ func (s *Service) run(ctx context.Context, c command, isJoin bool) (*sessioncomm
 		return nil, err
 	}
 	s.markDirty(c.sessionID, ev.GetType())
+	s.endActivities(c.sessionID, ev)
 	return &sessioncommandsv1.CommandResult{Event: ev}, nil
 }
 

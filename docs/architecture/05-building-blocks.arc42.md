@@ -28,6 +28,7 @@ flowchart LR
     bb_participant_client[Participant client]
     bb_participant_client -->|if-session-commands| bb_office_hub
     bb_participant_client -->|if-session-import| bb_office_hub
+    bb_participant_client -->|if-session-activity| bb_office_hub
     bb_participant_client -->|if-decision-api| bb_office_hub
     bb_participant_client -->|if-minutes-api| bb_office_hub
     bb_participant_client -->|if-note-api| bb_office_hub
@@ -103,6 +104,7 @@ flowchart LR
     bb_slides -->|if-archive-watch| bb_archive
     bb_slides -->|if-token-check| bb_identity
     bb_stage -->|if-session-stream| bb_session_service
+    bb_stage -->|if-session-activity| bb_session_service
     bb_stage -->|if-slides-api| bb_slides
     bb_stage -->|if-auth-api| bb_identity
     bb_tasks -->|if-archive-storage| bb_archive
@@ -200,6 +202,29 @@ provider: bb-office-hub
 x-realized-by: bb-session-service
 protocol: Connect RPC, unary (dec-connect-rpc)
 path: hub/session/importapi
+:::
+```
+
+### Session activity
+
+What a participant is doing right now, for the people in the meeting (`dec-agent-activity`): an
+agent works, which tool it calls, waits, or ended its turn with a reply that nobody heard. A
+participant reports its own activity; the stage watches the activities of its session.
+
+The activity is short-lived and is no event of the log. The hub keeps only the latest activity of
+each participant, in memory, and never stores, archives or replicates it. A report lives a short
+time unless the participant renews it, and it ends when the participant leaves or the session
+ends. A report names a tool by a short name only, never by its arguments, because arguments can
+carry sentences that are off the record.
+
+```arc42
+:::interface
+id: if-session-activity
+title: Session activity
+provider: bb-office-hub
+x-realized-by: bb-session-service
+protocol: Connect RPC, unary and server streaming (dec-connect-rpc); in-process for the stage
+path: hub/session/activityapi
 :::
 ```
 
@@ -450,7 +475,8 @@ path: hub/health
 Manages sessions and their participants. It accepts utterances from the ears and actions from
 participants, and writes everything to one append-only event log per session. It also takes
 imported conversations (`if-session-import`) and writes them into the log of a new session, so a
-session log has one writer in every case. Subscribers receive the log from a cursor onwards.
+session log has one writer in every case. Next to the log, it keeps the short-lived activities of
+the participants (`if-session-activity`), in memory only. Subscribers receive the log from a cursor onwards.
 Events are merged by time only: the participant model already says who spoke.
 
 ```arc42
@@ -848,7 +874,7 @@ path: hub/artifacts/check
 
 One web page per session, shown in the meeting by screen share. It shows the artifact in focus,
 the other artifacts as tabs, the transcript, and who is captured or paused, with the raised hands
-in the same list. The minutes are the first artifact of every session and stay in focus until
+and what each agent is doing (`if-session-activity`) in the same list. The minutes are the first artifact of every session and stay in focus until
 someone focuses another artifact. Until there are minutes, the stage asks for an agent that takes
 them. It marks an imported session with its source and never shows it as live. It is only a view of
 the session log and has no logic of its own: it reads an artifact straight from the archive
@@ -861,7 +887,7 @@ id: bb-stage
 title: Stage
 technology: Go, rendered by the hub / server-sent events
 parent: bb-office-hub
-requires: if-session-stream, if-slides-api, if-auth-api, if-archive-read
+requires: if-session-stream, if-session-activity, if-slides-api, if-auth-api, if-archive-read
 implements: concept-transparency
 path: hub/stage
 :::
@@ -1230,11 +1256,14 @@ session and one agent key, it:
 - when it wakes the agent, sends what others said since its last delivery, with who said it and
   whether that participant is a human or an agent, but not the agent's own utterances or
   sentences off the record; nothing is lost and nothing is sent twice;
+- reports what the agent is doing, so the stage can show it (`if-session-activity`): working
+  and the short name of the tool it calls, waiting, or that its reply reached nobody;
 - after the session ends, sends a last prompt and stops the harness.
 
 The runner never speaks for the agent and judges nothing itself: the agent decides whether it is
 addressed and acts through the office tools. Whatever the harness writes as a reply is only
-logged.
+logged; if the agent did not speak, the runner asks it once whether the reply was meant for the
+meeting (`dec-agent-runner-delivery`).
 
 Inside the runner, the wake strategy is one seam that serves the runner as its consumer. The
 runner hands it the pending utterances in its own terms and gets back its own verdict: wake, wait,
@@ -1248,7 +1277,7 @@ id: bb-agent-runner
 title: Agent runner
 technology: Go / Agent Client Protocol
 parent: bb-participant-client
-requires: if-client-core, if-replication, if-local-log, if-session-stream
+requires: if-client-core, if-replication, if-local-log, if-session-stream, if-session-activity
 implements: concept-read-file-write-tools, concept-participant-model
 path: client/agentrunner
 :::

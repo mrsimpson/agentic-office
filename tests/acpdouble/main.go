@@ -13,7 +13,8 @@
 //     `please say "TEXT"` asks for permission for the office tool utterance_say and, if
 //     allowed, calls it with TEXT; `please run "CMD"` asks for permission for a shell command
 //     (kind execute) and never runs it; `please reply "TEXT"` streams TEXT as the agent's reply
-//     in its chat; `please wait DURATION` sleeps, so the agent is busy; `please hold` records
+//     in its chat; `please always reply "TEXT"` streams TEXT at the end of this and every later
+//     prompt; `please wait DURATION` sleeps, so the agent is busy; `please hold` records
 //     "hold" and waits until the file ACP_DOUBLE_RELEASE exists. Then it ends the turn. Without
 //     `please reply`, the turn has no reply text.
 //   - session/cancel: ends a waiting prompt with the stop reason cancelled.
@@ -61,6 +62,7 @@ type double struct {
 	cancel  chan struct{} // closed by session/cancel for the running prompt
 	cmu     sync.Mutex
 	prompts int
+	always  string // a reply for every prompt, from `please always reply`
 }
 
 func main() {
@@ -222,7 +224,7 @@ func (d *double) handle(m message) {
 	}
 }
 
-var instruction = regexp.MustCompile(`please (say|run|reply) "([^"]*)"|please wait ([0-9a-z.]+)|please (hold)`)
+var instruction = regexp.MustCompile(`please (say|run|reply|always reply) "([^"]*)"|please wait ([0-9a-z.]+)|please (hold)`)
 
 func (d *double) prompt(m message) {
 	var p struct {
@@ -254,6 +256,10 @@ func (d *double) prompt(m message) {
 			d.tool(n, "mcp__office__utterance_say", "other", map[string]any{"text": in[2]})
 		case in[1] == "run":
 			d.tool(n, "Run "+in[2], "execute", map[string]any{"command": in[2]})
+		case in[1] == "always reply":
+			d.cmu.Lock()
+			d.always = in[2]
+			d.cmu.Unlock()
 		case in[1] == "reply":
 			d.sendUpdate(p.SessionID, map[string]any{"sessionUpdate": "agent_message_chunk",
 				"content": map[string]any{"type": "text", "text": in[2]}})
@@ -283,6 +289,13 @@ func (d *double) prompt(m message) {
 				stop = "cancelled"
 			}
 		}
+	}
+	d.cmu.Lock()
+	always := d.always
+	d.cmu.Unlock()
+	if always != "" {
+		d.sendUpdate(p.SessionID, map[string]any{"sessionUpdate": "agent_message_chunk",
+			"content": map[string]any{"type": "text", "text": always}})
 	}
 	d.record(map[string]any{"kind": "prompt_end", "n": n, "stop": stop})
 	d.reply(m.ID, map[string]any{"stopReason": stop})

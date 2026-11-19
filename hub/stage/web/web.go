@@ -100,6 +100,9 @@ section:empty { display: none; }
 .participants .who { display: flex; flex-direction: column; min-width: 0; }
 .participants .topic { color: var(--muted); font-size: 0.85rem; overflow-wrap: anywhere; }
 .participants .hand-col { text-align: center; }
+.participants .activity { color: var(--muted); font-size: 0.85rem; }
+.participants .activity.working { color: var(--live); }
+.participants .activity.unspoken { color: var(--warn); }
 .hand, .hands-count { white-space: nowrap; display: inline-flex; align-items: center; gap: 0.25em; font-size: 0.8rem; font-weight: 600; padding: 0.05em 0.6em; border-radius: 99px; background: var(--ink); color: var(--on-ink); letter-spacing: 0; text-transform: none; }
 #artifact { padding: 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--bg); }
 #artifact iframe { display: block; width: 100%; height: 55vh; border: 0; background: #fff; }
@@ -190,7 +193,7 @@ The office did not see this conversation happen. The hub's signature proves who 
 
 {{define "participants"}}<h2>Participants{{if .HandCount}} <span class="hands-count" data-hands="{{.HandCount}}" title="Raised hands">&#9995; {{.HandCount}}</span>{{end}}</h2>
 {{if .Participants}}<ul class="participants">
-{{range .Participants}}<li data-participant="{{.ID}}" data-kind="{{if .Agent}}agent{{else}}human{{end}}" data-capture="{{.Status}}"{{if .HandNumber}} data-hand="{{.HandNumber}}"{{end}}>{{template "avatar" .}}<span class="who"><span class="nameline">{{template "name" .}}</span>{{if .HandTopic}}<span class="topic">{{.HandTopic}}</span>{{end}}</span><span class="hand-col">{{if .HandNumber}}<span class="hand" title="Raised hand">&#9995; {{.HandNumber}}</span>{{end}}</span><span class="capture {{.Status}}">{{.StatusText}}</span></li>
+{{range .Participants}}<li data-participant="{{.ID}}" data-kind="{{if .Agent}}agent{{else}}human{{end}}" data-capture="{{.Status}}"{{if .HandNumber}} data-hand="{{.HandNumber}}"{{end}}>{{template "avatar" .}}<span class="who"><span class="nameline">{{template "name" .}}</span>{{if .HandTopic}}<span class="topic">{{.HandTopic}}</span>{{end}}{{with .Activity}}<span class="activity {{.State}}" data-activity="{{.State}}"{{if .Tool}} data-tool="{{.Tool}}"{{end}}>{{.Text}}</span>{{end}}</span><span class="hand-col">{{if .HandNumber}}<span class="hand" title="Raised hand">&#9995; {{.HandNumber}}</span>{{end}}</span><span class="capture {{.Status}}">{{.StatusText}}</span></li>
 {{end}}</ul>{{else}}<p class="empty">Nobody has joined yet.</p>{{end}}{{end}}
 
 {{define "artifact"}}{{if .ShowsMinutes}}{{template "minutes-main" .}}{{else}}{{with .Artifact}}{{if .ID}}<div class="art-head"><span class="eyebrow">Now showing</span><span class="art-id">{{.ID}}</span></div>

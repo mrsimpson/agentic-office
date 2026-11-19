@@ -16,6 +16,8 @@ import (
 	"connectrpc.com/connect/v2"
 
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
+	sessionactivityv1 "github.com/mrsimpson/agentic-office/hub/session/activityapi"
+	"github.com/mrsimpson/agentic-office/hub/session/activityapi/sessionactivityv1connect"
 	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
 	"github.com/mrsimpson/agentic-office/hub/session/streamapi/sessionstreamv1connect"
 	slidesv1 "github.com/mrsimpson/agentic-office/hub/slides/api"
@@ -185,6 +187,11 @@ func (h *Handler) events(w http.ResponseWriter, r *http.Request, sid, token stri
 		}
 	}()
 
+	// The activities of the participants (if-session-activity). They are a view only: if they
+	// fail, the stage shows the session without them.
+	acts := make(chan []*sessionactivityv1.Activity)
+	go h.watchActivity(ctx, token, sid, acts)
+
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprint(w, "retry: 2000\n\n")
@@ -220,6 +227,12 @@ func (h *Handler) events(w http.ResponseWriter, r *http.Request, sid, token stri
 				pending = true
 				timer.Reset(coalesce)
 			}
+		case as := <-acts:
+			v.setActivities(as)
+			if !pending {
+				pending = true
+				timer.Reset(coalesce)
+			}
 		case <-timer.C:
 			pending = false
 			v.live = true
@@ -245,6 +258,27 @@ func (h *Handler) events(w http.ResponseWriter, r *http.Request, sid, token stri
 		case <-keepAlive.C:
 			fmt.Fprint(w, ": keep-alive\n\n")
 			flusher.Flush()
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// watchActivity sends the activities of the session to acts until ctx ends or the watch fails.
+func (h *Handler) watchActivity(ctx context.Context, token, sid string, acts chan<- []*sessionactivityv1.Activity) {
+	client := sessionactivityv1connect.NewSessionActivityServiceClient(connect.NewClient(h.opts.Session, auth.StaticToken(token)))
+	st, err := client.WatchActivity(ctx, &sessionactivityv1.WatchActivityRequest{SessionId: sid})
+	if err != nil {
+		return
+	}
+	defer st.Close()
+	for {
+		res, err := st.Receive()
+		if err != nil {
+			return
+		}
+		select {
+		case acts <- res.GetActivities():
 		case <-ctx.Done():
 			return
 		}

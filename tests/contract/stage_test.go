@@ -789,3 +789,56 @@ func TestStageShowsMinutesInTheMiddle(t *testing.T) {
 	}
 	st.wait("artifact", "the minutes again", func(n *html.Node) bool { return len(findAll(n, withAttr("data-minutes", ""))) == 1 })
 }
+
+// TestStageShowsActivity: the stage shows the activity of each participant next to its name
+// (if-session-activity, dec-agent-activity): working with the short name of a tool, waiting, or
+// that an agent answered only in its own chat. An activity that ends disappears.
+func TestStageShowsActivity(t *testing.T) {
+	m := newStageMeeting(t)
+	ada := m.joinAs("Ada", sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_HUMAN, true)
+	bot := m.joinAs("Bot", sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_AGENT, false)
+	s := openStage(t, m.srv, m.link)
+	s.wait("participants", "both participants", func(n *html.Node) bool {
+		return participantEl(n, ada) != nil && participantEl(n, bot) != nil
+	})
+	activityOf := func(n *html.Node, pid string) *html.Node {
+		p := participantEl(n, pid)
+		if p == nil {
+			return nil
+		}
+		if els := findAll(p, func(n *html.Node) bool { _, ok := attr(n, "data-activity"); return ok }); len(els) == 1 {
+			return els[0]
+		}
+		return nil
+	}
+
+	if err := m.report(bot, working, "fetch", false); err != nil {
+		t.Fatal(err)
+	}
+	s.wait("participants", "bot working with fetch", func(n *html.Node) bool {
+		a := activityOf(n, bot)
+		if a == nil {
+			return false
+		}
+		state, _ := attr(a, "data-activity")
+		tool, _ := attr(a, "data-tool")
+		return state == "working" && tool == "fetch" && text(a) == "working: fetch" && activityOf(n, ada) == nil
+	})
+
+	if err := m.report(bot, idle, "", true); err != nil {
+		t.Fatal(err)
+	}
+	s.wait("participants", "bot answered only in its own chat", func(n *html.Node) bool {
+		a := activityOf(n, bot)
+		state, _ := attr(a, "data-activity")
+		return a != nil && state == "unspoken" && text(a) == "answered only in its own chat"
+	})
+
+	if _, err := m.s(bot).Leave(m.ctx(), &sessioncommandsv1.LeaveRequest{SessionId: m.sid, CommandId: coreapi.NewCommandID(),
+		ParticipantId: bot}); err != nil {
+		t.Fatal(err)
+	}
+	s.wait("participants", "no activity after bot left", func(n *html.Node) bool {
+		return participantEl(n, bot) != nil && activityOf(n, bot) == nil
+	})
+}

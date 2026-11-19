@@ -70,6 +70,14 @@ func Start(command []string, stderr io.Writer, logf func(string, ...any), allow 
 	return h, nil
 }
 
+// OnToolCall sets a function that learns of every new tool call of the agent, with its title and
+// kind. Set it before the first prompt. It must not block.
+func (h *Harness) OnToolCall(f func(title string, kind acp.ToolKind)) {
+	h.cl.mu.Lock()
+	h.cl.onTool = f
+	h.cl.mu.Unlock()
+}
+
 // Open negotiates the protocol and opens one ACP session with the given MCP server.
 func (h *Harness) Open(ctx context.Context, cwd string, office acp.McpServerStdio, version string) error {
 	ini, err := h.call(ctx, func(ctx context.Context) (any, error) {
@@ -222,6 +230,8 @@ type acpClient struct {
 	tools map[acp.ToolCallId]toolInfo
 	text  strings.Builder // the agent's reply in the current turn
 	calls []string        // the titles of the tool calls in the current turn
+	// onTool learns of every new tool call; see OnToolCall.
+	onTool func(title string, kind acp.ToolKind)
 }
 
 var _ acp.Client = (*acpClient)(nil)
@@ -255,6 +265,9 @@ func (c *acpClient) SessionUpdate(_ context.Context, n acp.SessionNotification) 
 	case u.ToolCall != nil:
 		c.tools[u.ToolCall.ToolCallId] = toolInfo{title: u.ToolCall.Title, kind: u.ToolCall.Kind}
 		c.calls = append(c.calls, u.ToolCall.Title)
+		if c.onTool != nil {
+			c.onTool(u.ToolCall.Title, u.ToolCall.Kind)
+		}
 		c.logf("tool call %s: %s", u.ToolCall.ToolCallId, u.ToolCall.Title)
 	case u.ToolCallUpdate != nil:
 		ti := c.tools[u.ToolCallUpdate.ToolCallId]

@@ -80,6 +80,14 @@
 //     page. The state knows the importer and whether the import runs; while it runs, every session
 //     command fails with FailedPrecondition. import.completed wakes the archive writer like
 //     session.ended. After the import the session is like any other.
+//   - Activity (dec-agent-activity, activity.go): the Service also realizes the session activity
+//     (if-session-activity). It keeps the latest activity of each participant in memory only,
+//     never in the Store, the archive or a stream of the log. A report lives ActivityTTL. The
+//     activity of a participant ends with its participant.left, all activities end with
+//     session.ended (endActivities, under the lock of the session, so a report cannot slip in
+//     after). WatchActivity sends the activities at once and after every change or expiry. A
+//     tool is a short name only; the hub refuses free text. The activities are lost when the hub
+//     restarts; the agent runner renews its report anyway.
 //   - Where the archive lies: the session uses only the session-log repository of the tenant
 //     (storage.Archives.SessionLogs) for everything it stores, restores, lists and reads. The
 //     artifact repository of the tenant never holds a session log, because the log holds the

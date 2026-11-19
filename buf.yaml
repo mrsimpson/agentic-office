@@ -5,6 +5,7 @@ modules:
   - path: hub/session/commandsapi
   - path: hub/session/streamapi
   - path: hub/session/importapi
+  - path: hub/session/activityapi
   - path: hub/identity/api
   - path: hub/identity/userapi
   - path: hub/tenant/api
