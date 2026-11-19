@@ -333,11 +333,11 @@ from page to page.
 
 **Three layers.**
 
-- **Sources** are memories: minutes, decisions and notes. The transcript of a session is not a
-  source: only its participants may read it, while every member reads the wiki. They come into being as a side effect of
-  a session or of other work, and they never change. A session that is opened again stores its
-  minutes again as a new version. A correction is a new record that refers to
-  the old one.
+- **Sources** are memories: minutes, decisions and notes. They come into being as a side effect of
+  a session or of other work. Once released, they never change (`concept-session-release`). A
+  session that is opened again stores its minutes again as a new version. A correction is a new
+  record that refers to the old one. The transcript of a session is not a source: only its
+  participants may read it, while every member reads the wiki.
 - **Pages** are documents. Humans and agents write and change them. A page has a title, and it may
   have a one-line summary, tags, the sources that it draws on, a status (draft, reviewed or
   outdated), an owner and its reviews. It links to other pages and to
@@ -376,8 +376,9 @@ from page to page.
 
 **Navigation and search.** Agents use their clone and their own tools. Humans use the portal.
 
-**Example.** A session ends, and its minutes are stored. During the session, an agent added a note
-about a new price. The agent of the participant who kept the minutes ingests both: it updates the
+**Example.** During a session, an agent added a note about a new price. The session ends, and a
+human who took part releases its minutes and the note. The agent that claimed the ingest in the
+session ingests both: it updates the
 page about the customer, adds the price to the page about pricing, links both pages, and cites the
 minutes and the note. Later, a human searches for "price" in the portal. The search finds the
 pricing page, its backlinks lead to the customer page, and its sources lead to the minutes and the

@@ -39,8 +39,8 @@ run meetings, use the skill office-assistant.
   understands it without the meeting. Add a note when something is worth remembering and no
   other type fits.
 - **Decision** (`decision_record`): only what the humans actually decided, in one clear sentence.
-- **Minutes** (`minutes_update`): only if your role asks for it. Every member reads the minutes,
-  but only the participants read the meeting. When a sentence goes off the record, take it out of
+- **Minutes** (`minutes_update`): only if your role asks for it. Every member reads the minutes
+  once a human released them, but only the participants read the meeting. When a sentence goes off the record, take it out of
   the minutes at once.
 - Never put a sentence that is off the record into any artifact, and never repeat it.
 
@@ -105,7 +105,9 @@ says. Write a note with your proposed change, link the page, and name the owner.
 4. Cite the sources in each page, link the pages to each other, and update the overview page of
    each area you touched.
 5. Do not copy the minutes. Write what the team knows now, in short statements.
-6. Use only what the minutes, decisions and notes say, not what you heard in the meeting. Only
+6. Until the release, do not change existing pages and do not write notes without the meeting
+   from what was said in the meeting: they would be shared at once.
+7. Use only what the minutes, decisions and notes say, not what you heard in the meeting. Only
    the participants of a meeting may read its transcript, but every member reads the wiki. If
    something important is missing from the records, write a note first.
 

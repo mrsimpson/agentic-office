@@ -1238,7 +1238,8 @@ builds up over time. The hub has no model of its own (`con-no-intelligence`), so
 work. Humans browse the knowledge in the portal (`dec-web-portal`); cross-references and search are
 the core of that experience. A session is read only by its participants, its importer and the
 tenant admins, because its log holds the original of sentences off the record
-(`dec-off-the-record`). Its records, also its notes, are visible to every member of the tenant.
+(`dec-off-the-record`). Its records, also its notes, are visible to every member of the tenant
+once they are released (`dec-session-release`).
 
 **Decision:** All artifacts of a tenant form one wiki (`concept-wiki`), in three layers. Every type
 keeps its own interface for writing (`dec-records-per-type`).
@@ -1251,7 +1252,8 @@ keeps its own interface for writing (`dec-records-per-type`).
   happened. They come into being as a side effect of a session or of other work, and they are never
   changed afterwards. A correction is a new record that refers to the old one. The minutes are the
   bridge from a session to the wiki: participants write them from what was said, and every end of
-  the session stores them as a new version that every member reads; an earlier version stays. So
+  the session stores them as a new version, which every member reads once it is released; an
+  earlier version stays. So
   a citation always names one version.
 - **Notes become readable pages.** A note keeps its interface: add and list. The hub stores it as a
   Markdown file whose front matter names the schema, the author, whether the author is a human or
@@ -1299,12 +1301,13 @@ keeps its own interface for writing (`dec-records-per-type`).
 - **The history of the archive is the log of the wiki.** The hub writes no index file and no log
   file.
 
-**Consequences:** Notes are Markdown and no longer YAML; `dec-yaml-git-storage` needs this change
-once this decision is accepted. The note contract stays, and the note schema gains tags. Documents
+**Consequences:** Notes are Markdown; `dec-yaml-git-storage` needs to say so once this decision is
+accepted. The note contract stays, and the note schema gains tags. Documents
 gain an optional schema for their front matter, owned by the documents part. Every part that owns a
-type gains a description of its files next to its check. Nothing in the hub keeps a sentence off the record out of a record or a page: the
-rule binds the people and agents who write, and ingest copies statements into documents and into
-the history of every clone (`risk-retraction-leak`). A clone of the tenant repository opens as a wiki in ordinary
+type gains a description of its files next to its check. Apart from the release, which gives time and replaces word-for-word quotes
+(`dec-session-release`), nothing in the hub keeps a sentence off the record out of a record or a
+page: the rule binds the people and agents who write, and ingest copies statements into documents
+and into the history of every clone (`risk-retraction-leak`). A clone of the tenant repository opens as a wiki in ordinary
 Markdown tools (`dec-artifact-sync`). Semantic checks such as contradictions or gaps stay with the
 agents.
 
@@ -1392,14 +1395,19 @@ more, and every sentence of it could have been off the record.
   session log.
 - **A session that is opened again** creates new pending records, which need a new release.
 
-**Consequences:** The minutes are no longer visible to every member when a session ends, only after
-the release. The note and decision interfaces gain a change for pending records. The records part
+**Consequences:** Every member sees the minutes from the release on, not from the end of the
+session. The note and decision interfaces offer a change for pending records. The records part
 keeps pending records outside the tenant repository. The wiki ingests only released records. A
 paraphrase of a sentence off the record can still pass the release; the grace period gives the
 speaker time to see it. The portal shows the release status of a session and offers the release
-and the objection as its first write that is not administration (`dec-web-portal`). An assistant
+and the objection, besides the administration of keys (`dec-web-portal`). An assistant
 that works with the key of a human counts as that human; its instructions must say that it
 releases or objects only when its human tells it to.
+
+The hold has gaps that only the people and agents who write can close: a session may change an
+artifact that is already released, a participant may push a file during a session, and a note may
+be written without naming its session. The memory skill tells agents to avoid all three
+(`risk-retraction-leak`).
 
 **Rejected:**
 
@@ -1410,7 +1418,6 @@ releases or objects only when its human tells it to.
 - Pending records in the tenant repository with a status field: every member clones the
   repository, so the field would hide nothing.
 - A release by agents: the release is the moment a human checks what is shared.
-
 - Holding a change to a released document: it would need a pending version next to the released
   one, with its own version check.
 - The release only in the portal: `dec-cli-and-mcp` asks for every feature in the CLI and MCP.
