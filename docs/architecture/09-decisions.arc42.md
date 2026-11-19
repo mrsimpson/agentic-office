@@ -1132,10 +1132,10 @@ addresses: qg-usability, qg-confidentiality, risk-push-bypass, risk-push-size, r
 
 ## A web portal for the people of a tenant, behind a one-time link
 
-**Context:** The people of a tenant have no place to find their sessions after they ended, nor to
-read the minutes, notes, decisions, tasks, slides and documents of the tenant, except the CLI, MCP
-and their Git clone. The stage shows one running session for a screen share. The admin view serves
-only system admins, and tenant admins manage their members in the CLI. People have Ed25519 keys and
+**Context:** The people of a tenant need a place to find their sessions after they ended, and to
+read the minutes, notes, decisions, tasks, slides and documents of the tenant, besides the CLI,
+MCP and their Git clone. The stage shows only one running session for a screen share. System
+admins need a view of users and keys, and tenant admins one of their members. People have Ed25519 keys and
 no passwords, and a browser cannot sign a challenge without more work. **Decision:** One web
 portal for every user of the hub, rendered by the hub on the server, in the design of the stage,
 without scripts and without logic of its own. A user asks for a link with the CLI. The link holds
@@ -1151,8 +1151,8 @@ shows what the key may see:
   no member of a tenant sees no content of it.
 
 The tenant is part of the address of a page, so a user with several memberships switches between
-them. The portal reads only, except the administration that the admin view did before: register
-users and keys and revoke keys. Writing content stays with the CLI, MCP and Git
+them. The portal reads only, except the administration of keys by system admins: register users and
+keys and revoke keys. Writing content stays with the CLI, MCP and Git
 (`dec-artifact-sync`). The stage stays separate: it is opened by a link without login, for one
 session, for a screen share. The meeting session lists the sessions that a caller may see, with
 their start, end, participants and whether they were imported; it takes the participants from the
@@ -1161,8 +1161,7 @@ every user and every admin. The code is useless after its first use, so a link o
 does no harm once it was opened. The access token lives one hour. Every page goes through an
 interface that checks the rights, so the portal cannot show more than the CLI. A form carries a
 token that is derived from the session, and the portal refuses a post from another origin.
-Revoking asks for a confirmation on its own page, so no script is needed. The admin view and its
-own link no longer exist. OPEN: whether a note made in a session is visible to the participants of
+Revoking asks for a confirmation on its own page, so no script is needed. OPEN: whether a note made in a session is visible to the participants of
 that session only (#15); a login with passkeys; creating tenants and managing memberships in the
 portal; whether the list of sessions extends the session stream or becomes an interface of its own.
 **Rejected:** a separate admin view next to a portal (two logins, two designs, and no place for
@@ -1175,7 +1174,7 @@ toolchain, `dec-languages`).
 :::decision
 id: dec-web-portal
 title: A web portal for the people of a tenant, behind a one-time link
-status: proposed
+status: accepted
 date: 2026-11-19
 addresses: qg-usability, qg-confidentiality
 :::

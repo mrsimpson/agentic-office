@@ -30,7 +30,7 @@ const (
 	groupHubs     = "Hubs and configuration"
 	groupMeeting  = "Meeting"
 	groupEars     = "Speech and vocabulary"
-	groupStage    = "Stage, slides and documents"
+	groupStage    = "Stage, portal, slides and documents"
 	groupRecords  = "Decisions, notes, minutes and tasks"
 	groupSync     = "Artifacts in a local directory"
 	groupImport   = "Import"
@@ -184,13 +184,6 @@ tenant always keeps at least one tenant admin. A system admin cannot be a member
 		Usage:    "admin key revoke <key-id>",
 		Details:  "The key ID is the one that \"office key show\" prints. The last key of a user cannot be revoked.",
 		Examples: []string{"office admin key revoke SHA256:abc123"}},
-	{Name: "admin link", Group: groupAdmin, Summary: "print a link that opens the admin view in a browser",
-		Usage: "admin link",
-		Details: `Only a system admin gets a link. The link works once and expires after a few minutes. The view
-then keeps you signed in for one hour in a cookie that scripts cannot read. It shows the users
-with their keys, the tenants and the system admins (read only), registers keys and revokes
-them after a confirmation. Every page asks the hub with your rights.`,
-		Examples: []string{"office admin link"}},
 
 	// Hubs and configuration.
 	{Name: "hub add", Group: groupHubs, Summary: "add a hub profile and trust the certificate of the hub",
@@ -388,6 +381,15 @@ document (documents/plan.md) or "minutes", the running minutes of the session. T
 are in focus until another artifact gets the focus. The hub does not check that the artifact
 exists; the stage shows a note for an unknown ID.`,
 		Examples: []string{"office stage focus slides/42", "office stage focus documents/plan.md", "office stage focus minutes"}},
+	{Name: "portal link", Group: groupStage, Summary: "print a link that opens the portal in a browser",
+		Usage: "portal link",
+		Details: `Every user gets a link. It opens the portal at the tenant you work in (--tenant or
+OFFICE_TENANT), or at its start page with --tenant "". The link works once and expires after a
+few minutes. The portal then keeps you signed in for one hour in a cookie that scripts cannot
+read. It shows what your key may see: your tenants, the members of a tenant to its tenant
+admins, and the users and keys, tenants and system admins to system admins, who also register
+and revoke keys there. Every page asks the hub with your rights.`,
+		Examples: []string{"office portal link", `office portal link --tenant ""   # the start page`}},
 	{Name: "stage link", Group: groupStage, Summary: "create a read-only link to the stage of a session",
 		Usage: "stage link",
 		Details: `Prints https://<hub>/stage/<session>?token=... for one session. The link is read only and

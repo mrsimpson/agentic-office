@@ -34,10 +34,11 @@ type Options struct {
 	ChallengeTTL time.Duration
 	// StageLinkTTL is the lifetime of a stage link. Default 24 hours.
 	StageLinkTTL time.Duration
-	// AdminLinkTTL is how long the code of an admin link can be exchanged. Default 5 minutes.
-	AdminLinkTTL time.Duration
-	// AdminSessionTTL is the lifetime of the access token that an admin link gives. Default 1 hour.
-	AdminSessionTTL time.Duration
+	// PortalLinkTTL is how long the code of a portal link can be exchanged. Default 5 minutes.
+	PortalLinkTTL time.Duration
+	// PortalSessionTTL is the lifetime of the access token that a portal link gives. Default 1
+	// hour.
+	PortalSessionTTL time.Duration
 	// PublicURL is the base URL of the server in stage links, for example
 	// "https://office.example.org:8740".
 	PublicURL string
@@ -64,9 +65,10 @@ type Caller = tokencheck.Caller
 // CallerFrom returns the caller that the Interceptor found for this call.
 func CallerFrom(ctx context.Context) (Caller, bool) { return tokencheck.CallerFrom(ctx) }
 
-// adminLink is the code of an admin link that has not been exchanged yet.
-type adminLink struct {
+// portalLink is the code of a portal link that has not been exchanged yet.
+type portalLink struct {
 	keyID   string
+	tenant  string // the tenant whose pages the portal opens first, or empty
 	expires time.Time
 }
 
@@ -108,7 +110,7 @@ type Service struct {
 	files      map[string][]byte // the files of the hub repository as written
 	keys       map[string]keyRef // by key ID
 	challenges map[string]challenge
-	adminLinks map[[32]byte]adminLink // by the hash of the code
+	portalLinks map[[32]byte]portalLink // by the hash of the code
 	tokens     map[[32]byte]*token    // by SHA-256 of the token
 	commands   map[string]command
 
@@ -132,15 +134,15 @@ func New(ctx context.Context, opts Options) (*Service, error) {
 	if opts.StageLinkTTL <= 0 {
 		opts.StageLinkTTL = 24 * time.Hour
 	}
-	if opts.AdminLinkTTL <= 0 {
-		opts.AdminLinkTTL = 5 * time.Minute
+	if opts.PortalLinkTTL <= 0 {
+		opts.PortalLinkTTL = 5 * time.Minute
 	}
-	if opts.AdminSessionTTL <= 0 {
-		opts.AdminSessionTTL = time.Hour
+	if opts.PortalSessionTTL <= 0 {
+		opts.PortalSessionTTL = time.Hour
 	}
 	opts.PublicURL = strings.TrimSuffix(opts.PublicURL, "/")
 	s := &Service{opts: opts, st: newState(), files: map[string][]byte{}, keys: map[string]keyRef{},
-		challenges: map[string]challenge{}, adminLinks: map[[32]byte]adminLink{}, tokens: map[[32]byte]*token{}, commands: map[string]command{},
+		challenges: map[string]challenge{}, portalLinks: map[[32]byte]portalLink{}, tokens: map[[32]byte]*token{}, commands: map[string]command{},
 		stageProcedures: map[string]bool{}}
 	for _, p := range opts.StageProcedures {
 		s.stageProcedures[p] = true
@@ -159,7 +161,8 @@ func precondition(msg string) error    { return connect.NewError(connect.CodeFai
 // tenantFree reports whether a call does not belong to a tenant: the public procedures, the user
 // API and the services that the wiring names in Options.TenantFreeServices.
 func (s *Service) tenantFree(procedure string) bool {
-	if publicProcedures[procedure] || procedure == identityv1connect.IdentityServiceCreateAdminLinkProcedure {
+	if publicProcedures[procedure] || procedure == identityv1connect.IdentityServiceCreatePortalLinkProcedure ||
+		procedure == identityv1connect.IdentityServiceWhoAmIProcedure {
 		return true
 	}
 	for _, name := range append([]string{userv1connect.UserServiceName}, s.opts.TenantFreeServices...) {
@@ -174,7 +177,7 @@ func (s *Service) tenantFree(procedure string) bool {
 var publicProcedures = map[string]bool{
 	identityv1connect.IdentityServiceGetChallengeProcedure:      true,
 	identityv1connect.IdentityServiceExchangeChallengeProcedure: true,
-	identityv1connect.IdentityServiceExchangeAdminLinkProcedure: true,
+	identityv1connect.IdentityServiceExchangePortalLinkProcedure: true,
 }
 
 // Interceptor is the token check for every call to the server. It reads the token from the
@@ -388,55 +391,80 @@ func callerKind(k identityv1.ActorKind) tokencheck.Kind {
 	return tokencheck.KindUnknown
 }
 
-// CreateAdminLink implements the RPC. Only a system admin may call it.
-func (s *Service) CreateAdminLink(ctx context.Context, req *identityv1.CreateAdminLinkRequest) (*identityv1.CreateAdminLinkResponse, error) {
+// CreatePortalLink implements the RPC. Every user may call it (dec-web-portal).
+func (s *Service) CreatePortalLink(ctx context.Context, req *identityv1.CreatePortalLinkRequest) (*identityv1.CreatePortalLinkResponse, error) {
 	c, _ := CallerFrom(ctx)
-	if !c.SystemAdmin {
-		return nil, denied("only a system admin may create an admin link")
+	if c.ParticipantID == "" {
+		return nil, denied("a stage link cannot create a portal link")
 	}
 	if req.GetCommandId() == "" {
 		return nil, invalid("command_id is required")
+	}
+	if t := req.GetTenantId(); t != "" {
+		if _, member := c.Member(t); !member {
+			// The same answer as for a tenant that does not exist.
+			return nil, connect.NewError(connect.CodeNotFound, "no such tenant")
+		}
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if prev, err := s.repeat(req.GetCommandId(), c.ParticipantID, req); err != nil {
 		return nil, err
 	} else if prev != nil {
-		return prev.(*identityv1.CreateAdminLinkResponse), nil
+		return prev.(*identityv1.CreatePortalLinkResponse), nil
 	}
 	now := time.Now()
-	for h, l := range s.adminLinks {
+	for h, l := range s.portalLinks {
 		if !now.Before(l.expires) {
-			delete(s.adminLinks, h)
+			delete(s.portalLinks, h)
 		}
 	}
 	b := make([]byte, 32)
 	_, _ = rand.Read(b)
-	code := "oal_" + base64.RawURLEncoding.EncodeToString(b)
-	exp := now.Add(s.opts.AdminLinkTTL)
-	s.adminLinks[sha256.Sum256([]byte(code))] = adminLink{keyID: c.KeyID, expires: exp}
-	res := &identityv1.CreateAdminLinkResponse{Url: s.opts.PublicURL + "/admin/login?code=" + code, ExpiresAt: timestamppb.New(exp)}
+	code := "opl_" + base64.RawURLEncoding.EncodeToString(b)
+	exp := now.Add(s.opts.PortalLinkTTL)
+	s.portalLinks[sha256.Sum256([]byte(code))] = portalLink{keyID: c.KeyID, tenant: req.GetTenantId(), expires: exp}
+	res := &identityv1.CreatePortalLinkResponse{Url: s.opts.PublicURL + "/portal/login?code=" + code, ExpiresAt: timestamppb.New(exp)}
 	s.commands[req.GetCommandId()] = command{caller: c.ParticipantID, req: req, res: res}
 	return res, nil
 }
 
-// ExchangeAdminLink implements the RPC. The code works once.
-func (s *Service) ExchangeAdminLink(_ context.Context, req *identityv1.ExchangeAdminLinkRequest) (*identityv1.ExchangeAdminLinkResponse, error) {
+// ExchangePortalLink implements the RPC. The code works once.
+func (s *Service) ExchangePortalLink(_ context.Context, req *identityv1.ExchangePortalLinkRequest) (*identityv1.ExchangePortalLinkResponse, error) {
 	if req.GetCode() == "" {
 		return nil, invalid("code is required")
 	}
 	h := sha256.Sum256([]byte(req.GetCode()))
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	l, ok := s.adminLinks[h]
-	delete(s.adminLinks, h)
+	l, ok := s.portalLinks[h]
+	delete(s.portalLinks, h)
 	if !ok || !time.Now().Before(l.expires) {
-		return nil, unauthenticated("the admin link is unknown, used or expired: ask for a new one")
+		return nil, unauthenticated("the portal link is unknown, used or expired: ask for a new one")
 	}
 	k, _, ok := s.usable(l.keyID, time.Now())
 	if !ok {
-		return nil, unauthenticated("the key of the admin link is not valid any more")
+		return nil, unauthenticated("the key of the portal link is not valid any more")
 	}
-	tok, exp := s.newToken("oat_", l.keyID, "", "", s.opts.AdminSessionTTL)
-	return &identityv1.ExchangeAdminLinkResponse{AccessToken: tok, ExpiresAt: timestamppb.New(exp), ParticipantId: k.userID}, nil
+	tok, exp := s.newToken("oat_", l.keyID, "", "", s.opts.PortalSessionTTL)
+	return &identityv1.ExchangePortalLinkResponse{AccessToken: tok, ExpiresAt: timestamppb.New(exp), ParticipantId: k.userID,
+		TenantId: l.tenant}, nil
+}
+
+// WhoAmI implements the RPC: the caller as the token check knows it.
+func (s *Service) WhoAmI(ctx context.Context, _ *identityv1.WhoAmIRequest) (*identityv1.WhoAmIResponse, error) {
+	c, _ := CallerFrom(ctx)
+	if c.ParticipantID == "" {
+		return nil, denied("a stage link has no user")
+	}
+	kind := identityv1.ActorKind_ACTOR_KIND_HUMAN
+	if c.Kind == tokencheck.KindAgent {
+		kind = identityv1.ActorKind_ACTOR_KIND_AGENT
+	}
+	res := &identityv1.WhoAmIResponse{ParticipantId: c.ParticipantID, DisplayName: c.DisplayName, Kind: kind, SystemAdmin: c.SystemAdmin}
+	for _, m := range c.Tenants {
+		res.Memberships = append(res.Memberships, &identityv1.TenantMembership{TenantId: m.TenantID,
+			TenantAdmin: m.Role == tokencheck.RoleTenantAdmin})
+	}
+	return res, nil
 }

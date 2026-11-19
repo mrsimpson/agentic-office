@@ -25,13 +25,19 @@ service IdentityService {
   // CreateStageLink returns a read-only link to the stage of one session. Any participant may
   // create one. The token of the link only allows SessionStreamService.Subscribe for that session.
   rpc CreateStageLink(CreateStageLinkRequest) returns (CreateStageLinkResponse);
-  // CreateAdminLink creates a link that opens the admin web view (if-admin-web) for the system
-  // admin who calls. The link holds a code that works once and expires after a few minutes. Only
-  // a system admin may call it. It belongs to no tenant. It is idempotent by command_id.
-  rpc CreateAdminLink(CreateAdminLinkRequest) returns (CreateAdminLinkResponse);
-  // ExchangeAdminLink swaps the code of an admin link for an access token of the key that created
-  // the link. The code works once. It needs no token.
-  rpc ExchangeAdminLink(ExchangeAdminLinkRequest) returns (ExchangeAdminLinkResponse);
+  // CreatePortalLink creates a link that opens the portal (if-portal-web, dec-web-portal) for the
+  // user who calls. The link holds a code that works once and expires after a few minutes. Every
+  // user may call it; a stage link may not. It belongs to no tenant: tenant_id only names the page
+  // that the portal opens first, and must be a tenant of the caller. It is idempotent by
+  // command_id.
+  rpc CreatePortalLink(CreatePortalLinkRequest) returns (CreatePortalLinkResponse);
+  // ExchangePortalLink swaps the code of a portal link for an access token of the key that
+  // created the link. The token belongs to no tenant: a call names its tenant as every call does.
+  // The code works once. It needs no token.
+  rpc ExchangePortalLink(ExchangePortalLinkRequest) returns (ExchangePortalLinkResponse);
+  // WhoAmI returns the caller: the user, whether it is a system admin, and its active memberships.
+  // It belongs to no tenant. A stage link may not call it.
+  rpc WhoAmI(WhoAmIRequest) returns (WhoAmIResponse);
 }
 
 message GetChallengeRequest {
@@ -62,24 +68,46 @@ message ExchangeChallengeResponse {
   string display_name = 4;
 }
 
-message CreateAdminLinkRequest {
+message CreatePortalLinkRequest {
   string command_id = 1;
+  // tenant_id is the tenant whose pages the portal opens first, or empty for the start page. It
+  // must be an active membership of the caller, or the call fails with not_found.
+  string tenant_id = 2;
 }
 
-message CreateAdminLinkResponse {
-  // url has the form <server>/admin/login?code=<code>.
+message CreatePortalLinkResponse {
+  // url has the form <server>/portal/login?code=<code>.
   string url = 1;
   google.protobuf.Timestamp expires_at = 2;
 }
 
-message ExchangeAdminLinkRequest {
+message ExchangePortalLinkRequest {
   string code = 1;
 }
 
-message ExchangeAdminLinkResponse {
+message ExchangePortalLinkResponse {
   string access_token = 1;
   google.protobuf.Timestamp expires_at = 2;
   string participant_id = 3;
+  // tenant_id is the tenant that the link named, or empty.
+  string tenant_id = 4;
+}
+
+message WhoAmIRequest {}
+
+message WhoAmIResponse {
+  string participant_id = 1;
+  string display_name = 2;
+  ActorKind kind = 3;
+  bool system_admin = 4;
+  // memberships are the active memberships of the caller, ordered by tenant.
+  repeated TenantMembership memberships = 5;
+}
+
+// TenantMembership is an active membership of the caller.
+message TenantMembership {
+  string tenant_id = 1;
+  bool tenant_admin = 2;
 }
 
 message CreateStageLinkRequest {

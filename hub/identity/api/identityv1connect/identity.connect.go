@@ -44,12 +44,14 @@ const (
 	// IdentityServiceCreateStageLinkProcedure is the procedure name of the IdentityService's
 	// CreateStageLink RPC.
 	IdentityServiceCreateStageLinkProcedure = "/office.identity.v1.IdentityService/CreateStageLink"
-	// IdentityServiceCreateAdminLinkProcedure is the procedure name of the IdentityService's
-	// CreateAdminLink RPC.
-	IdentityServiceCreateAdminLinkProcedure = "/office.identity.v1.IdentityService/CreateAdminLink"
-	// IdentityServiceExchangeAdminLinkProcedure is the procedure name of the IdentityService's
-	// ExchangeAdminLink RPC.
-	IdentityServiceExchangeAdminLinkProcedure = "/office.identity.v1.IdentityService/ExchangeAdminLink"
+	// IdentityServiceCreatePortalLinkProcedure is the procedure name of the IdentityService's
+	// CreatePortalLink RPC.
+	IdentityServiceCreatePortalLinkProcedure = "/office.identity.v1.IdentityService/CreatePortalLink"
+	// IdentityServiceExchangePortalLinkProcedure is the procedure name of the IdentityService's
+	// ExchangePortalLink RPC.
+	IdentityServiceExchangePortalLinkProcedure = "/office.identity.v1.IdentityService/ExchangePortalLink"
+	// IdentityServiceWhoAmIProcedure is the procedure name of the IdentityService's WhoAmI RPC.
+	IdentityServiceWhoAmIProcedure = "/office.identity.v1.IdentityService/WhoAmI"
 )
 
 var (
@@ -74,18 +76,25 @@ var (
 			Procedure:  IdentityServiceCreateStageLinkProcedure,
 		}
 	})
-	identityServiceCreateAdminLinkSpec = sync.OnceValue(func() connect.Spec {
+	identityServiceCreatePortalLinkSpec = sync.OnceValue(func() connect.Spec {
 		return connect.Spec{
 			StreamType: connect.StreamTypeUnary,
-			Schema:     api.File_office_identity_v1_identity_proto.Services().ByName("IdentityService").Methods().ByName("CreateAdminLink"),
-			Procedure:  IdentityServiceCreateAdminLinkProcedure,
+			Schema:     api.File_office_identity_v1_identity_proto.Services().ByName("IdentityService").Methods().ByName("CreatePortalLink"),
+			Procedure:  IdentityServiceCreatePortalLinkProcedure,
 		}
 	})
-	identityServiceExchangeAdminLinkSpec = sync.OnceValue(func() connect.Spec {
+	identityServiceExchangePortalLinkSpec = sync.OnceValue(func() connect.Spec {
 		return connect.Spec{
 			StreamType: connect.StreamTypeUnary,
-			Schema:     api.File_office_identity_v1_identity_proto.Services().ByName("IdentityService").Methods().ByName("ExchangeAdminLink"),
-			Procedure:  IdentityServiceExchangeAdminLinkProcedure,
+			Schema:     api.File_office_identity_v1_identity_proto.Services().ByName("IdentityService").Methods().ByName("ExchangePortalLink"),
+			Procedure:  IdentityServiceExchangePortalLinkProcedure,
+		}
+	})
+	identityServiceWhoAmISpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     api.File_office_identity_v1_identity_proto.Services().ByName("IdentityService").Methods().ByName("WhoAmI"),
+			Procedure:  IdentityServiceWhoAmIProcedure,
 		}
 	})
 )
@@ -100,13 +109,19 @@ type IdentityServiceClient interface {
 	// CreateStageLink returns a read-only link to the stage of one session. Any participant may
 	// create one. The token of the link only allows SessionStreamService.Subscribe for that session.
 	CreateStageLink(context.Context, *api.CreateStageLinkRequest) (*api.CreateStageLinkResponse, error)
-	// CreateAdminLink creates a link that opens the admin web view (if-admin-web) for the system
-	// admin who calls. The link holds a code that works once and expires after a few minutes. Only
-	// a system admin may call it. It belongs to no tenant. It is idempotent by command_id.
-	CreateAdminLink(context.Context, *api.CreateAdminLinkRequest) (*api.CreateAdminLinkResponse, error)
-	// ExchangeAdminLink swaps the code of an admin link for an access token of the key that created
-	// the link. The code works once. It needs no token.
-	ExchangeAdminLink(context.Context, *api.ExchangeAdminLinkRequest) (*api.ExchangeAdminLinkResponse, error)
+	// CreatePortalLink creates a link that opens the portal (if-portal-web, dec-web-portal) for the
+	// user who calls. The link holds a code that works once and expires after a few minutes. Every
+	// user may call it; a stage link may not. It belongs to no tenant: tenant_id only names the page
+	// that the portal opens first, and must be a tenant of the caller. It is idempotent by
+	// command_id.
+	CreatePortalLink(context.Context, *api.CreatePortalLinkRequest) (*api.CreatePortalLinkResponse, error)
+	// ExchangePortalLink swaps the code of a portal link for an access token of the key that
+	// created the link. The token belongs to no tenant: a call names its tenant as every call does.
+	// The code works once. It needs no token.
+	ExchangePortalLink(context.Context, *api.ExchangePortalLinkRequest) (*api.ExchangePortalLinkResponse, error)
+	// WhoAmI returns the caller: the user, whether it is a system admin, and its active memberships.
+	// It belongs to no tenant. A stage link may not call it.
+	WhoAmI(context.Context, *api.WhoAmIRequest) (*api.WhoAmIResponse, error)
 }
 
 // NewIdentityServiceClient constructs a client for the office.identity.v1.IdentityService service.
@@ -125,13 +140,19 @@ type IdentityServiceHandler interface {
 	// CreateStageLink returns a read-only link to the stage of one session. Any participant may
 	// create one. The token of the link only allows SessionStreamService.Subscribe for that session.
 	CreateStageLink(context.Context, *api.CreateStageLinkRequest) (*api.CreateStageLinkResponse, error)
-	// CreateAdminLink creates a link that opens the admin web view (if-admin-web) for the system
-	// admin who calls. The link holds a code that works once and expires after a few minutes. Only
-	// a system admin may call it. It belongs to no tenant. It is idempotent by command_id.
-	CreateAdminLink(context.Context, *api.CreateAdminLinkRequest) (*api.CreateAdminLinkResponse, error)
-	// ExchangeAdminLink swaps the code of an admin link for an access token of the key that created
-	// the link. The code works once. It needs no token.
-	ExchangeAdminLink(context.Context, *api.ExchangeAdminLinkRequest) (*api.ExchangeAdminLinkResponse, error)
+	// CreatePortalLink creates a link that opens the portal (if-portal-web, dec-web-portal) for the
+	// user who calls. The link holds a code that works once and expires after a few minutes. Every
+	// user may call it; a stage link may not. It belongs to no tenant: tenant_id only names the page
+	// that the portal opens first, and must be a tenant of the caller. It is idempotent by
+	// command_id.
+	CreatePortalLink(context.Context, *api.CreatePortalLinkRequest) (*api.CreatePortalLinkResponse, error)
+	// ExchangePortalLink swaps the code of a portal link for an access token of the key that
+	// created the link. The token belongs to no tenant: a call names its tenant as every call does.
+	// The code works once. It needs no token.
+	ExchangePortalLink(context.Context, *api.ExchangePortalLinkRequest) (*api.ExchangePortalLinkResponse, error)
+	// WhoAmI returns the caller: the user, whether it is a system admin, and its active memberships.
+	// It belongs to no tenant. A stage link may not call it.
+	WhoAmI(context.Context, *api.WhoAmIRequest) (*api.WhoAmIResponse, error)
 }
 
 // RegisterIdentityServiceHandler registers svc as the office.identity.v1.IdentityService
@@ -142,8 +163,9 @@ func RegisterIdentityServiceHandler(server *connect.Server, svc IdentityServiceH
 		connect.Method{Spec: identityServiceGetChallengeSpec(), Handler: adapter.getChallenge},
 		connect.Method{Spec: identityServiceExchangeChallengeSpec(), Handler: adapter.exchangeChallenge},
 		connect.Method{Spec: identityServiceCreateStageLinkSpec(), Handler: adapter.createStageLink},
-		connect.Method{Spec: identityServiceCreateAdminLinkSpec(), Handler: adapter.createAdminLink},
-		connect.Method{Spec: identityServiceExchangeAdminLinkSpec(), Handler: adapter.exchangeAdminLink},
+		connect.Method{Spec: identityServiceCreatePortalLinkSpec(), Handler: adapter.createPortalLink},
+		connect.Method{Spec: identityServiceExchangePortalLinkSpec(), Handler: adapter.exchangePortalLink},
+		connect.Method{Spec: identityServiceWhoAmISpec(), Handler: adapter.whoAmI},
 	)
 }
 
@@ -162,12 +184,16 @@ func (UnimplementedIdentityServiceHandler) CreateStageLink(context.Context, *api
 	return nil, connect.NewError(connect.CodeUnimplemented, "office.identity.v1.IdentityService.CreateStageLink is not implemented")
 }
 
-func (UnimplementedIdentityServiceHandler) CreateAdminLink(context.Context, *api.CreateAdminLinkRequest) (*api.CreateAdminLinkResponse, error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, "office.identity.v1.IdentityService.CreateAdminLink is not implemented")
+func (UnimplementedIdentityServiceHandler) CreatePortalLink(context.Context, *api.CreatePortalLinkRequest) (*api.CreatePortalLinkResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "office.identity.v1.IdentityService.CreatePortalLink is not implemented")
 }
 
-func (UnimplementedIdentityServiceHandler) ExchangeAdminLink(context.Context, *api.ExchangeAdminLinkRequest) (*api.ExchangeAdminLinkResponse, error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, "office.identity.v1.IdentityService.ExchangeAdminLink is not implemented")
+func (UnimplementedIdentityServiceHandler) ExchangePortalLink(context.Context, *api.ExchangePortalLinkRequest) (*api.ExchangePortalLinkResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "office.identity.v1.IdentityService.ExchangePortalLink is not implemented")
+}
+
+func (UnimplementedIdentityServiceHandler) WhoAmI(context.Context, *api.WhoAmIRequest) (*api.WhoAmIResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "office.identity.v1.IdentityService.WhoAmI is not implemented")
 }
 
 type identityServiceClient struct {
@@ -198,17 +224,25 @@ func (c *identityServiceClient) CreateStageLink(ctx context.Context, req *api.Cr
 	return &res, nil
 }
 
-func (c *identityServiceClient) CreateAdminLink(ctx context.Context, req *api.CreateAdminLinkRequest) (*api.CreateAdminLinkResponse, error) {
-	var res api.CreateAdminLinkResponse
-	if err := c.client.CallUnary(ctx, identityServiceCreateAdminLinkSpec(), req, &res); err != nil {
+func (c *identityServiceClient) CreatePortalLink(ctx context.Context, req *api.CreatePortalLinkRequest) (*api.CreatePortalLinkResponse, error) {
+	var res api.CreatePortalLinkResponse
+	if err := c.client.CallUnary(ctx, identityServiceCreatePortalLinkSpec(), req, &res); err != nil {
 		return nil, err
 	}
 	return &res, nil
 }
 
-func (c *identityServiceClient) ExchangeAdminLink(ctx context.Context, req *api.ExchangeAdminLinkRequest) (*api.ExchangeAdminLinkResponse, error) {
-	var res api.ExchangeAdminLinkResponse
-	if err := c.client.CallUnary(ctx, identityServiceExchangeAdminLinkSpec(), req, &res); err != nil {
+func (c *identityServiceClient) ExchangePortalLink(ctx context.Context, req *api.ExchangePortalLinkRequest) (*api.ExchangePortalLinkResponse, error) {
+	var res api.ExchangePortalLinkResponse
+	if err := c.client.CallUnary(ctx, identityServiceExchangePortalLinkSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *identityServiceClient) WhoAmI(ctx context.Context, req *api.WhoAmIRequest) (*api.WhoAmIResponse, error) {
+	var res api.WhoAmIResponse
+	if err := c.client.CallUnary(ctx, identityServiceWhoAmISpec(), req, &res); err != nil {
 		return nil, err
 	}
 	return &res, nil
@@ -252,24 +286,36 @@ func (h identityServiceHandler) createStageLink(ctx context.Context, _ connect.S
 	return stream.Send(res)
 }
 
-func (h identityServiceHandler) createAdminLink(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
-	var req api.CreateAdminLinkRequest
+func (h identityServiceHandler) createPortalLink(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req api.CreatePortalLinkRequest
 	if err := stream.Receive(&req); err != nil {
 		return err
 	}
-	res, err := h.svc.CreateAdminLink(ctx, &req)
+	res, err := h.svc.CreatePortalLink(ctx, &req)
 	if err != nil {
 		return err
 	}
 	return stream.Send(res)
 }
 
-func (h identityServiceHandler) exchangeAdminLink(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
-	var req api.ExchangeAdminLinkRequest
+func (h identityServiceHandler) exchangePortalLink(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req api.ExchangePortalLinkRequest
 	if err := stream.Receive(&req); err != nil {
 		return err
 	}
-	res, err := h.svc.ExchangeAdminLink(ctx, &req)
+	res, err := h.svc.ExchangePortalLink(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h identityServiceHandler) whoAmI(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req api.WhoAmIRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.WhoAmI(ctx, &req)
 	if err != nil {
 		return err
 	}

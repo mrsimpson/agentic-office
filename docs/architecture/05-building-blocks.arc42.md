@@ -422,7 +422,7 @@ title: Portal
 provider: bb-office-hub
 x-realized-by: bb-portal
 protocol: HTTPS (browser)
-path: hub/admin/web
+path: hub/portal/web
 :::
 ```
 
@@ -439,7 +439,7 @@ title: Portal
 technology: Go, rendered by the hub
 parent: bb-office-hub
 requires: if-auth-api, if-user-api, if-tenant-api
-path: hub/admin
+path: hub/portal
 :::
 ```
 
