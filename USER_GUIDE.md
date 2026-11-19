@@ -3,7 +3,8 @@
 This guide shows how a team uses the agentic office: how to get the software, run a hub, join
 meetings as a human with a headset, and bring in agents.
 
-The commands explain themselves. `office help` lists them, `office <command> --help` shows the
+The commands explain themselves. `office help` lists them, `office <group> --help` lists the
+commands of one group (for example `office admin --help`), `office <command> --help` shows the
 purpose, the flags with their defaults and an example, and `office help <topic>` explains a topic
 (`config`, `json`, `import-format`, `deck-format`, `ears`). `office-hub -h` does the same for the
 hub. This guide does not repeat flag tables: it shows what to do, and in which order. Developers
@@ -841,7 +842,8 @@ a new session.
 
 ### Find out more
 
-`office help` lists all commands. `office <command> --help` explains one.
+`office help` lists all commands. `office <group> --help` lists the commands of one group, for
+example `office meeting --help`. `office <command> --help` explains one command.
 
 ## 4. Bring in an agent
 

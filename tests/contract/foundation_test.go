@@ -146,7 +146,7 @@ func TestCLIVersionAndUsage(t *testing.T) {
 		t.Fatalf("office version: exit %d, stdout %q", code, out)
 	}
 	_, errOut, code := contracttest.Run(t, "office", nil, "no-such-command")
-	if code != 2 || !strings.Contains(errOut, "usage:") {
+	if code != 2 || !strings.Contains(errOut, "unknown command") || !strings.Contains(errOut, "office help") {
 		t.Fatalf("unknown command: exit %d, stderr %q", code, errOut)
 	}
 }

@@ -192,16 +192,7 @@ func RunContext(ctx context.Context, args []string, stdin io.Reader, stdout, std
 	e := &env{ctx: ctx, stdout: stdout, stderr: stderr, stdin: stdin, cfg: coreapi.ConfigFromEnv(),
 		session: os.Getenv("OFFICE_SESSION"), json: os.Getenv("OFFICE_JSON") == "1"}
 	if name == "" {
-		for _, a := range args {
-			if a == "--json" || a == "-json" {
-				e.json = true
-			}
-		}
-		if !e.json {
-			fmt.Fprintf(stderr, "office: unknown command %q\n\n%s", strings.Join(args, " "), commands.Overview())
-			return commands.ExitUsage
-		}
-		return e.fail(usagef("unknown command %q (see \"office help\")", strings.Join(args, " ")))
+		return e.unknownCommand(args)
 	}
 	fs := flag.NewFlagSet("office "+name, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -244,6 +235,46 @@ func RunContext(ctx context.Context, args []string, stdin io.Reader, stdout, std
 
 func isHelpFlag(a string) bool { return a == "-h" || a == "--help" || a == "-help" }
 
+// unknownCommand answers words that are no command. If they are the start of commands, such as
+// "meeting" or "admin tenant", it lists those commands: on stdout with exit 0 when help was
+// asked for, else on stderr as a usage error. Otherwise it names the commands that were
+// probably meant.
+func (e *env) unknownCommand(args []string) int {
+	var words []string
+	help := false
+	for _, a := range args {
+		switch {
+		case a == "--json" || a == "-json":
+			e.json = true
+		case isHelpFlag(a):
+			help = true
+		case !strings.HasPrefix(a, "-"):
+			words = append(words, a)
+		}
+	}
+	typed := strings.Join(words, " ")
+	if typed != "" && len(commands.Subcommands(typed)) > 0 {
+		if help {
+			fmt.Fprint(e.stdout, commands.GroupHelp(typed))
+			return commands.ExitOK
+		}
+		if !e.json {
+			fmt.Fprintf(e.stderr, "office: %q needs a command\n\n%s", typed, commands.GroupHelp(typed))
+			return commands.ExitUsage
+		}
+		return e.fail(usagef("%q needs a command (see \"office %s --help\")", typed, typed))
+	}
+	msg := fmt.Sprintf("unknown command %q", typed)
+	if s := commands.Suggest(typed); len(s) > 0 {
+		msg += "; did you mean \"" + strings.Join(s, "\" or \"") + "\"?"
+	}
+	if !e.json {
+		fmt.Fprintf(e.stderr, "office: %s\nrun \"office help\" for the list of commands\n", msg)
+		return commands.ExitUsage
+	}
+	return e.fail(usagef("%s (see \"office help\")", msg))
+}
+
 // commonFlags are the flags that every command takes, with the variable and the default that
 // "office help config" explains.
 var commonFlags = map[string]bool{"json": true, "session": true, "hub": true, "ca-cert": true, "tenant": true,
@@ -260,6 +291,9 @@ func printHelp(w io.Writer, name string, fs *flag.FlagSet) {
 	fmt.Fprintf(w, "office %s: %s\n\nusage: office %s\n", h.Name, h.Summary, h.Usage)
 	if h.Details != "" {
 		fmt.Fprintf(w, "\n%s\n", h.Details)
+	}
+	if sub := commands.Subcommands(name); len(sub) > 0 {
+		fmt.Fprintf(w, "\nCommands below %q:\n%s", name, commands.CommandList(sub))
 	}
 	if fs != nil {
 		var own, common []*flag.Flag

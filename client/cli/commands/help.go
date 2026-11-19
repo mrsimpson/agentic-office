@@ -58,6 +58,81 @@ func Lookup(name string) (Help, bool) {
 	return Help{}, false
 }
 
+// Subcommands returns the help of the commands below a prefix of one or two words, for example
+// "meeting" or "admin tenant", sorted by name. The prefix itself is not part of the result.
+func Subcommands(prefix string) []Help {
+	var hs []Help
+	for _, h := range helpTable {
+		if strings.HasPrefix(h.Name, prefix+" ") {
+			hs = append(hs, h)
+		}
+	}
+	sort.Slice(hs, func(i, j int) bool { return hs[i].Name < hs[j].Name })
+	return hs
+}
+
+// GroupHelp is what "office <prefix> --help" prints for a prefix that is not a command itself:
+// the commands below it, each with its purpose.
+func GroupHelp(prefix string) string {
+	var b strings.Builder
+	b.WriteString("usage: office " + prefix + " <command> [flags]\n\nCommands:\n")
+	b.WriteString(CommandList(Subcommands(prefix)))
+	b.WriteString("\nRun \"office " + prefix + " <command> --help\" for the purpose, arguments, flags and an example.\n")
+	return b.String()
+}
+
+// CommandList prints commands as lines of the overview: the name and its purpose.
+func CommandList(hs []Help) string {
+	var b strings.Builder
+	for _, h := range hs {
+		b.WriteString("  " + h.Name + strings.Repeat(" ", max(1, 27-len(h.Name))) + h.Summary + "\n")
+	}
+	return b.String()
+}
+
+// Suggest returns the commands that are probably meant by a mistyped command: the names that
+// end with the typed words ("join" → "meeting join"), else the closest names within a small
+// edit distance ("meetng join" → "meeting join").
+func Suggest(typed string) []string {
+	var suffix, closest []string
+	best := 1 + len(typed)/5
+	for _, name := range Names() {
+		if strings.HasSuffix(name, " "+typed) {
+			suffix = append(suffix, name)
+		}
+		switch d := levenshtein(typed, name); {
+		case d < best:
+			best, closest = d, []string{name}
+		case d == best:
+			closest = append(closest, name)
+		}
+	}
+	if len(suffix) > 0 {
+		return suffix
+	}
+	return closest
+}
+
+func levenshtein(a, b string) int {
+	prev := make([]int, len(b)+1)
+	for j := range prev {
+		prev[j] = j
+	}
+	for i := 1; i <= len(a); i++ {
+		cur := make([]int, len(b)+1)
+		cur[0] = i
+		for j := 1; j <= len(b); j++ {
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+			cur[j] = min(prev[j]+1, cur[j-1]+1, prev[j-1]+cost)
+		}
+		prev = cur
+	}
+	return prev[len(b)]
+}
+
 // Overview is what "office help" prints: every command with its purpose, grouped, and where to
 // find more.
 func Overview() string {
@@ -66,6 +141,7 @@ func Overview() string {
 	b.WriteString("\nThe office client for humans and agents. Every command explains itself:\n")
 	b.WriteString("  office <command> --help        purpose, arguments, flags and an example\n")
 	b.WriteString("  office help <command>          the same\n")
+	b.WriteString("  office <group> --help          the commands of a group, for example: office admin --help\n")
 	b.WriteString("  office help <topic>            a topic: " + strings.Join(TopicNames(), ", ") + "\n")
 	var groups []string
 	byGroup := map[string][]Help{}
@@ -80,9 +156,7 @@ func Overview() string {
 		hs := byGroup[g]
 		sort.Slice(hs, func(i, j int) bool { return hs[i].Name < hs[j].Name })
 		b.WriteString("\n" + g + ":\n")
-		for _, h := range hs {
-			b.WriteString("  " + h.Name + strings.Repeat(" ", max(1, 27-len(h.Name))) + h.Summary + "\n")
-		}
+		b.WriteString(CommandList(hs))
 	}
 	b.WriteString("\nThe user guide (USER_GUIDE.md in the repository) shows how to set up a hub, join a\n")
 	b.WriteString("meeting and bring in an agent.\n")
