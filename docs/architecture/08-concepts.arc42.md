@@ -390,3 +390,93 @@ title: Wiki of the tenant
 category: domain
 :::
 ```
+
+## Artifacts from a session and their release
+
+This concept describes what a team leaves behind, who may read it at which time, and how it
+becomes knowledge of the organization. It brings together `dec-artifacts`, `dec-off-the-record`,
+`dec-session-release` and `dec-wiki`. The goal is to share as much as possible, but nothing that a
+speaker took off the record.
+
+**What a team leaves behind.**
+
+| Kind | Examples | Changes after release? |
+| --- | --- | --- |
+| Session log | every utterance and event of a session | the log grows; it is never shared with the tenant |
+| Records | minutes, notes, decisions | never; a correction is a new record |
+| Work artifacts | tasks, slides, documents | yes, with the version check of their type |
+
+The records are the sources of the wiki. Documents are its pages (`concept-wiki`).
+
+**Who reads what.**
+
+| What | Who reads it | Where it lies |
+| --- | --- | --- |
+| Session log | the participants, the importer and the tenant admins | private repository of the session logs |
+| Pending or held artifacts of a session | the same readers as the session | next to the session logs |
+| Released artifacts | every member of the tenant, and every clone | tenant repository |
+
+The session log stays private because it holds the original of sentences off the record. The
+minutes are the public version of a meeting. There is no public transcript.
+
+**The release status.** Every record has a mandatory release status, with the time and the person
+of the release:
+
+- `pending`: the artifact comes from a session that has not been released. Its authors may still
+  correct it.
+- `held`: a human who took part objected. Only an explicit release publishes it.
+- `released`: the artifact is in the tenant repository. A record no longer changes.
+
+An artifact that is created outside a session is `released` at once. A change that a session makes
+to an artifact that is already released is not held; it is stored at once like any other change.
+
+**The life of the artifacts of a session.**
+
+1. While the session runs, participants write the running minutes, notes, decisions and new
+   artifacts. Everything is `pending` and stays with the session.
+2. The session ends. If no human took part, the hub releases at once. Otherwise a grace period
+   starts: 24 hours unless the tenant sets another length.
+3. During the grace period, a speaker can still mark a sentence off the record, and authors correct
+   what quotes it. Any human who took part may release, or object.
+4. At the release, the hub replaces every sentence off the record that an artifact quotes word for
+   word with the placeholder of the session. Then it stores all artifacts of the session in the
+   tenant repository in one commit. The release is an event in the session log.
+5. The artifacts are visible to every member, and the wiki can ingest them.
+6. A session that is opened again creates new pending artifacts and needs a new release. Released
+   artifacts stay as they are.
+
+**Who triggers the release.** Release and objection are commands of the meeting session. It accepts
+them only from a human who took part. The CLI, the MCP server and the portal pass them on and add
+no logic. When the grace period ends without an objection, the meeting session releases by itself.
+An agent never releases or objects. An assistant that works with the key of a human counts as that
+human, so it acts only when its human tells it to.
+
+**Off the record over the whole life.**
+
+| When the sentence is marked | What protects it |
+| --- | --- |
+| During the session | The interfaces show a placeholder; agents are told to keep it out of what they write |
+| After the end, before the release | Authors correct the pending artifacts; the release replaces word-for-word quotes |
+| After the release | Nothing removes it from clones and history (`risk-retraction-leak`) |
+
+A paraphrase can pass every step. The grace period gives the speaker time to read what is shared.
+
+**Into the wiki.** Agents ingest only released records. They use what the records say, not what
+they heard in the session, because only the participants read the session but every member reads
+the wiki. A page cites records, never a session.
+
+**Example.** In the weekly meeting, Ada, Ben and an agent take part. The agent keeps the minutes and
+adds a note about a new price. Ben says a sentence about a colleague and marks it off the record a
+minute later; the agent takes it out of the running minutes. After the meeting, Ada reads the
+pending minutes in the portal and releases them. The minutes and the note move into the tenant
+repository in one commit. The agent that claimed the ingest in the meeting updates the pricing
+page and cites both records.
+
+```arc42
+:::ignore W001 proposed with dec-session-release; the meeting session and the records part implement it when it is built :::
+:::concept
+id: concept-session-release
+title: Artifacts from a session and their release
+category: data
+:::
+```

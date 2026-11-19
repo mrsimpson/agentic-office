@@ -1352,7 +1352,7 @@ addresses: qg-usability, con-no-intelligence
 
 ## What comes out of a session is released before the tenant sees it
 
-**Context:** The team wants its knowledge to grow from every meeting, so as much as possible should
+**Context:** The team wants its knowledge to grow from every meeting (`concept-session-release`), so as much as possible should
 be shared. But a speaker may mark a sentence off the record after it was said
 (`dec-off-the-record`), and nothing in the hub keeps such a sentence out of what participants write
 (`risk-retraction-leak`). Once an artifact is in the tenant repository, every member has it in a
