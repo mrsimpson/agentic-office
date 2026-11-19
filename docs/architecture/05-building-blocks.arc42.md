@@ -297,13 +297,13 @@ path: hub/records/minutes/api
 
 ### Notes
 
-Writes the notes: the pages of the wiki that agents keep (`dec-wiki`, `concept-wiki`). A note is a
-Markdown file with a title, a one-line summary, tags, its author, whether the author is a human or
-an agent, the time and the sources that it cites. The path of a note is its identity. The
-interface creates a note, changes a note with the version that its author read, and lists the
-notes. A note without a page name lands as a new page in the inbox of the wiki. A note may name a
-session. A sentence that is off the record must not go into a
-note.
+Adds free notes, with or without a session, and lists them like the decisions. A note is a
+memory: it is written once and never changed; a correction is a new note that refers to the old
+one. The hub stores a note as a page that the portal and the stage can render, with its author,
+whether the author is a human or an agent, the time, the session and its tags (`dec-wiki`). Notes
+are sources of the wiki (`concept-wiki`). A sentence that is off the record must not go into a
+note. Ingest copies notes into documents, so the hub cannot remove a sentence that is marked off
+the record later from those copies.
 
 ```arc42
 :::interface
@@ -503,7 +503,7 @@ of every session; then nothing is lost and there is no wait.
 
 The memory of the team: decisions, minutes and notes (`dec-records-per-type`). Each type has its
 own interface and its own types, and each record keeps who wrote it and whether that was a human
-or an agent. The notes are the pages of the wiki that agents keep (`dec-wiki`). Tasks are not part of this block; they have their own part of the hub.
+or an agent. Decisions, minutes and notes are the sources of the wiki (`dec-wiki`). Tasks are not part of this block; they have their own part of the hub.
 
 Every new record is one commit in the archive (`dec-yaml-git-storage`). A command returns only
 after its commit, so a record that a client got back is stored. Local commits are fast, so this
@@ -516,7 +516,7 @@ there first: it reloads and takes the next free ID.
 :::building-block
 id: bb-records
 title: Records (decisions, minutes, notes)
-technology: Go / YAML in the archive
+technology: Go / YAML and Markdown in the archive
 parent: bb-office-hub
 path: hub/records
 requires: if-token-check, if-archive-storage, if-archive-watch
@@ -581,7 +581,9 @@ path: hub/tasks/check
 
 The documents part stores each text document as one Markdown file in the archive and one commit
 per change. It checks the base version of a change and tells the meeting session when a call names
-one.
+one. Documents are the pages of the wiki (`dec-wiki`). A document may carry front
+matter with a title, a summary, tags and its sources; the part owns that schema. When it writes a
+document, it reports links that lead nowhere as hints and accepts the write.
 
 ```arc42
 :::building-block
@@ -591,6 +593,7 @@ technology: Go / Markdown in the archive
 parent: bb-office-hub
 requires: if-token-check, if-archive-storage, if-session-notice
 path: hub/documents
+implements: concept-wiki
 :::
 ```
 

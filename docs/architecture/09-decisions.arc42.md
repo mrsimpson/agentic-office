@@ -1170,70 +1170,90 @@ addresses: qg-usability
 
 ## The artifacts of a tenant form a wiki that agents keep
 
-**Context:** The team writes many notes, and the minutes, decisions and documents hold more
-knowledge. Single records do not grow into knowledge: an agent has to find and combine the same
-facts again for every question, and a human cannot see how a note, a decision and the minutes
-relate. The pattern "LLM wiki" (Karpathy, 2026) solves this. An agent reads the sources once and
-keeps a set of linked Markdown pages up to date, so the knowledge builds up over time. The hub has
-no model of its own (`con-no-intelligence`), so agents must do this work. Humans browse the
-knowledge in the portal of the hub, and cross-references and search are the core of that
-experience.
+**Context:** A team leaves a lot behind: minutes, decisions, notes and documents. Single records
+do not grow into knowledge. An agent has to find and combine the same facts again for every
+question, and a human cannot see how a note, a decision and a plan relate. The pattern "LLM wiki"
+solves this: agents read the sources once and keep a set of linked pages up to date, so knowledge
+builds up over time. The hub has no model of its own (`con-no-intelligence`), so agents do this
+work. Humans browse the knowledge in the portal of the hub (OPEN: the portal is proposed
+separately); cross-references and search are the core of that experience.
 
-**Decision:** All artifacts of a tenant form one wiki (`concept-wiki`): the minutes, decisions,
-documents, tasks, slide decks and notes, with the links between them. Each type keeps its own
-interface for writing (`dec-records-per-type`).
+**Decision:** All artifacts of a tenant form one wiki (`concept-wiki`), in three layers. Every type
+keeps its own interface for writing (`dec-records-per-type`).
 
-- **Notes are the pages that agents keep.** A note is one Markdown file with YAML front matter
-  that names the schema, the title, a one-line summary, the tags, the author, whether the author is
-  a human or an agent, the time and the sources it cites. The author and the time are in the page
-  on purpose, even though the commit holds them too: a later import may write past notes with a
-  technical user, and the page must still name its real author. The path is the identity of a
-  note (`dec-artifacts`). The note interface creates a note, changes it with the version that its
-  author read, and lists the notes. A note without a page name becomes a new page in the inbox of
-  the wiki; an agent files it later. The records part owns the note schema and checks it.
-- **Links are plain relative Markdown links** from any Markdown artifact to any artifact.
-- **A wiki part of the hub owns the cross-cutting view.** It follows the changes of the archive
-  (`if-archive-watch`), like the records, tasks and slides parts, and keeps in memory, rebuilt
-  from the archive at start: the index of all artifacts with title, summary and tags, the links
-  and backlinks of every artifact, and a ranked full-text search without a model. None of it is
-  committed. It offers these to the portal only. It also checks the links of every write and every
-  push: each link reaches an artifact that exists. This check is the same for every type, so it
-  runs next to the schema check of the type.
+- **Sources are written once.** Minutes, decisions and notes are memories of something that
+  happened. They come into being as a side effect of a session or of other work, and they are never
+  changed afterwards. A correction is a new record that refers to the old one. The only exception
+  is a sentence off the record (`dec-off-the-record`).
+- **Notes become readable pages.** A note keeps its interface: add and list. The hub stores it as a
+  Markdown file whose front matter names the schema, the author, whether the author is a human or
+  an agent, the time, the session and the tags. The author and the time are in the note on purpose,
+  even though the commit holds them too: a later import may write past notes with a technical
+  user, and the note must still name its real author.
+- **Documents are the pages of the wiki.** Humans and agents write them through the document
+  interface, with the version check that already exists. A document may carry front matter with a
+  title, a one-line summary, tags and the sources it draws on. Without it, the first heading is its
+  title. Ingest, answers and lint change documents only, never a source.
+- **The guide is a document of the tenant.** It tells agents how the team keeps its wiki: which
+  pages exist, how they are named and tagged, and how each operation works.
+- **Links are plain relative Markdown links.** A part that writes a file reports every link that
+  leads nowhere as a hint with its answer, and a push shows the same hints to the participant. A
+  hint never refuses a write, so a rename, a deletion or a session end is never blocked by a link.
+- **Each type describes its own files.** The part that owns a type gives the title, the summary
+  and the outgoing links of its files, the same way it checks them. No part reads the fields of
+  another type.
+- **A wiki part reads, it never writes.** It follows the changes of the archive (`if-archive-watch`)
+  for each tenant, like the other parts, and keeps a derived view: the index of all artifacts with
+  title, summary and tags, the links and backlinks of every artifact, the broken links, the sources
+  that no document cites yet, and a search by words without a model. Nothing of it is committed, and
+  it can be rebuilt from the archive at any time. The portal reads it. The wiki part is on no write
+  path.
 - **Agents maintain the wiki.** The agents of all participants may ingest, answer and lint
-  (`concept-wiki`); a guide page of the tenant tells them the rules of the team. They navigate and
-  search their clone with their own tools, so the client, the CLI and the MCP server get no
-  search.
+  (`concept-wiki`). The sources that no document cites are the queue for ingest. Agents read and
+  search their clone with their own tools, so the client, the CLI and the MCP server get no search.
+- **Navigation lives in the portal.** The stage shows only the artifacts that its session names
+  (`dec-artifacts`), so a link on the stage that leads elsewhere does not open.
 - **The history of the archive is the log of the wiki.** The hub writes no index file and no log
   file.
 
-**Consequences:** Notes are Markdown and no longer YAML, which narrows `dec-yaml-git-storage` for
-notes. The note interface gains a change with a base version, and a note is named by its path
-instead of a number. Minutes, decisions and documents stay as they are; they are sources, and a
-note never changes them. The index needs a title and a summary for every artifact, so every
-schema that the hub ships carries them; a document without a schema takes its first heading as its
-title. A push or a call can be refused for a broken link, also by a type that has no schema. A
-clone of the tenant repository opens as a wiki in ordinary tools, for example Obsidian
-(`dec-artifact-sync`). Semantic checks such as contradictions or gaps stay with the agents.
+**Consequences:** Notes are Markdown and no longer YAML; `dec-yaml-git-storage` needs this change
+once this decision is accepted. The note contract stays, and the note schema gains tags. Documents
+gain an optional schema for their front matter, owned by the documents part. Every part that owns a
+type gains a description of its files next to its check. Ingest copies statements from sources into
+documents and into the history of every clone, so a sentence marked off the record later stays in
+those copies (`risk-retraction-leak`). A clone of the tenant repository opens as a wiki in ordinary
+Markdown tools (`dec-artifact-sync`). Semantic checks such as contradictions or gaps stay with the
+agents.
 
 **Rejected:**
 
+- Notes as pages that agents change: notes are memories, and changing them would rewrite what
+  happened.
+- A note type of its own for agent pages next to documents: the same mechanics twice, and humans
+  would not keep the line between them.
 - The archive as the owner of the wiki: the archive knows no content on purpose, and it lies on the
-  path of every commit, so slow indexing would hold up writes.
-- A wiki of the notes only: links between notes and decisions, minutes or documents would leave it.
+  path of every commit.
+- A wiki part that reads the fields of every type: the schema belongs to its type
+  (`dec-artifact-sync`).
+- A link check that refuses a write: a push check sees one file at a time, a rename would need to
+  fix every link in the same step, and a broken link in the minutes would block the end of a session.
 - The portal builds the index and the search: the portal has no logic of its own.
-- An index file and a log file that agents write: every ingest would change the same files, so
-  the version check would refuse parallel writers.
+- An index file and a log file that agents write: every ingest would change the same files.
 - Wiki links in double brackets: not plain Markdown, and renderers differ.
-- One librarian agent per tenant: it needs a new role, and every agent may already write artifacts.
 - Search through MCP and the CLI: agents have the clone, and their local tools are faster and more
   flexible.
 - Semantic search in the hub: it needs a model (`con-no-intelligence`).
 
-OPEN: the wiki part and its interfaces enter chapter 5 with their code; the directory and the name
-of the inbox and of the guide page; how a page cites a session, since the session logs are not in
-the artifact repository; whether removing an artifact that others link to is refused or left to a
-lint; whether the author of a note names the first author or every author; how search respects
-the rights of a reader once the artifacts of a tenant have different readers.
+OPEN:
+
+- Who must ingest a source, so that it is neither skipped nor done five times. Proposal: the agent
+  of the participant who keeps the minutes, at the end of a session.
+- Who may change the guide, since it acts as a prompt for every agent.
+- How a document cites a session, since the session logs are not in the artifact repository; and
+  whether a citation of a document names its version.
+- The interfaces of the wiki part and the descriptions of the types enter chapter 5 with their code.
+- How search respects the rights of a reader once the artifacts of a tenant have different readers.
+- How much memory the derived view needs for a large tenant.
 
 ```arc42
 :::decision

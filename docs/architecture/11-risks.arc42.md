@@ -3,7 +3,9 @@
 ## Classified sentences stay with the agent
 
 A sentence that is marked off the record afterwards is already in the local files and in the
-context of the agents that read it. It cannot be removed from an agent's context.
+context of the agents that read it. It cannot be removed from an agent's context. If an agent has
+ingested it into a page of the wiki (`dec-wiki`), it is also in that page and in the history of
+every clone.
 
 ```arc42
 :::risk

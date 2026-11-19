@@ -319,51 +319,54 @@ category: usability
 
 ## Wiki of the tenant
 
-All artifacts of a tenant form one wiki: linked Markdown and YAML files that agents keep up to
-date (`dec-wiki`). It follows the pattern "LLM wiki". The knowledge builds up in the notes, so an
-agent does not have to find it again in the sources for every question, and a human can follow it
+All artifacts of a tenant form one wiki (`dec-wiki`). It follows the pattern "LLM wiki": agents
+read what the team leaves behind and keep linked pages up to date. Knowledge builds up in those
+pages, so an agent does not have to find it again for every question, and a human can follow it
 from page to page.
 
 **Three layers.**
 
-- **Sources.** Minutes, decisions, documents, tasks and slide decks. Each is written through its
-  own interface. A note never changes them, but any of them may link to a note.
-- **Notes.** The pages that agents keep. Each note has a title, a one-line summary, tags, its
-  author and the sources it cites, and it links to related artifacts. Agents write most notes;
-  humans may write notes too.
-- **Guide.** One note of the tenant that tells agents how the team keeps its wiki: which kinds of
-  notes exist, how they are named and tagged, and what an agent does in each operation. Humans and
-  agents change it together.
+- **Sources** are memories: minutes, decisions and notes. They come into being as a side effect of
+  a session or of other work, and they never change. A correction is a new record that refers to
+  the old one.
+- **Pages** are documents. Humans and agents write and change them. A page has a title, and it may
+  have a one-line summary, tags and the sources that it draws on. It links to other pages and to
+  sources.
+- **The guide** is one document that tells agents how the team keeps its wiki: which pages exist,
+  how they are named and tagged, and how each operation works.
 
 **Three operations.** All of them are work of an agent, because the hub has no model
 (`con-no-intelligence`).
 
-- **Ingest.** An agent reads a new source, for example the minutes of a session that just ended
-  or a note in the inbox. It writes or updates the notes that the source touches, links them and
-  cites the source. One source may touch many notes.
-- **Query.** An agent answers a question from the notes, with the artifacts it used. A good answer
-  may become a new note.
-- **Lint.** An agent looks for contradictions, outdated statements, notes without links to them
-  and topics without a note, and fixes them or reports them.
+- **Ingest.** An agent reads a new source, for example the minutes of a session that just ended or
+  a new note. It writes or updates the pages that the source touches, links them and cites the
+  source. One source may touch many pages. The sources that no page cites yet are the queue.
+- **Query.** An agent answers a question from the pages, with the artifacts it used. A good answer
+  may become a new page.
+- **Lint.** An agent looks for contradictions, outdated statements, pages without links to them,
+  topics without a page, and broken links. It fixes pages and reports the rest. It never changes a
+  source.
 
 **Who does what in the hub.**
 
-- The part of each type writes its artifacts and checks its schema. The records part does this
-  for notes.
+- The part of each type writes its files, checks them and describes them: title, summary and
+  outgoing links. When it writes a file, it reports links that lead nowhere as hints, but it
+  accepts the write.
 - The archive stores every change in one commit and reports it. It knows no content.
-- The wiki part follows those changes. It keeps the index (title, summary, tags), the links and
-  backlinks, and the full-text search, all in memory and without a model. It checks that every
-  link reaches an artifact.
+- The wiki part follows those changes and keeps a derived view for each tenant: the index, links
+  and backlinks, broken links, sources without a page, and a search by words. It writes nothing,
+  needs no model, and can rebuild the view from the archive at any time.
 - The portal shows the index, an artifact with its links and backlinks, and the search. The stage
-  shows an artifact of a session. Both render links that work.
+  shows only the artifacts of its session.
 
-**Navigation and search.** Agents use their clone: they read the files and search them with their
-own tools. Humans use the portal.
+**Navigation and search.** Agents use their clone and their own tools. Humans use the portal.
 
-**Example.** A session ends and its minutes are stored. The agent of a participant ingests them: it
-updates the note about the customer, adds the new price to the note about pricing, links both, and
-cites the minutes. Later, a human searches for "price" in the portal. The search finds the pricing
-note, and its backlinks lead to the customer note and the minutes.
+**Example.** A session ends, and its minutes are stored. During the session, an agent added a note
+about a new price. The agent of the participant who kept the minutes ingests both: it updates the
+page about the customer, adds the price to the page about pricing, links both pages, and cites the
+minutes and the note. Later, a human searches for "price" in the portal. The search finds the
+pricing page, its backlinks lead to the customer page, and its sources lead to the minutes and the
+note.
 
 ```arc42
 :::concept
