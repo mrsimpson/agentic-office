@@ -330,7 +330,8 @@ from page to page.
   a session or of other work, and they never change. A correction is a new record that refers to
   the old one.
 - **Pages** are documents. Humans and agents write and change them. A page has a title, and it may
-  have a one-line summary, tags and the sources that it draws on. It links to other pages and to
+  have a one-line summary, tags, the sources that it draws on, a status (draft, reviewed or
+  outdated), an owner and its reviews. It links to other pages and to
   sources.
 - **The guide** is one document that tells agents how the team keeps its wiki: which pages exist,
   how they are named and tagged, and how each operation works.

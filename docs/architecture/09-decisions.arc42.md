@@ -1192,8 +1192,11 @@ keeps its own interface for writing (`dec-records-per-type`).
   user, and the note must still name its real author.
 - **Documents are the pages of the wiki.** Humans and agents write them through the document
   interface, with the version check that already exists. A document may carry front matter with a
-  title, a one-line summary, tags and the sources it draws on. Without it, the first heading is its
-  title. Ingest, answers and lint change documents only, never a source.
+  title, a one-line summary, tags, the sources it draws on, a status (draft, reviewed or outdated),
+  an owner, and the reviews it got, each with the reviewer and the date. Without front matter, the
+  first heading is its title. The portal shows how far a reader can trust a page: its status,
+  owner and reviews, and what the hub can find without a model, such as the last author, whether
+  that was a human or an agent, and the age of its newest source. Ingest, answers and lint change documents only, never a source.
 - **The guide is a document of the tenant.** It tells agents how the team keeps its wiki: which
   pages exist, how they are named and tagged, and how each operation works.
 - **Links are plain relative Markdown links.** A part that writes a file reports every link that
@@ -1258,7 +1261,8 @@ OPEN:
 - How a document cites a session, since the session logs are not in the artifact repository; and
   whether a citation of a document names its version.
 - The interfaces of the wiki part and the descriptions of the types enter chapter 5 with their code.
-- How search respects the rights of a reader once the artifacts of a tenant have different readers.
+- Content that only some members of a tenant may read: every member reads everything and holds a
+  clone, so this needs encryption for several parties in a distributed storage (issue #190).
 - How much memory the derived view needs for a large tenant.
 
 ```arc42

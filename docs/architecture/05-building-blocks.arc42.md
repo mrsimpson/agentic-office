@@ -582,7 +582,8 @@ path: hub/tasks/check
 The documents part stores each text document as one Markdown file in the archive and one commit
 per change. It checks the base version of a change and tells the meeting session when a call names
 one. Documents are the pages of the wiki (`dec-wiki`). A document may carry front
-matter with a title, a summary, tags and its sources; the part owns that schema. When it writes a
+matter with a title, a summary, tags, its sources, a status, an owner and its reviews; the part
+owns that schema. When it writes a
 document, it reports links that lead nowhere as hints and accepts the write.
 
 ```arc42
