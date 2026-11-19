@@ -1370,11 +1370,22 @@ more, and every sentence of it could have been off the record.
 - **A pending record stays with its session.** Only the readers of the session see it, and it is
   not in the tenant repository. Until release, its authors may correct it, so a sentence off the
   record can still be taken out. From the release on, it never changes (`dec-wiki`).
-- **A human participant releases.** When the session ends, a grace period starts. Any human who
-  took part may release the records of the session, or object; an objection makes them `held`, and
-  then only an explicit release publishes them. When the grace period ends without an objection,
-  the hub releases them. A session without a human participant releases its records when it ends.
-  An agent never releases and never objects.
+- **What is held.** The minutes, notes and decisions of a session, and the tasks, slides and
+  documents that a session creates. A change that a session makes to an artifact that is already
+  released is not held.
+- **A human participant releases.** When the session ends, a grace period starts: 24 hours unless
+  the tenant sets another length. Any human who took part may release the records of the session,
+  or object; an objection makes them `held`, and then only an explicit release publishes them. When
+  the grace period ends without an objection, the hub releases them. A session without a human
+  participant releases its records when it ends. An agent never releases and never objects.
+- **Release and objection are session commands.** The meeting session owns them, because it knows
+  who took part and whether each participant is a human. It refuses them unless the caller is a
+  human who took part. The CLI and the MCP server offer them like every command
+  (`dec-cli-and-mcp`), and the portal offers them as a form on the page of the session
+  (`dec-web-portal`); all three only pass the command on. The meeting session also releases when
+  the grace period ends, and it asks the records part to store the records.
+- **Pending records live with the session logs.** The hub keeps them in the private repository of
+  the session logs of the tenant (`dec-artifact-sync`), which no participant can clone.
 - **The release is one step.** The hub replaces every sentence off the record that a record quotes
   word for word with the placeholder of the session, and then stores all records of the session in
   the tenant repository in one commit. Each change of the release status is an event in the
@@ -1386,7 +1397,9 @@ the release. The note and decision interfaces gain a change for pending records.
 keeps pending records outside the tenant repository. The wiki ingests only released records. A
 paraphrase of a sentence off the record can still pass the release; the grace period gives the
 speaker time to see it. The portal shows the release status of a session and offers the release
-and the objection, its first write that is not administration (`dec-web-portal`).
+and the objection as its first write that is not administration (`dec-web-portal`). An assistant
+that works with the key of a human counts as that human; its instructions must say that it
+releases or objects only when its human tells it to.
 
 **Rejected:**
 
@@ -1398,13 +1411,13 @@ and the objection, its first write that is not administration (`dec-web-portal`)
   repository, so the field would hide nothing.
 - A release by agents: the release is the moment a human checks what is shared.
 
-OPEN:
+- Holding a change to a released document: it would need a pending version next to the released
+  one, with its own version check.
+- The release only in the portal: `dec-cli-and-mcp` asks for every feature in the CLI and MCP.
 
-- The length of the grace period, set per tenant (proposal: 24 hours).
-- Whether tasks, slides and documents that a session creates or changes are held too. A change to
-  a document that already exists would need a pending version next to the released one.
-- Where the hub keeps pending records: next to the session log, which no participant can clone.
-- How the portal offers the release and the objection without scripts.
+OPEN: who changes the accepted decisions `dec-web-portal`, `dec-off-the-record` and
+`dec-session-end-milestone` once this decision is accepted; the release status of records that
+exist before the release is introduced.
 
 ```arc42
 :::decision
