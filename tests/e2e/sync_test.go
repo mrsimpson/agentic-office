@@ -176,7 +176,7 @@ func (p *person) office(dir string, args ...string) (string, string, int) {
 func (p *person) git(dir string, args ...string) (string, int) {
 	p.t.Helper()
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
-	for _, kv := range os.Environ() {
+	for _, kv := range contracttest.Environ() {
 		if !strings.HasPrefix(kv, "GIT_SSL_CAINFO=") {
 			cmd.Env = append(cmd.Env, kv)
 		}

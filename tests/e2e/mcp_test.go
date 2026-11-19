@@ -58,7 +58,7 @@ func TestAgentThroughMCP(t *testing.T) {
 
 	// The agent's MCP client starts "office mcp".
 	cmd := exec.Command(contracttest.Binary(t, "office"), "mcp")
-	cmd.Env = append(os.Environ(), bot...)
+	cmd.Env = append(contracttest.Environ(), bot...)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	cs, err := mcp.NewClient(&mcp.Implementation{Name: "agent", Version: "1"}, nil).Connect(ctx, &mcp.CommandTransport{Command: cmd}, nil)
@@ -87,7 +87,7 @@ func TestAgentThroughMCP(t *testing.T) {
 
 	// The agent's background filter, as the tool description shows it.
 	follow := exec.CommandContext(ctx, "sh", "-c", `tail -n +1 -f "$LOG" | grep --line-buffered '"type":"turn.end"\|"type":"addressed"'`)
-	follow.Env = append(os.Environ(), "LOG="+botLog)
+	follow.Env = append(contracttest.Environ(), "LOG="+botLog)
 	out, err := follow.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)

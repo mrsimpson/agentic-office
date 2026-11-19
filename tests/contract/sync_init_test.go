@@ -68,7 +68,7 @@ func (u *syncUser) git(dir string, args ...string) (string, int) {
 	u.t.Helper()
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
 	// The variable of the host would override the certificate in the configuration of the clone.
-	for _, kv := range os.Environ() {
+	for _, kv := range contracttest.Environ() {
 		if !strings.HasPrefix(kv, "GIT_SSL_CAINFO=") {
 			cmd.Env = append(cmd.Env, kv)
 		}
