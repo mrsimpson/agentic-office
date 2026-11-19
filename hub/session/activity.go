@@ -203,6 +203,10 @@ func (s *Service) WatchActivity(ctx context.Context, req *sessionactivityv1.Watc
 	if err != nil {
 		return err
 	}
+	if err := mayRead(caller, st); err != nil {
+		st.mu.Unlock()
+		return err
+	}
 	ended := st.ended
 	st.mu.Unlock()
 	if err := stream.SendHeaders(); err != nil {

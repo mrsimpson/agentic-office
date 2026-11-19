@@ -135,7 +135,10 @@ func TestQualityArchiveNoBackpressure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The bot follows the stream and notes when each event arrives.
+	// The bot joins and follows the stream; it notes when each event arrives.
+	if _, err := bot.Commands.Join(ctx, &sessioncommandsv1.JoinRequest{SessionId: sid, CommandId: coreapi.NewCommandID()}); err != nil {
+		t.Fatal(err)
+	}
 	var mu sync.Mutex
 	arrived := map[uint32]time.Time{}
 	stream, err := bot.Stream.Subscribe(ctx, &sessionstreamv1.SubscribeRequest{SessionId: sid})

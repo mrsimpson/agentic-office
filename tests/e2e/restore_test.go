@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
 	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
@@ -122,7 +121,18 @@ func TestHubRestartRestoresFromArchiveAndPeers(t *testing.T) {
 	srv.Kill()
 	gate.Open(t)
 	srv = contracttest.StartHubIn(t, srv.DataDir, srv.AdminKey, gate.Env, append([]string{"-addr", srv.Addr()}, hubArgs...)...)
-	reader := srv.Participant(t, "reader", "Reader", identityv1.ActorKind_ACTOR_KIND_AGENT)
+	// Ada took part in the session, so she may read it from the hub.
+	var adaKeyFile string
+	for _, kv := range ada {
+		if k, ok := strings.CutPrefix(kv, "OFFICE_KEY="); ok {
+			adaKeyFile = k
+		}
+	}
+	adaKey, err := auth.ReadKey(adaKeyFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader := srv.WithKey(t, adaKey)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	key, err := reader.Commands.GetHubKey(ctx, &sessioncommandsv1.GetHubKeyRequest{})

@@ -223,6 +223,8 @@ type SessionCommandsServiceClient interface {
 	UpdateMinutes(context.Context, *commandsapi.UpdateMinutesRequest) (*commandsapi.UpdateMinutesResponse, error)
 	FocusArtifact(context.Context, *commandsapi.FocusArtifactRequest) (*commandsapi.FocusArtifactResponse, error)
 	EndSession(context.Context, *commandsapi.EndSessionRequest) (*commandsapi.EndSessionResponse, error)
+	// GetTreeHead, GetConsistencyProof and GetInclusionProof answer only who may read the
+	// session, as the session stream decides (stream.proto); everybody else gets not_found.
 	// GetTreeHead returns the signed tree head of the session log (dec-merkle-log): for the current
 	// log, or for its first tree_size events.
 	GetTreeHead(context.Context, *commandsapi.GetTreeHeadRequest) (*commandsapi.GetTreeHeadResponse, error)
@@ -275,6 +277,8 @@ type SessionCommandsServiceHandler interface {
 	UpdateMinutes(context.Context, *commandsapi.UpdateMinutesRequest) (*commandsapi.UpdateMinutesResponse, error)
 	FocusArtifact(context.Context, *commandsapi.FocusArtifactRequest) (*commandsapi.FocusArtifactResponse, error)
 	EndSession(context.Context, *commandsapi.EndSessionRequest) (*commandsapi.EndSessionResponse, error)
+	// GetTreeHead, GetConsistencyProof and GetInclusionProof answer only who may read the
+	// session, as the session stream decides (stream.proto); everybody else gets not_found.
 	// GetTreeHead returns the signed tree head of the session log (dec-merkle-log): for the current
 	// log, or for its first tree_size events.
 	GetTreeHead(context.Context, *commandsapi.GetTreeHeadRequest) (*commandsapi.GetTreeHeadResponse, error)

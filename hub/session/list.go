@@ -213,3 +213,17 @@ func (s *Service) storedSummary(ctx context.Context, name string) (*summary, err
 	}
 	return sum, nil
 }
+
+// mayRead checks who reads a session (if-session-stream): everyone who ever joined it, the
+// participant who imported it, a tenant admin of the tenant, and a stage link for this session.
+// Everybody else gets the answer for a session that does not exist. The caller holds st.mu; a
+// stage link for another session was refused before.
+func mayRead(c Caller, st *state) error {
+	if c.StageSessionID != "" || c.TenantAdmin {
+		return nil
+	}
+	if st.participants[c.ParticipantID] != nil || (st.importer != "" && st.importer == c.ParticipantID) {
+		return nil
+	}
+	return notFound("no such session for you: only its participants, the participant who imported it and the tenant admins read it")
+}
