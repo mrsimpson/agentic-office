@@ -1231,7 +1231,8 @@ session and one agent key, it:
 - joins the session as the agent and runs the log replicator in its own process, so it follows
   the local log of the agent;
 - starts the agent harness, opens one ACP session, hands it the office tools as an MCP server with
-  the key of the agent and sends a first prompt with the role of the agent and the meeting;
+  the key of the agent and sends a first prompt with the role of the agent and the meeting, and
+  with the rule that an agent says in the session which artifact it takes on (`dec-wiki`);
 - decides with one wake strategy, chosen by the user at start, when to wake the agent
   (`dec-agent-runner-delivery`): at each change of speaker, or when a forwarding judge or a
   decision model that the user brings says so (`dec-wake-check-per-utterance`,

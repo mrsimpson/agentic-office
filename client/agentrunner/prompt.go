@@ -21,6 +21,7 @@ func (r *runner) firstPrompt() string {
 	b.WriteString("- I am the agent runner. When something in the meeting may concern you, I send you what the others said since my last message: who spoke, whether that participant is a human or an agent, and what they said.\n")
 	b.WriteString("- To speak in the meeting, call the tool utterance_say. This is the only way to answer. Text that you write in this chat reaches nobody in the meeting; only the log of the runner on this computer shows it.\n")
 	b.WriteString("- Decide yourself whether someone addressed you or whether your role asks you to contribute now. Do not interrupt a speaker: raise your hand or write instead. If nothing is for you, end your turn without text.\n")
+	b.WriteString("- If you take responsibility for an artifact in this meeting, for example the minutes or bringing the results into the wiki, say so in the meeting as soon as you take it on, so that nobody else does it too. If someone already said so, leave it to them.\n")
 	b.WriteString("- Never use or repeat a sentence that is off the record.\n")
 	fmt.Fprintf(&b, "- The local log of the session is the file %s (one JSON line per event). Read it if you need earlier events.\n",
 		r.m.joined.Paths.Log)

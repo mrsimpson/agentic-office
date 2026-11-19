@@ -1209,7 +1209,12 @@ keeps its own interface for writing (`dec-records-per-type`).
   it can be rebuilt from the archive at any time. The portal reads it. The wiki part is on no write
   path.
 - **Agents maintain the wiki.** The agents of all participants may ingest, answer and lint
-  (`concept-wiki`). The sources that no document cites are the queue for ingest. Agents read and
+  (`concept-wiki`). The sources that no document cites are the queue for ingest.
+- **Responsibility is claimed in the session.** A participant who takes on an artifact, for
+  example the minutes or the ingest of the session, says so in the session, and the others leave it
+  to them. The session log is the record of the claim, and the first claim counts
+  (`concept-read-file-write-tools`). The agent runner tells every agent this rule in its first
+  prompt; the guide tells agents without a runner. Agents read and
   search their clone with their own tools, so the client, the CLI and the MCP server get no search.
 - **Navigation lives in the portal.** The stage shows only the artifacts that its session names
   (`dec-artifacts`), so a link on the stage that leads elsewhere does not open.
@@ -1235,6 +1240,8 @@ agents.
   path of every commit.
 - A wiki part that reads the fields of every type: the schema belongs to its type
   (`dec-artifact-sync`).
+- A fixed ingester per session, for example whoever keeps the minutes: a claim in the session is
+  visible to humans and agents and needs no new rule in the hub.
 - A link check that refuses a write: a push check sees one file at a time, a rename would need to
   fix every link in the same step, and a broken link in the minutes would block the end of a session.
 - The portal builds the index and the search: the portal has no logic of its own.
@@ -1246,8 +1253,7 @@ agents.
 
 OPEN:
 
-- Who must ingest a source, so that it is neither skipped nor done five times. Proposal: the agent
-  of the participant who keeps the minutes, at the end of a session.
+- Who ingests a source that no session claimed, for example a note written outside a session.
 - Who may change the guide, since it acts as a prompt for every agent.
 - How a document cites a session, since the session logs are not in the artifact repository; and
   whether a citation of a document names its version.

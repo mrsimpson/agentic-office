@@ -340,7 +340,9 @@ from page to page.
 
 - **Ingest.** An agent reads a new source, for example the minutes of a session that just ended or
   a new note. It writes or updates the pages that the source touches, links them and cites the
-  source. One source may touch many pages. The sources that no page cites yet are the queue.
+  source. One source may touch many pages. The sources that no page cites yet are the queue. So that two
+  agents do not ingest the same source, an agent that takes on the ingest of a session says so in
+  the session, and the others leave it to it.
 - **Query.** An agent answers a question from the pages, with the artifacts it used. A good answer
   may become a new page.
 - **Lint.** An agent looks for contradictions, outdated statements, pages without links to them,
