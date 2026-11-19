@@ -454,7 +454,9 @@ path: hub/portal/web
 
 The portal part renders the portal on the server. It has no logic and no state of its own: every
 page asks the interfaces of the hub with the access token of the user and shows what it gets, so the
-portal has exactly the rights of the key (`dec-web-portal`).
+portal has exactly the rights of the key (`dec-web-portal`). It asks the auth API who the user is,
+the user and tenant APIs for the administration and the members, the session list for the
+sessions of a tenant, and the session stream for the events of one session.
 
 ```arc42
 :::building-block
@@ -1194,8 +1196,9 @@ The shared core of the CLI, the MCP server and the ears ("one core, two adapters
 `dec-cli-and-mcp`). It holds the configuration of a participant, authenticates with Identity,
 creates the command IDs and calls the interfaces of the office hub. It reads the import format
 of conversations and sends a conversation to the session import in pages
-(`dec-import-format`), so the CLI and the MCP server import in the same way. The adapters add only their
-own way of talking to a human or an agent.
+(`dec-import-format`), so the CLI and the MCP server import in the same way. It lists the sessions
+that the participant may see (`if-session-list`). The adapters add only their own way of talking
+to a human or an agent.
 
 ```arc42
 :::building-block
