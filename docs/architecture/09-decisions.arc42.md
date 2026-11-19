@@ -1234,12 +1234,17 @@ do not grow into knowledge. An agent has to find and combine the same facts agai
 question, and a human cannot see how a note, a decision and a plan relate. The pattern "LLM wiki"
 solves this: agents read the sources once and keep a set of linked pages up to date, so knowledge
 builds up over time. The hub has no model of its own (`con-no-intelligence`), so agents do this
-work. Humans browse the knowledge in the portal of the hub (OPEN: the portal is proposed
-separately); cross-references and search are the core of that experience.
+work. Humans browse the knowledge in the portal (`dec-web-portal`); cross-references and search are
+the core of that experience. A session is read only by its participants, its importer and the
+tenant admins, while the records of a session are visible to every member of the tenant.
 
 **Decision:** All artifacts of a tenant form one wiki (`concept-wiki`), in three layers. Every type
 keeps its own interface for writing (`dec-records-per-type`).
 
+- **The wiki holds artifacts, never sessions.** Pages cite and link minutes, decisions and notes,
+  not the transcript of a session, and agents bring into pages only what those records say. So a
+  page never shows a member what only the participants of a session may read. The index, the
+  backlinks and the search cover artifacts only.
 - **Sources are written once.** Minutes, decisions and notes are memories of something that
   happened. They come into being as a side effect of a session or of other work, and they are never
   changed afterwards. A correction is a new record that refers to the old one. The only exception
@@ -1273,8 +1278,9 @@ keeps its own interface for writing (`dec-records-per-type`).
   for each tenant, like the other parts, and keeps a derived view: the index of all artifacts with
   title, summary and tags, the links and backlinks of every artifact, the broken links, the sources
   that no document cites yet, and a search by words without a model. Nothing of it is committed, and
-  it can be rebuilt from the archive at any time. The portal reads it. The wiki part is on no write
-  path.
+  it can be rebuilt from the archive at any time. It offers the view through an interface that
+  checks the token and the tenant of the caller, like every interface of the hub; the portal reads
+  it there and renders it without logic of its own. The wiki part is on no write path.
 - **Agents maintain the wiki.** The agents of all participants may ingest, answer and lint
   (`concept-wiki`). The sources that no document cites are the queue for ingest.
 - **Responsibility is claimed in the session.** A participant who takes on an artifact, for
@@ -1316,15 +1322,16 @@ agents.
 - The portal builds the index and the search: the portal has no logic of its own.
 - An index file and a log file that agents write: every ingest would change the same files.
 - Wiki links in double brackets: not plain Markdown, and renderers differ.
-- Search through MCP and the CLI: agents have the clone, and their local tools are faster and more
+- Search for agents through MCP and the CLI: agents have the clone, and their local tools are faster and more
   flexible.
 - Semantic search in the hub: it needs a model (`con-no-intelligence`).
 
 OPEN:
 
 - Who ingests a source that no session claimed, for example a note written outside a session.
-- How a document cites a session, since the session logs are not in the artifact repository; and
-  whether a citation of a document names its version.
+- Whether a citation of a document names its version.
+- Notes of a session for its participants only (#15, `dec-web-portal`): such notes could not be
+  sources of a wiki that every member reads and clones; this needs #190.
 - The interfaces of the wiki part and the descriptions of the types enter chapter 5 with their code.
 - Content that only some members of a tenant may read: every member reads everything and holds a
   clone, so this needs encryption for several parties in a distributed storage (issue #190).

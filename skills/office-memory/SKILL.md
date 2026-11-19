@@ -72,7 +72,7 @@ The price is 40 EUR per seat ([minutes of 12 November](../../minutes/000012.yaml
 - **title** and **summary**: one line each. The portal lists pages by them.
 - **tags**: use the tags that similar pages already use.
 - **sources**: the path of every source the page draws on. Also link the source next to the
-  statement that comes from it.
+  statement that comes from it. Cite records, never a meeting or its transcript.
 - **status**: `draft`, `reviewed` or `outdated`. You write `draft`. Set `outdated` when a newer
   page replaces it, and link the newer page at the top.
 - **owner** and **reviewed**: set by humans. Add a review only when a human asks you to record
@@ -101,6 +101,9 @@ says. Write a note with your proposed change, link the page, and name the owner.
 4. Cite the sources in each page, link the pages to each other, and update the overview page of
    each area you touched.
 5. Do not copy the minutes. Write what the team knows now, in short statements.
+6. Use only what the minutes, decisions and notes say, not what you heard in the meeting. Only
+   the participants of a meeting may read its transcript, but every member reads the wiki. If
+   something important is missing from the records, write a note first.
 
 ## Answer a question (query)
 

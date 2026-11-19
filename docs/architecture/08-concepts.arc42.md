@@ -333,7 +333,8 @@ from page to page.
 
 **Three layers.**
 
-- **Sources** are memories: minutes, decisions and notes. They come into being as a side effect of
+- **Sources** are memories: minutes, decisions and notes. The transcript of a session is not a
+  source: only its participants may read it, while every member reads the wiki. They come into being as a side effect of
   a session or of other work, and they never change. A correction is a new record that refers to
   the old one.
 - **Pages** are documents. Humans and agents write and change them. A page has a title, and it may
@@ -367,7 +368,8 @@ from page to page.
 - The wiki part follows those changes and keeps a derived view for each tenant: the index, links
   and backlinks, broken links, sources without a page, and a search by words. It writes nothing,
   needs no model, and can rebuild the view from the archive at any time.
-- The portal shows the index, an artifact with its links and backlinks, and the search. The stage
+- The portal (`dec-web-portal`) shows the index, an artifact with its links and backlinks, and the
+  search. It reads them through the interface of the wiki part with the token of the user. The stage
   shows only the artifacts of its session.
 
 **Navigation and search.** Agents use their clone and their own tools. Humans use the portal.
