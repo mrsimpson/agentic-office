@@ -429,3 +429,39 @@ title: Repository
 definition: The local git repository of a tenant, with a directory for each kind of content
 :::
 ```
+
+## Wiki
+
+The knowledge of a tenant in linked pages (`concept-wiki`).
+
+```arc42
+:::glossary-term
+id: term-wiki
+title: Wiki
+definition: The notes of a tenant as linked Markdown pages that agents keep up to date from the sources, such as minutes, decisions and documents
+:::
+```
+
+## Ingest
+
+How knowledge enters the wiki (`concept-wiki`).
+
+```arc42
+:::glossary-term
+id: term-ingest
+title: Ingest
+definition: An agent reads a new source and writes or updates the wiki pages that it touches, with links between them and a citation of the source
+:::
+```
+
+## Lint of the wiki
+
+How the wiki stays healthy (`concept-wiki`).
+
+```arc42
+:::glossary-term
+id: term-wiki-lint
+title: Lint of the wiki
+definition: An agent checks the wiki for contradictions, outdated statements, pages without links to them and missing pages, and fixes or reports what it finds
+:::
+```

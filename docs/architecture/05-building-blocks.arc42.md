@@ -297,8 +297,13 @@ path: hub/records/minutes/api
 
 ### Notes
 
-Adds free notes, with or without a session, and lists them like the decisions. A sentence that is
-off the record must not go into a note.
+Writes the pages of the wiki of a tenant (`dec-notes-as-wiki`, `concept-wiki`). A note is a page:
+a Markdown file with a title, a one-line summary, its author, whether the author is a human or an
+agent, and the sources that it cites. The path of a page is its identity. The interface creates a
+page, changes a page with the version that its author read, and lists the pages with their title
+and summary, which is the index of the wiki. A note without a page name lands as a new page in the
+inbox of the wiki. A page may name a session. A sentence that is off the record must not go into a
+note.
 
 ```arc42
 :::interface
@@ -498,7 +503,8 @@ of every session; then nothing is lost and there is no wait.
 
 The memory of the team: decisions, minutes and notes (`dec-records-per-type`). Each type has its
 own interface and its own types, and each record keeps who wrote it and whether that was a human
-or an agent. Tasks are not part of this block; they have their own part of the hub.
+or an agent. The notes are the pages of the wiki of the tenant (`dec-notes-as-wiki`); the part
+checks that the links between pages and the cited sources exist. Tasks are not part of this block; they have their own part of the hub.
 
 Every new record is one commit in the archive (`dec-yaml-git-storage`). A command returns only
 after its commit, so a record that a client got back is stored. Local commits are fast, so this
@@ -515,6 +521,7 @@ technology: Go / YAML in the archive
 parent: bb-office-hub
 path: hub/records
 requires: if-token-check, if-archive-storage, if-archive-watch
+implements: concept-wiki
 :::
 ```
 

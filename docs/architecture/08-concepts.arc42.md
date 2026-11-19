@@ -316,3 +316,49 @@ title: Client configuration in a user file and a project file
 category: usability
 :::
 ```
+
+## Wiki of the tenant
+
+The notes of a tenant form a wiki: a set of linked Markdown pages that agents keep up to date
+(`dec-notes-as-wiki`). It follows the pattern "LLM wiki". The knowledge builds up in the pages, so
+an agent does not have to find it again in the sources for every question.
+
+**Three layers.**
+
+- **Sources.** Minutes, decisions, documents and other artifacts. The wiki reads them and never
+  changes them.
+- **Pages.** The notes. Each page has a title, a one-line summary, its author and the sources it
+  draws on. A page links to related pages. Agents write most pages; humans may write pages too.
+- **Guide.** One page of the tenant that tells agents how the team keeps its wiki: which kinds of
+  pages exist, how they are named, and what an agent does in each operation. Humans and agents
+  change it together.
+
+**Three operations.** All of them are work of an agent, because the hub has no model
+(`con-no-intelligence`).
+
+- **Ingest.** An agent reads a new source, for example the minutes of a session that just ended
+  or a page in the inbox. It writes or updates the pages that the source touches, links them and
+  cites the source. One source may touch many pages.
+- **Query.** An agent answers a question from the pages, with the pages and sources it used. A
+  good answer may become a new page.
+- **Lint.** An agent looks for contradictions, outdated statements, pages without links to them
+  and topics without a page, and fixes them or reports them.
+
+**What the hub does.** The hub stores every page as an artifact, with one commit per change and a
+version check, so parallel agents never overwrite each other unnoticed. It checks every page
+deterministically: valid front matter, links that reach a page, cited sources that exist. It lists
+the pages with title and summary as the index of the wiki, and the history of the archive is its
+log. The stage renders a page with working links.
+
+**Example.** A session ends and its minutes are stored. The agent of a participant ingests them: it
+updates the page of the customer, adds the new price to the page about pricing, links both, and
+cites the minutes. In the next session, someone asks for the price. An agent reads the index,
+opens the pricing page, and answers with a link to it.
+
+```arc42
+:::concept
+id: concept-wiki
+title: Wiki of the tenant
+category: domain
+:::
+```

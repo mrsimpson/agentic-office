@@ -1167,3 +1167,46 @@ date: 2026-11-15
 addresses: qg-usability
 :::
 ```
+
+## Notes form a wiki that agents keep
+
+**Context:** The team writes many notes, and the minutes, decisions and documents hold more
+knowledge. A list of single notes does not grow into knowledge: an agent has to find and combine
+the same facts again for every question. The pattern "LLM wiki" (Karpathy, 2026) solves this. An
+agent reads the sources once and keeps a set of linked Markdown pages up to date, so the knowledge
+builds up over time. The hub has no model of its own (`con-no-intelligence`), so agents must do
+this work. **Decision:** The notes of a tenant form a wiki (`concept-wiki`). The note interface
+stays the way to write notes, with its schema check, but a note is now a page of the wiki: one
+Markdown file whose front matter names the schema, the title, a one-line summary, the author and
+the sources. The path of a page is its identity, as for every artifact (`dec-artifacts`). A change
+names the version that its author read. A note without a page name becomes a new page in the
+inbox of the wiki; an agent files it into the wiki later. Pages link to each other with ordinary
+relative Markdown links, and they cite their sources by path. The part that owns the note schema
+checks a page on every call and every push: the front matter is valid, and every link to a page
+and every cited source exists. The hub does not keep an index file or a log file of the wiki: it
+derives the index from the front matter of the pages, and the history of the archive is the log.
+The agents of all participants may maintain the wiki. They ingest, answer and lint
+(`concept-wiki`); a guide page of the tenant tells them the rules of the team. The stage renders a
+page as Markdown with working links. **Consequences:** Notes are Markdown and no longer YAML, which
+narrows `dec-yaml-git-storage` for notes. The note interface gains a change of a page with its base
+version, and a note is named by its path instead of a number. Minutes, decisions and documents
+stay as they are; they are sources of the wiki, and the wiki never changes them. A clone of the
+tenant repository opens as a wiki in ordinary tools, for example Obsidian (`dec-artifact-sync`).
+Semantic checks such as contradictions or gaps stay with the agents. **Rejected:** a wiki next to
+the notes (two places for the same knowledge); an index file and a log file that agents write
+(every ingest would change the same files, so the version check would refuse parallel writers);
+wiki links in double brackets (not plain Markdown, and renderers differ); one librarian agent per
+tenant (it needs a new role, and every agent may already write artifacts). OPEN: the directory and
+the name of the inbox and of the guide page; how a page cites a session, since the session logs
+are not in the artifact repository; whether removing a page that other pages link to is refused
+or leaves the links to a lint.
+
+```arc42
+:::decision
+id: dec-notes-as-wiki
+title: Notes form a wiki that agents keep
+status: proposed
+date: 2026-11-19
+addresses: qg-usability, con-no-intelligence
+:::
+```
