@@ -146,9 +146,9 @@ func fetchError(out string, err error) error {
 	low := strings.ToLower(out)
 	var why string
 	switch {
-	case strings.Contains(low, "authentication failed") || strings.Contains(low, "401"):
+	case gitStatus(low, "authentication failed", 401):
 		why = "the hub did not accept the access token: check your key with \"office whoami\""
-	case strings.Contains(low, "not found") || strings.Contains(low, "404"):
+	case gitStatus(low, "not found", 404):
 		why = "the hub has no repository for you: the tenant does not exist or you are not a member of it"
 	case strings.Contains(low, "certificate") || strings.Contains(low, "ssl"):
 		why = "the certificate of the hub is not trusted: " + strings.TrimSpace(out)

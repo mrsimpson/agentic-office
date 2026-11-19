@@ -340,13 +340,20 @@ func run(ctx context.Context, git, dir string, args ...string) (string, error) {
 	return buf.String(), err
 }
 
+// gitStatus reports whether the lower-case output of git names an HTTP status: by the phrase of
+// git, or by "error: <code>" as in "The requested URL returned error: 404". A bare number is not
+// enough: the URL in the output can hold it, for example in the port.
+func gitStatus(low, phrase string, code int) bool {
+	return strings.Contains(low, phrase) || strings.Contains(low, fmt.Sprintf("error: %d", code))
+}
+
 // cloneError explains a failed clone in plain words.
 func cloneError(repo, out string, err error) error {
 	low := strings.ToLower(out)
 	switch {
-	case strings.Contains(low, "authentication failed") || strings.Contains(low, "401"):
+	case gitStatus(low, "authentication failed", 401):
 		return fmt.Errorf("the hub did not accept the access token for %s: check your key with \"office whoami\"", repo)
-	case strings.Contains(low, "not found") || strings.Contains(low, "404"):
+	case gitStatus(low, "not found", 404):
 		return fmt.Errorf("the hub has no repository at %s for you: the tenant does not exist or you are not a member of it", repo)
 	case strings.Contains(low, "certificate") || strings.Contains(low, "ssl"):
 		return fmt.Errorf("the certificate of the hub is not trusted: add the hub with \"office hub add\" or set --ca-cert: %s", strings.TrimSpace(out))
