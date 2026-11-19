@@ -594,25 +594,6 @@ process: it stops when the client closes the connection, when you leave or after
 call meeting_join again to restart it. The tool descriptions explain the log file and the
 event types to the agent.`,
 		Examples: []string{`claude mcp add office -e OFFICE_KEY="$HOME/.config/agentic-office/agent/key.pem" -- office mcp`}},
-	{Name: "skill show", Group: groupAgents, Summary: "print the skill that tells agents how to use the team's memory",
-		Usage: "skill show",
-		Details: `Prints the skill office-memory: how an agent reads and writes the memory of the team, the wiki
-of the tenant. It explains sources (minutes, decisions and notes, which never change), pages
-(documents with front matter: title, summary, tags, sources, status, owner, reviews), and how to
-ingest a meeting, answer a question and check the wiki. The skill ships with this version of the
-office; agents read it but do not change it.
-
---json prints {"skill", "text"}.`,
-		Examples: []string{"office skill show"}},
-	{Name: "skill install", Group: groupAgents, Summary: "install the memory skill for an agent harness",
-		Usage: "skill install [<skills-dir>]",
-		Details: `Writes the skill office-memory to <skills-dir>/office-memory/SKILL.md (default: .claude/skills in
-the current directory, where Claude Code finds the skills of a project). Give the skills directory
-of your harness if it reads them elsewhere. An older copy is replaced, so the skill always
-matches this version of the office. Run it again after you update the office.
-
---json prints {"skill", "file"}.`,
-		Examples: []string{"office skill install", "office skill install ~/.claude/skills"}},
 	{Name: "agent run", Group: groupAgents, Summary: "keep an agent in a meeting and wake it when it is needed",
 		Usage: "agent run --session S [--role T | --role-file F] [--allow PATTERN]... [--cwd DIR] [wake flags] -- <harness command>",
 		Details: `Claude Code, opencode and Kiro work in turns: they finish a turn and wait. The runner starts the

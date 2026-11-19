@@ -1180,9 +1180,7 @@ path: client/core/api
 The main access for humans and for agents with a shell. It joins a meeting and starts the
 replication (and the follow of the local clone, when it was started in a set-up directory), runs the agent runner, imports conversations, and covers slides, the stage,
 decisions, minutes, notes and tasks. It sets up, updates and follows the local clone of a tenant
-(`dec-artifact-sync`) but runs no other Git command: commits and pushes are plain Git. It shows the
-skill that tells agents how to work with the wiki of the tenant and installs it for an agent
-harness (`dec-wiki`). With a microphone, the terminal shows the user's own
+(`dec-artifact-sync`) but runs no other Git command: commits and pushes are plain Git. With a microphone, the terminal shows the user's own
 utterances with their status and lets the user pause and mark a sentence off the record.
 
 The CLI reads the configuration files of the client (`concept-client-configuration`), merges them

@@ -996,21 +996,15 @@ runner also tells it what the other agents said, and that they are agents.
 
 The office ships a skill, `office-memory`, that tells an agent how to read and write the memory of
 the team: which artifacts never change (minutes, decisions and notes), how to write a page of the
-wiki with its front matter, and how to bring a meeting into the wiki. Install it where your
-harness finds skills, once per project and again after each update of the office:
+wiki with its front matter, and how to bring a meeting into the wiki. It lies in
+`skills/office-memory` of the repository. Install it in the folder of the agent with the
+[skills CLI](https://www.npmjs.com/package/skills):
 
 ```bash
-office skill install
+npx skills add mrsimpson/agentic-office --skill office-memory
 ```
 
-```bash
-office skill install ~/.claude/skills
-```
-
-Without an argument, it writes `.claude/skills/office-memory/SKILL.md` in the current directory,
-where Claude Code finds the skills of a project. `office skill show` prints the skill, for a
-harness without skills. Do not change the installed file: the next install replaces it. Put the
-rules of your team into the role of the agent instead.
+Do not change the installed skill. Put the rules of your team into the role of the agent instead.
 
 ### When the runner wakes the agent
 

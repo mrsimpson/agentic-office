@@ -1199,8 +1199,9 @@ keeps its own interface for writing (`dec-records-per-type`).
   that was a human or an agent, and the age of its newest source. Ingest, answers and lint change documents only, never a source.
 - **A skill tells agents how to work with the wiki.** It ships with the office, is the same for
   every tenant and changes with a release of the office. It explains the layers, the front matter,
-  where pages live when a tenant has no structure yet, and how to ingest, answer and lint. The
-  client shows it and installs it for the agent harness. Agents read it but never change it.
+  where pages live when a tenant has no structure yet, and how to ingest, answer and lint. It is
+  installed into an agent harness like any other skill of the office. Agents read it but never
+  change it.
   Rules of a team come from the role of an agent (`concept-client-configuration`) and from the
   overview pages of the wiki.
 - **Links are plain relative Markdown links.** A part that writes a file reports every link that

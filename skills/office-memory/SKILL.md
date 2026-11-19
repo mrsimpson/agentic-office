@@ -9,6 +9,9 @@ The agentic office keeps the memory of a team as one wiki: every artifact of the
 to each other. You help to keep it. This skill is the same for every team and comes with the
 office. Read it, but never change it.
 
+For the commands, read `office help` and `office help <command>`. To connect, set up agents or
+run meetings, use the skill office-assistant.
+
 ## Three kinds of artifacts
 
 - **Sources** are memories of what happened: minutes, decisions and notes. They are written once

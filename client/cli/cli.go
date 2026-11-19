@@ -71,8 +71,6 @@ func init() {
 		"models download":           cmdModelsDownload,
 		"models list":               cmdModelsList,
 		"vocabulary extract":        cmdVocabularyExtract,
-		"skill show":                cmdSkillShow,
-		"skill install":             cmdSkillInstall,
 		"meeting log":               cmdLogPath,
 		"meeting events":            cmdEvents,
 		"meeting view":              cmdView,
