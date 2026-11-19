@@ -44,11 +44,13 @@ flowchart LR
     actor_human -->|if-local-log| bb_participant_client
     actor_human -->|if-git-access| bb_office_hub
     actor_human -->|if-stage-web| bb_office_hub
+    actor_human -->|if-portal-web| bb_office_hub
     actor_meeting_tool -->|if-stage-web| bb_office_hub
-    actor_system_admin -->|if-admin-web| bb_office_hub
+    actor_system_admin -->|if-portal-web| bb_office_hub
     actor_system_admin -->|if-tenant-api| bb_office_hub
     actor_system_admin -->|if-user-api| bb_office_hub
     actor_tenant_admin -->|if-user-api| bb_office_hub
+    actor_tenant_admin -->|if-portal-web| bb_office_hub
 ```
 
 ## Human participant
@@ -141,7 +143,7 @@ id: actor-tenant-admin
 title: Tenant admin
 type: person
 description: Manages the members of one tenant
-requires: if-user-api
+requires: if-user-api, if-portal-web
 :::
 ```
 
@@ -157,7 +159,7 @@ id: actor-system-admin
 title: System admin
 type: person
 description: Manages tenants, users and system admins of the whole hub
-requires: if-tenant-api, if-user-api, if-admin-web
+requires: if-tenant-api, if-user-api, if-portal-web
 :::
 ```
 

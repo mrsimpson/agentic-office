@@ -32,7 +32,7 @@ architecture-beta
     service bb-slides(database)[Slides] in dn-office-hub
     service bb-documents(database)[Documents] in dn-office-hub
     service bb-stage(internet)[Stage] in dn-office-hub
-    service bb-admin(internet)[Admin view] in dn-office-hub
+    service bb-portal(internet)[Portal] in dn-office-hub
     service bb-identity(server)[Identity] in dn-office-hub
     service bb-archive(disk)[Archive] in dn-office-hub
     service bb-tenants(database)[Tenants] in dn-office-hub
@@ -109,7 +109,7 @@ id: dn-office-hub
 title: Office hub
 type: server
 parent: env-mvp
-hosts: bb-session-service, bb-records, bb-tasks, bb-slides, bb-documents, bb-stage, bb-admin, bb-identity, bb-tenants, bb-archive, bb-git-access, bb-artifacts
+hosts: bb-session-service, bb-records, bb-tasks, bb-slides, bb-documents, bb-stage, bb-portal, bb-identity, bb-tenants, bb-archive, bb-git-access, bb-artifacts
 :::
 ```
 

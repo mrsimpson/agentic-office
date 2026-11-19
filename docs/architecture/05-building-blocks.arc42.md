@@ -68,14 +68,14 @@ id: bb-office-hub-whitebox
 view: building-block
 notation: mermaid
 roots: bb-office-hub
-aliases: bb_office_hub=bb-office-hub, bb_admin=bb-admin, bb_archive=bb-archive, bb_artifacts=bb-artifacts, bb_documents=bb-documents, bb_git_access=bb-git-access, bb_identity=bb-identity, bb_records=bb-records, bb_session_service=bb-session-service, bb_slides=bb-slides, bb_stage=bb-stage, bb_tasks=bb-tasks, bb_tenants=bb-tenants
+aliases: bb_office_hub=bb-office-hub, bb_portal=bb-portal, bb_archive=bb-archive, bb_artifacts=bb-artifacts, bb_documents=bb-documents, bb_git_access=bb-git-access, bb_identity=bb-identity, bb_records=bb-records, bb_session_service=bb-session-service, bb_slides=bb-slides, bb_stage=bb-stage, bb_tasks=bb-tasks, bb_tenants=bb-tenants
 :::
 ```
 
 ```mermaid
 flowchart LR
     subgraph bb_office_hub [Office hub]
-        bb_admin[Admin view]
+        bb_portal[Portal]
         bb_archive[Archive]
         bb_artifacts[Artifacts]
         bb_documents[Documents]
@@ -88,9 +88,9 @@ flowchart LR
         bb_tasks[Tasks]
         bb_tenants[Tenants]
     end
-    bb_admin -->|if-auth-api| bb_identity
-    bb_admin -->|if-tenant-api| bb_tenants
-    bb_admin -->|if-user-api| bb_identity
+    bb_portal -->|if-auth-api| bb_identity
+    bb_portal -->|if-tenant-api| bb_tenants
+    bb_portal -->|if-user-api| bb_identity
     bb_documents -->|if-archive-storage| bb_archive
     bb_documents -->|if-session-notice| bb_session_service
     bb_documents -->|if-token-check| bb_identity
@@ -234,7 +234,7 @@ Proves who a caller is: the client signs a challenge from the hub with its priva
 short-lived access token that is bound to its key. The answer names the participant and the
 display name of the participant, which the client uses as the author of commits
 (`dec-artifact-sync`). The interface also creates the read-only links
-for the stage. The calls of the meeting session, the records, the tasks and the slides name a
+for the stage and the one-time links of the portal (`dec-web-portal`). The calls of the meeting session, the records, the tasks and the slides name a
 tenant, and Identity checks that the caller is a member of it. The auth, user and tenant APIs name
 no tenant, because they work across tenants.
 
@@ -404,34 +404,38 @@ path: hub/documents/api
 :::
 ```
 
-### Admin view
+### Portal
 
-A browser view for the system admins of the hub, opened by a link that a system admin creates with
-the CLI. It shows the users with their keys, the tenants and the system admins, and it manages
-users and keys. Memberships and tenants stay with the CLI. It has the same design as the stage.
-The link works once and is swapped for an access token that the scripts of the page cannot read.
+A browser view for every user of the hub (`dec-web-portal`), opened by a link that the user creates
+with the CLI. The link works once and is swapped for an access token that the scripts of the page
+cannot read. It shows what the key of the user may see: the sessions in which the user took part,
+read-only, with their transcript and their artifacts; the minutes, notes, decisions, tasks, slides
+and documents of the tenant; for a tenant admin, every session and the members of the tenant; for a
+system admin, the users with their keys, the tenants and the system admins, with the forms to
+register users and keys and to revoke keys. The tenant is part of the address of a page. It has the
+same design as the stage.
 
 ```arc42
 :::interface
-id: if-admin-web
-title: Admin view
+id: if-portal-web
+title: Portal
 provider: bb-office-hub
-x-realized-by: bb-admin
+x-realized-by: bb-portal
 protocol: HTTPS (browser)
 path: hub/admin/web
 :::
 ```
 
-### Admin part
+### Portal part
 
-The admin part renders the admin view on the server. It has no logic and no state of its own:
-every page asks the user API and the tenant API with the access token of the system admin and shows
-what it gets, so the admin view has exactly the rights of the admin key (`dec-admin-web`).
+The portal part renders the portal on the server. It has no logic and no state of its own: every
+page asks the interfaces of the hub with the access token of the user and shows what it gets, so the
+portal has exactly the rights of the key (`dec-web-portal`).
 
 ```arc42
 :::building-block
-id: bb-admin
-title: Admin view
+id: bb-portal
+title: Portal
 technology: Go, rendered by the hub
 parent: bb-office-hub
 requires: if-auth-api, if-user-api, if-tenant-api
@@ -477,6 +481,8 @@ participants, and writes everything to one append-only event log per session. It
 imported conversations (`if-session-import`) and writes them into the log of a new session, so a
 session log has one writer in every case. Next to the log, it keeps the short-lived activities of
 the participants (`if-session-activity`), in memory only. Subscribers receive the log from a cursor onwards.
+For the portal it lists the sessions that a caller may see: those in which the caller took part,
+and every session of the tenant for a tenant admin (`dec-web-portal`).
 Events are merged by time only: the participant model already says who spoke.
 
 ```arc42

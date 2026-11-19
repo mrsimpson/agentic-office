@@ -1130,30 +1130,54 @@ addresses: qg-usability, qg-confidentiality, risk-push-bypass, risk-push-size, r
 :::
 ```
 
-## The admin view is a server-rendered page behind a one-time link
+## A web portal for the people of a tenant, behind a one-time link
 
-**Context:** The hub needs a view for system admins: users and keys, tenants and system admins
-(`dec-multi-tenancy`). Admins have Ed25519 keys and no passwords, and a browser cannot sign a
-challenge without more work. **Decision:** The admin view is a web page that the hub renders on the
-server, in the design of the stage, without scripts. An admin asks for a link with the CLI. The link
-holds a code that works once and expires after a few minutes. The admin view swaps the code for an
-access token of the admin key and keeps it in a cookie that scripts cannot read. It sends the token
-with every call to the identity part, so it has exactly the rights of the admin key and no logic of
-its own. **Consequences:** No password and no new login flow. The code is useless after its first
-use, so a link on a shared screen does no harm once it was opened. The access token lives one
-hour. Every change goes through an interface that checks the rights. A form carries a token that is derived from the session, and the view refuses a post from another origin. Revoking asks for a confirmation on its own page, so no script is needed.
-**Rejected:** a password for admins (a second secret to keep); a signature in the browser (needs
-scripts and a new key format); the stage link style with the token in the URL for the whole
-session (the URL stays in the history and on the screen). The first writes are to create users, to add keys and to revoke keys. OPEN: creating
-tenants and managing memberships in the view.
+**Context:** The people of a tenant have no place to find their sessions after they ended, nor to
+read the minutes, notes, decisions, tasks, slides and documents of the tenant, except the CLI, MCP
+and their Git clone. The stage shows one running session for a screen share. The admin view serves
+only system admins, and tenant admins manage their members in the CLI. People have Ed25519 keys and
+no passwords, and a browser cannot sign a challenge without more work. **Decision:** One web
+portal for every user of the hub, rendered by the hub on the server, in the design of the stage,
+without scripts and without logic of its own. A user asks for a link with the CLI. The link holds
+a code that works once and expires after a few minutes. The portal swaps the code for an access
+token of the key and keeps it in a cookie that scripts cannot read. Every page calls the
+interfaces of the hub with this token, so the portal has exactly the rights of the key. The portal
+shows what the key may see:
+
+- every member of a tenant: the sessions in which the member took part, and the minutes, notes,
+  decisions, tasks, slides and documents of the tenant;
+- a tenant admin, in addition: every session of the tenant and the members of the tenant;
+- a system admin, in addition: users and keys, tenants and system admins. A system admin who is
+  no member of a tenant sees no content of it.
+
+The tenant is part of the address of a page, so a user with several memberships switches between
+them. The portal reads only, except the administration that the admin view did before: register
+users and keys and revoke keys. Writing content stays with the CLI, MCP and Git
+(`dec-artifact-sync`). The stage stays separate: it is opened by a link without login, for one
+session, for a screen share. The meeting session lists the sessions that a caller may see, with
+their start, end, participants and whether they were imported; it takes the participants from the
+log. **Consequences:** No password and no new login flow; one link, one cookie and one design for
+every user and every admin. The code is useless after its first use, so a link on a shared screen
+does no harm once it was opened. The access token lives one hour. Every page goes through an
+interface that checks the rights, so the portal cannot show more than the CLI. A form carries a
+token that is derived from the session, and the portal refuses a post from another origin.
+Revoking asks for a confirmation on its own page, so no script is needed. The admin view and its
+own link no longer exist. OPEN: whether a note made in a session is visible to the participants of
+that session only (#15); a login with passkeys; creating tenants and managing memberships in the
+portal; whether the list of sessions extends the session stream or becomes an interface of its own.
+**Rejected:** a separate admin view next to a portal (two logins, two designs, and no place for
+tenant admins); a password (a second secret to keep); a signature in the browser (needs scripts and
+a new key format); the stage link style with the token in the URL for the whole session (the URL
+stays in the history and on the screen); a single-page application with a frontend build (a second
+toolchain, `dec-languages`).
 
 ```arc42
 :::decision
-id: dec-admin-web
-title: The admin view is a server-rendered page behind a one-time link
-status: accepted
-date: 2026-11-12
-addresses: qg-usability
+id: dec-web-portal
+title: A web portal for the people of a tenant, behind a one-time link
+status: proposed
+date: 2026-11-19
+addresses: qg-usability, qg-confidentiality
 :::
 ```
 

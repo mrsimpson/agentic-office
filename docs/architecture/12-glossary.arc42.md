@@ -48,6 +48,18 @@ definition: The short-lived state of a participant, such as an agent that works 
 :::
 ```
 
+## Portal
+
+The web view of the hub for every user.
+
+```arc42
+:::glossary-term
+id: term-portal
+title: Portal
+definition: The web view of the hub for every user, opened by a one-time link from the CLI; it shows the sessions, records, tasks, slides and documents that the key of the user may see, and the administration to admins
+:::
+```
+
 ## Cursor
 
 How a client knows where it stopped reading.
