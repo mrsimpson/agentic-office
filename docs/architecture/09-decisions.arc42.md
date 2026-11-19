@@ -118,12 +118,15 @@ utterances and without sentences off the record. It sends everything new since t
 as one prompt, and one prompt at a time. After `session.ended` it sends what is left and a last
 prompt with the task of the role for the end, then stops the harness
 (`dec-session-end-milestone`). It answers permission requests of the harness by a rule of the
-user; by default it allows the office tools only. A failing model never wakes the agent by
+user; by default it allows the office tools only. The agent reaches the meeting only through the
+office tools. If a turn ends with text in the agent's chat and the agent neither spoke nor raised
+its hand, the runner asks it once whether the text was meant for the meeting. A failing model never wakes the agent by
 itself: the utterances wait for the next change of speaker, and after repeated failures the
 runner works as `turn-end` until the model answers again. **Consequences:** Nothing is lost and
 nothing is sent twice within one ACP session. A slow agent gets fewer, larger prompts. A failing
 model costs at most the wake-ups of `turn-end`. An unattended agent cannot run other tools unless
-the user allows them. **Rejected:** cancelling a running prompt when a new turn comes (the agent
+the user allows them. An answer that the agent wrote only in its chat costs one more prompt
+instead of being lost. **Rejected:** cancelling a running prompt when a new turn comes (the agent
 would lose its work); one prompt per turn while busy (the agent would lag behind more and more);
 checks in parallel (answers could come out of order); waking the agent at every utterance without
 a model (too many wake-ups); waking it at every failed check (a broken model would wake it at

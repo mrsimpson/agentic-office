@@ -225,3 +225,49 @@ func TestAgentRunnerOffTheRecord(t *testing.T) {
 		t.Fatalf("prompt 4 must name [%d] as off the record:\n%s", secret, ps[3])
 	}
 }
+
+// TestAgentRunnerUnspokenReply: when the agent ends a turn with a reply in its chat and does not
+// speak, the runner logs a warning with the reply and asks the agent once, quoting the reply,
+// whether it was meant for the meeting. A reply next to a spoken answer, or a turn without
+// reply, brings no such question (issue 170).
+func TestAgentRunnerUnspokenReply(t *testing.T) {
+	mt := newMeetingWithRunner(t, nil)
+
+	// The agent writes its answer only in its chat.
+	mt.say(mt.ada, `Bot, what is the budget? please reply "The budget is 40000."`)
+	mt.turnEnd(mt.ada)
+	ps := waitPrompt(t, mt.rec, 3)
+	asked := ps[2]
+	for _, want := range []string{"> The budget is 40000.", "utterance_say", "meant for the meeting"} {
+		if !strings.Contains(asked, want) {
+			t.Fatalf("prompt 3 must ask the agent about its unspoken reply; lacks %q:\n%s", want, asked)
+		}
+	}
+	if strings.Contains(asked, "Ada (human)") {
+		t.Fatalf("the question must not deliver utterances again:\n%s", asked)
+	}
+	mt.waitStderr("WARNING: the agent wrote a reply in its chat but did not speak it")
+	mt.waitStderr("The budget is 40000.")
+	waitPromptEnd(t, mt.rec, 3)
+
+	// A reply next to a spoken answer is no reason to ask.
+	mt.say(mt.ada, `Bot, please say "It is 40000." please reply "It is 40000."`)
+	mt.turnEnd(mt.ada)
+	waitUtterance(t, mt.adaLog, "bot", "It is 40000.")
+	waitPromptEnd(t, mt.rec, 4)
+	mt.waitStderr("the agent's reply in its chat (not spoken): It is 40000.")
+
+	// The next prompt is the next wake-up, not a question.
+	mt.say(mt.ada, "Next topic.")
+	mt.turnEnd(mt.ada)
+	ps = waitPrompt(t, mt.rec, 5)
+	if !strings.Contains(ps[4], "Ada (human): Next topic.") {
+		t.Fatalf("prompt 5 must be the next wake-up:\n%s", ps[4])
+	}
+	if n := count(ps, "meant for the meeting"); n != 1 {
+		t.Errorf("the runner asked %d times about unspoken replies, want 1", n)
+	}
+	if n := strings.Count(mt.runner.Stderr(), "WARNING"); n != 1 {
+		t.Errorf("%d warnings, want 1:\n%s", n, mt.runner.Stderr())
+	}
+}

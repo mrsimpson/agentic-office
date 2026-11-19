@@ -5,9 +5,10 @@
 // It starts the harness command in its own process group and talks JSON-RPC with it over its
 // standard input and output (github.com/coder/acp-go-sdk, protocol version 1). It offers no file
 // system and no terminal. It opens one ACP session with the MCP server it is given, sends prompts
-// and waits for the end of each turn. It answers the permission requests of the harness by a Rule:
-// by default the office tools only, and never a tool of kind execute, edit, delete or move; with
-// patterns of the user, exactly the tools whose title matches. The title and kind come from the
+// and waits for the end of each turn. It reports the reply text and the tool calls of each turn.
+// It answers the permission requests of the harness by a Rule: by default the office tools only,
+// and never a tool of kind execute, edit, delete or move; with patterns of the user, exactly the
+// tools whose title matches. The title and kind come from the
 // request, else from the session/update of the same tool call. Stop closes the harness's stdin,
 // then sends SIGTERM and at last SIGKILL to its process group.
 package acpclient
@@ -104,11 +105,28 @@ func (h *Harness) Open(ctx context.Context, cwd string, office acp.McpServerStdi
 	return nil
 }
 
-// Prompt sends one prompt and waits for the end of the agent's turn. It returns the stop reason.
-// If ctx ends first, it cancels the turn and waits a little for the harness to confirm.
-func (h *Harness) Prompt(ctx context.Context, text string) (acp.StopReason, error) {
+// Turn is the end of one turn of the agent.
+type Turn struct {
+	// Stop is the stop reason of the harness.
+	Stop acp.StopReason
+	// Reply is the text that the agent wrote in its chat during the turn. It reaches nobody but
+	// the runner.
+	Reply string
+	// Tools are the titles of the tool calls of the turn, in order.
+	Tools []string
+}
+
+// Prompt sends one prompt and waits for the end of the agent's turn. It returns the stop reason,
+// the reply text and the tool calls of the turn. If ctx ends first, it cancels the turn and waits
+// a little for the harness to confirm.
+func (h *Harness) Prompt(ctx context.Context, text string) (Turn, error) {
 	h.cl.beginTurn()
-	defer h.cl.endTurn()
+	stop, err := h.prompt(ctx, text)
+	reply, tools := h.cl.endTurn()
+	return Turn{Stop: stop, Reply: reply, Tools: tools}, err
+}
+
+func (h *Harness) prompt(ctx context.Context, text string) (acp.StopReason, error) {
 	type result struct {
 		r   acp.PromptResponse
 		err error
@@ -202,7 +220,8 @@ type acpClient struct {
 
 	mu    sync.Mutex
 	tools map[acp.ToolCallId]toolInfo
-	text  strings.Builder // the agent's reply in the current turn, for the log
+	text  strings.Builder // the agent's reply in the current turn
+	calls []string        // the titles of the tool calls in the current turn
 }
 
 var _ acp.Client = (*acpClient)(nil)
@@ -210,17 +229,18 @@ var _ acp.Client = (*acpClient)(nil)
 func (c *acpClient) beginTurn() {
 	c.mu.Lock()
 	c.text.Reset()
+	c.calls = nil
 	c.mu.Unlock()
 }
 
-func (c *acpClient) endTurn() {
+// endTurn returns the reply text and the tool calls of the turn.
+func (c *acpClient) endTurn() (string, []string) {
 	c.mu.Lock()
-	t := strings.TrimSpace(c.text.String())
+	defer c.mu.Unlock()
+	t, calls := strings.TrimSpace(c.text.String()), c.calls
 	c.text.Reset()
-	c.mu.Unlock()
-	if t != "" {
-		c.logf("agent replied (not spoken): %s", oneLine(t, 300))
-	}
+	c.calls = nil
+	return t, calls
 }
 
 func (c *acpClient) SessionUpdate(_ context.Context, n acp.SessionNotification) error {
@@ -234,6 +254,7 @@ func (c *acpClient) SessionUpdate(_ context.Context, n acp.SessionNotification) 
 		}
 	case u.ToolCall != nil:
 		c.tools[u.ToolCall.ToolCallId] = toolInfo{title: u.ToolCall.Title, kind: u.ToolCall.Kind}
+		c.calls = append(c.calls, u.ToolCall.Title)
 		c.logf("tool call %s: %s", u.ToolCall.ToolCallId, u.ToolCall.Title)
 	case u.ToolCallUpdate != nil:
 		ti := c.tools[u.ToolCallUpdate.ToolCallId]
@@ -361,12 +382,4 @@ func globMatch(pattern, s string) bool {
 		s = s[i+len(p):]
 	}
 	return strings.HasSuffix(s, parts[len(parts)-1])
-}
-
-func oneLine(s string, max int) string {
-	s = strings.Join(strings.Fields(s), " ")
-	if len(s) > max {
-		s = s[:max] + "…"
-	}
-	return s
 }

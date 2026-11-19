@@ -917,7 +917,10 @@ The agent decides by itself whether someone addressed it. So people talk to it i
 without a keyword: "Claude, what did we decide on the budget?" or "Can the minute taker read back
 the last point?". The agent does not interrupt a speaker: it answers when the speaker has
 finished, raises its hand, or writes. It speaks only through the tool `utterance_say`; what it
-writes in its own chat reaches nobody.
+writes in its own chat reaches nobody. If an agent ends its turn with text in its chat and does
+not speak, the runner logs a warning with the text (`WARNING: the agent wrote a reply in its chat
+but did not speak it`) and asks the agent once whether the text was meant for the meeting. If
+the agent again does not speak, the runner logs that the reply reached nobody.
 
 Start each agent in its own folder and terminal, with its own key. Log in to each harness once
 before, as you would to use it alone. The runner does not log in for you.
@@ -1052,7 +1055,8 @@ The speaker may still be speaking. Do not interrupt: raise your hand or write in
 The model of the runner thinks that the speaker addressed: bot.
 
 Decide yourself whether someone addressed you or whether your role asks you to contribute now.
-If not, do nothing and end your turn. To speak, call utterance_say.
+If not, end your turn without text. To answer, call utterance_say: text in this chat reaches
+nobody in the meeting.
 ```
 
 - The agent never gets its own sentences, its own end of turn, or sentences that are off the

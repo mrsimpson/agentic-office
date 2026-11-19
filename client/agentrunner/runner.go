@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"time"
 
 	"github.com/mrsimpson/agentic-office/client/agentrunner/acpclient"
@@ -161,13 +162,16 @@ type runner struct {
 	checkDue bool // an utterance or a turn.end waits for a check
 	checking bool // a check runs
 	waiting  int  // how many waiting utterances the log named last while the agent was busy
+	// spoke: the agent spoke or raised its hand since the last prompt began, by the log.
+	spoke bool
 }
 
 // turn is the end of one prompt.
 type turn struct {
-	stop  acp.StopReason
+	acpclient.Turn
 	err   error
 	final bool // the last prompt after session.ended
+	asked bool // the prompt that asked the agent to speak an unspoken reply
 }
 
 // check is the end of one check of the model.
@@ -196,7 +200,7 @@ func (r *runner) loop(ctx context.Context) error {
 	done := make(chan turn, 1)
 	checked := make(chan check, 1)
 	busy := true
-	r.send(ctx, done, r.firstPrompt(), false)
+	r.send(ctx, done, r.firstPrompt(), turn{})
 	for {
 		select {
 		case <-ctx.Done():
@@ -213,15 +217,20 @@ func (r *runner) loop(ctx context.Context) error {
 			if t.err != nil {
 				return fmt.Errorf("prompt: %w", t.err)
 			}
-			r.logf("the agent ended its turn (%s)", t.stop)
+			r.logf("the agent ended its turn (%s)", t.Stop)
 			if t.final {
 				return nil
+			}
+			if r.unspoken(t) {
+				busy = true
+				r.send(ctx, done, r.unspokenPrompt(t.Reply), turn{asked: true})
 			}
 		case c := <-checked:
 			r.checking = false
 			r.judge(c)
 		case ev := <-evs:
 			r.learn(ev)
+			r.noteSpoken(ev)
 			if ev.GetId() > r.start {
 				r.take(ev)
 			}
@@ -243,7 +252,7 @@ func (r *runner) loop(ctx context.Context) error {
 		case r.d.ended:
 			r.logf("the session ended; sending the last prompt")
 			busy = true
-			r.send(ctx, done, r.finalPrompt(r.d.take()), true)
+			r.send(ctx, done, r.finalPrompt(r.d.take()), turn{final: true})
 		case r.d.wake:
 			b := r.d.take()
 			r.checkDue = false // everything pending goes to the agent now
@@ -253,7 +262,7 @@ func (r *runner) loop(ctx context.Context) error {
 			first, last := b.span()
 			r.logf("waking the agent with %d utterances (events %d to %d)", len(b.utterances), first, last)
 			busy = true
-			r.send(ctx, done, r.wakePrompt(b), false)
+			r.send(ctx, done, r.wakePrompt(b), turn{})
 		default:
 			r.startCheck(ctx, checked)
 		}
@@ -327,12 +336,53 @@ func (r *runner) judge(c check) {
 	}
 }
 
-// send runs one prompt in the background and reports its end on done.
-func (r *runner) send(ctx context.Context, done chan<- turn, text string, final bool) {
+// send runs one prompt in the background and reports its end on done, with the flags of t.
+func (r *runner) send(ctx context.Context, done chan<- turn, text string, t turn) {
+	r.spoke = false
 	go func() {
-		stop, err := r.h.Prompt(ctx, text)
-		done <- turn{stop: stop, err: err, final: final}
+		t.Turn, t.err = r.h.Prompt(ctx, text)
+		done <- t
 	}()
+}
+
+// speaks matches the title of a tool call with which the agent reaches the meeting: it speaks or
+// raises its hand.
+var speaks = regexp.MustCompile(`(?i)utterance_say|hand_raise`)
+
+// noteSpoken notes an utterance or a raised hand of the agent itself.
+func (r *runner) noteSpoken(ev *sessionstreamv1.Event) {
+	if u := ev.GetUtteranceFinal(); u != nil && u.GetParticipantId() == r.self {
+		r.spoke = true
+	}
+	if h := ev.GetHandRaised(); h != nil && h.GetParticipantId() == r.self {
+		r.spoke = true
+	}
+}
+
+// unspoken reports whether the agent ended a turn with a reply in its chat and without
+// speaking: the reply reached nobody in the meeting. It logs the reply. It is true once per
+// prompt; after the prompt that asked the agent to speak, the reply is lost, and the runner
+// says so.
+func (r *runner) unspoken(t turn) bool {
+	if t.Reply == "" {
+		return false
+	}
+	spoke := r.spoke
+	for _, title := range t.Tools {
+		spoke = spoke || speaks.MatchString(title)
+	}
+	switch {
+	case spoke:
+		r.logf("the agent's reply in its chat (not spoken): %s", oneLine(t.Reply, 300))
+		return false
+	case t.asked:
+		r.logf("WARNING: the agent again did not speak; this reply reached nobody in the meeting: %s", oneLine(t.Reply, 300))
+		return false
+	default:
+		r.logf("WARNING: the agent wrote a reply in its chat but did not speak it; asking it once whether it was meant for the meeting: %s",
+			oneLine(t.Reply, 300))
+		return true
+	}
 }
 
 // waitTurn waits for a running turn to end before the runner stops.

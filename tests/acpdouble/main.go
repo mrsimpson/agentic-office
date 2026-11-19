@@ -12,9 +12,10 @@
 //   - session/prompt: records the prompt and follows instructions in its text, in order:
 //     `please say "TEXT"` asks for permission for the office tool utterance_say and, if
 //     allowed, calls it with TEXT; `please run "CMD"` asks for permission for a shell command
-//     (kind execute) and never runs it; `please wait DURATION` sleeps, so the agent is busy;
-//     `please hold` records "hold" and waits until the file ACP_DOUBLE_RELEASE exists. Then it
-//     streams a short reply and ends the turn.
+//     (kind execute) and never runs it; `please reply "TEXT"` streams TEXT as the agent's reply
+//     in its chat; `please wait DURATION` sleeps, so the agent is busy; `please hold` records
+//     "hold" and waits until the file ACP_DOUBLE_RELEASE exists. Then it ends the turn. Without
+//     `please reply`, the turn has no reply text.
 //   - session/cancel: ends a waiting prompt with the stop reason cancelled.
 //   - End of stdin: records "exit" and exits.
 //
@@ -221,7 +222,7 @@ func (d *double) handle(m message) {
 	}
 }
 
-var instruction = regexp.MustCompile(`please (say|run) "([^"]*)"|please wait ([0-9a-z.]+)|please (hold)`)
+var instruction = regexp.MustCompile(`please (say|run|reply) "([^"]*)"|please wait ([0-9a-z.]+)|please (hold)`)
 
 func (d *double) prompt(m message) {
 	var p struct {
@@ -253,6 +254,9 @@ func (d *double) prompt(m message) {
 			d.tool(n, "mcp__office__utterance_say", "other", map[string]any{"text": in[2]})
 		case in[1] == "run":
 			d.tool(n, "Run "+in[2], "execute", map[string]any{"command": in[2]})
+		case in[1] == "reply":
+			d.sendUpdate(p.SessionID, map[string]any{"sessionUpdate": "agent_message_chunk",
+				"content": map[string]any{"type": "text", "text": in[2]}})
 		case in[4] == "hold":
 			d.record(map[string]any{"kind": "hold", "n": n})
 			release := os.Getenv("ACP_DOUBLE_RELEASE")
@@ -280,8 +284,6 @@ func (d *double) prompt(m message) {
 			}
 		}
 	}
-	d.sendUpdate(p.SessionID, map[string]any{"sessionUpdate": "agent_message_chunk",
-		"content": map[string]any{"type": "text", "text": fmt.Sprintf("Prompt %d read.", n)}})
 	d.record(map[string]any{"kind": "prompt_end", "n": n, "stop": stop})
 	d.reply(m.ID, map[string]any{"stopReason": stop})
 }
