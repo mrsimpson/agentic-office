@@ -32,8 +32,11 @@
 //     prompt (delivery.go). One prompt and one check run at a time; what comes meanwhile waits
 //     and goes out, or is judged, together afterwards (dec-agent-runner-delivery).
 //   - It answers permission requests by an acpclient.Rule with the patterns of the user (--allow).
-//   - It logs the agent's reply text; the text is not spoken. The agent speaks with the tool
-//     utterance_say.
+//   - The agent speaks with the tool utterance_say; its reply text in the chat is not spoken.
+//     If a turn ends with reply text and the agent neither spoke nor raised its hand (by the
+//     titles of its tool calls and by its own events in the log), the runner logs a warning with
+//     the text and asks the agent once, quoting the text, whether it was meant for the meeting.
+//     It does not ask after that question nor after the last prompt.
 //   - After session.ended, it sends a last prompt with what is left and stops when the agent
 //     has ended that turn.
 //   - It stops after the agent's own participant.left, when ctx ends or when
