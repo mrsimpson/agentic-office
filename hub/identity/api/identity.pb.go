@@ -313,27 +313,30 @@ func (x *ExchangeChallengeResponse) GetDisplayName() string {
 	return ""
 }
 
-type CreateAdminLinkRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	CommandId     string                 `protobuf:"bytes,1,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
+type CreatePortalLinkRequest struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	CommandId string                 `protobuf:"bytes,1,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
+	// tenant_id is the tenant whose pages the portal opens first, or empty for the start page. It
+	// must be an active membership of the caller, or the call fails with not_found.
+	TenantId      string `protobuf:"bytes,2,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *CreateAdminLinkRequest) Reset() {
-	*x = CreateAdminLinkRequest{}
+func (x *CreatePortalLinkRequest) Reset() {
+	*x = CreatePortalLinkRequest{}
 	mi := &file_office_identity_v1_identity_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *CreateAdminLinkRequest) String() string {
+func (x *CreatePortalLinkRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*CreateAdminLinkRequest) ProtoMessage() {}
+func (*CreatePortalLinkRequest) ProtoMessage() {}
 
-func (x *CreateAdminLinkRequest) ProtoReflect() protoreflect.Message {
+func (x *CreatePortalLinkRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_office_identity_v1_identity_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -345,41 +348,48 @@ func (x *CreateAdminLinkRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use CreateAdminLinkRequest.ProtoReflect.Descriptor instead.
-func (*CreateAdminLinkRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use CreatePortalLinkRequest.ProtoReflect.Descriptor instead.
+func (*CreatePortalLinkRequest) Descriptor() ([]byte, []int) {
 	return file_office_identity_v1_identity_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *CreateAdminLinkRequest) GetCommandId() string {
+func (x *CreatePortalLinkRequest) GetCommandId() string {
 	if x != nil {
 		return x.CommandId
 	}
 	return ""
 }
 
-type CreateAdminLinkResponse struct {
+func (x *CreatePortalLinkRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+type CreatePortalLinkResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// url has the form <server>/admin/login?code=<code>.
+	// url has the form <server>/portal/login?code=<code>.
 	Url           string                 `protobuf:"bytes,1,opt,name=url,proto3" json:"url,omitempty"`
 	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *CreateAdminLinkResponse) Reset() {
-	*x = CreateAdminLinkResponse{}
+func (x *CreatePortalLinkResponse) Reset() {
+	*x = CreatePortalLinkResponse{}
 	mi := &file_office_identity_v1_identity_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *CreateAdminLinkResponse) String() string {
+func (x *CreatePortalLinkResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*CreateAdminLinkResponse) ProtoMessage() {}
+func (*CreatePortalLinkResponse) ProtoMessage() {}
 
-func (x *CreateAdminLinkResponse) ProtoReflect() protoreflect.Message {
+func (x *CreatePortalLinkResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_office_identity_v1_identity_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -391,46 +401,46 @@ func (x *CreateAdminLinkResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use CreateAdminLinkResponse.ProtoReflect.Descriptor instead.
-func (*CreateAdminLinkResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use CreatePortalLinkResponse.ProtoReflect.Descriptor instead.
+func (*CreatePortalLinkResponse) Descriptor() ([]byte, []int) {
 	return file_office_identity_v1_identity_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *CreateAdminLinkResponse) GetUrl() string {
+func (x *CreatePortalLinkResponse) GetUrl() string {
 	if x != nil {
 		return x.Url
 	}
 	return ""
 }
 
-func (x *CreateAdminLinkResponse) GetExpiresAt() *timestamppb.Timestamp {
+func (x *CreatePortalLinkResponse) GetExpiresAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.ExpiresAt
 	}
 	return nil
 }
 
-type ExchangeAdminLinkRequest struct {
+type ExchangePortalLinkRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Code          string                 `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ExchangeAdminLinkRequest) Reset() {
-	*x = ExchangeAdminLinkRequest{}
+func (x *ExchangePortalLinkRequest) Reset() {
+	*x = ExchangePortalLinkRequest{}
 	mi := &file_office_identity_v1_identity_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ExchangeAdminLinkRequest) String() string {
+func (x *ExchangePortalLinkRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ExchangeAdminLinkRequest) ProtoMessage() {}
+func (*ExchangePortalLinkRequest) ProtoMessage() {}
 
-func (x *ExchangeAdminLinkRequest) ProtoReflect() protoreflect.Message {
+func (x *ExchangePortalLinkRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_office_identity_v1_identity_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -442,41 +452,43 @@ func (x *ExchangeAdminLinkRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ExchangeAdminLinkRequest.ProtoReflect.Descriptor instead.
-func (*ExchangeAdminLinkRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use ExchangePortalLinkRequest.ProtoReflect.Descriptor instead.
+func (*ExchangePortalLinkRequest) Descriptor() ([]byte, []int) {
 	return file_office_identity_v1_identity_proto_rawDescGZIP(), []int{6}
 }
 
-func (x *ExchangeAdminLinkRequest) GetCode() string {
+func (x *ExchangePortalLinkRequest) GetCode() string {
 	if x != nil {
 		return x.Code
 	}
 	return ""
 }
 
-type ExchangeAdminLinkResponse struct {
+type ExchangePortalLinkResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AccessToken   string                 `protobuf:"bytes,1,opt,name=access_token,json=accessToken,proto3" json:"access_token,omitempty"`
 	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
 	ParticipantId string                 `protobuf:"bytes,3,opt,name=participant_id,json=participantId,proto3" json:"participant_id,omitempty"`
+	// tenant_id is the tenant that the link named, or empty.
+	TenantId      string `protobuf:"bytes,4,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ExchangeAdminLinkResponse) Reset() {
-	*x = ExchangeAdminLinkResponse{}
+func (x *ExchangePortalLinkResponse) Reset() {
+	*x = ExchangePortalLinkResponse{}
 	mi := &file_office_identity_v1_identity_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ExchangeAdminLinkResponse) String() string {
+func (x *ExchangePortalLinkResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ExchangeAdminLinkResponse) ProtoMessage() {}
+func (*ExchangePortalLinkResponse) ProtoMessage() {}
 
-func (x *ExchangeAdminLinkResponse) ProtoReflect() protoreflect.Message {
+func (x *ExchangePortalLinkResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_office_identity_v1_identity_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -488,30 +500,203 @@ func (x *ExchangeAdminLinkResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ExchangeAdminLinkResponse.ProtoReflect.Descriptor instead.
-func (*ExchangeAdminLinkResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use ExchangePortalLinkResponse.ProtoReflect.Descriptor instead.
+func (*ExchangePortalLinkResponse) Descriptor() ([]byte, []int) {
 	return file_office_identity_v1_identity_proto_rawDescGZIP(), []int{7}
 }
 
-func (x *ExchangeAdminLinkResponse) GetAccessToken() string {
+func (x *ExchangePortalLinkResponse) GetAccessToken() string {
 	if x != nil {
 		return x.AccessToken
 	}
 	return ""
 }
 
-func (x *ExchangeAdminLinkResponse) GetExpiresAt() *timestamppb.Timestamp {
+func (x *ExchangePortalLinkResponse) GetExpiresAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.ExpiresAt
 	}
 	return nil
 }
 
-func (x *ExchangeAdminLinkResponse) GetParticipantId() string {
+func (x *ExchangePortalLinkResponse) GetParticipantId() string {
 	if x != nil {
 		return x.ParticipantId
 	}
 	return ""
+}
+
+func (x *ExchangePortalLinkResponse) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+type WhoAmIRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WhoAmIRequest) Reset() {
+	*x = WhoAmIRequest{}
+	mi := &file_office_identity_v1_identity_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WhoAmIRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WhoAmIRequest) ProtoMessage() {}
+
+func (x *WhoAmIRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_office_identity_v1_identity_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WhoAmIRequest.ProtoReflect.Descriptor instead.
+func (*WhoAmIRequest) Descriptor() ([]byte, []int) {
+	return file_office_identity_v1_identity_proto_rawDescGZIP(), []int{8}
+}
+
+type WhoAmIResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ParticipantId string                 `protobuf:"bytes,1,opt,name=participant_id,json=participantId,proto3" json:"participant_id,omitempty"`
+	DisplayName   string                 `protobuf:"bytes,2,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	Kind          ActorKind              `protobuf:"varint,3,opt,name=kind,proto3,enum=office.identity.v1.ActorKind" json:"kind,omitempty"`
+	SystemAdmin   bool                   `protobuf:"varint,4,opt,name=system_admin,json=systemAdmin,proto3" json:"system_admin,omitempty"`
+	// memberships are the active memberships of the caller, ordered by tenant.
+	Memberships   []*TenantMembership `protobuf:"bytes,5,rep,name=memberships,proto3" json:"memberships,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WhoAmIResponse) Reset() {
+	*x = WhoAmIResponse{}
+	mi := &file_office_identity_v1_identity_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WhoAmIResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WhoAmIResponse) ProtoMessage() {}
+
+func (x *WhoAmIResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_office_identity_v1_identity_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WhoAmIResponse.ProtoReflect.Descriptor instead.
+func (*WhoAmIResponse) Descriptor() ([]byte, []int) {
+	return file_office_identity_v1_identity_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *WhoAmIResponse) GetParticipantId() string {
+	if x != nil {
+		return x.ParticipantId
+	}
+	return ""
+}
+
+func (x *WhoAmIResponse) GetDisplayName() string {
+	if x != nil {
+		return x.DisplayName
+	}
+	return ""
+}
+
+func (x *WhoAmIResponse) GetKind() ActorKind {
+	if x != nil {
+		return x.Kind
+	}
+	return ActorKind_ACTOR_KIND_UNSPECIFIED
+}
+
+func (x *WhoAmIResponse) GetSystemAdmin() bool {
+	if x != nil {
+		return x.SystemAdmin
+	}
+	return false
+}
+
+func (x *WhoAmIResponse) GetMemberships() []*TenantMembership {
+	if x != nil {
+		return x.Memberships
+	}
+	return nil
+}
+
+// TenantMembership is an active membership of the caller.
+type TenantMembership struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TenantId      string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	TenantAdmin   bool                   `protobuf:"varint,2,opt,name=tenant_admin,json=tenantAdmin,proto3" json:"tenant_admin,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TenantMembership) Reset() {
+	*x = TenantMembership{}
+	mi := &file_office_identity_v1_identity_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TenantMembership) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TenantMembership) ProtoMessage() {}
+
+func (x *TenantMembership) ProtoReflect() protoreflect.Message {
+	mi := &file_office_identity_v1_identity_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TenantMembership.ProtoReflect.Descriptor instead.
+func (*TenantMembership) Descriptor() ([]byte, []int) {
+	return file_office_identity_v1_identity_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *TenantMembership) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *TenantMembership) GetTenantAdmin() bool {
+	if x != nil {
+		return x.TenantAdmin
+	}
+	return false
 }
 
 type CreateStageLinkRequest struct {
@@ -524,7 +709,7 @@ type CreateStageLinkRequest struct {
 
 func (x *CreateStageLinkRequest) Reset() {
 	*x = CreateStageLinkRequest{}
-	mi := &file_office_identity_v1_identity_proto_msgTypes[8]
+	mi := &file_office_identity_v1_identity_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -536,7 +721,7 @@ func (x *CreateStageLinkRequest) String() string {
 func (*CreateStageLinkRequest) ProtoMessage() {}
 
 func (x *CreateStageLinkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_office_identity_v1_identity_proto_msgTypes[8]
+	mi := &file_office_identity_v1_identity_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -549,7 +734,7 @@ func (x *CreateStageLinkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateStageLinkRequest.ProtoReflect.Descriptor instead.
 func (*CreateStageLinkRequest) Descriptor() ([]byte, []int) {
-	return file_office_identity_v1_identity_proto_rawDescGZIP(), []int{8}
+	return file_office_identity_v1_identity_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *CreateStageLinkRequest) GetCommandId() string {
@@ -577,7 +762,7 @@ type CreateStageLinkResponse struct {
 
 func (x *CreateStageLinkResponse) Reset() {
 	*x = CreateStageLinkResponse{}
-	mi := &file_office_identity_v1_identity_proto_msgTypes[9]
+	mi := &file_office_identity_v1_identity_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -589,7 +774,7 @@ func (x *CreateStageLinkResponse) String() string {
 func (*CreateStageLinkResponse) ProtoMessage() {}
 
 func (x *CreateStageLinkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_office_identity_v1_identity_proto_msgTypes[9]
+	mi := &file_office_identity_v1_identity_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -602,7 +787,7 @@ func (x *CreateStageLinkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateStageLinkResponse.ProtoReflect.Descriptor instead.
 func (*CreateStageLinkResponse) Descriptor() ([]byte, []int) {
-	return file_office_identity_v1_identity_proto_rawDescGZIP(), []int{9}
+	return file_office_identity_v1_identity_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *CreateStageLinkResponse) GetUrl() string {
@@ -641,21 +826,33 @@ const file_office_identity_v1_identity_proto_rawDesc = "" +
 	"\n" +
 	"expires_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12%\n" +
 	"\x0eparticipant_id\x18\x03 \x01(\tR\rparticipantId\x12!\n" +
-	"\fdisplay_name\x18\x04 \x01(\tR\vdisplayName\"7\n" +
-	"\x16CreateAdminLinkRequest\x12\x1d\n" +
+	"\fdisplay_name\x18\x04 \x01(\tR\vdisplayName\"U\n" +
+	"\x17CreatePortalLinkRequest\x12\x1d\n" +
 	"\n" +
-	"command_id\x18\x01 \x01(\tR\tcommandId\"f\n" +
-	"\x17CreateAdminLinkResponse\x12\x10\n" +
+	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x1b\n" +
+	"\ttenant_id\x18\x02 \x01(\tR\btenantId\"g\n" +
+	"\x18CreatePortalLinkResponse\x12\x10\n" +
 	"\x03url\x18\x01 \x01(\tR\x03url\x129\n" +
 	"\n" +
-	"expires_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\".\n" +
-	"\x18ExchangeAdminLinkRequest\x12\x12\n" +
-	"\x04code\x18\x01 \x01(\tR\x04code\"\xa0\x01\n" +
-	"\x19ExchangeAdminLinkResponse\x12!\n" +
+	"expires_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\"/\n" +
+	"\x19ExchangePortalLinkRequest\x12\x12\n" +
+	"\x04code\x18\x01 \x01(\tR\x04code\"\xbe\x01\n" +
+	"\x1aExchangePortalLinkResponse\x12!\n" +
 	"\faccess_token\x18\x01 \x01(\tR\vaccessToken\x129\n" +
 	"\n" +
 	"expires_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12%\n" +
-	"\x0eparticipant_id\x18\x03 \x01(\tR\rparticipantId\"V\n" +
+	"\x0eparticipant_id\x18\x03 \x01(\tR\rparticipantId\x12\x1b\n" +
+	"\ttenant_id\x18\x04 \x01(\tR\btenantId\"\x0f\n" +
+	"\rWhoAmIRequest\"\xf8\x01\n" +
+	"\x0eWhoAmIResponse\x12%\n" +
+	"\x0eparticipant_id\x18\x01 \x01(\tR\rparticipantId\x12!\n" +
+	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x121\n" +
+	"\x04kind\x18\x03 \x01(\x0e2\x1d.office.identity.v1.ActorKindR\x04kind\x12!\n" +
+	"\fsystem_admin\x18\x04 \x01(\bR\vsystemAdmin\x12F\n" +
+	"\vmemberships\x18\x05 \x03(\v2$.office.identity.v1.TenantMembershipR\vmemberships\"R\n" +
+	"\x10TenantMembership\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12!\n" +
+	"\ftenant_admin\x18\x02 \x01(\bR\vtenantAdmin\"V\n" +
 	"\x16CreateStageLinkRequest\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x1d\n" +
@@ -668,13 +865,14 @@ const file_office_identity_v1_identity_proto_rawDesc = "" +
 	"\tActorKind\x12\x1a\n" +
 	"\x16ACTOR_KIND_UNSPECIFIED\x10\x00\x12\x14\n" +
 	"\x10ACTOR_KIND_HUMAN\x10\x01\x12\x14\n" +
-	"\x10ACTOR_KIND_AGENT\x10\x022\xb0\x04\n" +
+	"\x10ACTOR_KIND_AGENT\x10\x022\x87\x05\n" +
 	"\x0fIdentityService\x12a\n" +
 	"\fGetChallenge\x12'.office.identity.v1.GetChallengeRequest\x1a(.office.identity.v1.GetChallengeResponse\x12p\n" +
 	"\x11ExchangeChallenge\x12,.office.identity.v1.ExchangeChallengeRequest\x1a-.office.identity.v1.ExchangeChallengeResponse\x12j\n" +
-	"\x0fCreateStageLink\x12*.office.identity.v1.CreateStageLinkRequest\x1a+.office.identity.v1.CreateStageLinkResponse\x12j\n" +
-	"\x0fCreateAdminLink\x12*.office.identity.v1.CreateAdminLinkRequest\x1a+.office.identity.v1.CreateAdminLinkResponse\x12p\n" +
-	"\x11ExchangeAdminLink\x12,.office.identity.v1.ExchangeAdminLinkRequest\x1a-.office.identity.v1.ExchangeAdminLinkResponseBAZ?github.com/mrsimpson/agentic-office/hub/identity/api;identityv1b\x06proto3"
+	"\x0fCreateStageLink\x12*.office.identity.v1.CreateStageLinkRequest\x1a+.office.identity.v1.CreateStageLinkResponse\x12m\n" +
+	"\x10CreatePortalLink\x12+.office.identity.v1.CreatePortalLinkRequest\x1a,.office.identity.v1.CreatePortalLinkResponse\x12s\n" +
+	"\x12ExchangePortalLink\x12-.office.identity.v1.ExchangePortalLinkRequest\x1a..office.identity.v1.ExchangePortalLinkResponse\x12O\n" +
+	"\x06WhoAmI\x12!.office.identity.v1.WhoAmIRequest\x1a\".office.identity.v1.WhoAmIResponseBAZ?github.com/mrsimpson/agentic-office/hub/identity/api;identityv1b\x06proto3"
 
 var (
 	file_office_identity_v1_identity_proto_rawDescOnce sync.Once
@@ -689,42 +887,49 @@ func file_office_identity_v1_identity_proto_rawDescGZIP() []byte {
 }
 
 var file_office_identity_v1_identity_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_office_identity_v1_identity_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_office_identity_v1_identity_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_office_identity_v1_identity_proto_goTypes = []any{
-	(ActorKind)(0),                    // 0: office.identity.v1.ActorKind
-	(*GetChallengeRequest)(nil),       // 1: office.identity.v1.GetChallengeRequest
-	(*GetChallengeResponse)(nil),      // 2: office.identity.v1.GetChallengeResponse
-	(*ExchangeChallengeRequest)(nil),  // 3: office.identity.v1.ExchangeChallengeRequest
-	(*ExchangeChallengeResponse)(nil), // 4: office.identity.v1.ExchangeChallengeResponse
-	(*CreateAdminLinkRequest)(nil),    // 5: office.identity.v1.CreateAdminLinkRequest
-	(*CreateAdminLinkResponse)(nil),   // 6: office.identity.v1.CreateAdminLinkResponse
-	(*ExchangeAdminLinkRequest)(nil),  // 7: office.identity.v1.ExchangeAdminLinkRequest
-	(*ExchangeAdminLinkResponse)(nil), // 8: office.identity.v1.ExchangeAdminLinkResponse
-	(*CreateStageLinkRequest)(nil),    // 9: office.identity.v1.CreateStageLinkRequest
-	(*CreateStageLinkResponse)(nil),   // 10: office.identity.v1.CreateStageLinkResponse
-	(*timestamppb.Timestamp)(nil),     // 11: google.protobuf.Timestamp
+	(ActorKind)(0),                     // 0: office.identity.v1.ActorKind
+	(*GetChallengeRequest)(nil),        // 1: office.identity.v1.GetChallengeRequest
+	(*GetChallengeResponse)(nil),       // 2: office.identity.v1.GetChallengeResponse
+	(*ExchangeChallengeRequest)(nil),   // 3: office.identity.v1.ExchangeChallengeRequest
+	(*ExchangeChallengeResponse)(nil),  // 4: office.identity.v1.ExchangeChallengeResponse
+	(*CreatePortalLinkRequest)(nil),    // 5: office.identity.v1.CreatePortalLinkRequest
+	(*CreatePortalLinkResponse)(nil),   // 6: office.identity.v1.CreatePortalLinkResponse
+	(*ExchangePortalLinkRequest)(nil),  // 7: office.identity.v1.ExchangePortalLinkRequest
+	(*ExchangePortalLinkResponse)(nil), // 8: office.identity.v1.ExchangePortalLinkResponse
+	(*WhoAmIRequest)(nil),              // 9: office.identity.v1.WhoAmIRequest
+	(*WhoAmIResponse)(nil),             // 10: office.identity.v1.WhoAmIResponse
+	(*TenantMembership)(nil),           // 11: office.identity.v1.TenantMembership
+	(*CreateStageLinkRequest)(nil),     // 12: office.identity.v1.CreateStageLinkRequest
+	(*CreateStageLinkResponse)(nil),    // 13: office.identity.v1.CreateStageLinkResponse
+	(*timestamppb.Timestamp)(nil),      // 14: google.protobuf.Timestamp
 }
 var file_office_identity_v1_identity_proto_depIdxs = []int32{
-	11, // 0: office.identity.v1.GetChallengeResponse.expires_at:type_name -> google.protobuf.Timestamp
-	11, // 1: office.identity.v1.ExchangeChallengeResponse.expires_at:type_name -> google.protobuf.Timestamp
-	11, // 2: office.identity.v1.CreateAdminLinkResponse.expires_at:type_name -> google.protobuf.Timestamp
-	11, // 3: office.identity.v1.ExchangeAdminLinkResponse.expires_at:type_name -> google.protobuf.Timestamp
-	11, // 4: office.identity.v1.CreateStageLinkResponse.expires_at:type_name -> google.protobuf.Timestamp
-	1,  // 5: office.identity.v1.IdentityService.GetChallenge:input_type -> office.identity.v1.GetChallengeRequest
-	3,  // 6: office.identity.v1.IdentityService.ExchangeChallenge:input_type -> office.identity.v1.ExchangeChallengeRequest
-	9,  // 7: office.identity.v1.IdentityService.CreateStageLink:input_type -> office.identity.v1.CreateStageLinkRequest
-	5,  // 8: office.identity.v1.IdentityService.CreateAdminLink:input_type -> office.identity.v1.CreateAdminLinkRequest
-	7,  // 9: office.identity.v1.IdentityService.ExchangeAdminLink:input_type -> office.identity.v1.ExchangeAdminLinkRequest
-	2,  // 10: office.identity.v1.IdentityService.GetChallenge:output_type -> office.identity.v1.GetChallengeResponse
-	4,  // 11: office.identity.v1.IdentityService.ExchangeChallenge:output_type -> office.identity.v1.ExchangeChallengeResponse
-	10, // 12: office.identity.v1.IdentityService.CreateStageLink:output_type -> office.identity.v1.CreateStageLinkResponse
-	6,  // 13: office.identity.v1.IdentityService.CreateAdminLink:output_type -> office.identity.v1.CreateAdminLinkResponse
-	8,  // 14: office.identity.v1.IdentityService.ExchangeAdminLink:output_type -> office.identity.v1.ExchangeAdminLinkResponse
-	10, // [10:15] is the sub-list for method output_type
-	5,  // [5:10] is the sub-list for method input_type
-	5,  // [5:5] is the sub-list for extension type_name
-	5,  // [5:5] is the sub-list for extension extendee
-	0,  // [0:5] is the sub-list for field type_name
+	14, // 0: office.identity.v1.GetChallengeResponse.expires_at:type_name -> google.protobuf.Timestamp
+	14, // 1: office.identity.v1.ExchangeChallengeResponse.expires_at:type_name -> google.protobuf.Timestamp
+	14, // 2: office.identity.v1.CreatePortalLinkResponse.expires_at:type_name -> google.protobuf.Timestamp
+	14, // 3: office.identity.v1.ExchangePortalLinkResponse.expires_at:type_name -> google.protobuf.Timestamp
+	0,  // 4: office.identity.v1.WhoAmIResponse.kind:type_name -> office.identity.v1.ActorKind
+	11, // 5: office.identity.v1.WhoAmIResponse.memberships:type_name -> office.identity.v1.TenantMembership
+	14, // 6: office.identity.v1.CreateStageLinkResponse.expires_at:type_name -> google.protobuf.Timestamp
+	1,  // 7: office.identity.v1.IdentityService.GetChallenge:input_type -> office.identity.v1.GetChallengeRequest
+	3,  // 8: office.identity.v1.IdentityService.ExchangeChallenge:input_type -> office.identity.v1.ExchangeChallengeRequest
+	12, // 9: office.identity.v1.IdentityService.CreateStageLink:input_type -> office.identity.v1.CreateStageLinkRequest
+	5,  // 10: office.identity.v1.IdentityService.CreatePortalLink:input_type -> office.identity.v1.CreatePortalLinkRequest
+	7,  // 11: office.identity.v1.IdentityService.ExchangePortalLink:input_type -> office.identity.v1.ExchangePortalLinkRequest
+	9,  // 12: office.identity.v1.IdentityService.WhoAmI:input_type -> office.identity.v1.WhoAmIRequest
+	2,  // 13: office.identity.v1.IdentityService.GetChallenge:output_type -> office.identity.v1.GetChallengeResponse
+	4,  // 14: office.identity.v1.IdentityService.ExchangeChallenge:output_type -> office.identity.v1.ExchangeChallengeResponse
+	13, // 15: office.identity.v1.IdentityService.CreateStageLink:output_type -> office.identity.v1.CreateStageLinkResponse
+	6,  // 16: office.identity.v1.IdentityService.CreatePortalLink:output_type -> office.identity.v1.CreatePortalLinkResponse
+	8,  // 17: office.identity.v1.IdentityService.ExchangePortalLink:output_type -> office.identity.v1.ExchangePortalLinkResponse
+	10, // 18: office.identity.v1.IdentityService.WhoAmI:output_type -> office.identity.v1.WhoAmIResponse
+	13, // [13:19] is the sub-list for method output_type
+	7,  // [7:13] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_office_identity_v1_identity_proto_init() }
@@ -738,7 +943,7 @@ func file_office_identity_v1_identity_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_office_identity_v1_identity_proto_rawDesc), len(file_office_identity_v1_identity_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   10,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

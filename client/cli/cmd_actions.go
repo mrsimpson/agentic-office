@@ -13,6 +13,7 @@ import (
 
 	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
 
+	"connectrpc.com/connect/v2"
 	"google.golang.org/protobuf/proto"
 
 	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
@@ -616,7 +617,7 @@ func cmdDocumentList(e *env, fs *flag.FlagSet) func([]string) error {
 	}
 }
 
-func cmdAdminLink(e *env, fs *flag.FlagSet) func([]string) error {
+func cmdPortalLink(e *env, fs *flag.FlagSet) func([]string) error {
 	return func(args []string) error {
 		if err := noArgs(args); err != nil {
 			return err
@@ -625,7 +626,11 @@ func cmdAdminLink(e *env, fs *flag.FlagSet) func([]string) error {
 		if err != nil {
 			return err
 		}
-		res, err := c.CreateAdminLink(e.ctx)
+		tenant := e.cfg.Tenant
+		res, err := c.CreatePortalLink(e.ctx, tenant)
+		if connect.CodeOf(err) == connect.CodeNotFound && tenant != "" {
+			return fmt.Errorf("you are not a member of the tenant %q: name another one with --tenant, or open the start page with --tenant \"\"", tenant)
+		}
 		if err != nil {
 			return err
 		}

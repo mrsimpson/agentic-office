@@ -323,17 +323,21 @@ keeps at least one tenant admin, and the hub at least one system admin.
 `office admin key add <user> <public key>` adds a further key to a user. `office admin key revoke <key-id>` revokes a key.
 The last key of a user cannot be revoked.
 
-A system admin can do the keys in the browser too. The admin view lists all users and keys, creates a
-user or adds a key with a form, and revokes a key after a confirmation. It shows the tenants and the
-system admins, read only. Tenants and memberships stay with the commands above:
+Every user has a web portal in the browser. It shows what your key may see: your tenants, the
+members of a tenant to its tenant admins, and the administration to system admins. There a system
+admin lists all users and keys, creates a user or adds a key with a form, and revokes a key after a
+confirmation, and sees the tenants and the system admins, read only. Tenants and memberships stay
+with the commands above:
 
 ```sh
-office admin link
+office portal link                # opens the tenant you work in
+office portal link --tenant ""    # opens the start page, for example as a system admin
 ```
 
 The command prints a link. Open it in a browser within a few minutes: the link works once. The
-page then stays open for one hour. After that, or if you see `Admin link not valid` or `Session
-ended`, run `office admin link` again. Only system admins get a link.
+portal then stays open for one hour. After that, or if you see `Portal link not valid` or `Session
+ended`, run `office portal link` again. A system admin is no member of a tenant, so it opens the
+start page.
 
 ## 3. Join a meeting
 
@@ -1436,7 +1440,7 @@ scripts/try-local.sh tail bot                        # what the agent reads; sto
 | The command reaches the wrong hub or tenant | `office config show` prints the active profile and the source of each value. A `hub`, `tenant` or `OFFICE_*` variable from a higher source overrides the profile, and a `.office/config.yaml` in the current folder can choose another profile. |
 | `office hub add` says the fingerprint does not match | The hub presents another certificate than you expect. Do not continue until you know why: you may reach another hub, or someone sits between you and the hub. Compare with the fingerprint in the log of the hub. |
 | `public key is not registered: ask an admin to register SHA256:…` | Send your public key to your admin (`office key show` prints it). Check with `office whoami`. |
-| `Admin link not valid` or `Session ended` in the admin view | The link works once and for a few minutes, and the page for one hour. Run `office admin link` again. Only system admins get a link (`permission_denied` otherwise). |
+| `Portal link not valid` or `Session ended` in the portal | The link works once and for a few minutes, and the portal for one hour. Run `office portal link` again. `not a member of the tenant`: name your tenant with `--tenant`, or open the start page with `--tenant ""`. |
 | `the document has changed since you read it` (`aborted`) | Someone changed the document first. Read it again with `office document get` and redo your change with the new version in `--base`. |
 | `no audio recorder found` | Install `ffmpeg` (macOS) or `pulseaudio-utils` (Linux), or set `OFFICE_MIC_COMMAND` (see `office help ears`). |
 | The model download fails | Check your network, or download the models elsewhere and set `OFFICE_MODEL_URL` to a mirror. |

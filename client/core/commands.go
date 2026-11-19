@@ -462,12 +462,12 @@ func (c *hubClient) GetDeck(ctx context.Context, id string) (*slidesv1.Deck, err
 	return res.GetDeck(), err
 }
 
-// CreateAdminLink creates a link to the admin view.
-func (c *hubClient) CreateAdminLink(ctx context.Context) (*identityv1.CreateAdminLinkResponse, error) {
-	req := &identityv1.CreateAdminLinkRequest{CommandId: coreapi.NewCommandID()}
-	var res *identityv1.CreateAdminLinkResponse
+// CreatePortalLink creates a link to the portal that opens the pages of tenant, or the start page.
+func (c *hubClient) CreatePortalLink(ctx context.Context, tenant string) (*identityv1.CreatePortalLinkResponse, error) {
+	req := &identityv1.CreatePortalLinkRequest{CommandId: coreapi.NewCommandID(), TenantId: tenant}
+	var res *identityv1.CreatePortalLinkResponse
 	err := retry(ctx, func() (err error) {
-		res, err = c.identity.CreateAdminLink(ctx, req)
+		res, err = c.identity.CreatePortalLink(ctx, req)
 		return err
 	})
 	return res, err

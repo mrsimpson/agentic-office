@@ -59,8 +59,8 @@ import (
 	"connectrpc.com/connect/v2/connecthttp"
 	"connectrpc.com/connect/v2/connectinprocess"
 
-	"github.com/mrsimpson/agentic-office/hub/admin"
-	adminweb "github.com/mrsimpson/agentic-office/hub/admin/web"
+	"github.com/mrsimpson/agentic-office/hub/portal"
+	portalweb "github.com/mrsimpson/agentic-office/hub/portal/web"
 	"github.com/mrsimpson/agentic-office/hub/archive"
 	"github.com/mrsimpson/agentic-office/hub/archive/api/archivev1connect"
 	"github.com/mrsimpson/agentic-office/hub/archive/changes/api/changesv1connect"
@@ -358,8 +358,8 @@ func main() {
 		log.Fatal(err)
 	}
 	mux.Handle(gitweb.PathPrefix, gitHandler)
-	// The admin view asks the identity part in-process, with the token of the admin.
-	mux.Handle(adminweb.PathPrefix, admin.New(admin.Options{Identity: connectinprocess.New(cs)}))
+	// The portal asks the interfaces in-process, with the token of the user (dec-web-portal).
+	mux.Handle(portalweb.PathPrefix, portal.New(portal.Options{Identity: connectinprocess.New(cs)}))
 	// The stage subscribes in-process through the token check, with the token of the link.
 	mux.Handle(web.PathPrefix, stage.New(stage.Options{
 		Session: connectinprocess.New(cs),

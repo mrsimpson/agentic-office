@@ -44,11 +44,13 @@ flowchart LR
     actor_human -->|if-local-log| bb_participant_client
     actor_human -->|if-git-access| bb_office_hub
     actor_human -->|if-stage-web| bb_office_hub
+    actor_human -->|if-portal-web| bb_office_hub
     actor_meeting_tool -->|if-stage-web| bb_office_hub
-    actor_system_admin -->|if-admin-web| bb_office_hub
+    actor_system_admin -->|if-portal-web| bb_office_hub
     actor_system_admin -->|if-tenant-api| bb_office_hub
     actor_system_admin -->|if-user-api| bb_office_hub
     actor_tenant_admin -->|if-user-api| bb_office_hub
+    actor_tenant_admin -->|if-portal-web| bb_office_hub
 ```
 
 ## Human participant
@@ -133,7 +135,8 @@ requires: if-forwarding-judge
 
 Runs one tenant: the group of people of one organisation and the git repository where the tenant
 keeps its information. A tenant admin adds users to the tenant and removes them, and gives the
-tenant admin role to other members. Every tenant has at least one tenant admin.
+tenant admin role to other members. Every tenant has at least one tenant admin. In the portal a
+tenant admin sees every session of the tenant and its members (`dec-web-portal`).
 
 ```arc42
 :::actor
@@ -141,7 +144,7 @@ id: actor-tenant-admin
 title: Tenant admin
 type: person
 description: Manages the members of one tenant
-requires: if-user-api
+requires: if-user-api, if-portal-web
 :::
 ```
 
@@ -149,7 +152,8 @@ requires: if-user-api
 
 Runs the whole hub. A system admin creates and removes tenants, names the first tenant admin of a
 tenant, creates users and registers their keys, and names other system admins. A system admin does
-not read the contents of a tenant and is never a member of one.
+not read the contents of a tenant and is never a member of one. The administration lies in the
+portal, in sections that only system admins see (`dec-web-portal`).
 
 ```arc42
 :::actor
@@ -157,7 +161,7 @@ id: actor-system-admin
 title: System admin
 type: person
 description: Manages tenants, users and system admins of the whole hub
-requires: if-tenant-api, if-user-api, if-admin-web
+requires: if-tenant-api, if-user-api, if-portal-web
 :::
 ```
 

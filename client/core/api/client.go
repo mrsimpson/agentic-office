@@ -145,8 +145,10 @@ type Client interface {
 	RenderDeck(ctx context.Context, req *slidesv1.RenderDeckRequest) (*slidesv1.RenderDeckResponse, error)
 	GetDeck(ctx context.Context, id string) (*slidesv1.Deck, error)
 
-	// CreateAdminLink creates a link that opens the admin view. Only admin keys may call it.
-	CreateAdminLink(ctx context.Context) (*identityv1.CreateAdminLinkResponse, error)
+	// CreatePortalLink creates a link that opens the portal (dec-web-portal), at the pages of
+	// tenant, or at the start page if tenant is empty. Every user may call it; tenant must be a
+	// tenant of the user.
+	CreatePortalLink(ctx context.Context, tenant string) (*identityv1.CreatePortalLinkResponse, error)
 
 	// CreateDocument creates a text document "documents/<name>.md". sessionID may be empty: the
 	// hub then puts artifact.created into the log of that session.

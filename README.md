@@ -164,8 +164,8 @@ hub/                      bb-office-hub: wiring of the hub (binary office-hub)
     api/                  if-slides-api: contract and generated code
   documents/              bb-documents: text documents as Markdown files in the archive
     api/                  if-document-api: contract and generated code
-  admin/                  bb-admin: the admin view, rendered on the server
-    web/                  if-admin-web: addresses, pages and design of the admin view
+  portal/                 bb-portal: the portal for every user, rendered on the server
+    web/                  if-portal-web: addresses, pages and design of the portal
   stage/                  bb-stage: renders the stage from the session stream
     web/                  if-stage-web: addresses, page, regions and event stream of the stage
 client/                   bb-participant-client: wiring of the client (binary office)
