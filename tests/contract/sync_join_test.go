@@ -163,7 +163,7 @@ func (s *syncSet) startMCPIn(t *testing.T, dir string) *mcpServer {
 	t.Helper()
 	cmd := exec.Command(contracttest.Binary(t, "office"), "mcp")
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), s.u.env...)
+	cmd.Env = append(contracttest.Environ(), s.u.env...)
 	m := &mcpServer{t: t, cmd: cmd, stderr: &syncBuffer{}}
 	cmd.Stderr = m.stderr
 	client := mcp.NewClient(&mcp.Implementation{Name: "contract-test", Version: "1"}, nil)

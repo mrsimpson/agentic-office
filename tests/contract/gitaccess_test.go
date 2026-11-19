@@ -37,7 +37,7 @@ func gitAs(t *testing.T, srv *contracttest.Hub, helper, token, dir string, args 
 	t.Helper()
 	cmd := exec.Command("git", append([]string{"-C", dir, "-c", "credential.helper=!" + helper,
 		"-c", "user.name=tester", "-c", "user.email=tester@example.org"}, args...)...)
-	cmd.Env = append(os.Environ(), "OFFICE_TEST_TOKEN="+token, "GIT_SSL_CAINFO="+srv.CertFile,
+	cmd.Env = append(contracttest.Environ(), "OFFICE_TEST_TOKEN="+token, "GIT_SSL_CAINFO="+srv.CertFile,
 		"GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=/bin/false")
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out

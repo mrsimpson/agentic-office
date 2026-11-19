@@ -158,3 +158,6 @@ through its interfaces:
   [`docs/testing/manual-headset-test.md`](../docs/testing/manual-headset-test.md).
 - The harness uses the binaries in `$OFFICE_BIN_DIR` (the Makefile sets it). Without it, the
   harness builds them with `go build`, so `go test ./tests/contract/...` also works.
+- The programs that a test starts never see the `OFFICE_*` variables of your shell or your cloud
+  session (`contracttest.Environ`), so a configured hub, tenant or key cannot change a test. A test
+  sets the variables it needs itself.

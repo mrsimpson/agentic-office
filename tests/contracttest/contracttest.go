@@ -131,7 +131,7 @@ func Start(t testing.TB, name string, env []string, args ...string) *Process {
 func StartIn(t testing.TB, dir, name string, env []string, args ...string) *Process {
 	t.Helper()
 	cmd := exec.Command(Binary(t, name), args...)
-	cmd.Env = append(os.Environ(), env...)
+	cmd.Env = append(Environ(), env...)
 	cmd.Dir = dir
 	// An own pipe for stdout, not StdoutPipe: Wait closes the pipes it created, and output that
 	// the test has not read yet would be lost when the process exits.
@@ -506,7 +506,7 @@ func RunIn(t testing.TB, dir, name string, env []string, stdin io.Reader, args .
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, Binary(t, name), args...)
-	cmd.Env = append(os.Environ(), env...)
+	cmd.Env = append(Environ(), env...)
 	cmd.Dir = dir
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr, cmd.Stdin = &out, &errb, stdin
@@ -516,4 +516,18 @@ func RunIn(t testing.TB, dir, name string, env []string, stdin io.Reader, args .
 		t.Fatalf("run %s: %v", name, err)
 	}
 	return out.String(), errb.String(), cmd.ProcessState.ExitCode()
+}
+
+// Environ is the environment of the test process for a program that a test starts, without the
+// OFFICE_* variables of the developer or the cloud session (for example OFFICE_HUB or
+// OFFICE_TENANT). The office reads its configuration from them, so they would reach a hub other
+// than the test hub, or change what a test checks. A test sets the variables it needs itself.
+func Environ() []string {
+	var out []string
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(kv, "OFFICE_") {
+			out = append(out, kv)
+		}
+	}
+	return out
 }

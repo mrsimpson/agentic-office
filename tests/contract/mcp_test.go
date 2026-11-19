@@ -54,7 +54,7 @@ func (s *syncBuffer) String() string {
 func startMCP(t *testing.T, u *officeUser, args ...string) *mcpServer {
 	t.Helper()
 	cmd := exec.Command(contracttest.Binary(t, "office"), append([]string{"mcp"}, args...)...)
-	cmd.Env = append(os.Environ(), u.env...)
+	cmd.Env = append(contracttest.Environ(), u.env...)
 	s := &mcpServer{t: t, cmd: cmd, stderr: &syncBuffer{}}
 	cmd.Stderr = s.stderr
 	client := mcp.NewClient(&mcp.Implementation{Name: "contract-test", Version: "1"}, nil)
