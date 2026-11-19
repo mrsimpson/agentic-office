@@ -83,7 +83,10 @@ users and keys, the TLS certificate and the archive with all sessions and record
 </li>
 <li>
 <p>On the first start, the hub creates a self-signed TLS certificate for the names in
-<code dir="auto">-tls-hosts</code>, in <code dir="auto">tls.crt</code>. To use your own certificate, see
+<code dir="auto">-tls-hosts</code>, in <code dir="auto">tls.crt</code>. A start that fails writes nothing, so you can fix the flags and
+start again. If a later start names a host in <code dir="auto">-tls-hosts</code> that the certificate misses, the hub
+does not start: delete <code dir="auto">tls.crt</code> and <code dir="auto">tls.key</code> to get a new certificate, and send the new
+fingerprint to the participants. To use your own certificate, see
 <a href="#use-your-own-certificate">Use your own certificate</a>.</p>
 </li>
 <li>
