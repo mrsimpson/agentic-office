@@ -1177,8 +1177,10 @@ agent reads the sources once and keeps a set of linked Markdown pages up to date
 builds up over time. The hub has no model of its own (`con-no-intelligence`), so agents must do
 this work. **Decision:** The notes of a tenant form a wiki (`concept-wiki`). The note interface
 stays the way to write notes, with its schema check, but a note is now a page of the wiki: one
-Markdown file whose front matter names the schema, the title, a one-line summary, the author and
-the sources. The path of a page is its identity, as for every artifact (`dec-artifacts`). A change
+Markdown file whose front matter names the schema, the title, a one-line summary, the author,
+whether the author is a human or an agent, the time and the sources. The author and the time are
+in the page on purpose, even though the commit holds them too: a later import may write past notes
+with a technical user, and the page must still name its real author. The path of a page is its identity, as for every artifact (`dec-artifacts`). A change
 names the version that its author read. A note without a page name becomes a new page in the
 inbox of the wiki; an agent files it into the wiki later. Pages link to each other with ordinary
 relative Markdown links, and they cite their sources by path. The part that owns the note schema
@@ -1199,7 +1201,8 @@ wiki links in double brackets (not plain Markdown, and renderers differ); one li
 tenant (it needs a new role, and every agent may already write artifacts). OPEN: the directory and
 the name of the inbox and of the guide page; how a page cites a session, since the session logs
 are not in the artifact repository; whether removing a page that other pages link to is refused
-or leaves the links to a lint.
+or leaves the links to a lint; whether the author names the first author or every author of a
+page.
 
 ```arc42
 :::decision
