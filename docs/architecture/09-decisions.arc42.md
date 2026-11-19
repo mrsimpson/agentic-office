@@ -1286,7 +1286,8 @@ keeps its own interface for writing (`dec-records-per-type`).
   checks the token and the tenant of the caller, like every interface of the hub; the portal reads
   it there and renders it without logic of its own. The wiki part is on no write path.
 - **Agents maintain the wiki.** The agents of all participants may ingest, answer and lint
-  (`concept-wiki`). The sources that no document cites are the queue for ingest.
+  (`concept-wiki`). The released sources that no document cites are the queue for ingest; a record
+  of a session becomes a source only when it is released (`dec-session-release`).
 - **Responsibility is claimed in the session.** A participant who takes on an artifact, for
   example the minutes or the ingest of the session, says so in the session, and the others leave it
   to them. The session log is the record of the claim, and the first claim counts
@@ -1346,5 +1347,71 @@ title: The artifacts of a tenant form a wiki that agents keep
 status: proposed
 date: 2026-11-19
 addresses: qg-usability, con-no-intelligence
+:::
+```
+
+## What comes out of a session is released before the tenant sees it
+
+**Context:** The team wants its knowledge to grow from every meeting, so as much as possible should
+be shared. But a speaker may mark a sentence off the record after it was said
+(`dec-off-the-record`), and nothing in the hub keeps such a sentence out of what participants write
+(`risk-retraction-leak`). Once an artifact is in the tenant repository, every member has it in a
+clone and in history that is never rewritten. The minutes, notes and decisions of a session are
+written live, while such sentences are fresh. A full transcript for every member would share even
+more, and every sentence of it could have been off the record.
+
+**Decision:**
+
+- **The minutes are the public version of a meeting.** The session log stays with the readers of
+  the session (`dec-web-portal`). There is no public transcript.
+- **Every record has a release status.** It is mandatory: `pending`, `held` or `released`, with
+  when and by whom it was released. A record that is created in a session starts as `pending`; a
+  record that is created outside a session is `released` at once.
+- **A pending record stays with its session.** Only the readers of the session see it, and it is
+  not in the tenant repository. Until release, its authors may correct it, so a sentence off the
+  record can still be taken out. From the release on, it never changes (`dec-wiki`).
+- **A human participant releases.** When the session ends, a grace period starts. Any human who
+  took part may release the records of the session, or object; an objection makes them `held`, and
+  then only an explicit release publishes them. When the grace period ends without an objection,
+  the hub releases them. A session without a human participant releases its records when it ends.
+  An agent never releases and never objects.
+- **The release is one step.** The hub replaces every sentence off the record that a record quotes
+  word for word with the placeholder of the session, and then stores all records of the session in
+  the tenant repository in one commit. Each change of the release status is an event in the
+  session log.
+- **A session that is opened again** creates new pending records, which need a new release.
+
+**Consequences:** The minutes are no longer visible to every member when a session ends, only after
+the release. The note and decision interfaces gain a change for pending records. The records part
+keeps pending records outside the tenant repository. The wiki ingests only released records. A
+paraphrase of a sentence off the record can still pass the release; the grace period gives the
+speaker time to see it. The portal shows the release status of a session and offers the release
+and the objection, its first write that is not administration (`dec-web-portal`).
+
+**Rejected:**
+
+- A public transcript filtered by the marks: it shares every sentence that nobody remembered to
+  mark, and raw speech is poor input for the wiki.
+- A release status that is only on the session: agents and the portal would have to look it up
+  for every artifact.
+- Pending records in the tenant repository with a status field: every member clones the
+  repository, so the field would hide nothing.
+- A release by agents: the release is the moment a human checks what is shared.
+
+OPEN:
+
+- The length of the grace period, set per tenant (proposal: 24 hours).
+- Whether tasks, slides and documents that a session creates or changes are held too. A change to
+  a document that already exists would need a pending version next to the released one.
+- Where the hub keeps pending records: next to the session log, which no participant can clone.
+- How the portal offers the release and the objection without scripts.
+
+```arc42
+:::decision
+id: dec-session-release
+title: What comes out of a session is released before the tenant sees it
+status: proposed
+date: 2026-11-19
+addresses: qg-confidentiality, risk-retraction-leak, con-privacy-law
 :::
 ```

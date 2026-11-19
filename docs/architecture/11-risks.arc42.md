@@ -14,7 +14,7 @@ in the history of every clone.
 id: risk-retraction-leak
 title: Sentences marked off the record stay in agent context
 severity: high
-mitigation: The interfaces of the session suppress the text of sentences off the record for every later reader, and only the readers of a session see its log (dec-off-the-record); the runner prompt and the memory skill tell agents to respect the mark; nothing checks records and documents
+mitigation: The interfaces of the session suppress the text of sentences off the record for every later reader, and only the readers of a session see its log (dec-off-the-record); the runner prompt and the memory skill tell agents to respect the mark; nothing checks records and documents. Proposed: records of a session are released by a human after a grace period, and the release replaces quoted sentences off the record (dec-session-release)
 :::
 ```
 
