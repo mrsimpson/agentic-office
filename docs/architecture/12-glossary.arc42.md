@@ -36,6 +36,30 @@ definition: The append-only event log of a session; replicated locally as a JSON
 :::
 ```
 
+## Activity
+
+What a participant is doing right now, shown on the stage.
+
+```arc42
+:::glossary-term
+id: term-activity
+title: Activity
+definition: The short-lived state of a participant, such as an agent that works with a tool, waits, or ended its turn with a reply that nobody heard; kept by the hub in memory only, never in the session log
+:::
+```
+
+## Portal
+
+The web view of the hub for every user.
+
+```arc42
+:::glossary-term
+id: term-portal
+title: Portal
+definition: The web view of the hub for every user, opened by a one-time link from the CLI; it shows the sessions, records, tasks, slides and documents that the key of the user may see, and the administration to admins
+:::
+```
+
 ## Cursor
 
 How a client knows where it stopped reading.

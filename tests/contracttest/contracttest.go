@@ -47,8 +47,10 @@ import (
 	decisionv1connect "github.com/mrsimpson/agentic-office/hub/records/decision/api/decisionv1connect"
 	minutesv1connect "github.com/mrsimpson/agentic-office/hub/records/minutes/api/minutesv1connect"
 	notev1connect "github.com/mrsimpson/agentic-office/hub/records/note/api/notev1connect"
+	"github.com/mrsimpson/agentic-office/hub/session/activityapi/sessionactivityv1connect"
 	"github.com/mrsimpson/agentic-office/hub/session/commandsapi/sessioncommandsv1connect"
-	sessionimportv1connect "github.com/mrsimpson/agentic-office/hub/session/importapi/sessionimportv1connect"
+	"github.com/mrsimpson/agentic-office/hub/session/importapi/sessionimportv1connect"
+	"github.com/mrsimpson/agentic-office/hub/session/listapi/sessionlistv1connect"
 	"github.com/mrsimpson/agentic-office/hub/session/streamapi/sessionstreamv1connect"
 	"github.com/mrsimpson/agentic-office/hub/slides/api/slidesv1connect"
 	taskv1connect "github.com/mrsimpson/agentic-office/hub/tasks/api/taskv1connect"
@@ -431,6 +433,8 @@ type Clients struct {
 	Commands sessioncommandsv1connect.SessionCommandsServiceClient
 	Stream   sessionstreamv1connect.SessionStreamServiceClient
 	Import   sessionimportv1connect.SessionImportServiceClient
+	Activity sessionactivityv1connect.SessionActivityServiceClient
+	Sessions sessionlistv1connect.SessionListServiceClient
 	Identity identityv1connect.IdentityServiceClient
 	User     userv1connect.UserServiceClient
 	Decision decisionv1connect.DecisionServiceClient
@@ -455,6 +459,8 @@ func NewClients(baseURL string, hc *http.Client, interceptors ...connect.ClientI
 		Commands: sessioncommandsv1connect.NewSessionCommandsServiceClient(c),
 		Stream:   sessionstreamv1connect.NewSessionStreamServiceClient(c),
 		Import:   sessionimportv1connect.NewSessionImportServiceClient(c),
+		Activity: sessionactivityv1connect.NewSessionActivityServiceClient(c),
+		Sessions: sessionlistv1connect.NewSessionListServiceClient(c),
 		Identity: identityv1connect.NewIdentityServiceClient(c),
 		User:     userv1connect.NewUserServiceClient(c),
 		Decision: decisionv1connect.NewDecisionServiceClient(c),

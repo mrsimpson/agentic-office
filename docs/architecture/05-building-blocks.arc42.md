@@ -28,6 +28,8 @@ flowchart LR
     bb_participant_client[Participant client]
     bb_participant_client -->|if-session-commands| bb_office_hub
     bb_participant_client -->|if-session-import| bb_office_hub
+    bb_participant_client -->|if-session-activity| bb_office_hub
+    bb_participant_client -->|if-session-list| bb_office_hub
     bb_participant_client -->|if-decision-api| bb_office_hub
     bb_participant_client -->|if-minutes-api| bb_office_hub
     bb_participant_client -->|if-note-api| bb_office_hub
@@ -67,14 +69,14 @@ id: bb-office-hub-whitebox
 view: building-block
 notation: mermaid
 roots: bb-office-hub
-aliases: bb_office_hub=bb-office-hub, bb_admin=bb-admin, bb_archive=bb-archive, bb_artifacts=bb-artifacts, bb_documents=bb-documents, bb_git_access=bb-git-access, bb_identity=bb-identity, bb_records=bb-records, bb_session_service=bb-session-service, bb_slides=bb-slides, bb_stage=bb-stage, bb_tasks=bb-tasks, bb_tenants=bb-tenants
+aliases: bb_office_hub=bb-office-hub, bb_portal=bb-portal, bb_archive=bb-archive, bb_artifacts=bb-artifacts, bb_documents=bb-documents, bb_git_access=bb-git-access, bb_identity=bb-identity, bb_records=bb-records, bb_session_service=bb-session-service, bb_slides=bb-slides, bb_stage=bb-stage, bb_tasks=bb-tasks, bb_tenants=bb-tenants
 :::
 ```
 
 ```mermaid
 flowchart LR
     subgraph bb_office_hub [Office hub]
-        bb_admin[Admin view]
+        bb_portal[Portal]
         bb_archive[Archive]
         bb_artifacts[Artifacts]
         bb_documents[Documents]
@@ -87,9 +89,11 @@ flowchart LR
         bb_tasks[Tasks]
         bb_tenants[Tenants]
     end
-    bb_admin -->|if-auth-api| bb_identity
-    bb_admin -->|if-tenant-api| bb_tenants
-    bb_admin -->|if-user-api| bb_identity
+    bb_portal -->|if-auth-api| bb_identity
+    bb_portal -->|if-tenant-api| bb_tenants
+    bb_portal -->|if-user-api| bb_identity
+    bb_portal -->|if-session-list| bb_session_service
+    bb_portal -->|if-session-stream| bb_session_service
     bb_documents -->|if-archive-storage| bb_archive
     bb_documents -->|if-session-notice| bb_session_service
     bb_documents -->|if-token-check| bb_identity
@@ -103,6 +107,7 @@ flowchart LR
     bb_slides -->|if-archive-watch| bb_archive
     bb_slides -->|if-token-check| bb_identity
     bb_stage -->|if-session-stream| bb_session_service
+    bb_stage -->|if-session-activity| bb_session_service
     bb_stage -->|if-slides-api| bb_slides
     bb_stage -->|if-auth-api| bb_identity
     bb_tasks -->|if-archive-storage| bb_archive
@@ -127,8 +132,8 @@ record, pause, raise a hand, update the minutes, focus an artifact. Each success
 exactly one event in the log, and each call carries an ID created by the client, so a repeated
 call has no extra effect and a client may always repeat after a drop.
 
-The same interface lets anyone with a token check a session log (`dec-merkle-log`): it hands out
-signed tree heads, proofs and the public key of the hub. It owns no log types. The events, the tree
+The same interface lets everyone who may read a session check its log (`dec-merkle-log`): it hands
+out signed tree heads, proofs and the public key of the hub. It owns no log types. The events, the tree
 heads and the code that verifies them belong to the session stream, which owns the event log.
 
 After a restart, a peer offers its copy of a session log through this interface
@@ -150,7 +155,10 @@ path: hub/session/commandsapi
 ### Session stream
 
 Delivers the event log of a session from a cursor onwards, then live. It is the one basis for the
-local replication and for the stage, so every reader sees the same log. After a drop, the
+local replication, the stage and the portal, so every reader sees the same log. Only those who may
+read the session get it: everyone who ever joined it, the participant who imported it, the tenant
+admins, and a stage link of this session (`concept-multi-tenancy`). For anybody else the session
+does not exist. After a drop, the
 subscriber reconnects with its last event ID. A one-time request for the events after a cursor
 serves a participant that finds a gap in its copy, or that follows the session without a file
 system (`dec-events-from-cursor`). With its last event, the stream sends a tree head signed by the
@@ -203,13 +211,57 @@ path: hub/session/importapi
 :::
 ```
 
+### Session activity
+
+What a participant is doing right now, for the people in the meeting (`dec-agent-activity`): an
+agent works, which tool it calls, waits, or ended its turn with a reply that nobody heard. A
+participant reports its own activity; the stage watches the activities of its session.
+
+The activity is short-lived and is no event of the log. The hub keeps only the latest activity of
+each participant, in memory, and never stores, archives or replicates it. A report lives a short
+time unless the participant renews it, and it ends when the participant leaves or the session
+ends. A report names a tool by a short name only, never by its arguments, because arguments can
+carry sentences that are off the record.
+
+```arc42
+:::interface
+id: if-session-activity
+title: Session activity
+provider: bb-office-hub
+x-realized-by: bb-session-service
+protocol: Connect RPC, unary and server streaming (dec-connect-rpc); in-process for the stage
+path: hub/session/activityapi
+:::
+```
+
+### Session list
+
+The sessions of a tenant that the caller may see (`dec-web-portal`), the newest first: the name,
+the start, the end or that the session runs, the participants, and whether it was imported. A
+session is visible to everyone who joined it, to the participant who imported it, and to the
+tenant admins of its tenant. A system admin is no member of a tenant and sees none. The list
+covers running sessions and ended sessions that only the archive holds; it reads a stored log only
+after it verified it against its signed tree head. The events of one session come from the session
+stream.
+
+```arc42
+:::interface
+id: if-session-list
+title: Session list
+provider: bb-office-hub
+x-realized-by: bb-session-service
+protocol: Connect RPC, unary (dec-connect-rpc); in-process for the portal
+path: hub/session/listapi
+:::
+```
+
 ### Auth API
 
 Proves who a caller is: the client signs a challenge from the hub with its private key and gets a
 short-lived access token that is bound to its key. The answer names the participant and the
 display name of the participant, which the client uses as the author of commits
 (`dec-artifact-sync`). The interface also creates the read-only links
-for the stage. The calls of the meeting session, the records, the tasks and the slides name a
+for the stage and the one-time links of the portal (`dec-web-portal`). The calls of the meeting session, the records, the tasks and the slides name a
 tenant, and Identity checks that the caller is a member of it. The auth, user and tenant APIs name
 no tenant, because they work across tenants.
 
@@ -382,38 +434,44 @@ path: hub/documents/api
 :::
 ```
 
-### Admin view
+### Portal
 
-A browser view for the system admins of the hub, opened by a link that a system admin creates with
-the CLI. It shows the users with their keys, the tenants and the system admins, and it manages
-users and keys. Memberships and tenants stay with the CLI. It has the same design as the stage.
-The link works once and is swapped for an access token that the scripts of the page cannot read.
+A browser view for every user of the hub (`dec-web-portal`), opened by a link that the user creates
+with the CLI. The link works once and is swapped for an access token that the scripts of the page
+cannot read. It shows what the key of the user may see: the sessions in which the user took part,
+read-only, with their transcript and their artifacts; the minutes, notes, decisions, tasks, slides
+and documents of the tenant; for a tenant admin, every session and the members of the tenant; for a
+system admin, the users with their keys, the tenants and the system admins, with the forms to
+register users and keys and to revoke keys. The tenant is part of the address of a page. It has the
+same design as the stage.
 
 ```arc42
 :::interface
-id: if-admin-web
-title: Admin view
+id: if-portal-web
+title: Portal
 provider: bb-office-hub
-x-realized-by: bb-admin
+x-realized-by: bb-portal
 protocol: HTTPS (browser)
-path: hub/admin/web
+path: hub/portal/web
 :::
 ```
 
-### Admin part
+### Portal part
 
-The admin part renders the admin view on the server. It has no logic and no state of its own:
-every page asks the user API and the tenant API with the access token of the system admin and shows
-what it gets, so the admin view has exactly the rights of the admin key (`dec-admin-web`).
+The portal part renders the portal on the server. It has no logic and no state of its own: every
+page asks the interfaces of the hub with the access token of the user and shows what it gets, so the
+portal has exactly the rights of the key (`dec-web-portal`). It asks the auth API who the user is,
+the user and tenant APIs for the administration and the members, the session list for the
+sessions of a tenant, and the session stream for the events of one session.
 
 ```arc42
 :::building-block
-id: bb-admin
-title: Admin view
+id: bb-portal
+title: Portal
 technology: Go, rendered by the hub
 parent: bb-office-hub
-requires: if-auth-api, if-user-api, if-tenant-api
-path: hub/admin
+requires: if-auth-api, if-user-api, if-tenant-api, if-session-list, if-session-stream
+path: hub/portal
 :::
 ```
 
@@ -453,7 +511,9 @@ path: hub/health
 Manages sessions and their participants. It accepts utterances from the ears and actions from
 participants, and writes everything to one append-only event log per session. It also takes
 imported conversations (`if-session-import`) and writes them into the log of a new session, so a
-session log has one writer in every case. Subscribers receive the log from a cursor onwards.
+session log has one writer in every case. Next to the log, it keeps the short-lived activities of
+the participants (`if-session-activity`), in memory only. Subscribers receive the log from a cursor onwards.
+It lists the sessions that a caller may see (`if-session-list`).
 Events are merged by time only: the participant model already says who spoke.
 
 ```arc42
@@ -853,7 +913,7 @@ path: hub/artifacts/check
 
 One web page per session, shown in the meeting by screen share. It shows the artifact in focus,
 the other artifacts as tabs, the transcript, and who is captured or paused, with the raised hands
-in the same list. The minutes are the first artifact of every session and stay in focus until
+and what each agent is doing (`if-session-activity`) in the same list. The minutes are the first artifact of every session and stay in focus until
 someone focuses another artifact. Until there are minutes, the stage asks for an agent that takes
 them. It marks an imported session with its source and never shows it as live. It is only a view of
 the session log and has no logic of its own: it reads an artifact straight from the archive
@@ -866,7 +926,7 @@ id: bb-stage
 title: Stage
 technology: Go, rendered by the hub / server-sent events
 parent: bb-office-hub
-requires: if-session-stream, if-slides-api, if-auth-api, if-archive-read
+requires: if-session-stream, if-session-activity, if-slides-api, if-auth-api, if-archive-read
 implements: concept-transparency
 path: hub/stage
 :::
@@ -1144,8 +1204,9 @@ The shared core of the CLI, the MCP server and the ears ("one core, two adapters
 `dec-cli-and-mcp`). It holds the configuration of a participant, authenticates with Identity,
 creates the command IDs and calls the interfaces of the office hub. It reads the import format
 of conversations and sends a conversation to the session import in pages
-(`dec-import-format`), so the CLI and the MCP server import in the same way. The adapters add only their
-own way of talking to a human or an agent.
+(`dec-import-format`), so the CLI and the MCP server import in the same way. It lists the sessions
+that the participant may see (`if-session-list`). The adapters add only their own way of talking
+to a human or an agent.
 
 ```arc42
 :::building-block
@@ -1154,7 +1215,7 @@ title: Client core
 technology: Go
 parent: bb-participant-client
 path: client/core
-requires: if-session-commands, if-session-stream, if-session-import, if-auth-api, if-user-api, if-tenant-api, if-decision-api, if-minutes-api, if-note-api, if-task-api, if-slides-api, if-local-log, if-document-api, if-archive-read
+requires: if-session-commands, if-session-stream, if-session-import, if-session-list, if-auth-api, if-user-api, if-tenant-api, if-decision-api, if-minutes-api, if-note-api, if-task-api, if-slides-api, if-local-log, if-document-api, if-archive-read
 :::
 ```
 
@@ -1237,11 +1298,14 @@ session and one agent key, it:
 - when it wakes the agent, sends what others said since its last delivery, with who said it and
   whether that participant is a human or an agent, but not the agent's own utterances or
   sentences off the record; nothing is lost and nothing is sent twice;
+- reports what the agent is doing, so the stage can show it (`if-session-activity`): working
+  and the short name of the tool it calls, waiting, or that its reply reached nobody;
 - after the session ends, sends a last prompt and stops the harness.
 
 The runner never speaks for the agent and judges nothing itself: the agent decides whether it is
 addressed and acts through the office tools. Whatever the harness writes as a reply is only
-logged.
+logged; if the agent did not speak, the runner asks it once whether the reply was meant for the
+meeting (`dec-agent-runner-delivery`).
 
 Inside the runner, the wake strategy is one seam that serves the runner as its consumer. The
 runner hands it the pending utterances in its own terms and gets back its own verdict: wake, wait,
@@ -1255,7 +1319,7 @@ id: bb-agent-runner
 title: Agent runner
 technology: Go / Agent Client Protocol
 parent: bb-participant-client
-requires: if-client-core, if-replication, if-local-log, if-session-stream
+requires: if-client-core, if-replication, if-local-log, if-session-stream, if-session-activity
 implements: concept-read-file-write-tools, concept-participant-model
 path: client/agentrunner
 :::

@@ -179,6 +179,13 @@ a tenant, and a member is never a system admin. A person who does both uses two 
 different keys. The hub always has at least one system admin, named by the operator at the first
 start, and every tenant has at least one tenant admin.
 
+**Who reads a session.** A session is read by everyone who ever joined it, by the participant who
+imported it, by the tenant admins of its tenant, and by a stage link of exactly this session. For
+every other member of the tenant the session does not exist. This holds for its events, its tree
+heads and proofs, its activities and the list of sessions. A participant who joins a running
+session reads its history from its join on. The records of a session (minutes, decisions, notes,
+tasks) are read by every member of the tenant. OPEN: whether they follow the session (#15).
+
 **Rules for changes.** Identity is the only writer of users, keys, memberships and system admins.
 It refuses a change when the caller may not make it, when the tenant or user does not exist, or
 when the change would leave a tenant without a tenant admin or the hub without a system admin.

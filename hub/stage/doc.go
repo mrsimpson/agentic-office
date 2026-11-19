@@ -38,6 +38,11 @@
 //   - Minutes: the text of the last minutes.updated. Utterances: the last eight that are not
 //     off the record, with corrections applied. An imported utterance shows its original time
 //     (UTC). A off the record utterance disappears.
+//   - Activities (dec-agent-activity): next to the stream of the log, the stage watches the
+//     activities of the participants (if-session-activity) with the same token: "working",
+//     "working: <tool>", "waiting", or "answered only in its own chat" when an agent ended its
+//     turn with a reply that nobody heard. They are not part of the log. If the watch fails, the
+//     stage shows the session without them.
 //   - After session.ended the status shows that the session has ended, and the stream sends "end"
 //     and closes. When the link expires, an open stream shows that and also sends "end".
 //   - No external assets, no frontend build. A Content-Security-Policy allows only the inline

@@ -1,4 +1,4 @@
-package admin
+package portal
 
 import (
 	"context"
@@ -13,25 +13,25 @@ import (
 
 	"connectrpc.com/connect/v2"
 
-	"github.com/mrsimpson/agentic-office/hub/admin/web"
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/identityv1connect"
 	userv1 "github.com/mrsimpson/agentic-office/hub/identity/userapi"
 	"github.com/mrsimpson/agentic-office/hub/identity/userapi/userv1connect"
+	"github.com/mrsimpson/agentic-office/hub/portal/web"
 	tenantv1 "github.com/mrsimpson/agentic-office/hub/tenant/api"
 	"github.com/mrsimpson/agentic-office/hub/tenant/api/tenantv1connect"
 )
 
 // Options configure a Handler.
 type Options struct {
-	// Identity is a transport to the identity part behind the token check, for example
-	// connectinprocess.New on the server of office-hub. The admin view calls it with the token of
-	// the admin, so it has exactly the rights of the admin key.
-	Identity connect.Transport
+	// Hub is a transport to the server of the hub behind the token check, for example
+	// connectinprocess.New on the server of office-hub. The portal calls it with the token of the
+	// user, so it has exactly the rights of the key of the user.
+	Hub connect.Transport
 }
 
-// Handler serves the admin view (if-admin-web).
+// Handler serves the portal (if-portal-web).
 type Handler struct {
 	opts Options
 }
@@ -76,13 +76,16 @@ func keyRows(users []*userv1.User) []keyView {
 	return rows
 }
 
-// ServeHTTP serves the pages of the admin view.
+// ServeHTTP serves the pages of the portal.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Security-Policy", web.CSP)
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	path := strings.TrimSuffix(r.URL.Path, "/")
+	path := r.URL.Path
+	if path != web.HomePath {
+		path = strings.TrimSuffix(path, "/")
+	}
 	post := path == web.RegisterPath || path == web.RevokePath
 	if r.Method != http.MethodGet && !(post && r.Method == http.MethodPost) {
 		if path == web.RegisterPath {
@@ -99,11 +102,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, web.KeysPath, http.StatusSeeOther)
 		return
 	}
+	if rest, ok := strings.CutPrefix(path, web.TenantPrefix); ok {
+		tenant, page, _ := strings.Cut(rest, "/")
+		h.tenant(w, r, tenant, page)
+		return
+	}
 	switch path {
-	case "/admin":
-		http.Redirect(w, r, web.KeysPath, http.StatusSeeOther)
+	case web.HomePath:
+		h.home(w, r)
 	case web.LoginPath:
 		h.login(w, r)
+	case "/portal/admin":
+		http.Redirect(w, r, web.KeysPath, http.StatusSeeOther)
 	case web.KeysPath:
 		h.keys(w, r)
 	case web.NewKeyPath:
@@ -116,9 +126,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else {
 			h.confirmRevoke(w, r)
 		}
-	case "/admin/tenants":
+	case web.TenantsPath:
 		h.tenants(w, r)
-	case "/admin/admins":
+	case web.AdminsPath:
 		h.admins(w, r)
 	default:
 		h.fail(w, http.StatusNotFound, "Not found", "There is no such page.")
@@ -131,41 +141,58 @@ func (h *Handler) fail(w http.ResponseWriter, status int, title, msg string) {
 	_ = web.ErrorPage.Execute(w, map[string]any{"Title": title, "Message": msg})
 }
 
-const askForLink = "Ask for a new link with: office admin link"
+const askForLink = "Ask for a new link with: office portal link"
 
-// login swaps the code of an admin link for a session. A code works once.
+// login swaps the code of a portal link for a session. A code works once. It opens the tenant that
+// the link names, else the start page.
 func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	code := r.URL.Query().Get("code")
 	if code == "" {
-		h.fail(w, http.StatusUnauthorized, "Admin link not valid", "The link has no code. "+askForLink)
+		h.fail(w, http.StatusUnauthorized, "Portal link not valid", "The link has no code. "+askForLink)
 		return
 	}
-	c := identityv1connect.NewIdentityServiceClient(connect.NewClient(h.opts.Identity))
-	res, err := c.ExchangeAdminLink(r.Context(), &identityv1.ExchangeAdminLinkRequest{Code: code})
+	c := identityv1connect.NewIdentityServiceClient(connect.NewClient(h.opts.Hub))
+	res, err := c.ExchangePortalLink(r.Context(), &identityv1.ExchangePortalLinkRequest{Code: code})
 	if err != nil {
-		h.fail(w, http.StatusUnauthorized, "Admin link not valid", "The link is unknown, was used before or has expired. "+askForLink)
+		h.fail(w, http.StatusUnauthorized, "Portal link not valid", "The link is unknown, was used before or has expired. "+askForLink)
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: web.CookieName, Value: res.GetAccessToken(), Path: web.PathPrefix,
 		Expires: res.GetExpiresAt().AsTime(), HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode})
-	http.Redirect(w, r, web.KeysPath, http.StatusSeeOther)
+	next := web.HomePath
+	if t := res.GetTenantId(); t != "" {
+		next = web.TenantPath(t)
+	}
+	http.Redirect(w, r, next, http.StatusSeeOther)
 }
 
-// client returns an identity client with the token of the session, or answers with an error page.
-// backend is what the pages ask: the user API and the tenant API, with the token of the session.
+// backend is what the pages ask, with the token of the session: the auth API, the user API and
+// the tenant API.
 type backend struct {
-	users   userv1connect.UserServiceClient
-	tenants tenantv1connect.TenantServiceClient
+	me       *user // the user of the session
+	identity identityv1connect.IdentityServiceClient
+	users    userv1connect.UserServiceClient
+	tenants  tenantv1connect.TenantServiceClient
 }
 
 func (h *Handler) client(w http.ResponseWriter, r *http.Request) (*backend, bool) {
 	ck, err := r.Cookie(web.CookieName)
 	if err != nil || ck.Value == "" {
-		h.fail(w, http.StatusUnauthorized, "Not signed in", "Open an admin link to sign in. "+askForLink)
+		h.fail(w, http.StatusUnauthorized, "Not signed in", "Open a portal link to sign in. "+askForLink)
 		return nil, false
 	}
-	cc := connect.NewClient(h.opts.Identity, auth.StaticToken(ck.Value))
-	return &backend{users: userv1connect.NewUserServiceClient(cc), tenants: tenantv1connect.NewTenantServiceClient(cc)}, true
+	cc := connect.NewClient(h.opts.Hub, auth.StaticToken(ck.Value))
+	b := &backend{identity: identityv1connect.NewIdentityServiceClient(cc), users: userv1connect.NewUserServiceClient(cc),
+		tenants: tenantv1connect.NewTenantServiceClient(cc)}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	who, err := b.identity.WhoAmI(ctx, &identityv1.WhoAmIRequest{})
+	if err != nil {
+		h.denied(w, err)
+		return nil, false
+	}
+	b.me = userOf(who)
+	return b, true
 }
 
 // denied answers a call that the identity part refused, and clears the cookie of an old session.
@@ -173,9 +200,11 @@ func (h *Handler) denied(w http.ResponseWriter, err error) {
 	switch connect.CodeOf(err) {
 	case connect.CodeUnauthenticated:
 		http.SetCookie(w, &http.Cookie{Name: web.CookieName, Path: web.PathPrefix, MaxAge: -1, HttpOnly: true})
-		h.fail(w, http.StatusUnauthorized, "Session ended", "Your admin session has ended. "+askForLink)
+		h.fail(w, http.StatusUnauthorized, "Session ended", "Your session in the portal has ended. "+askForLink)
 	case connect.CodePermissionDenied:
-		h.fail(w, http.StatusForbidden, "Not allowed", "Only admins may use this view.")
+		h.fail(w, http.StatusForbidden, "Not allowed", "Your key may not see this page.")
+	case connect.CodeNotFound:
+		h.fail(w, http.StatusNotFound, "Not found", "There is no such page for you.")
 	default:
 		h.fail(w, http.StatusServiceUnavailable, "Not available", "The hub could not answer. Try again.")
 	}
@@ -195,7 +224,7 @@ func (h *Handler) keys(w http.ResponseWriter, r *http.Request) {
 	}
 	keys := keyRows(res.GetUsers())
 	notice := map[string]string{"registered": "The key is registered.", "revoked": "The key is revoked."}[r.URL.Query().Get("done")]
-	h.page(w, map[string]any{"Title": "Users and keys", "Section": "Hub", "Active": web.KeysPath, "Keys": keys, "Notice": notice})
+	h.page(w, c.me, web.KeysPath, "", map[string]any{"Title": "Users and keys", "Section": "Administration", "Keys": keys, "Notice": notice})
 }
 
 // tenantView is a tenant as the page shows it.
@@ -220,7 +249,7 @@ func (h *Handler) tenants(w http.ResponseWriter, r *http.Request) {
 	for _, t := range res.GetTenants() {
 		rows = append(rows, tenantView{TenantId: t.GetTenantId(), Name: t.GetDisplayName(), Removed: t.GetValidUntil() != nil})
 	}
-	h.page(w, map[string]any{"Title": "Tenants", "Section": "Tenants", "Active": "/admin/tenants", "Mode": "tenants", "Tenants": rows})
+	h.page(w, c.me, web.TenantsPath, "", map[string]any{"Title": "Tenants", "Section": "Administration", "Mode": "tenants", "Tenants": rows})
 }
 
 func (h *Handler) admins(w http.ResponseWriter, r *http.Request) {
@@ -241,18 +270,26 @@ func (h *Handler) admins(w http.ResponseWriter, r *http.Request) {
 			admins = append(admins, u)
 		}
 	}
-	h.page(w, map[string]any{"Title": "System admins", "Section": "Tenants", "Active": "/admin/admins", "Mode": "admins", "Keys": keyRows(admins)})
+	h.page(w, c.me, web.AdminsPath, "", map[string]any{"Title": "System admins", "Section": "Administration", "Mode": "admins", "Keys": keyRows(admins)})
 }
 
-func (h *Handler) page(w http.ResponseWriter, data map[string]any) {
+// page renders a page with the frame: the user and the navigation by what the key may see.
+func (h *Handler) page(w http.ResponseWriter, u *user, active, tenant string, data map[string]any) {
+	render(w, http.StatusOK, u, active, tenant, data)
+}
+
+func render(w http.ResponseWriter, status int, u *user, active, tenant string, data map[string]any) {
+	data["Me"] = u
+	data["Nav"] = u.nav(active, tenant)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
 	_ = web.Page.Execute(w, data)
 }
 
 // csrf is the token that a form carries. It is derived from the access token of the session,
 // which scripts and other sites cannot read.
 func csrf(sessionToken string) string {
-	h := sha256.Sum256([]byte("office-admin-csrf\x00" + sessionToken))
+	h := sha256.Sum256([]byte("office-portal-csrf\x00" + sessionToken))
 	return hex.EncodeToString(h[:])
 }
 
@@ -267,19 +304,22 @@ type formValues struct {
 	ParticipantID, DisplayName, Kind, PublicKey string
 }
 
-func (h *Handler) registerPage(w http.ResponseWriter, status int, token string, form formValues, errMsg string) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(status)
-	_ = web.Page.Execute(w, map[string]any{"Title": "Register a key", "Section": "Hub", "Active": web.KeysPath, "Mode": "register",
+func (h *Handler) registerPage(w http.ResponseWriter, me *user, status int, token string, form formValues, errMsg string) {
+	render(w, status, me, web.KeysPath, "", map[string]any{"Title": "Register a key", "Section": "Administration", "Mode": "register",
 		"CSRF": csrf(token), "Form": form, "Error": errMsg})
 }
 
 func (h *Handler) newKey(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.client(w, r); !ok {
+	c, ok := h.client(w, r)
+	if !ok {
+		return
+	}
+	if !c.me.SystemAdmin {
+		h.fail(w, http.StatusForbidden, "Not allowed", "Your key may not see this page.")
 		return
 	}
 	ck, _ := r.Cookie(web.CookieName)
-	h.registerPage(w, http.StatusOK, ck.Value, formValues{Kind: "human"}, "")
+	h.registerPage(w, c.me, http.StatusOK, ck.Value, formValues{Kind: "human"}, "")
 }
 
 // checkForm checks that a form post comes from a page of this view: the origin, if the browser
@@ -330,7 +370,7 @@ func (h *Handler) register(w http.ResponseWriter, r *http.Request) {
 	}
 	form := formValues{ParticipantID: strings.TrimSpace(r.PostForm.Get("participant_id")), DisplayName: strings.TrimSpace(r.PostForm.Get("display_name")),
 		Kind: r.PostForm.Get("kind"), PublicKey: strings.TrimSpace(r.PostForm.Get("public_key"))}
-	show := func(status int, msg string) { h.registerPage(w, status, token, form, msg) }
+	show := func(status int, msg string) { h.registerPage(w, c.me, status, token, form, msg) }
 	pub, err := auth.ParsePublicKey(form.PublicKey)
 	if err != nil {
 		show(http.StatusBadRequest, "The public key is not a base64 Ed25519 public key. Use the one that office key show prints.")
@@ -396,7 +436,7 @@ func (h *Handler) confirmRevoke(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusConflict, "Cannot revoke", "This key is already revoked, or its user is removed.")
 		return
 	}
-	h.page(w, map[string]any{"Title": "Revoke a key", "Section": "Hub", "Active": web.KeysPath, "Mode": "revoke", "CSRF": csrf(ck.Value), "Key": k})
+	h.page(w, c.me, web.KeysPath, "", map[string]any{"Title": "Revoke a key", "Section": "Administration", "Mode": "revoke", "CSRF": csrf(ck.Value), "Key": k})
 }
 
 func (h *Handler) revoke(w http.ResponseWriter, r *http.Request) {

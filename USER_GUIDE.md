@@ -3,7 +3,8 @@
 This guide shows how a team uses the agentic office: how to get the software, run a hub, join
 meetings as a human with a headset, and bring in agents.
 
-The commands explain themselves. `office help` lists them, `office <command> --help` shows the
+The commands explain themselves. `office help` lists them, `office <group> --help` lists the
+commands of one group (for example `office admin --help`), `office <command> --help` shows the
 purpose, the flags with their defaults and an example, and `office help <topic>` explains a topic
 (`config`, `json`, `import-format`, `deck-format`, `ears`). `office-hub -h` does the same for the
 hub. This guide does not repeat flag tables: it shows what to do, and in which order. Developers
@@ -154,7 +155,10 @@ office-hub -signing-key ~/office-hub/signing.key -addr 0.0.0.0:8740 \
 - The data of the hub lives in `$CFG/hub` (`-data-dir` changes it): the
   users and keys, the TLS certificate and the archive with all sessions and records.
 - On the first start, the hub creates a self-signed TLS certificate for the names in
-  `-tls-hosts`, in `tls.crt`. To use your own certificate, see
+  `-tls-hosts`, in `tls.crt`. A start that fails writes nothing, so you can fix the flags and
+  start again. If a later start names a host in `-tls-hosts` that the certificate misses, the hub
+  does not start: delete `tls.crt` and `tls.key` to get a new certificate, and send the new
+  fingerprint to the participants. To use your own certificate, see
   [Use your own certificate](#use-your-own-certificate).
 - `office-hub -h` lists every flag with its default and says what the hub keeps in its data
   directory: the certificate, the hub repository with the users, tenants and memberships, and one
@@ -322,17 +326,22 @@ keeps at least one tenant admin, and the hub at least one system admin.
 `office admin key add <user> <public key>` adds a further key to a user. `office admin key revoke <key-id>` revokes a key.
 The last key of a user cannot be revoked.
 
-A system admin can do the keys in the browser too. The admin view lists all users and keys, creates a
-user or adds a key with a form, and revokes a key after a confirmation. It shows the tenants and the
-system admins, read only. Tenants and memberships stay with the commands above:
+Every user has a web portal in the browser. It shows what your key may see: your tenants, the
+sessions of a tenant in which you took part (a tenant admin sees all of them), the members of a
+tenant to its tenant admins, and the administration to system admins. There a system
+admin lists all users and keys, creates a user or adds a key with a form, and revokes a key after a
+confirmation, and sees the tenants and the system admins, read only. Tenants and memberships stay
+with the commands above:
 
 ```sh
-office admin link
+office portal link                # opens the tenant you work in
+office portal link --tenant ""    # opens the start page, for example as a system admin
 ```
 
 The command prints a link. Open it in a browser within a few minutes: the link works once. The
-page then stays open for one hour. After that, or if you see `Admin link not valid` or `Session
-ended`, run `office admin link` again. Only system admins get a link.
+portal then stays open for one hour. After that, or if you see `Portal link not valid` or `Session
+ended`, run `office portal link` again. A system admin is no member of a tenant, so it opens the
+start page.
 
 ## 3. Join a meeting
 
@@ -570,7 +579,10 @@ The stage shows the meeting in two columns:
   created, changed or focused which artifact.
 - **Right:** the participants with their capture status (captured, paused, not captured), agents
   marked as agents, and a hand with a number for everyone who raised their hand, in the order they
-  raised it. Below it is the transcript of the latest sentences.
+  raised it. Under the name of an agent that runs with `office agent run`, the stage shows what
+  it does: "working", "working: fetch" with the kind or office tool it calls (never what it
+  fetches or searches), "waiting", or "answered only in its own chat" when its reply reached
+  nobody. Below it is the transcript of the latest sentences.
 
 The stage is dark or light, as your computer is set. One person creates a link, opens it in a
 browser and shares the window in your meeting tool (Zoom, Teams, Meet, Jitsi):
@@ -788,6 +800,9 @@ office meeting end
 - The running minutes belong to the session. `office meeting end` stores the text of the last
   update as the minutes of the session. Read them later with `office minutes show weekly` or
   `office minutes list`.
+- `office session list` lists the sessions in which you took part or that you imported, the newest
+  first, with start, end and participants; a tenant admin sees every session of the tenant. The
+  portal shows the same list on the page of the tenant (`office portal link`).
 - A decision or a note is linked to a session only with `--session`.
 - For now a task is a local draft in the hub. Its reference, for example `local:42`, is opaque:
   keep it and pass it back. The statuses are `open`, `in_progress`, `done` and `cancelled`. Any
@@ -838,7 +853,8 @@ a new session.
 
 ### Find out more
 
-`office help` lists all commands. `office <command> --help` explains one.
+`office help` lists all commands. `office <group> --help` lists the commands of one group, for
+example `office meeting --help`. `office <command> --help` explains one command.
 
 ## 4. Bring in an agent
 
@@ -1445,7 +1461,8 @@ scripts/try-local.sh tail bot                        # what the agent reads; sto
 | The command reaches the wrong hub or tenant | `office config show` prints the active profile and the source of each value. A `hub`, `tenant` or `OFFICE_*` variable from a higher source overrides the profile, and a `.office/config.yaml` in the current folder can choose another profile. |
 | `office hub add` says the fingerprint does not match | The hub presents another certificate than you expect. Do not continue until you know why: you may reach another hub, or someone sits between you and the hub. Compare with the fingerprint in the log of the hub. |
 | `public key is not registered: ask an admin to register SHA256:…` | Send your public key to your admin (`office key show` prints it). Check with `office whoami`. |
-| `Admin link not valid` or `Session ended` in the admin view | The link works once and for a few minutes, and the page for one hour. Run `office admin link` again. Only system admins get a link (`permission_denied` otherwise). |
+| `no such session for you` | Only who took part in a session, who imported it, and the tenant admins read it. Join it first, or ask a tenant admin. Check the name with `office session list`. |
+| `Portal link not valid` or `Session ended` in the portal | The link works once and for a few minutes, and the portal for one hour. Run `office portal link` again. `not a member of the tenant`: name your tenant with `--tenant`, or open the start page with `--tenant ""`. |
 | `the document has changed since you read it` (`aborted`) | Someone changed the document first. Read it again with `office document get` and redo your change with the new version in `--base`. |
 | `no audio recorder found` | Install `ffmpeg` (macOS) or `pulseaudio-utils` (Linux), or set `OFFICE_MIC_COMMAND` (see `office help ears`). |
 | The model download fails | Check your network, or download the models elsewhere and set `OFFICE_MODEL_URL` to a mirror. |

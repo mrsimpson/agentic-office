@@ -983,17 +983,26 @@ func TestCLIDocuments(t *testing.T) {
 	}
 }
 
-// TestCLIAdminLink: office admin link gives a link for admin keys and refuses other participants.
-func TestCLIAdminLink(t *testing.T) {
+// TestCLIPortalLink: office portal link gives every user a link: at the tenant it works in, or at
+// the start page with --tenant "". A tenant of which the user is no member fails in plain words.
+func TestCLIPortalLink(t *testing.T) {
 	m := newMachine(t)
 	bob := m.user("bob", "Bob", "human")
-	v := m.admin.ok("admin", "link")
-	if u, _ := v["url"].(string); !strings.Contains(u, "/admin/login?code=") || v["expiresAt"] == nil {
-		t.Fatalf("admin link: %v", v)
+	v := bob.ok("portal", "link")
+	if u, _ := v["url"].(string); !strings.Contains(u, "/portal/login?code=") || v["expiresAt"] == nil {
+		t.Fatalf("portal link: %v", v)
 	}
-	if out, _, code := m.admin.run("admin", "link"); code != 0 || !strings.Contains(out, "/admin/login?code=") {
+	if out, _, code := bob.run("portal", "link"); code != 0 || !strings.Contains(out, "/portal/login?code=") {
 		t.Errorf("without --json: exit %d, %q", code, out)
 	}
-	bob.fails(1, "permission_denied", "admin", "link")
-	bob.fails(2, "usage", "admin", "link", "extra")
+	if _, errOut, code := m.admin.run("portal", "link"); code != 1 || !strings.Contains(errOut, "not a member of the tenant") {
+		t.Errorf("system admin in a tenant: exit %d, %q", code, errOut)
+	}
+	if out, _, code := m.admin.run("portal", "link", "--tenant", ""); code != 0 || !strings.Contains(out, "/portal/login?code=") {
+		t.Errorf("start page for the system admin: exit %d, %q", code, out)
+	}
+	bob.fails(2, "usage", "portal", "link", "extra")
+	if _, _, code := m.admin.run("admin", "link"); code == 0 {
+		t.Errorf("office admin link still works")
+	}
 }

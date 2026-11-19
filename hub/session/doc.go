@@ -80,6 +80,24 @@
 //     page. The state knows the importer and whether the import runs; while it runs, every session
 //     command fails with FailedPrecondition. import.completed wakes the archive writer like
 //     session.ended. After the import the session is like any other.
+//   - Activity (dec-agent-activity, activity.go): the Service also realizes the session activity
+//     (if-session-activity). It keeps the latest activity of each participant in memory only,
+//     never in the Store, the archive or a stream of the log. A report lives ActivityTTL. The
+//     activity of a participant ends with its participant.left, all activities end with
+//     session.ended (endActivities, under the lock of the session, so a report cannot slip in
+//     after). WatchActivity sends the activities at once and after every change or expiry. A
+//     tool is a short name only; the hub refuses free text. The activities are lost when the hub
+//     restarts; the agent runner renews its report anyway.
+//   - Who reads a session (mayRead in list.go, concept-multi-tenancy): Subscribe, GetEvents, the
+//     tree heads and proofs and WatchActivity answer only everyone who ever joined the session, the
+//     participant who imported it, a tenant admin, and a stage link of the session. Everybody
+//     else gets NotFound, as for a session that does not exist.
+//   - Session list (dec-web-portal, list.go): the Service also realizes the session list
+//     (if-session-list). It summarizes every session in memory from the Store, and every ended
+//     session that only the archive holds from its stored log, after that log verified against its
+//     signed tree head; the summaries of finished stored sessions are kept, so each stored log is
+//     read once. A session that leaves memory during a list is read from the archive. A caller
+//     sees the sessions it joined or imported, a tenant admin (Caller.TenantAdmin) every session.
 //   - Where the archive lies: the session uses only the session-log repository of the tenant
 //     (storage.Archives.SessionLogs) for everything it stores, restores, lists and reads. The
 //     artifact repository of the tenant never holds a session log, because the log holds the

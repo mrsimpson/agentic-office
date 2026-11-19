@@ -39,6 +39,8 @@ service SessionCommandsService {
   rpc FocusArtifact(FocusArtifactRequest) returns (FocusArtifactResponse);
   rpc EndSession(EndSessionRequest) returns (EndSessionResponse);
 
+  // GetTreeHead, GetConsistencyProof and GetInclusionProof answer only who may read the
+  // session, as the session stream decides (stream.proto); everybody else gets not_found.
   // GetTreeHead returns the signed tree head of the session log (dec-merkle-log): for the current
   // log, or for its first tree_size events.
   rpc GetTreeHead(GetTreeHeadRequest) returns (GetTreeHeadResponse);

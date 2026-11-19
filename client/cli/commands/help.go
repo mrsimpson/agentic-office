@@ -30,7 +30,7 @@ const (
 	groupHubs     = "Hubs and configuration"
 	groupMeeting  = "Meeting"
 	groupEars     = "Speech and vocabulary"
-	groupStage    = "Stage, slides and documents"
+	groupStage    = "Stage, portal, slides and documents"
 	groupRecords  = "Decisions, notes, minutes and tasks"
 	groupSync     = "Artifacts in a local directory"
 	groupImport   = "Import"
@@ -58,6 +58,81 @@ func Lookup(name string) (Help, bool) {
 	return Help{}, false
 }
 
+// Subcommands returns the help of the commands below a prefix of one or two words, for example
+// "meeting" or "admin tenant", sorted by name. The prefix itself is not part of the result.
+func Subcommands(prefix string) []Help {
+	var hs []Help
+	for _, h := range helpTable {
+		if strings.HasPrefix(h.Name, prefix+" ") {
+			hs = append(hs, h)
+		}
+	}
+	sort.Slice(hs, func(i, j int) bool { return hs[i].Name < hs[j].Name })
+	return hs
+}
+
+// GroupHelp is what "office <prefix> --help" prints for a prefix that is not a command itself:
+// the commands below it, each with its purpose.
+func GroupHelp(prefix string) string {
+	var b strings.Builder
+	b.WriteString("usage: office " + prefix + " <command> [flags]\n\nCommands:\n")
+	b.WriteString(CommandList(Subcommands(prefix)))
+	b.WriteString("\nRun \"office " + prefix + " <command> --help\" for the purpose, arguments, flags and an example.\n")
+	return b.String()
+}
+
+// CommandList prints commands as lines of the overview: the name and its purpose.
+func CommandList(hs []Help) string {
+	var b strings.Builder
+	for _, h := range hs {
+		b.WriteString("  " + h.Name + strings.Repeat(" ", max(1, 27-len(h.Name))) + h.Summary + "\n")
+	}
+	return b.String()
+}
+
+// Suggest returns the commands that are probably meant by a mistyped command: the names that
+// end with the typed words ("join" → "meeting join"), else the closest names within a small
+// edit distance ("meetng join" → "meeting join").
+func Suggest(typed string) []string {
+	var suffix, closest []string
+	best := 1 + len(typed)/5
+	for _, name := range Names() {
+		if strings.HasSuffix(name, " "+typed) {
+			suffix = append(suffix, name)
+		}
+		switch d := levenshtein(typed, name); {
+		case d < best:
+			best, closest = d, []string{name}
+		case d == best:
+			closest = append(closest, name)
+		}
+	}
+	if len(suffix) > 0 {
+		return suffix
+	}
+	return closest
+}
+
+func levenshtein(a, b string) int {
+	prev := make([]int, len(b)+1)
+	for j := range prev {
+		prev[j] = j
+	}
+	for i := 1; i <= len(a); i++ {
+		cur := make([]int, len(b)+1)
+		cur[0] = i
+		for j := 1; j <= len(b); j++ {
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+			cur[j] = min(prev[j]+1, cur[j-1]+1, prev[j-1]+cost)
+		}
+		prev = cur
+	}
+	return prev[len(b)]
+}
+
 // Overview is what "office help" prints: every command with its purpose, grouped, and where to
 // find more.
 func Overview() string {
@@ -66,6 +141,7 @@ func Overview() string {
 	b.WriteString("\nThe office client for humans and agents. Every command explains itself:\n")
 	b.WriteString("  office <command> --help        purpose, arguments, flags and an example\n")
 	b.WriteString("  office help <command>          the same\n")
+	b.WriteString("  office <group> --help          the commands of a group, for example: office admin --help\n")
 	b.WriteString("  office help <topic>            a topic: " + strings.Join(TopicNames(), ", ") + "\n")
 	var groups []string
 	byGroup := map[string][]Help{}
@@ -80,9 +156,7 @@ func Overview() string {
 		hs := byGroup[g]
 		sort.Slice(hs, func(i, j int) bool { return hs[i].Name < hs[j].Name })
 		b.WriteString("\n" + g + ":\n")
-		for _, h := range hs {
-			b.WriteString("  " + h.Name + strings.Repeat(" ", max(1, 27-len(h.Name))) + h.Summary + "\n")
-		}
+		b.WriteString(CommandList(hs))
 	}
 	b.WriteString("\nThe user guide (USER_GUIDE.md in the repository) shows how to set up a hub, join a\n")
 	b.WriteString("meeting and bring in an agent.\n")
@@ -184,13 +258,6 @@ tenant always keeps at least one tenant admin. A system admin cannot be a member
 		Usage:    "admin key revoke <key-id>",
 		Details:  "The key ID is the one that \"office key show\" prints. The last key of a user cannot be revoked.",
 		Examples: []string{"office admin key revoke SHA256:abc123"}},
-	{Name: "admin link", Group: groupAdmin, Summary: "print a link that opens the admin view in a browser",
-		Usage: "admin link",
-		Details: `Only a system admin gets a link. The link works once and expires after a few minutes. The view
-then keeps you signed in for one hour in a cookie that scripts cannot read. It shows the users
-with their keys, the tenants and the system admins (read only), registers keys and revokes
-them after a confirmation. Every page asks the hub with your rights.`,
-		Examples: []string{"office admin link"}},
 
 	// Hubs and configuration.
 	{Name: "hub add", Group: groupHubs, Summary: "add a hub profile and trust the certificate of the hub",
@@ -388,6 +455,15 @@ document (documents/plan.md) or "minutes", the running minutes of the session. T
 are in focus until another artifact gets the focus. The hub does not check that the artifact
 exists; the stage shows a note for an unknown ID.`,
 		Examples: []string{"office stage focus slides/42", "office stage focus documents/plan.md", "office stage focus minutes"}},
+	{Name: "portal link", Group: groupStage, Summary: "print a link that opens the portal in a browser",
+		Usage: "portal link",
+		Details: `Every user gets a link. It opens the portal at the tenant you work in (--tenant or
+OFFICE_TENANT), or at its start page with --tenant "". The link works once and expires after a
+few minutes. The portal then keeps you signed in for one hour in a cookie that scripts cannot
+read. It shows what your key may see: your tenants, the members of a tenant to its tenant
+admins, and the users and keys, tenants and system admins to system admins, who also register
+and revoke keys there. Every page asks the hub with your rights.`,
+		Examples: []string{"office portal link", `office portal link --tenant ""   # the start page`}},
 	{Name: "stage link", Group: groupStage, Summary: "create a read-only link to the stage of a session",
 		Usage: "stage link",
 		Details: `Prints https://<hub>/stage/<session>?token=... for one session. The link is read only and
@@ -564,6 +640,14 @@ token of the next page is printed on stderr (--json: "nextPageToken"); pass it a
 		Details: `Only the fields that you set change. An empty assignee or session removes it. An update that
 changes nothing makes no new revision. --json prints {"task": ..., "duplicate": ...}.`,
 		Examples: []string{"office task update local:1 --status done", `office task update local:1 --assignee "" --session ""`}},
+
+	{Name: "session list", Group: groupRecords, Summary: "list the sessions that you may see",
+		Usage: "session list",
+		Details: `Lists the sessions of the tenant in which you took part or that you imported, the newest
+first; a tenant admin sees every session of the tenant. Each line: the session (marked when it was
+imported), the start, the end or "running" (UTC), and the participants. --json prints
+{"sessions": [{"sessionId", "startedAt", "endedAt", "imported", "participants": [...]}]}.`,
+		Examples: []string{"office session list", "office session list --json"}},
 
 	// Import.
 	{Name: "session import", Group: groupImport, Summary: "import a conversation as a new, marked session",

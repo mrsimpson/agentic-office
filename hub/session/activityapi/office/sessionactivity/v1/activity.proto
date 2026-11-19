@@ -1,0 +1,89 @@
+// Session activity (if-session-activity): what a participant is doing right now, for example
+// that an agent works and which tool it calls (dec-agent-activity).
+//
+// The activity is short-lived. It is not an event of the session log: the hub keeps only the
+// latest activity of each participant, in memory, and never stores, archives or replicates it.
+//
+// - ReportActivity sets the activity of the caller. A report lives for ttl (see
+//   ReportActivityResponse); a participant that keeps an activity renews it before then. A new
+//   report replaces the old one. The activity of a participant ends when it expires, when the
+//   participant leaves, and for everybody when the session ends.
+// - WatchActivity sends the current activities of a session at once, then again after every
+//   change, until the caller goes away or the session ends.
+//
+// The activity names a tool by a short name only (a lowercase word with letters, digits and
+// underscores), never by its arguments: those can carry sentences that are off the record.
+//
+// Every call needs an access token (see identity.proto). ReportActivity needs a participant token:
+// participant_id must be the participant of the token, who must have joined the session and not
+// left it; a stage link cannot report. WatchActivity takes a participant token of the tenant or a
+// stage link for this session.
+//
+// Error codes: a missing or wrong field is invalid_argument; a participant_id that is not the
+// caller, a stage link that reports or watches another session, are permission_denied; a report
+// for a session that has ended, or of a participant that has not joined it or has left, is
+// failed_precondition.
+syntax = "proto3";
+
+package office.sessionactivity.v1;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/mrsimpson/agentic-office/hub/session/activityapi;sessionactivityv1";
+
+service SessionActivityService {
+  // ReportActivity sets the activity of the caller in a session.
+  rpc ReportActivity(ReportActivityRequest) returns (ReportActivityResponse);
+  // WatchActivity sends the activities of a session, then every change.
+  rpc WatchActivity(WatchActivityRequest) returns (stream WatchActivityResponse);
+}
+
+enum ActivityState {
+  ACTIVITY_STATE_UNSPECIFIED = 0;
+  // ACTIVITY_STATE_IDLE: the participant waits; for an agent, its turn has ended.
+  ACTIVITY_STATE_IDLE = 1;
+  // ACTIVITY_STATE_WORKING: the participant works; for an agent, a turn runs.
+  ACTIVITY_STATE_WORKING = 2;
+}
+
+message ReportActivityRequest {
+  string session_id = 1;
+  // participant_id is the participant of the access token.
+  string participant_id = 2;
+  // state is required.
+  ActivityState state = 3;
+  // tool is the short name of the tool that the participant calls now, or empty. At most 64
+  // characters: a lowercase letter, then lowercase letters, digits and underscores. Only with
+  // ACTIVITY_STATE_WORKING.
+  string tool = 4;
+  // unspoken_reply is set when an agent ended its turn with a reply in its own chat that nobody
+  // in the meeting heard. Only with ACTIVITY_STATE_IDLE.
+  bool unspoken_reply = 5;
+}
+
+message ReportActivityResponse {
+  // activity is the activity as the hub keeps it.
+  Activity activity = 1;
+  // ttl is how long the activity lives without a new report.
+  google.protobuf.Duration ttl = 2;
+}
+
+message WatchActivityRequest {
+  string session_id = 1;
+}
+
+message WatchActivityResponse {
+  // activities are the current activities of the session, one per participant, ordered by
+  // participant_id. A participant without an activity is not listed.
+  repeated Activity activities = 1;
+}
+
+message Activity {
+  string participant_id = 1;
+  ActivityState state = 2;
+  string tool = 3;
+  bool unspoken_reply = 4;
+  // since is when the hub took the report.
+  google.protobuf.Timestamp since = 5;
+}

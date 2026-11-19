@@ -95,9 +95,10 @@ func TestTenantsAreSeparated(t *testing.T) {
 	if evs := eventsOf(t, m.bob, "weekly"); len(evs) != 2 {
 		t.Fatalf("session of globex: %v", evs)
 	}
-	if evs := eventsOf(t, m.cyAcme, "weekly"); len(evs) != 1 {
-		t.Fatalf("session of acme, read by Cy: %v", evs)
-	}
+	// Cy is a member of Acme but took part only in the session of Globex: the session of Acme
+	// does not exist for Cy (the rule of the session stream).
+	_, err := m.cyAcme.Stream.GetEvents(ctx10(t), &sessionstreamv1.GetEventsRequest{SessionId: "weekly"})
+	wantCode(t, "session of acme, read by Cy", err, connect.CodeNotFound)
 
 	recordDecision(t, m.ada, "Acme ships.", "weekly")
 	addNote(t, m.ada, "Acme note.", "weekly")

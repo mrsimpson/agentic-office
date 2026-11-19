@@ -59,8 +59,6 @@ import (
 	"connectrpc.com/connect/v2/connecthttp"
 	"connectrpc.com/connect/v2/connectinprocess"
 
-	"github.com/mrsimpson/agentic-office/hub/admin"
-	adminweb "github.com/mrsimpson/agentic-office/hub/admin/web"
 	"github.com/mrsimpson/agentic-office/hub/archive"
 	"github.com/mrsimpson/agentic-office/hub/archive/api/archivev1connect"
 	"github.com/mrsimpson/agentic-office/hub/archive/changes/api/changesv1connect"
@@ -72,11 +70,15 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/identityv1connect"
 	"github.com/mrsimpson/agentic-office/hub/identity/userapi/userv1connect"
+	"github.com/mrsimpson/agentic-office/hub/portal"
+	portalweb "github.com/mrsimpson/agentic-office/hub/portal/web"
 	"github.com/mrsimpson/agentic-office/hub/records/decision/api/decisionv1connect"
 	"github.com/mrsimpson/agentic-office/hub/records/minutes/api/minutesv1connect"
 	"github.com/mrsimpson/agentic-office/hub/records/note/api/notev1connect"
+	"github.com/mrsimpson/agentic-office/hub/session/activityapi/sessionactivityv1connect"
 	"github.com/mrsimpson/agentic-office/hub/session/commandsapi/sessioncommandsv1connect"
 	"github.com/mrsimpson/agentic-office/hub/session/importapi/sessionimportv1connect"
+	"github.com/mrsimpson/agentic-office/hub/session/listapi/sessionlistv1connect"
 	"github.com/mrsimpson/agentic-office/hub/session/streamapi/sessionstreamv1connect"
 	"github.com/mrsimpson/agentic-office/hub/slides/api/slidesv1connect"
 	"github.com/mrsimpson/agentic-office/hub/stage"
@@ -94,6 +96,17 @@ func defaultDataDir() string {
 
 // keygenHint tells the operator how to create a signing key file.
 const keygenHint = "create one with: office-hub keygen FILE"
+
+// firstAdminHint tells the operator where the public key of the first system admin comes from.
+const firstAdminHint = `The public key comes from "office key create" on your own computer; ` +
+	`use a user ID such as root, because a system admin never works in a tenant.`
+
+// flagSet tells whether the operator gave the flag, also with its default value.
+func flagSet(name string) bool {
+	set := false
+	flag.Visit(func(f *flag.Flag) { set = set || f.Name == name })
+	return set
+}
 
 // keygen writes a new signing key to the file in args and prints its public key. It refuses to
 // overwrite an existing file.
@@ -125,7 +138,7 @@ var (
 	dataDir         = flag.String("data-dir", defaultDataDir(), "data directory: the TLS certificate and the Git repositories of the hub and the tenants; <config>/agentic-office/hub by default, where <config> is ~/.config or $XDG_CONFIG_HOME on Linux and ~/Library/Application Support on macOS")
 	certFile        = flag.String("tls-cert", "", "TLS certificate (PEM, may include the chain); default <data-dir>/tls.crt")
 	keyFile         = flag.String("tls-key", "", "TLS private key (PEM); default <data-dir>/tls.key")
-	tlsHosts        = flag.String("tls-hosts", "localhost,127.0.0.1,::1,"+osHostname(), "host names and IPs of a new self-signed certificate; participants must reach the hub by one of them")
+	tlsHosts        = flag.String("tls-hosts", "localhost,127.0.0.1,::1,"+osHostname(), "host names and IPs of a new self-signed certificate; participants must reach the hub by one of them. A start with -tls-hosts fails if the existing self-signed certificate misses one")
 	signingKeyFile  = flag.String("signing-key", "", "Ed25519 key file that signs tree heads of session logs (PEM); required, "+keygenHint)
 	firstAdmin      = flag.String("first-system-admin", "", "ID=PUBLIC_KEY of the first system admin; needed at the first start, ignored later")
 	publicURL       = flag.String("public-url", "", "base URL of the hub in stage links; default https://<listen address>")
@@ -188,7 +201,9 @@ First start: the hub needs a signing key and the first system admin, who runs th
   still verify.
 - TLS: if neither tls.crt nor tls.key exists, the hub creates a self-signed certificate for the
   names of -tls-hosts (valid for 820 days, because macOS and browsers reject longer ones), and
-  logs its SHA-256 fingerprint. Participants compare that fingerprint with "office hub add". To
+  logs its SHA-256 fingerprint. Participants compare that fingerprint with "office hub add". If a
+  later start names a host in -tls-hosts that the self-signed certificate misses, the hub does not
+  start: delete tls.crt and tls.key to create a new one. To
   use your own certificate, pass -tls-cert and -tls-key (PEM, the certificate may hold the whole
   chain; the key is PKCS #8, PKCS #1 or SEC 1), or put both files into the data directory. The
   hub never overwrites existing files, and reads the certificate at start: restart it after you
@@ -253,17 +268,9 @@ func main() {
 		return filepath.Join(*dataDir, def)
 	}
 
-	cert, created, err := loadOrCreateCert(or(*certFile, "tls.crt"), or(*keyFile, "tls.key"), strings.Split(*tlsHosts, ","))
-	if err != nil {
-		log.Fatal(err)
-	}
-	if created {
-		log.Printf("created a self-signed TLS certificate %s for %s", or(*certFile, "tls.crt"), *tlsHosts)
-	}
-	log.Printf("TLS certificate %s sha256 %s", or(*certFile, "tls.crt"), fingerprint(cert))
-	if warn := validityWarning(cert); warn != "" {
-		log.Printf("warning: TLS certificate %s: %s", or(*certFile, "tls.crt"), warn)
-	}
+	// Check everything that can fail before the hub writes to the data directory: a failed start
+	// leaves nothing behind, such as a self-signed certificate for the wrong names, which a later
+	// start would keep.
 
 	// The operator gives the signing key (dec-hub-signing-key). It must stay the same across
 	// restarts, so old tree heads still verify (dec-merkle-log).
@@ -274,12 +281,44 @@ func main() {
 	if err != nil {
 		log.Fatalf("signing key: %v; %s", err, keygenHint)
 	}
-	log.Printf("signing key of tree heads %s", auth.FormatPublicKey(auth.PublicKey(signingKey)))
-
+	// At the first start, the hub repository does not exist yet and the hub needs the first
+	// system admin. Later starts ignore the flag.
+	if _, err := os.Stat(filepath.Join(*dataDir, "repos", "hub")); errors.Is(err, fs.ErrNotExist) {
+		if *firstAdmin == "" {
+			log.Fatal("first start: name the first system admin with -first-system-admin ID=PUBLIC_KEY. " + firstAdminHint)
+		}
+		if _, err := identity.ParseBootstrap(*firstAdmin); err != nil {
+			log.Fatalf("-first-system-admin: %v. %s", err, firstAdminHint)
+		}
+	}
 	ln, err := net.Listen("tcp", *addr)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	hosts := strings.Split(*tlsHosts, ",")
+	cert, created, err := loadOrCreateCert(or(*certFile, "tls.crt"), or(*keyFile, "tls.key"), hosts)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if created {
+		log.Printf("created a self-signed TLS certificate %s for %s", or(*certFile, "tls.crt"), *tlsHosts)
+	} else if flagSet("tls-hosts") {
+		// -tls-hosts only shapes a new certificate. An old self-signed one that misses a name
+		// would make every participant fail at that name, so the hub does not start with it.
+		if missing := missingHosts(cert, hosts); len(missing) > 0 {
+			log.Fatalf("the self-signed TLS certificate %s does not cover %s of -tls-hosts; "+
+				"to create a new one for -tls-hosts, delete %s and %s and start again "+
+				"(participants then check the new fingerprint with \"office hub add\")",
+				or(*certFile, "tls.crt"), strings.Join(missing, ", "), or(*certFile, "tls.crt"), or(*keyFile, "tls.key"))
+		}
+	}
+	log.Printf("TLS certificate %s sha256 %s", or(*certFile, "tls.crt"), fingerprint(cert))
+	if warn := validityWarning(cert); warn != "" {
+		log.Printf("warning: TLS certificate %s: %s", or(*certFile, "tls.crt"), warn)
+	}
+	log.Printf("signing key of tree heads %s", auth.FormatPublicKey(auth.PublicKey(signingKey)))
+
 	if *publicURL == "" {
 		*publicURL = "https://" + ln.Addr().String()
 	}
@@ -301,7 +340,8 @@ func main() {
 	ids, err := identity.New(context.Background(), identity.Options{TokenTTL: *tokenTTL, StageLinkTTL: *stageTTL,
 		PublicURL: *publicURL, Archive: repos.Hub(), Bootstrap: bootstrap, BootstrapErr: bootstrapErr, Logf: log.Printf,
 		TenantFreeServices: []string{tenantv1connect.TenantServiceName},
-		StageProcedures:    []string{sessionstreamv1connect.SessionStreamServiceSubscribeProcedure}})
+		StageProcedures: []string{sessionstreamv1connect.SessionStreamServiceSubscribeProcedure,
+			sessionactivityv1connect.SessionActivityServiceWatchActivityProcedure}})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -327,6 +367,8 @@ func main() {
 	sessioncommandsv1connect.RegisterSessionCommandsServiceHandler(cs, commandsMux{rts})
 	sessionstreamv1connect.RegisterSessionStreamServiceHandler(cs, streamMux{rts})
 	sessionimportv1connect.RegisterSessionImportServiceHandler(cs, importMux{rts})
+	sessionactivityv1connect.RegisterSessionActivityServiceHandler(cs, activityMux{rts})
+	sessionlistv1connect.RegisterSessionListServiceHandler(cs, listMux{rts})
 	identityv1connect.RegisterIdentityServiceHandler(cs, ids)
 	userv1connect.RegisterUserServiceHandler(cs, ids)
 	tenantv1connect.RegisterTenantServiceHandler(cs, tenant.New(ids, repos))
@@ -355,8 +397,8 @@ func main() {
 		log.Fatal(err)
 	}
 	mux.Handle(gitweb.PathPrefix, gitHandler)
-	// The admin view asks the identity part in-process, with the token of the admin.
-	mux.Handle(adminweb.PathPrefix, admin.New(admin.Options{Identity: connectinprocess.New(cs)}))
+	// The portal asks the interfaces in-process, with the token of the user (dec-web-portal).
+	mux.Handle(portalweb.PathPrefix, portal.New(portal.Options{Hub: connectinprocess.New(cs)}))
 	// The stage subscribes in-process through the token check, with the token of the link.
 	mux.Handle(web.PathPrefix, stage.New(stage.Options{
 		Session: connectinprocess.New(cs),

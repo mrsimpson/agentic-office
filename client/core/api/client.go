@@ -15,6 +15,7 @@ import (
 	notev1 "github.com/mrsimpson/agentic-office/hub/records/note/api"
 	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
 	"github.com/mrsimpson/agentic-office/hub/session/commandsapi/sessioncommandsv1connect"
+	sessionlistv1 "github.com/mrsimpson/agentic-office/hub/session/listapi"
 	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
 	"github.com/mrsimpson/agentic-office/hub/session/streamapi/sessionstreamv1connect"
 	slidesv1 "github.com/mrsimpson/agentic-office/hub/slides/api"
@@ -145,8 +146,10 @@ type Client interface {
 	RenderDeck(ctx context.Context, req *slidesv1.RenderDeckRequest) (*slidesv1.RenderDeckResponse, error)
 	GetDeck(ctx context.Context, id string) (*slidesv1.Deck, error)
 
-	// CreateAdminLink creates a link that opens the admin view. Only admin keys may call it.
-	CreateAdminLink(ctx context.Context) (*identityv1.CreateAdminLinkResponse, error)
+	// CreatePortalLink creates a link that opens the portal (dec-web-portal), at the pages of
+	// tenant, or at the start page if tenant is empty. Every user may call it; tenant must be a
+	// tenant of the user.
+	CreatePortalLink(ctx context.Context, tenant string) (*identityv1.CreatePortalLinkResponse, error)
 
 	// CreateDocument creates a text document "documents/<name>.md". sessionID may be empty: the
 	// hub then puts artifact.created into the log of that session.
@@ -165,6 +168,9 @@ type Client interface {
 	ListNotes(ctx context.Context, after uint32, sessionID string, limit uint32) ([]*notev1.Note, error)
 	GetMinutes(ctx context.Context, sessionID string) (*minutesv1.Minutes, error)
 	ListMinutes(ctx context.Context, after uint32, sessionID string, limit uint32) ([]*minutesv1.Minutes, error)
+	// ListSessions returns the sessions of the tenant that the participant may see, the newest
+	// first (if-session-list): those it joined or imported, and all for a tenant admin.
+	ListSessions(ctx context.Context) ([]*sessionlistv1.Session, error)
 
 	CreateTask(ctx context.Context, d TaskDraft) (*taskv1.CreateTaskResponse, error)
 	GetTask(ctx context.Context, ref string) (*taskv1.Task, error)

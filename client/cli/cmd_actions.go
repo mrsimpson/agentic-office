@@ -13,6 +13,7 @@ import (
 
 	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
 
+	"connectrpc.com/connect/v2"
 	"google.golang.org/protobuf/proto"
 
 	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
@@ -616,7 +617,7 @@ func cmdDocumentList(e *env, fs *flag.FlagSet) func([]string) error {
 	}
 }
 
-func cmdAdminLink(e *env, fs *flag.FlagSet) func([]string) error {
+func cmdPortalLink(e *env, fs *flag.FlagSet) func([]string) error {
 	return func(args []string) error {
 		if err := noArgs(args); err != nil {
 			return err
@@ -625,7 +626,11 @@ func cmdAdminLink(e *env, fs *flag.FlagSet) func([]string) error {
 		if err != nil {
 			return err
 		}
-		res, err := c.CreateAdminLink(e.ctx)
+		tenant := e.cfg.Tenant
+		res, err := c.CreatePortalLink(e.ctx, tenant)
+		if connect.CodeOf(err) == connect.CodeNotFound && tenant != "" {
+			return fmt.Errorf("you are not a member of the tenant %q: name another one with --tenant, or open the start page with --tenant \"\"", tenant)
+		}
 		if err != nil {
 			return err
 		}
@@ -633,6 +638,48 @@ func cmdAdminLink(e *env, fs *flag.FlagSet) func([]string) error {
 			e.printJSON(map[string]any{"url": res.GetUrl(), "expiresAt": res.GetExpiresAt().AsTime().Format(time.RFC3339)})
 		} else {
 			fmt.Fprintln(e.stdout, res.GetUrl())
+		}
+		return nil
+	}
+}
+
+// cmdSessionList lists the sessions that the participant may see (if-session-list).
+func cmdSessionList(e *env, fs *flag.FlagSet) func([]string) error {
+	return func(args []string) error {
+		if err := noArgs(args); err != nil {
+			return err
+		}
+		c, err := e.client()
+		if err != nil {
+			return err
+		}
+		ss, err := c.ListSessions(e.ctx)
+		if err != nil {
+			return err
+		}
+		if e.json {
+			out := make([]any, len(ss))
+			for i, s := range ss {
+				out[i] = recordJSON(s)
+			}
+			e.printJSON(map[string]any{"sessions": out})
+			return nil
+		}
+		for _, s := range ss {
+			end := "running"
+			if s.GetEndedAt() != nil {
+				end = s.GetEndedAt().AsTime().UTC().Format(time.RFC3339)
+			}
+			var who []string
+			for _, p := range s.GetParticipants() {
+				who = append(who, p.GetParticipantId())
+			}
+			mark := ""
+			if s.GetImported() {
+				mark = " (imported)"
+			}
+			fmt.Fprintf(e.stdout, "%s%s\t%s\t%s\t%s\n", s.GetSessionId(), mark, s.GetStartedAt().AsTime().UTC().Format(time.RFC3339), end,
+				strings.Join(who, ", "))
 		}
 		return nil
 	}

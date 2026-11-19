@@ -142,6 +142,40 @@ addresses: qg-resumability, qg-usability, risk-retraction-leak, risk-agent-wakeu
 :::
 ```
 
+## The activity of an agent is short-lived and not part of the log
+
+**Context:** While an agent works, for example searches the web or writes the minutes, nobody in
+the meeting sees it. With a slow tool call the agent seems to hang or to ignore the question, and
+an answer that the agent wrote only in its own chat is lost without a trace. The agent runner
+knows these facts. The session log is the wrong place for them: it is append-only, signed,
+replicated to every peer and kept forever, and the details of a tool call can carry sentences that
+are off the record. **Decision:** The activity of a participant is a short-lived state next to the
+log (`if-session-activity`). The agent runner reports what its agent does: working, with the short
+name of the tool it calls; waiting; or that its last reply reached nobody. A report names a tool by
+its name only, never by its arguments. The meeting session keeps only the latest activity of each
+participant, in memory. An activity lives a short time unless the runner renews it, and it ends
+when the participant leaves or the session ends. The stage shows it next to the participant.
+Only the participant itself reports its activity. **Consequences:** The humans see that an agent
+works and with which tool, and that an answer got lost. The log, the archive and the copies of the
+peers stay free of it, so it costs no storage and cannot leak into them. After a restart of the
+hub the activities are gone until the runners renew them. Whoever holds a stage link sees the tool
+names. OPEN: whether other agents should see the activities as well; whether partials, which the
+log does not carry either (`dec-no-partials-in-log`), should take the same way.
+**Rejected:** an event for the activity in the log (stored forever, replicated to every peer,
+grows the log with noise, and its details could leak); the title or the arguments of a tool call
+on the stage (can carry what was said off the record); a channel outside the hub (a second server
+next to the hub).
+
+```arc42
+:::decision
+id: dec-agent-activity
+title: The activity of an agent is short-lived and not part of the log
+status: accepted
+date: 2026-11-19
+addresses: qg-usability, qg-confidentiality, risk-retraction-leak
+:::
+```
+
 ## A forwarding judge or a decision model that the user brings
 
 **Context:** The runner checks after each utterance whether to wake the agent
@@ -1096,30 +1130,55 @@ addresses: qg-usability, qg-confidentiality, risk-push-bypass, risk-push-size, r
 :::
 ```
 
-## The admin view is a server-rendered page behind a one-time link
+## A web portal for the people of a tenant, behind a one-time link
 
-**Context:** The hub needs a view for system admins: users and keys, tenants and system admins
-(`dec-multi-tenancy`). Admins have Ed25519 keys and no passwords, and a browser cannot sign a
-challenge without more work. **Decision:** The admin view is a web page that the hub renders on the
-server, in the design of the stage, without scripts. An admin asks for a link with the CLI. The link
-holds a code that works once and expires after a few minutes. The admin view swaps the code for an
-access token of the admin key and keeps it in a cookie that scripts cannot read. It sends the token
-with every call to the identity part, so it has exactly the rights of the admin key and no logic of
-its own. **Consequences:** No password and no new login flow. The code is useless after its first
-use, so a link on a shared screen does no harm once it was opened. The access token lives one
-hour. Every change goes through an interface that checks the rights. A form carries a token that is derived from the session, and the view refuses a post from another origin. Revoking asks for a confirmation on its own page, so no script is needed.
-**Rejected:** a password for admins (a second secret to keep); a signature in the browser (needs
-scripts and a new key format); the stage link style with the token in the URL for the whole
-session (the URL stays in the history and on the screen). The first writes are to create users, to add keys and to revoke keys. OPEN: creating
-tenants and managing memberships in the view.
+**Context:** The people of a tenant need a place to find their sessions after they ended, and to
+read the minutes, notes, decisions, tasks, slides and documents of the tenant, besides the CLI,
+MCP and their Git clone. The stage shows only one running session for a screen share. System
+admins need a view of users and keys, and tenant admins one of their members. People have Ed25519 keys and
+no passwords, and a browser cannot sign a challenge without more work. **Decision:** One web
+portal for every user of the hub, rendered by the hub on the server, in the design of the stage,
+without scripts and without logic of its own. A user asks for a link with the CLI. The link holds
+a code that works once and expires after a few minutes. The portal swaps the code for an access
+token of the key and keeps it in a cookie that scripts cannot read. Every page calls the
+interfaces of the hub with this token, so the portal has exactly the rights of the key. The portal
+shows what the key may see:
+
+- every member of a tenant: the sessions in which the member took part, and the minutes, notes,
+  decisions, tasks, slides and documents of the tenant;
+- a tenant admin, in addition: every session of the tenant and the members of the tenant;
+- a system admin, in addition: users and keys, tenants and system admins. A system admin who is
+  no member of a tenant sees no content of it.
+
+The tenant is part of the address of a page, so a user with several memberships switches between
+them. The portal reads only, except the administration of keys by system admins: register users and
+keys and revoke keys. Writing content stays with the CLI, MCP and Git
+(`dec-artifact-sync`). The stage stays separate: it is opened by a link without login, for one
+session, for a screen share. The meeting session lists the sessions that a caller may see, with
+their start, end, participants and whether they were imported, through an interface of its own
+(`if-session-list`); it takes the participants from the log. The session stream stays the log of
+one session. **Consequences:** No password and no new login flow; one link, one cookie and one design for
+every user and every admin. The code is useless after its first use, so a link on a shared screen
+does no harm once it was opened. The access token lives one hour. Every page goes through an
+interface that checks the rights, so the portal cannot show more than the CLI. A form carries a
+token that is derived from the session, and the portal refuses a post from another origin.
+Revoking asks for a confirmation on its own page, so no script is needed. OPEN: whether a note made in a session is visible to the participants of
+that session only (#15); a login with passkeys; creating tenants and managing memberships in the
+portal. **Rejected:** a separate admin view next to a portal (two logins, two designs, and no place for
+tenant admins); a password (a second secret to keep); a signature in the browser (needs scripts and
+a new key format); the stage link style with the token in the URL for the whole session (the URL
+stays in the history and on the screen); a single-page application with a frontend build (a second
+toolchain, `dec-languages`); the list of sessions as a call of the session stream (the stream
+replicates the log of one session; a list across sessions has another question and other rights);
+the portal reading the stored logs itself (logic and a check of rights in a view).
 
 ```arc42
 :::decision
-id: dec-admin-web
-title: The admin view is a server-rendered page behind a one-time link
+id: dec-web-portal
+title: A web portal for the people of a tenant, behind a one-time link
 status: accepted
-date: 2026-11-12
-addresses: qg-usability
+date: 2026-11-19
+addresses: qg-usability, qg-confidentiality
 :::
 ```
 

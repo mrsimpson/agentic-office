@@ -31,6 +31,9 @@ type Caller struct {
 	// StageSessionID is set for the read-only token of a stage link. Such a caller may only
 	// subscribe to this session.
 	StageSessionID string
+	// TenantAdmin is set for a tenant admin of the tenant of the call. A tenant admin sees every
+	// session of the tenant in the session list.
+	TenantAdmin bool
 	// Done is closed when the token expires or is revoked. An open stream ends then. Nil means
 	// never.
 	Done <-chan struct{}
@@ -74,6 +77,11 @@ type Service struct {
 
 	mu       sync.Mutex
 	sessions map[string]*state
+
+	// activity keeps the short-lived activities of the participants (if-session-activity).
+	activity activities
+	// summaries keeps the list entries of finished sessions read from the archive (if-session-list).
+	summaries summaries
 
 	// The archive (dec-session-persistence), set by UseArchive. See RunArchive.
 	arch   *archiver
@@ -411,6 +419,7 @@ func (s *Service) run(ctx context.Context, c command, isJoin bool) (*sessioncomm
 		return nil, err
 	}
 	s.markDirty(c.sessionID, ev.GetType())
+	s.endActivities(c.sessionID, ev)
 	return &sessioncommandsv1.CommandResult{Event: ev}, nil
 }
 
@@ -765,6 +774,10 @@ func (s *Service) Subscribe(ctx context.Context, req *sessionstreamv1.SubscribeR
 	if err != nil {
 		return err
 	}
+	if err := mayRead(caller, st); err != nil {
+		st.mu.Unlock()
+		return err
+	}
 	last, ended := st.lastID, st.ended
 	// An open stream reads the log: the session stays in memory until the stream ends.
 	st.refs++
@@ -858,6 +871,10 @@ func (s *Service) GetEvents(ctx context.Context, req *sessionstreamv1.GetEventsR
 	if err != nil {
 		return nil, err
 	}
+	if err := mayRead(caller, st); err != nil {
+		st.mu.Unlock()
+		return nil, err
+	}
 	last := st.lastID
 	st.refs++
 	st.mu.Unlock()
@@ -931,6 +948,9 @@ func (s *Service) tree(ctx context.Context, sid string) ([][]byte, string, error
 		return nil, "", err
 	}
 	defer st.mu.Unlock()
+	if err := mayRead(caller, st); err != nil {
+		return nil, "", err
+	}
 	n := len(st.leaves)
 	return st.leaves[:n:n], st.schema, nil
 }

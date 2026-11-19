@@ -6,6 +6,7 @@ package contract
 // ACP test double from tests/acpdouble. The tests wait for records and log lines, never for time.
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
+	sessionactivityv1 "github.com/mrsimpson/agentic-office/hub/session/activityapi"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
@@ -48,6 +51,7 @@ func waitPromptEnd(t *testing.T, rec string, n int) {
 // meetingOf is a session with Ada (human), Carl (agent, CLI) and Bot (agent, runner).
 type meetingOf struct {
 	t              *testing.T
+	srv            *contracttest.Hub
 	sid            string
 	ada, carl, bot *officeUser
 	adaLog, botLog string
@@ -60,7 +64,7 @@ type meetingOf struct {
 func newMeetingWithRunner(t *testing.T, env []string, flags ...string) *meetingOf {
 	t.Helper()
 	m := newMachine(t)
-	mt := &meetingOf{t: t, sid: newSession(), ada: m.user("ada", "Ada", "human"), carl: m.user("carl", "Carl", "agent"),
+	mt := &meetingOf{t: t, srv: m.srv, sid: newSession(), ada: m.user("ada", "Ada", "human"), carl: m.user("carl", "Carl", "agent"),
 		bot: m.user("bot", "Bot", "agent")}
 	mt.bot.env = append(mt.bot.env, env...)
 	mt.adaLog = mt.ada.join(mt.sid).LogPath
@@ -270,4 +274,79 @@ func TestAgentRunnerUnspokenReply(t *testing.T) {
 	if n := strings.Count(mt.runner.Stderr(), "WARNING"); n != 1 {
 		t.Errorf("%d warnings, want 1:\n%s", n, mt.runner.Stderr())
 	}
+}
+
+// TestAgentRunnerActivity: the runner reports what the agent does (if-session-activity,
+// dec-agent-activity): working while a prompt runs, with the short name of the tool it calls;
+// waiting when the turn has ended; and that a reply reached nobody after the runner asked once.
+func TestAgentRunnerActivity(t *testing.T) {
+	mt := newMeetingWithRunner(t, nil)
+	// Ada took part in the session, so she may watch its activities.
+	adaKey, err := auth.ReadKey(mt.ada.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	watcher := mt.srv.WithKey(t, adaKey)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	st, err := watcher.Activity.WatchActivity(ctx, &sessionactivityv1.WatchActivityRequest{SessionId: mt.sid})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	type botActivity struct {
+		state         sessionactivityv1.ActivityState
+		tool          string
+		unspoken, has bool
+	}
+	seen := make(chan botActivity, 64)
+	go func() {
+		for {
+			res, err := st.Receive()
+			if err != nil {
+				close(seen)
+				return
+			}
+			var b botActivity
+			for _, a := range res.GetActivities() {
+				if a.GetParticipantId() == "bot" {
+					b = botActivity{a.GetState(), a.GetTool(), a.GetUnspokenReply(), true}
+				}
+			}
+			seen <- b
+		}
+	}()
+	waitBot := func(what string, ok func(botActivity) bool) {
+		t.Helper()
+		deadline := time.After(20 * time.Second)
+		for {
+			select {
+			case b, open := <-seen:
+				if !open {
+					t.Fatalf("the activity stream ended before %s", what)
+				}
+				if ok(b) {
+					return
+				}
+			case <-deadline:
+				t.Fatalf("the bot was not %s within 20 s", what)
+			}
+		}
+	}
+	working := sessionactivityv1.ActivityState_ACTIVITY_STATE_WORKING
+	idle := sessionactivityv1.ActivityState_ACTIVITY_STATE_IDLE
+	waitBot("waiting after its first turn", func(b botActivity) bool { return b.has && b.state == idle && !b.unspoken })
+
+	// While the agent holds, it works, and the last tool it called is utterance_say.
+	mt.say(mt.ada, `Bot, please say "On it." please hold`)
+	mt.turnEnd(mt.ada)
+	waitBot("working with utterance_say", func(b botActivity) bool { return b.state == working && b.tool == "utterance_say" })
+	mt.release()
+	waitBot("waiting again", func(b botActivity) bool { return b.state == idle && !b.unspoken })
+
+	// A reply that stays in the chat even after the question reached nobody.
+	mt.say(mt.ada, `Bot, please always reply "Only in my chat."`)
+	mt.turnEnd(mt.ada)
+	mt.waitStderr("WARNING: the agent again did not speak")
+	waitBot("waiting with an unspoken reply", func(b botActivity) bool { return b.state == idle && b.unspoken })
 }

@@ -1,37 +1,58 @@
-// Package web is the admin view (if-admin-web): the web pages for the admins of the hub.
+// Package web is the portal (if-portal-web, dec-web-portal): the web pages of the hub for every
+// user. The pages show what the key of the user may see.
 //
 // Addresses:
 //
-//	GET  /admin/login?code=<code>   swaps the code of an admin link for a session and opens the view
-//	GET  /admin/keys                the users and their keys
-//	GET  /admin/keys/new            the form that registers a key
-//	POST /admin/keys/register       registers a key
-//	GET  /admin/keys/revoke         asks to confirm that a key is revoked
-//	POST /admin/keys/revoke         revokes a key
-//	GET  /admin/tenants             placeholder until multi-tenancy (dec-multi-tenancy)
-//	GET  /admin/admins              placeholder until multi-tenancy
+//	GET  /portal/login?code=<code>        swaps the code of a portal link for a session
+//	GET  /portal/                         the start page: the tenants of the user
+//	GET  /portal/t/<tenant>/              the start page of a tenant: the role and the sessions
+//	GET  /portal/t/<tenant>/members       the members of a tenant (tenant admins)
+//	GET  /portal/admin/keys               the users and their keys (system admins)
+//	GET  /portal/admin/keys/new           the form that registers a key
+//	POST /portal/admin/keys/register      registers a key
+//	GET  /portal/admin/keys/revoke        asks to confirm that a key is revoked
+//	POST /portal/admin/keys/revoke        revokes a key
+//	GET  /portal/admin/tenants            the tenants of the hub
+//	GET  /portal/admin/admins             the system admins
 //
-// The pages have no scripts and no external assets. The session is a cookie (CookieName) that
-// scripts cannot read. The Content-Security-Policy (CSP) allows only inline styles.
+// The navigation shows only what the key may see. The pages have no scripts and no external
+// assets. The session is a cookie (CookieName) that scripts cannot read. The
+// Content-Security-Policy (CSP) allows only inline styles.
 package web
 
-import "html/template"
+import (
+	"html/template"
+	"net/url"
+)
 
 const (
-	// PathPrefix is where the admin view is mounted.
-	PathPrefix = "/admin/"
-	// LoginPath is the address that takes the code of an admin link.
-	LoginPath = "/admin/login"
-	// KeysPath is the first page.
-	KeysPath = "/admin/keys"
+	// PathPrefix is where the portal is mounted.
+	PathPrefix = "/portal/"
+	// HomePath is the start page.
+	HomePath = "/portal/"
+	// LoginPath is the address that takes the code of a portal link.
+	LoginPath = "/portal/login"
+	// TenantPrefix starts the pages of a tenant: /portal/t/<tenant>/…
+	TenantPrefix = "/portal/t/"
+	// KeysPath is the list of users and keys.
+	KeysPath = "/portal/admin/keys"
 	// NewKeyPath is the form that registers a key; RegisterPath takes the form.
-	NewKeyPath   = "/admin/keys/new"
-	RegisterPath = "/admin/keys/register"
+	NewKeyPath   = "/portal/admin/keys/new"
+	RegisterPath = "/portal/admin/keys/register"
 	// RevokePath asks for the confirmation (GET) and revokes the key (POST).
-	RevokePath = "/admin/keys/revoke"
-	// CookieName is the cookie with the access token of the admin.
-	CookieName = "office_admin"
+	RevokePath = "/portal/admin/keys/revoke"
+	// TenantsPath and AdminsPath list the tenants and the system admins.
+	TenantsPath = "/portal/admin/tenants"
+	AdminsPath  = "/portal/admin/admins"
+	// CookieName is the cookie with the access token of the user.
+	CookieName = "office_portal"
 )
+
+// TenantPath is the start page of a tenant.
+func TenantPath(tenant string) string { return TenantPrefix + url.PathEscape(tenant) + "/" }
+
+// MembersPath is the page with the members of a tenant.
+func MembersPath(tenant string) string { return TenantPrefix + url.PathEscape(tenant) + "/members" }
 
 // CSP is the Content-Security-Policy of every page. The pages cannot be framed.
 const CSP = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
@@ -47,7 +68,9 @@ const css = `
 html { font-size: clamp(15px, 1.1vw, 24px); }
 body { margin: 0; background: var(--bg); color: var(--text); font-family: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif; line-height: 1.5; -webkit-font-smoothing: antialiased; display: grid; grid-template-columns: 15rem minmax(0, 1fr); min-height: 100vh; }
 nav { border-right: 1px solid var(--line); padding: 1.6rem 1.2rem; }
-.brand { display: flex; align-items: center; gap: 0.7rem; font-weight: 600; margin-bottom: 2rem; }
+.brand { display: flex; align-items: center; gap: 0.7rem; font-weight: 600; margin-bottom: 0.6rem; color: var(--text); text-decoration: none; }
+.me { color: var(--muted); font-size: 0.85rem; margin: 0 0 1.4rem 1.8rem; }
+a.name { color: var(--text); }
 .logo { width: 1.1rem; height: 1.1rem; border-radius: 50%; background: var(--ink); }
 .eyebrow, h2 { margin: 0; font-size: 0.7rem; font-weight: 500; letter-spacing: 0.13em; text-transform: uppercase; color: var(--muted); }
 nav .eyebrow { margin: 1.4rem 0.6rem 0.4rem; }
@@ -71,6 +94,11 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.85rem
 .badge.revoked { color: var(--rec); border-color: currentColor; }
 .badge.admin { color: var(--text); border-color: var(--text); }
 .empty { color: var(--muted); }
+h2 { margin: 1.6rem 0 0.6rem; }
+.chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.chip { font-size: 0.8rem; padding: 0 0.55em; border: 1px solid var(--line); border-radius: 99px; }
+.chip.agent { border-radius: 0; }
+.badge.imported { color: var(--warn); border-color: currentColor; }
 .toolbar { display: flex; justify-content: flex-end; margin: -3.2rem 0 1.4rem; }
 .button, button { font: inherit; font-size: 0.9rem; font-weight: 500; padding: 0.4rem 1.1rem; border: 1px solid var(--ink); border-radius: 0; background: var(--ink); color: var(--on-ink); text-decoration: none; cursor: pointer; }
 .button.quiet, button.quiet { background: none; color: var(--text); border-color: var(--line); }
@@ -95,8 +123,8 @@ body.error main { padding: 4rem 3rem; }
 body.error h1 { color: var(--warn); }
 `
 
-// Page is a page of the admin view. Fields: Title, Active (the address of the open page), Keys,
-// Message (for placeholders).
+// Page is a page of the portal. Fields: Title, Section, Me, Nav, Mode and the fields of the
+// mode.
 var Page = template.Must(template.New("page").Funcs(template.FuncMap{
 	"initials": func(name string) string {
 		var out []rune
@@ -117,14 +145,13 @@ var Page = template.Must(template.New("page").Funcs(template.FuncMap{
 }).Parse(`<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>{{.Title}} · Agentic office admin</title><style>` + css + `</style></head>
+<title>{{.Title}} · Agentic office</title><style>` + css + `</style></head>
 <body>
-<nav><div class="brand"><div class="logo"></div>Office admin</div>
-<div class="eyebrow">Hub</div>
-<a href="/admin/keys"{{if eq .Active "/admin/keys"}} class="on"{{end}}>Users and keys</a>
-<div class="eyebrow">Tenants</div>
-<a href="/admin/tenants"{{if eq .Active "/admin/tenants"}} class="on"{{end}}>Tenants</a>
-<a href="/admin/admins"{{if eq .Active "/admin/admins"}} class="on"{{end}}>System admins</a>
+<nav><a class="brand" href="/portal/"><div class="logo"></div>Agentic office</a>
+{{with .Me}}<div class="me" data-me="{{.ParticipantID}}">{{.Name}}</div>{{end}}
+{{range .Nav}}<div class="eyebrow">{{.Group}}</div>
+{{range .Links}}<a href="{{.Href}}"{{if .On}} class="on"{{end}} data-nav="{{.Href}}">{{.Label}}</a>
+{{end}}{{end}}
 </nav>
 <main>
 <div class="eyebrow">{{.Section}}</div>
@@ -134,6 +161,25 @@ var Page = template.Must(template.New("page").Funcs(template.FuncMap{
 <tr><th>Tenant</th><th>Name</th><th>Status</th></tr>
 {{range .Tenants}}<tr data-tenant="{{.TenantId}}"><td><span class="name">{{.TenantId}}</span></td><td>{{.Name}}</td><td>{{if .Removed}}<span class="badge revoked">removed</span>{{else}}<span class="badge active">active</span>{{end}}</td></tr>
 {{end}}</table>{{else}}<p class="empty">There are no tenants yet. Create one with: office admin tenant create</p>{{end}}
+{{else if eq .Mode "home"}}{{if .Tenants}}<table class="tenants">
+<tr><th>Tenant</th><th>Your role</th></tr>
+{{range .Tenants}}<tr data-tenant="{{.TenantId}}"><td><a class="name" href="{{.Href}}">{{.TenantId}}</a></td><td>{{.Role}}</td></tr>
+{{end}}</table>{{else}}<p class="empty" data-empty="tenants">You are no member of a tenant.{{if .SystemAdmin}} As a system admin you manage the hub in the sections on the left.{{end}}</p>{{end}}
+{{else if eq .Mode "tenant"}}<dl class="facts" data-tenant="{{.Tenant}}"><dt>Your role</dt><dd data-role>{{.Role}}</dd></dl>
+<h2>Sessions</h2>
+{{if .Sessions}}<table class="sessions">
+<tr><th>Session</th><th>Started (UTC)</th><th>Ended (UTC)</th><th>Participants</th></tr>
+{{range .Sessions}}<tr data-session="{{.SessionId}}"{{if .Running}} data-running{{end}}{{if .Imported}} data-imported{{end}}>
+<td><span class="name">{{.SessionId}}</span>{{if .Imported}} <span class="badge imported">imported</span>{{end}}</td>
+<td><small>{{.Started}}</small></td>
+<td>{{if .Running}}<span class="badge active">running</span>{{else}}<small>{{.Ended}}</small>{{end}}</td>
+<td><div class="chips">{{range .Participants}}<span class="chip{{if .Agent}} agent{{end}}" data-participant="{{.ParticipantId}}" title="{{.ParticipantId}}">{{.Name}}</span>{{end}}</div></td>
+</tr>
+{{end}}</table>{{else}}<p class="empty" data-empty="sessions">You took part in no session of this tenant yet.</p>{{end}}
+{{else if eq .Mode "members"}}<table class="members">
+<tr><th>User</th><th>Role</th><th>Since</th></tr>
+{{range .Members}}<tr data-member="{{.UserId}}"><td><span class="name">{{.UserId}}</span></td><td>{{.Role}}</td><td><small>{{.Since}}</small></td></tr>
+{{end}}</table>
 {{else if eq .Mode "admins"}}<table class="keys">
 <tr><th>User</th><th>Kind</th><th>Key</th><th>Status</th></tr>
 {{range .Keys}}<tr data-participant="{{.ParticipantId}}" data-key="{{.KeyId}}">
@@ -141,22 +187,22 @@ var Page = template.Must(template.New("page").Funcs(template.FuncMap{
 <td>{{.KindName}}</td><td><code title="{{.KeyId}}">{{short .KeyId}}</code></td>
 <td>{{if .Revoked}}<span class="badge revoked">revoked</span>{{else}}<span class="badge active">active</span>{{end}}</td></tr>
 {{end}}</table>
-{{else if eq .Mode "register"}}<form class="stack" method="post" action="/admin/keys/register" data-form="register">
+{{else if eq .Mode "register"}}<form class="stack" method="post" action="/portal/admin/keys/register" data-form="register">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
 <label>User ID<input name="participant_id" value="{{.Form.ParticipantID}}" required maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9._-]*" autocomplete="off"><small>1 to 64 letters, digits, ".", "_" or "-", for example ada.</small></label>
 <label>Display name<input name="display_name" value="{{.Form.DisplayName}}" maxlength="100" autocomplete="off"><small>Needed for a new user.</small></label>
 <label>Kind<select name="kind"><option value="human"{{if ne .Form.Kind "agent"}} selected{{end}}>human</option><option value="agent"{{if eq .Form.Kind "agent"}} selected{{end}}>agent</option></select></label>
 <label>Public key<textarea name="public_key" required spellcheck="false" autocomplete="off">{{.Form.PublicKey}}</textarea><small>The base64 public key that <code>office key show</code> prints.</small></label>
-<div class="buttons"><button type="submit">Register key</button><a class="link" href="/admin/keys">Cancel</a></div>
+<div class="buttons"><button type="submit">Register key</button><a class="link" href="/portal/admin/keys">Cancel</a></div>
 </form>
 {{else if eq .Mode "revoke"}}<dl class="facts" data-confirm="revoke">
 <dt>User</dt><dd>{{.Key.Name}} <small>{{.Key.ParticipantId}}</small></dd>
 <dt>Key</dt><dd><code>{{.Key.KeyId}}</code></dd></dl>
 <p class="muted">The key stops working at once, and all its access tokens end. A revoked key cannot be registered again.</p>
-<form class="buttons" method="post" action="/admin/keys/revoke" data-form="revoke">
+<form class="buttons" method="post" action="/portal/admin/keys/revoke" data-form="revoke">
 <input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="key_id" value="{{.Key.KeyId}}">
-<button class="danger" type="submit">Revoke key</button><a class="link" href="/admin/keys">Cancel</a></form>
-{{else}}<div class="toolbar"><a class="button" href="/admin/keys/new">Register key</a></div>
+<button class="danger" type="submit">Revoke key</button><a class="link" href="/portal/admin/keys">Cancel</a></form>
+{{else}}<div class="toolbar"><a class="button" href="/portal/admin/keys/new">Register key</a></div>
 {{if .Keys}}<table class="keys">
 <tr><th>User</th><th>Kind</th><th>Key</th><th>Status</th><th></th></tr>
 {{range .Keys}}<tr data-participant="{{.ParticipantId}}" data-key="{{.KeyId}}">
@@ -164,7 +210,7 @@ var Page = template.Must(template.New("page").Funcs(template.FuncMap{
 <td>{{.KindName}}</td>
 <td><code title="{{.KeyId}}">{{short .KeyId}}</code></td>
 <td>{{if .Revoked}}<span class="badge revoked">revoked</span>{{else}}<span class="badge active">active</span>{{end}}{{if .Removed}} <span class="badge revoked">removed</span>{{end}}{{if .Admin}} <span class="badge admin">system admin</span>{{end}}</td>
-<td>{{if and (not .Revoked) (not .Removed)}}<a class="link" href="/admin/keys/revoke?key_id={{.KeyId}}">Revoke</a>{{end}}</td>
+<td>{{if and (not .Revoked) (not .Removed)}}<a class="link" href="/portal/admin/keys/revoke?key_id={{.KeyId}}">Revoke</a>{{end}}</td>
 </tr>
 {{end}}</table>{{else}}<p class="empty">There are no keys yet.</p>{{end}}{{end}}
 </main></body></html>
@@ -174,7 +220,7 @@ var Page = template.Must(template.New("page").Funcs(template.FuncMap{
 // Title, Message.
 var ErrorPage = template.Must(template.New("error").Parse(`<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{.Title}} · Agentic office admin</title><style>` + css + `</style></head>
+<title>{{.Title}} · Agentic office</title><style>` + css + `</style></head>
 <body class="error"><main><h1>{{.Title}}</h1><p id="error">{{.Message}}</p></main></body></html>
 `))
 

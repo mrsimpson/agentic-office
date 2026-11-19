@@ -400,45 +400,48 @@ sequenceDiagram
     bb_git_access-->>actor_human: push accepted
 ```
 
-## Admin opens the admin view
+## A user opens the portal
 
-An admin asks for a link with the CLI. The identity part creates a code that works once and returns
-the link. The admin opens it in a browser. The admin view swaps the code for an access token of the
-admin key, keeps it in a cookie and shows the page. Every page then asks the identity part with this
-token. A used, expired or unknown code gives an error page.
+A user asks for a link with the CLI. The identity part creates a code that works once and returns
+the link. The user opens it in a browser. The portal swaps the code for an access token of the
+key, keeps it in a cookie and shows the start page of the tenant that the link names. Every page
+then asks the interfaces of the hub with this token: for example the meeting session for the
+sessions that the user may see. A used, expired or unknown code gives an error page.
 
 ```arc42
 :::runtime-scenario
-id: rs-admin-opens-view
-title: Admin opens the admin view
-trigger: An admin asks for an admin link
-involves: bb-cli, bb-client-core, bb-identity, bb-admin, bb-participant-client, bb-office-hub
+id: rs-user-opens-portal
+title: A user opens the portal
+trigger: A user asks for a portal link
+involves: bb-cli, bb-client-core, bb-identity, bb-portal, bb-session-service, bb-participant-client, bb-office-hub
 :::
 ```
 
 ```arc42
 :::diagram
-id: seq-admin-opens-view
+id: seq-user-opens-portal
 notation: mermaid-sequence
-scenario: rs-admin-opens-view
-aliases: actor_system_admin=actor-system-admin, bb_cli=bb-cli, bb_identity=bb-identity, bb_admin=bb-admin
+scenario: rs-user-opens-portal
+aliases: actor_human=actor-human, bb_cli=bb-cli, bb_identity=bb-identity, bb_portal=bb-portal, bb_session_service=bb-session-service
 :::
 ```
 
 ```mermaid
 sequenceDiagram
-    participant actor_system_admin as System admin
+    participant actor_human as Human participant
     participant bb_cli as office CLI
     participant bb_identity as Identity
-    participant bb_admin as Admin view
-    actor_system_admin->>bb_cli: office admin link
-    bb_cli->>bb_identity: create admin link
+    participant bb_portal as Portal
+    participant bb_session_service as Meeting session
+    actor_human->>bb_cli: office portal link
+    bb_cli->>bb_identity: create portal link
     bb_identity-->>bb_cli: link with a code that works once
-    actor_system_admin->>bb_admin: opens the link in a browser
-    bb_admin->>bb_identity: exchange the code
-    bb_identity-->>bb_admin: access token of the admin key
-    bb_admin->>bb_identity: list keys, with the token
-    bb_admin-->>actor_system_admin: page with the users and their keys
+    actor_human->>bb_portal: opens the link in a browser
+    bb_portal->>bb_identity: exchange the code
+    bb_identity-->>bb_portal: access token of the key
+    bb_portal->>bb_session_service: list the sessions that I may see, with the token
+    bb_session_service-->>bb_portal: sessions with start, end and participants
+    bb_portal-->>actor_human: start page of the tenant
 ```
 
 ## Human marks a sentence off the record

@@ -560,43 +560,53 @@ func TestIdentitySurvivesRestart(t *testing.T) {
 	wantCode(t, "revoked key after the restart", err, connect.CodeUnauthenticated)
 }
 
-// The admin link: only system admins may create it. The code of a link works once and gives
-// an access token with the rights of the admin key that created the link.
-func TestAdminLink(t *testing.T) {
+// The portal link: every user may create one, naming a tenant of its own or none. The code of a
+// link works once and gives an access token with the rights of the key that created the link.
+// WhoAmI tells the user who it is, whether it is a system admin, and its memberships.
+func TestPortalLink(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	admin := srv.Admin(t)
 	ada := srv.Participant(t, "ada", "Ada", human)
 	ctx := ctx10(t)
 
-	_, err := ada.Identity.CreateAdminLink(ctx, &identityv1.CreateAdminLinkRequest{CommandId: coreapi.NewCommandID()})
-	wantCode(t, "CreateAdminLink by a participant", err, connect.CodePermissionDenied)
-	_, err = admin.Identity.CreateAdminLink(ctx, &identityv1.CreateAdminLinkRequest{})
-	wantCode(t, "CreateAdminLink without command_id", err, connect.CodeInvalidArgument)
+	_, err := admin.Identity.CreatePortalLink(ctx, &identityv1.CreatePortalLinkRequest{})
+	wantCode(t, "CreatePortalLink without command_id", err, connect.CodeInvalidArgument)
+	_, err = admin.Identity.CreatePortalLink(ctx, &identityv1.CreatePortalLinkRequest{CommandId: coreapi.NewCommandID(), TenantId: contracttest.DefaultTenant})
+	wantCode(t, "CreatePortalLink of a system admin for a tenant", err, connect.CodeNotFound)
 
-	req := &identityv1.CreateAdminLinkRequest{CommandId: coreapi.NewCommandID()}
-	link, err := admin.Identity.CreateAdminLink(ctx, req)
+	req := &identityv1.CreatePortalLinkRequest{CommandId: coreapi.NewCommandID(), TenantId: contracttest.DefaultTenant}
+	link, err := ada.Identity.CreatePortalLink(ctx, req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	prefix := srv.URL + "/admin/login?code="
+	prefix := srv.URL + "/portal/login?code="
 	if !strings.HasPrefix(link.GetUrl(), prefix) || !link.GetExpiresAt().AsTime().After(time.Now()) {
-		t.Fatalf("admin link %v, want %s<code>", link, prefix)
+		t.Fatalf("portal link %v, want %s<code>", link, prefix)
 	}
-	if again, err := admin.Identity.CreateAdminLink(ctx, req); err != nil || again.GetUrl() != link.GetUrl() {
+	if again, err := ada.Identity.CreatePortalLink(ctx, req); err != nil || again.GetUrl() != link.GetUrl() {
 		t.Fatalf("repeated command: %v, %v", again, err)
 	}
 	code := strings.TrimPrefix(link.GetUrl(), prefix)
 	anon := srv.Anonymous(t)
-	res, err := anon.Identity.ExchangeAdminLink(ctx, &identityv1.ExchangeAdminLinkRequest{Code: code})
-	if err != nil || res.GetParticipantId() != contracttest.AdminID || res.GetAccessToken() == "" {
+	res, err := anon.Identity.ExchangePortalLink(ctx, &identityv1.ExchangePortalLinkRequest{Code: code})
+	if err != nil || res.GetParticipantId() != "ada" || res.GetAccessToken() == "" || res.GetTenantId() != contracttest.DefaultTenant {
 		t.Fatalf("exchange: %v, %v", res, err)
 	}
-	_, err = anon.Identity.ExchangeAdminLink(ctx, &identityv1.ExchangeAdminLinkRequest{Code: code})
+	_, err = anon.Identity.ExchangePortalLink(ctx, &identityv1.ExchangePortalLinkRequest{Code: code})
 	wantCode(t, "second exchange of a code", err, connect.CodeUnauthenticated)
-	_, err = anon.Identity.ExchangeAdminLink(ctx, &identityv1.ExchangeAdminLinkRequest{Code: "oal_unknown"})
+	_, err = anon.Identity.ExchangePortalLink(ctx, &identityv1.ExchangePortalLinkRequest{Code: "opl_unknown"})
 	wantCode(t, "unknown code", err, connect.CodeUnauthenticated)
-	// The token has the rights of the admin key.
-	if _, err := srv.WithToken(t, res.GetAccessToken()).User.ListUsers(ctx, &userv1.ListUsersRequest{}); err != nil {
-		t.Errorf("ListUsers with the token of the link: %v", err)
+
+	// The token has the rights of the key, and WhoAmI names them.
+	who, err := srv.WithToken(t, res.GetAccessToken()).Identity.WhoAmI(ctx, &identityv1.WhoAmIRequest{})
+	if err != nil || who.GetParticipantId() != "ada" || who.GetSystemAdmin() || len(who.GetMemberships()) != 1 ||
+		who.GetMemberships()[0].GetTenantId() != contracttest.DefaultTenant || !who.GetMemberships()[0].GetTenantAdmin() {
+		t.Fatalf("WhoAmI of ada: %v, %v", who, err)
+	}
+	if who, err := admin.Identity.WhoAmI(ctx, &identityv1.WhoAmIRequest{}); err != nil || !who.GetSystemAdmin() || len(who.GetMemberships()) != 0 {
+		t.Errorf("WhoAmI of the system admin: %v, %v", who, err)
+	}
+	if _, err := srv.WithToken(t, res.GetAccessToken()).User.ListUsers(ctx, &userv1.ListUsersRequest{}); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Errorf("ListUsers with the token of a member: %v, want permission_denied", err)
 	}
 }
