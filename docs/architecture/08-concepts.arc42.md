@@ -335,7 +335,8 @@ from page to page.
 
 - **Sources** are memories: minutes, decisions and notes. The transcript of a session is not a
   source: only its participants may read it, while every member reads the wiki. They come into being as a side effect of
-  a session or of other work, and they never change. A correction is a new record that refers to
+  a session or of other work, and they never change. A session that is opened again stores its
+  minutes again as a new version. A correction is a new record that refers to
   the old one.
 - **Pages** are documents. Humans and agents write and change them. A page has a title, and it may
   have a one-line summary, tags, the sources that it draws on, a status (draft, reviewed or

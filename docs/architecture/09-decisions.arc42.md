@@ -1249,8 +1249,10 @@ keeps its own interface for writing (`dec-records-per-type`).
   backlinks and the search cover artifacts only.
 - **Sources are written once.** Minutes, decisions and notes are memories of something that
   happened. They come into being as a side effect of a session or of other work, and they are never
-  changed afterwards. A correction is a new record that refers to the old one. The only exception
-  is a sentence off the record (`dec-off-the-record`).
+  changed afterwards. A correction is a new record that refers to the old one. The minutes are the
+  bridge from a session to the wiki: participants write them from what was said, and every end of
+  the session stores them as a new version that every member reads; an earlier version stays. So
+  a citation always names one version.
 - **Notes become readable pages.** A note keeps its interface: add and list. The hub stores it as a
   Markdown file whose front matter names the schema, the author, whether the author is a human or
   an agent, the time, the session and the tags. The author and the time are in the note on purpose,

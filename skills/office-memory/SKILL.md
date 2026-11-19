@@ -15,7 +15,8 @@ run meetings, use the skill office-assistant.
 ## Three kinds of artifacts
 
 - **Sources** are memories of what happened: minutes, decisions and notes. They are written once
-  and **never change**. To correct one, write a new note that names the old one.
+  and **never change**. To correct one, write a new note that names the old one. If a meeting is
+  opened again, its minutes are stored again as a new file; cite the newest one.
 - **Pages** are documents in Markdown. Humans and agents write and change them. They hold what
   the team knows now, for example everything about one customer, project or topic.
 - **This skill** holds the rules. Team-specific rules come from your role and from the pages you
@@ -38,7 +39,9 @@ run meetings, use the skill office-assistant.
   understands it without the meeting. Add a note when something is worth remembering and no
   other type fits.
 - **Decision** (`decision_record`): only what the humans actually decided, in one clear sentence.
-- **Minutes** (`minutes_update`): only if your role asks for it.
+- **Minutes** (`minutes_update`): only if your role asks for it. Every member reads the minutes,
+  but only the participants read the meeting. When a sentence goes off the record, take it out of
+  the minutes at once.
 - Never put a sentence that is off the record into any artifact, and never repeat it.
 
 ## Write a page
