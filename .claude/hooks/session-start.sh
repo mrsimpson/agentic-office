@@ -7,7 +7,29 @@ if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   exit 0
 fi
 
+# Run in the background, so the session starts at once. Builds and tests that start before the
+# hook ends may not find whisper.cpp or bin/ yet.
+echo '{"async": true, "asyncTimeout": 1200000}'
+
 cd "${CLAUDE_PROJECT_DIR:-.}"
+
+# The Protobuf tools for make lint, make generate and make check-generated, in the versions of
+# the CI (.github/workflows/ci.yml), in user space. A marker file names the versions.
+tools="$HOME/protobuf-tools"
+versions="buf@v1.57.0 protoc-gen-go@v1.36.12 protoc-gen-connect-go@v2.0.2"
+if [ "$(cat "$tools/.versions" 2>/dev/null)" != "$versions" ]; then
+  rm -f "$tools/.versions"
+  mkdir -p "$tools"
+  for tool in github.com/bufbuild/buf/cmd/buf@v1.57.0 \
+              google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12 \
+              connectrpc.com/connect/v2/cmd/protoc-gen-connect-go@v2.0.2; do
+    GOBIN="$tools" go install "$tool" >&2
+  done
+  echo "$versions" > "$tools/.versions"
+fi
+if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
+  echo "export PATH=\"$tools:\$PATH\"" >> "$CLAUDE_ENV_FILE"
+fi
 
 # whisper.cpp (cgo, for the ears): build it only when the Makefile (it pins WHISPER_REF) or this
 # script changed since the last successful build. The hash file lives in the build directory,

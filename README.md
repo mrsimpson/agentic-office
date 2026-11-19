@@ -56,7 +56,8 @@ make models                    # downloads ggml-small.bin (about 490 MB) and the
 
 ### Claude Code cloud sessions
 
-In a Claude Code cloud session, the hook `.claude/hooks/session-start.sh` runs at the start. It
+In a Claude Code cloud session, the hook `.claude/hooks/session-start.sh` runs at the start, in
+the background. It installs the Protobuf tools in the versions of the CI to `~/protobuf-tools`,
 builds whisper.cpp (only when the `Makefile` or the hook changed) and the programs in `bin/`. If
 the environment sets `CLAUDE_WEB_OFFICE_ADMIN_KEY` (a private key in PEM), the hook writes it to a
 file and installs the wrapper `office-web`. The wrapper runs `bin/office` against the shared hub
