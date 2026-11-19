@@ -155,7 +155,10 @@ office-hub -signing-key ~/office-hub/signing.key -addr 0.0.0.0:8740 \
 - The data of the hub lives in `$CFG/hub` (`-data-dir` changes it): the
   users and keys, the TLS certificate and the archive with all sessions and records.
 - On the first start, the hub creates a self-signed TLS certificate for the names in
-  `-tls-hosts`, in `tls.crt`. To use your own certificate, see
+  `-tls-hosts`, in `tls.crt`. A start that fails writes nothing, so you can fix the flags and
+  start again. If a later start names a host in `-tls-hosts` that the certificate misses, the hub
+  does not start: delete `tls.crt` and `tls.key` to get a new certificate, and send the new
+  fingerprint to the participants. To use your own certificate, see
   [Use your own certificate](#use-your-own-certificate).
 - `office-hub -h` lists every flag with its default and says what the hub keeps in its data
   directory: the certificate, the hub repository with the users, tenants and memberships, and one

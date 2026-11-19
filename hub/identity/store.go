@@ -74,7 +74,7 @@ func (s *Service) bootstrap(ctx context.Context) error {
 	b := s.opts.Bootstrap
 	if b == nil {
 		return fmt.Errorf("the hub repository has no users: at the first start, name the first system admin " +
-			"with -first-system-admin ID=PUBLIC_KEY (see the user guide)")
+			"with -first-system-admin ID=PUBLIC_KEY; the public key comes from \"office key create\" on your own computer")
 	}
 	if !participantIDPattern.MatchString(b.UserID) || len(b.PublicKey) != ed25519.PublicKeySize {
 		return fmt.Errorf("first system admin: need a valid user ID and an Ed25519 public key")

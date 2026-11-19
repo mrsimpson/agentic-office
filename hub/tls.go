@@ -41,6 +41,9 @@ func loadOrCreateCert(certFile, keyFile string, hosts []string) (cert tls.Certif
 	return cert, true, err
 }
 
+// selfSignedName is the common name of the self-signed certificate that the hub creates.
+const selfSignedName = "agentic office hub (self-signed)"
+
 func writeSelfSigned(certFile, keyFile string, hosts []string) error {
 	// ECDSA P-256, because browsers (the stage) support it everywhere.
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -54,7 +57,7 @@ func writeSelfSigned(certFile, keyFile string, hosts []string) error {
 	now := time.Now()
 	tmpl := &x509.Certificate{
 		SerialNumber: serial,
-		Subject:      pkix.Name{CommonName: "agentic office hub (self-signed)"},
+		Subject:      pkix.Name{CommonName: selfSignedName},
 		NotBefore:    now.Add(-time.Hour),
 		// At most 825 days: macOS and browsers on it reject TLS server certificates that are
 		// valid for longer, also a self-signed one (for example when they open the stage).
@@ -91,6 +94,26 @@ func writeSelfSigned(certFile, keyFile string, hosts []string) error {
 		return err
 	}
 	return os.WriteFile(certFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o644)
+}
+
+// missingHosts returns the hosts that a self-signed certificate of the hub does not cover. It
+// returns nothing for any other certificate, such as one of a public authority: its names are
+// the business of the operator.
+func missingHosts(cert tls.Certificate, hosts []string) []string {
+	if len(cert.Certificate) == 0 {
+		return nil
+	}
+	c, err := x509.ParseCertificate(cert.Certificate[0])
+	if err != nil || c.Subject.CommonName != selfSignedName {
+		return nil
+	}
+	var missing []string
+	for _, h := range hosts {
+		if h = strings.TrimSpace(h); h != "" && c.VerifyHostname(h) != nil {
+			missing = append(missing, h)
+		}
+	}
+	return missing
 }
 
 // fingerprint returns the SHA-256 fingerprint of the leaf certificate, for pinning by hand.
