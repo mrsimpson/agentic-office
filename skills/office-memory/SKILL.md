@@ -105,8 +105,8 @@ says. Write a note with your proposed change, link the page, and name the owner.
 4. Cite the sources in each page, link the pages to each other, and update the overview page of
    each area you touched.
 5. Do not copy the minutes. Write what the team knows now, in short statements.
-6. Until the release, do not change existing pages and do not write notes without the meeting
-   from what was said in the meeting: they would be shared at once.
+6. Until the release, do not put what was said in the meeting into existing pages or into notes
+   that do not name the meeting: they would be shared at once.
 7. Use only what the minutes, decisions and notes say, not what you heard in the meeting. Only
    the participants of a meeting may read its transcript, but every member reads the wiki. If
    something important is missing from the records, write a note first.
