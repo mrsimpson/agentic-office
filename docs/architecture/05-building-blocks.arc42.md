@@ -132,8 +132,8 @@ record, pause, raise a hand, update the minutes, focus an artifact. Each success
 exactly one event in the log, and each call carries an ID created by the client, so a repeated
 call has no extra effect and a client may always repeat after a drop.
 
-The same interface lets anyone with a token check a session log (`dec-merkle-log`): it hands out
-signed tree heads, proofs and the public key of the hub. It owns no log types. The events, the tree
+The same interface lets everyone who may read a session check its log (`dec-merkle-log`): it hands
+out signed tree heads, proofs and the public key of the hub. It owns no log types. The events, the tree
 heads and the code that verifies them belong to the session stream, which owns the event log.
 
 After a restart, a peer offers its copy of a session log through this interface
@@ -155,7 +155,10 @@ path: hub/session/commandsapi
 ### Session stream
 
 Delivers the event log of a session from a cursor onwards, then live. It is the one basis for the
-local replication and for the stage, so every reader sees the same log. After a drop, the
+local replication, the stage and the portal, so every reader sees the same log. Only those who may
+read the session get it: everyone who ever joined it, the participant who imported it, the tenant
+admins, and a stage link of this session (`concept-multi-tenancy`). For anybody else the session
+does not exist. After a drop, the
 subscriber reconnects with its last event ID. A one-time request for the events after a cursor
 serves a participant that finds a gap in its copy, or that follows the session without a file
 system (`dec-events-from-cursor`). With its last event, the stream sends a tree head signed by the

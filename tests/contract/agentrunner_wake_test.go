@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
+	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	sessionactivityv1 "github.com/mrsimpson/agentic-office/hub/session/activityapi"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
@@ -281,7 +281,12 @@ func TestAgentRunnerUnspokenReply(t *testing.T) {
 // waiting when the turn has ended; and that a reply reached nobody after the runner asked once.
 func TestAgentRunnerActivity(t *testing.T) {
 	mt := newMeetingWithRunner(t, nil)
-	watcher := mt.srv.Participant(t, "watcher", "Watcher", identityv1.ActorKind_ACTOR_KIND_AGENT)
+	// Ada took part in the session, so she may watch its activities.
+	adaKey, err := auth.ReadKey(mt.ada.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	watcher := mt.srv.WithKey(t, adaKey)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	st, err := watcher.Activity.WatchActivity(ctx, &sessionactivityv1.WatchActivityRequest{SessionId: mt.sid})

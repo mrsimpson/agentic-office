@@ -774,6 +774,10 @@ func (s *Service) Subscribe(ctx context.Context, req *sessionstreamv1.SubscribeR
 	if err != nil {
 		return err
 	}
+	if err := mayRead(caller, st); err != nil {
+		st.mu.Unlock()
+		return err
+	}
 	last, ended := st.lastID, st.ended
 	// An open stream reads the log: the session stays in memory until the stream ends.
 	st.refs++
@@ -867,6 +871,10 @@ func (s *Service) GetEvents(ctx context.Context, req *sessionstreamv1.GetEventsR
 	if err != nil {
 		return nil, err
 	}
+	if err := mayRead(caller, st); err != nil {
+		st.mu.Unlock()
+		return nil, err
+	}
 	last := st.lastID
 	st.refs++
 	st.mu.Unlock()
@@ -940,6 +948,9 @@ func (s *Service) tree(ctx context.Context, sid string) ([][]byte, string, error
 		return nil, "", err
 	}
 	defer st.mu.Unlock()
+	if err := mayRead(caller, st); err != nil {
+		return nil, "", err
+	}
 	n := len(st.leaves)
 	return st.leaves[:n:n], st.schema, nil
 }

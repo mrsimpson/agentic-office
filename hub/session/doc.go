@@ -88,6 +88,10 @@
 //     after). WatchActivity sends the activities at once and after every change or expiry. A
 //     tool is a short name only; the hub refuses free text. The activities are lost when the hub
 //     restarts; the agent runner renews its report anyway.
+//   - Who reads a session (mayRead in list.go, concept-multi-tenancy): Subscribe, GetEvents, the
+//     tree heads and proofs and WatchActivity answer only everyone who ever joined the session, the
+//     participant who imported it, a tenant admin, and a stage link of the session. Everybody
+//     else gets NotFound, as for a session that does not exist.
 //   - Session list (dec-web-portal, list.go): the Service also realizes the session list
 //     (if-session-list). It summarizes every session in memory from the Store, and every ended
 //     session that only the archive holds from its stored log, after that log verified against its

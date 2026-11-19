@@ -14,6 +14,7 @@ import (
 	"time"
 
 	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
+	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
 	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
 	"github.com/mrsimpson/agentic-office/hub/session/streamapi/events"
@@ -165,7 +166,12 @@ func TestReplicatorTwoParticipantsOnOneMachine(t *testing.T) {
 	for _, j := range []joined{ja, jb} {
 		waitUntil(t, 10*time.Second, "replicator stops", func() bool { return !alive(j.ReplicatorPID) })
 	}
-	server := serverLog(t, m.srv.Participant(t, "reader", "Reader", agent), sid)
+	// Ada took part: she may read the session from the hub.
+	adaKey, err := auth.ReadKey(ada.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := serverLog(t, m.srv.WithKey(t, adaKey), sid)
 	sameAsServer(t, ja.LogPath, server)
 	sameAsServer(t, jb.LogPath, server)
 }
