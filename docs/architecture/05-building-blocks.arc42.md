@@ -300,8 +300,9 @@ path: hub/records/minutes/api
 Writes the pages of the wiki of a tenant (`dec-notes-as-wiki`, `concept-wiki`). A note is a page:
 a Markdown file with a title, a one-line summary, its author, whether the author is a human or an
 agent, and the sources that it cites. The path of a page is its identity. The interface creates a
-page, changes a page with the version that its author read, and lists the pages with their title
-and summary, which is the index of the wiki. A note without a page name lands as a new page in the
+page, changes a page with the version that its author read, and lists the pages with their title,
+summary and tags, which is the index of the wiki. For one page, it also gives the pages that link
+to it. A note without a page name lands as a new page in the
 inbox of the wiki. A page may name a session. A sentence that is off the record must not go into a
 note.
 

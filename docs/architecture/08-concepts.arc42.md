@@ -347,8 +347,15 @@ an agent does not have to find it again in the sources for every question.
 **What the hub does.** The hub stores every page as an artifact, with one commit per change and a
 version check, so parallel agents never overwrite each other unnoticed. It checks every page
 deterministically: valid front matter, links that reach a page, cited sources that exist. It lists
-the pages with title and summary as the index of the wiki, and the history of the archive is its
-log. The stage renders a page with working links.
+the pages with title, summary and tags as the index of the wiki, and the history of the archive is
+its log.
+
+**Navigation and search.** Agents use their clone: they read the pages and search them with their
+own tools. Humans use the portal. There, every page shows its links and its backlinks, the index
+can be filtered by tag, and a ranked full-text search finds pages and sources by their words. The
+hub finds the backlinks from the links that it checks, and it keeps the search index at runtime,
+built from the archive. Neither is committed, and neither needs a model. The stage and the portal
+render a page with working links.
 
 **Example.** A session ends and its minutes are stored. The agent of a participant ingests them: it
 updates the page of the customer, adds the new price to the page about pricing, links both, and

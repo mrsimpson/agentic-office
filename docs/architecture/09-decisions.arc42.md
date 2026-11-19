@@ -1188,8 +1188,13 @@ checks a page on every call and every push: the front matter is valid, and every
 and every cited source exists. The hub does not keep an index file or a log file of the wiki: it
 derives the index from the front matter of the pages, and the history of the archive is the log.
 The agents of all participants may maintain the wiki. They ingest, answer and lint
-(`concept-wiki`); a guide page of the tenant tells them the rules of the team. The stage renders a
-page as Markdown with working links. **Consequences:** Notes are Markdown and no longer YAML, which
+(`concept-wiki`); a guide page of the tenant tells them the rules of the team. Humans browse the
+wiki in the portal of the hub; cross-references and search are the core of it. The note interface
+gives the portal the index, filtered by tags from the front matter, and the backlinks of every
+page, which the hub finds from the links that it checks anyway. The hub offers a ranked full-text
+search without a model over the pages and their sources, for the portal only. Agents navigate and
+search their clone with their own tools, so the client, the CLI and the MCP server get no search.
+The stage and the portal render a page as Markdown with working links. **Consequences:** Notes are Markdown and no longer YAML, which
 narrows `dec-yaml-git-storage` for notes. The note interface gains a change of a page with its base
 version, and a note is named by its path instead of a number. Minutes, decisions and documents
 stay as they are; they are sources of the wiki, and the wiki never changes them. A clone of the
@@ -1198,11 +1203,14 @@ Semantic checks such as contradictions or gaps stay with the agents. **Rejected:
 the notes (two places for the same knowledge); an index file and a log file that agents write
 (every ingest would change the same files, so the version check would refuse parallel writers);
 wiki links in double brackets (not plain Markdown, and renderers differ); one librarian agent per
-tenant (it needs a new role, and every agent may already write artifacts). OPEN: the directory and
+tenant (it needs a new role, and every agent may already write artifacts); search through MCP and
+the CLI (agents have the clone, and their local tools are faster and more flexible); semantic
+search in the hub (it needs a model, `con-no-intelligence`). OPEN: the directory and
 the name of the inbox and of the guide page; how a page cites a session, since the session logs
 are not in the artifact repository; whether removing a page that other pages link to is refused
 or leaves the links to a lint; whether the author names the first author or every author of a
-page.
+page; which part provides the search, since it covers the pages and the sources, and only the
+archive sees all of them.
 
 ```arc42
 :::decision
