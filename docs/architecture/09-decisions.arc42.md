@@ -1162,8 +1162,9 @@ every user and every admin. The code is useless after its first use, so a link o
 does no harm once it was opened. The access token lives one hour. Every page goes through an
 interface that checks the rights, so the portal cannot show more than the CLI. A form carries a
 token that is derived from the session, and the portal refuses a post from another origin.
-Revoking asks for a confirmation on its own page, so no script is needed. OPEN: whether a note made in a session is visible to the participants of
-that session only (#15); a login with passkeys; creating tenants and managing memberships in the
+Revoking asks for a confirmation on its own page, so no script is needed. Notes are visible to every member like the other records, also notes made in a session;
+only the session itself, whose log holds sentences off the record, stays with its readers.
+OPEN: a login with passkeys; creating tenants and managing memberships in the
 portal. **Rejected:** a separate admin view next to a portal (two logins, two designs, and no place for
 tenant admins); a password (a second secret to keep); a signature in the browser (needs scripts and
 a new key format); the stage link style with the token in the URL for the whole session (the URL
@@ -1236,7 +1237,8 @@ solves this: agents read the sources once and keep a set of linked pages up to d
 builds up over time. The hub has no model of its own (`con-no-intelligence`), so agents do this
 work. Humans browse the knowledge in the portal (`dec-web-portal`); cross-references and search are
 the core of that experience. A session is read only by its participants, its importer and the
-tenant admins, while the records of a session are visible to every member of the tenant.
+tenant admins, because its log holds the original of sentences off the record
+(`dec-off-the-record`). Its records, also its notes, are visible to every member of the tenant.
 
 **Decision:** All artifacts of a tenant form one wiki (`concept-wiki`), in three layers. Every type
 keeps its own interface for writing (`dec-records-per-type`).
@@ -1297,9 +1299,9 @@ keeps its own interface for writing (`dec-records-per-type`).
 **Consequences:** Notes are Markdown and no longer YAML; `dec-yaml-git-storage` needs this change
 once this decision is accepted. The note contract stays, and the note schema gains tags. Documents
 gain an optional schema for their front matter, owned by the documents part. Every part that owns a
-type gains a description of its files next to its check. Ingest copies statements from sources into
-documents and into the history of every clone, so a sentence marked off the record later stays in
-those copies (`risk-retraction-leak`). A clone of the tenant repository opens as a wiki in ordinary
+type gains a description of its files next to its check. Nothing in the hub keeps a sentence off the record out of a record or a page: the
+rule binds the people and agents who write, and ingest copies statements into documents and into
+the history of every clone (`risk-retraction-leak`). A clone of the tenant repository opens as a wiki in ordinary
 Markdown tools (`dec-artifact-sync`). Semantic checks such as contradictions or gaps stay with the
 agents.
 
@@ -1330,8 +1332,6 @@ OPEN:
 
 - Who ingests a source that no session claimed, for example a note written outside a session.
 - Whether a citation of a document names its version.
-- Notes of a session for its participants only (#15, `dec-web-portal`): such notes could not be
-  sources of a wiki that every member reads and clones; this needs #190.
 - The interfaces of the wiki part and the descriptions of the types enter chapter 5 with their code.
 - Content that only some members of a tenant may read: every member reads everything and holds a
   clone, so this needs encryption for several parties in a distributed storage (issue #190).
