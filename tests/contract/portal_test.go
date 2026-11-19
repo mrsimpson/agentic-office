@@ -19,6 +19,11 @@ import (
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	userv1 "github.com/mrsimpson/agentic-office/hub/identity/userapi"
+	decisionv1 "github.com/mrsimpson/agentic-office/hub/records/decision/api"
+	notev1 "github.com/mrsimpson/agentic-office/hub/records/note/api"
+	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
+	taskv1 "github.com/mrsimpson/agentic-office/hub/tasks/api"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
@@ -505,5 +510,112 @@ func TestPortalTenants(t *testing.T) {
 	}
 	if r, _ := fetch(t, b, srv.URL+tenantPage); r.StatusCode != http.StatusNotFound {
 		t.Errorf("tenant page for the system admin: status %d", r.StatusCode)
+	}
+}
+
+// TestPortalSessionView: a participant opens a session from the list of its tenant and reads it:
+// the header, the stored minutes, the decisions, notes and tasks of the session, and the
+// transcript without the sentence that went off the record. The tenant admin reads it too; a
+// member who never joined it gets 404. A running session shows its running minutes. A session ID
+// with a slash works.
+func TestPortalSessionView(t *testing.T) {
+	srv := contracttest.StartHub(t, nil)
+	ada := srv.Participant(t, "ada", "Ada", human) // tenant admin
+	bob := srv.Participant(t, "bob", "Bob", human)
+	dora := srv.Participant(t, "dora", "Dora", human)
+	ctx := ctx10(t)
+	sid := "budget/" + coreapi.NewCommandID()
+	joinAs(t, bob, sid)
+	say := func(text string) uint32 {
+		res, err := bob.Commands.SubmitUtterance(ctx, &sessioncommandsv1.SubmitUtteranceRequest{SessionId: sid, CommandId: coreapi.NewCommandID(),
+			ParticipantId: "bob", Text: text, Modality: sessionstreamv1.Modality_MODALITY_TEXT})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res.GetResult().GetEvent().GetId()
+	}
+	say("We start with the budget.")
+	secret := say("The secret number is 42.")
+	if _, err := bob.Commands.MarkOffTheRecord(ctx, &sessioncommandsv1.MarkOffTheRecordRequest{SessionId: sid, CommandId: coreapi.NewCommandID(),
+		ParticipantId: "bob", UtteranceEventId: secret}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bob.Commands.UpdateMinutes(ctx, &sessioncommandsv1.UpdateMinutesRequest{SessionId: sid, CommandId: coreapi.NewCommandID(),
+		ParticipantId: "bob", Text: "# Budget\n\n- running minutes"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Running: the running minutes, and the note that the session runs.
+	b, _, doc := openPortal(t, srv, bob, contracttest.DefaultTenant)
+	href := ""
+	for _, a := range findAll(doc, byTag("a")) {
+		if h, _ := attr(a, "href"); strings.Contains(h, "/s/") {
+			href = h
+		}
+	}
+	if href != "/portal/t/"+contracttest.DefaultTenant+"/s/"+url.PathEscape(sid) {
+		t.Fatalf("link of the session in the list: %q", href)
+	}
+	res, body := fetch(t, b, srv.URL+href)
+	doc = parseDoc(t, body)
+	if res.StatusCode != http.StatusOK || len(findAll(doc, withAttr("data-running", ""))) != 1 || len(findAll(doc, withAttr("data-running-minutes", ""))) != 1 {
+		t.Fatalf("running session: status %d\n%s", res.StatusCode, text(doc))
+	}
+
+	// Ended, with records.
+	if _, err := bob.Decision.RecordDecision(ctx, &decisionv1.RecordDecisionRequest{CommandId: coreapi.NewCommandID(), Text: "We cut **travel**.",
+		AuthorParticipantId: "bob", SessionId: sid}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bob.Decision.RecordDecision(ctx, &decisionv1.RecordDecisionRequest{CommandId: coreapi.NewCommandID(), Text: "Another session.",
+		AuthorParticipantId: "bob", SessionId: "other"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bob.Note.AddNote(ctx, &notev1.AddNoteRequest{CommandId: coreapi.NewCommandID(), Text: "Ask the bank.", AuthorParticipantId: "bob",
+		SessionId: sid}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bob.Task.CreateTask(ctx, &taskv1.CreateTaskRequest{CommandId: coreapi.NewCommandID(), Title: "Send the numbers", AuthorParticipantId: "bob",
+		AssigneeParticipantId: "ada", SessionId: sid}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bob.Commands.UpdateMinutes(ctx, &sessioncommandsv1.UpdateMinutesRequest{SessionId: sid, CommandId: coreapi.NewCommandID(),
+		ParticipantId: "bob", Text: "# Budget\n\nWe cut travel."}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bob.Commands.EndSession(ctx, &sessioncommandsv1.EndSessionRequest{SessionId: sid, CommandId: coreapi.NewCommandID(),
+		ParticipantId: "bob"}); err != nil {
+		t.Fatal(err)
+	}
+	res, body = fetch(t, b, srv.URL+href)
+	doc = parseDoc(t, body)
+	all := text(doc)
+	if res.StatusCode != http.StatusOK || len(findAll(doc, withAttr("data-running", ""))) != 0 {
+		t.Fatalf("ended session: status %d\n%s", res.StatusCode, all)
+	}
+	if m := findAll(doc, withAttr("data-minutes", "")); len(m) != 1 || !strings.Contains(text(m[0]), "We cut travel.") ||
+		len(findAll(doc, withAttr("data-running-minutes", ""))) != 0 {
+		t.Errorf("stored minutes: %q", all)
+	}
+	if d := findAll(doc, withAttr("data-decision", "")); len(d) != 1 || !strings.Contains(text(d[0]), "We cut travel.") ||
+		len(findAll(d[0], byTag("strong"))) != 1 {
+		t.Errorf("decisions of the session: %d\n%s", len(d), all)
+	}
+	if len(findAll(doc, withAttr("data-note", ""))) != 1 || !strings.Contains(all, "Ask the bank.") || !strings.Contains(all, "Send the numbers") {
+		t.Errorf("notes and tasks: %q", all)
+	}
+	lines := findAll(doc, withAttr("data-utterance", ""))
+	if len(lines) != 1 || !strings.Contains(text(lines[0]), "We start with the budget.") || strings.Contains(body, "secret number") {
+		t.Errorf("transcript: %d lines\n%s", len(lines), all)
+	}
+
+	// The tenant admin reads it; a member who never joined it does not.
+	b, _, _ = openPortal(t, srv, ada, contracttest.DefaultTenant)
+	if r, _ := fetch(t, b, srv.URL+href); r.StatusCode != http.StatusOK {
+		t.Errorf("the tenant admin: status %d", r.StatusCode)
+	}
+	b, _, _ = openPortal(t, srv, dora, contracttest.DefaultTenant)
+	if r, body := fetch(t, b, srv.URL+href); r.StatusCode != http.StatusNotFound || strings.Contains(body, "budget") {
+		t.Errorf("a member who never joined: status %d", r.StatusCode)
 	}
 }
