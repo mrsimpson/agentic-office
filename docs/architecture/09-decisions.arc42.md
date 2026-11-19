@@ -1155,20 +1155,22 @@ them. The portal reads only, except the administration of keys by system admins:
 keys and revoke keys. Writing content stays with the CLI, MCP and Git
 (`dec-artifact-sync`). The stage stays separate: it is opened by a link without login, for one
 session, for a screen share. The meeting session lists the sessions that a caller may see, with
-their start, end, participants and whether they were imported; it takes the participants from the
-log. **Consequences:** No password and no new login flow; one link, one cookie and one design for
+their start, end, participants and whether they were imported, through an interface of its own
+(`if-session-list`); it takes the participants from the log. The session stream stays the log of
+one session. **Consequences:** No password and no new login flow; one link, one cookie and one design for
 every user and every admin. The code is useless after its first use, so a link on a shared screen
 does no harm once it was opened. The access token lives one hour. Every page goes through an
 interface that checks the rights, so the portal cannot show more than the CLI. A form carries a
 token that is derived from the session, and the portal refuses a post from another origin.
 Revoking asks for a confirmation on its own page, so no script is needed. OPEN: whether a note made in a session is visible to the participants of
 that session only (#15); a login with passkeys; creating tenants and managing memberships in the
-portal; whether the list of sessions extends the session stream or becomes an interface of its own.
-**Rejected:** a separate admin view next to a portal (two logins, two designs, and no place for
+portal. **Rejected:** a separate admin view next to a portal (two logins, two designs, and no place for
 tenant admins); a password (a second secret to keep); a signature in the browser (needs scripts and
 a new key format); the stage link style with the token in the URL for the whole session (the URL
 stays in the history and on the screen); a single-page application with a frontend build (a second
-toolchain, `dec-languages`).
+toolchain, `dec-languages`); the list of sessions as a call of the session stream (the stream
+replicates the log of one session; a list across sessions has another question and other rights);
+the portal reading the stored logs itself (logic and a check of rights in a view).
 
 ```arc42
 :::decision

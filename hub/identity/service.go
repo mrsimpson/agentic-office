@@ -105,14 +105,14 @@ type command struct {
 type Service struct {
 	opts Options
 
-	mu         sync.Mutex
-	st         *state
-	files      map[string][]byte // the files of the hub repository as written
-	keys       map[string]keyRef // by key ID
-	challenges map[string]challenge
+	mu          sync.Mutex
+	st          *state
+	files       map[string][]byte // the files of the hub repository as written
+	keys        map[string]keyRef // by key ID
+	challenges  map[string]challenge
 	portalLinks map[[32]byte]portalLink // by the hash of the code
-	tokens     map[[32]byte]*token    // by SHA-256 of the token
-	commands   map[string]command
+	tokens      map[[32]byte]*token     // by SHA-256 of the token
+	commands    map[string]command
 
 	stageProcedures map[string]bool
 }
@@ -175,8 +175,8 @@ func (s *Service) tenantFree(procedure string) bool {
 
 // publicProcedures need no token.
 var publicProcedures = map[string]bool{
-	identityv1connect.IdentityServiceGetChallengeProcedure:      true,
-	identityv1connect.IdentityServiceExchangeChallengeProcedure: true,
+	identityv1connect.IdentityServiceGetChallengeProcedure:       true,
+	identityv1connect.IdentityServiceExchangeChallengeProcedure:  true,
 	identityv1connect.IdentityServiceExchangePortalLinkProcedure: true,
 }
 

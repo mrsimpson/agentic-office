@@ -79,6 +79,7 @@ func init() {
 		"meeting resume":            cmdSimple("resume", coreapi.Client.Resume),
 		"meeting end":               cmdSimple("end", coreapi.Client.EndSession),
 		"session import":            cmdImport,
+		"session list":              cmdSessionList,
 		"say":                       cmdSay,
 		"utterance off-the-record":  cmdOffTheRecord,
 		"signal turn-end":           cmdTurnEnd,

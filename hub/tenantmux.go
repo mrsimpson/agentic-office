@@ -25,6 +25,8 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/session/commandsapi/sessioncommandsv1connect"
 	importapi "github.com/mrsimpson/agentic-office/hub/session/importapi"
 	"github.com/mrsimpson/agentic-office/hub/session/importapi/sessionimportv1connect"
+	listapi "github.com/mrsimpson/agentic-office/hub/session/listapi"
+	"github.com/mrsimpson/agentic-office/hub/session/listapi/sessionlistv1connect"
 	streamapi "github.com/mrsimpson/agentic-office/hub/session/streamapi"
 	"github.com/mrsimpson/agentic-office/hub/session/streamapi/sessionstreamv1connect"
 	slidesv1 "github.com/mrsimpson/agentic-office/hub/slides/api"
@@ -195,6 +197,18 @@ func (m activityMux) WatchActivity(ctx context.Context, req *activityapi.WatchAc
 		return err
 	}
 	return rt.sessions.WatchActivity(ctx, req, stream)
+}
+
+type listMux struct{ *runtimes }
+
+var _ sessionlistv1connect.SessionListServiceHandler = listMux{}
+
+func (m listMux) ListSessions(ctx context.Context, req *listapi.ListSessionsRequest) (*listapi.ListSessionsResponse, error) {
+	rt, err := m.forCall(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return rt.sessions.ListSessions(ctx, req)
 }
 
 type decisionMux struct{ *runtimes }

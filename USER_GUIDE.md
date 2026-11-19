@@ -324,7 +324,8 @@ keeps at least one tenant admin, and the hub at least one system admin.
 The last key of a user cannot be revoked.
 
 Every user has a web portal in the browser. It shows what your key may see: your tenants, the
-members of a tenant to its tenant admins, and the administration to system admins. There a system
+sessions of a tenant in which you took part (a tenant admin sees all of them), the members of a
+tenant to its tenant admins, and the administration to system admins. There a system
 admin lists all users and keys, creates a user or adds a key with a form, and revokes a key after a
 confirmation, and sees the tenants and the system admins, read only. Tenants and memberships stay
 with the commands above:
@@ -796,6 +797,9 @@ office meeting end
 - The running minutes belong to the session. `office meeting end` stores the text of the last
   update as the minutes of the session. Read them later with `office minutes show weekly` or
   `office minutes list`.
+- `office session list` lists the sessions in which you took part or that you imported, the newest
+  first, with start, end and participants; a tenant admin sees every session of the tenant. The
+  portal shows the same list on the page of the tenant (`office portal link`).
 - A decision or a note is linked to a session only with `--session`.
 - For now a task is a local draft in the hub. Its reference, for example `local:42`, is opaque:
   keep it and pass it back. The statuses are `open`, `in_progress`, `done` and `cancelled`. Any

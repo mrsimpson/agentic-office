@@ -5,6 +5,7 @@ package contract
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -151,4 +152,32 @@ func TestMCPImport(t *testing.T) {
 	s.fails("usage", "session_import", map[string]any{"file": file, "conversation": conv})
 	s.fails("usage", "session_import", map[string]any{"conversation": map[string]any{"source": "", "participants": []any{}, "utterances": []any{}}})
 	s.fails("failed_precondition", "session_import", map[string]any{"conversation": conv, "session": "mcp-import"})
+}
+
+// TestCLISessionList: office session list shows the sessions that the participant may see, with
+// the mark of an import, and --json gives the list.
+func TestCLISessionList(t *testing.T) {
+	m := newMachine(t)
+	ada := m.user("ada", "Ada", "human")
+	if v := ada.ok("session", "list"); fmt.Sprint(v["sessions"]) != "[]" {
+		t.Fatalf("empty list: %v", v)
+	}
+	file := filepath.Join(t.TempDir(), "conversation.json")
+	if err := os.WriteFile(file, []byte(conversationJSON), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ada.ok("session", "import", file, "--session", "review-old")
+	v := ada.ok("session", "list")
+	ss, _ := v["sessions"].([]any)
+	if len(ss) != 1 {
+		t.Fatalf("list: %v", v)
+	}
+	s := ss[0].(map[string]any)
+	if s["sessionId"] != "review-old" || s["imported"] != true || s["startedAt"] == nil {
+		t.Errorf("session in the list: %v", s)
+	}
+	if out, _, code := ada.run("session", "list"); code != 0 || !strings.HasPrefix(out, "review-old (imported)\t") {
+		t.Errorf("text: exit %d, %q", code, out)
+	}
+	ada.fails(2, "usage", "session", "list", "extra")
 }

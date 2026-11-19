@@ -19,7 +19,8 @@ func TokenCheck() Authorizer {
 			return Caller{}, connect.NewError(connect.CodeUnauthenticated, "no access token")
 		}
 		return Caller{ParticipantID: c.ParticipantID, DisplayName: c.DisplayName, Kind: participantKind(c.Kind),
-			StageSessionID: c.StageSessionID, Done: c.Done}, nil
+			StageSessionID: c.StageSessionID, TenantAdmin: c.StageSessionID == "" && c.TenantRole == tokencheck.RoleTenantAdmin,
+			Done: c.Done}, nil
 	})
 }
 

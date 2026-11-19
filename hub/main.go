@@ -59,8 +59,6 @@ import (
 	"connectrpc.com/connect/v2/connecthttp"
 	"connectrpc.com/connect/v2/connectinprocess"
 
-	"github.com/mrsimpson/agentic-office/hub/portal"
-	portalweb "github.com/mrsimpson/agentic-office/hub/portal/web"
 	"github.com/mrsimpson/agentic-office/hub/archive"
 	"github.com/mrsimpson/agentic-office/hub/archive/api/archivev1connect"
 	"github.com/mrsimpson/agentic-office/hub/archive/changes/api/changesv1connect"
@@ -72,12 +70,15 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/identityv1connect"
 	"github.com/mrsimpson/agentic-office/hub/identity/userapi/userv1connect"
+	"github.com/mrsimpson/agentic-office/hub/portal"
+	portalweb "github.com/mrsimpson/agentic-office/hub/portal/web"
 	"github.com/mrsimpson/agentic-office/hub/records/decision/api/decisionv1connect"
 	"github.com/mrsimpson/agentic-office/hub/records/minutes/api/minutesv1connect"
 	"github.com/mrsimpson/agentic-office/hub/records/note/api/notev1connect"
 	"github.com/mrsimpson/agentic-office/hub/session/activityapi/sessionactivityv1connect"
 	"github.com/mrsimpson/agentic-office/hub/session/commandsapi/sessioncommandsv1connect"
 	"github.com/mrsimpson/agentic-office/hub/session/importapi/sessionimportv1connect"
+	"github.com/mrsimpson/agentic-office/hub/session/listapi/sessionlistv1connect"
 	"github.com/mrsimpson/agentic-office/hub/session/streamapi/sessionstreamv1connect"
 	"github.com/mrsimpson/agentic-office/hub/slides/api/slidesv1connect"
 	"github.com/mrsimpson/agentic-office/hub/stage"
@@ -330,6 +331,7 @@ func main() {
 	sessionstreamv1connect.RegisterSessionStreamServiceHandler(cs, streamMux{rts})
 	sessionimportv1connect.RegisterSessionImportServiceHandler(cs, importMux{rts})
 	sessionactivityv1connect.RegisterSessionActivityServiceHandler(cs, activityMux{rts})
+	sessionlistv1connect.RegisterSessionListServiceHandler(cs, listMux{rts})
 	identityv1connect.RegisterIdentityServiceHandler(cs, ids)
 	userv1connect.RegisterUserServiceHandler(cs, ids)
 	tenantv1connect.RegisterTenantServiceHandler(cs, tenant.New(ids, repos))
@@ -359,7 +361,7 @@ func main() {
 	}
 	mux.Handle(gitweb.PathPrefix, gitHandler)
 	// The portal asks the interfaces in-process, with the token of the user (dec-web-portal).
-	mux.Handle(portalweb.PathPrefix, portal.New(portal.Options{Identity: connectinprocess.New(cs)}))
+	mux.Handle(portalweb.PathPrefix, portal.New(portal.Options{Hub: connectinprocess.New(cs)}))
 	// The stage subscribes in-process through the token check, with the token of the link.
 	mux.Handle(web.PathPrefix, stage.New(stage.Options{
 		Session: connectinprocess.New(cs),
