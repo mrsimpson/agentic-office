@@ -81,6 +81,75 @@ func TestHelpOfEveryCommand(t *testing.T) {
 	}
 }
 
+// TestHelpOfEveryGroup: every start of a command, such as "meeting" or "admin tenant", explains
+// itself. "--help" and "office help <group>" list the commands below it with exit 0; the group
+// alone lists them on stderr as a usage error. A command that is also a group ("sync") lists
+// the commands below it in its own help. A topic of the same name ("config") wins in
+// "office help <group>".
+func TestHelpOfEveryGroup(t *testing.T) {
+	env := helpEnv(t)
+	names, topics, _ := listedCommands(t, env)
+	isTopic := map[string]bool{}
+	for _, tp := range topics {
+		isTopic[tp] = true
+	}
+	isCommand := map[string]bool{}
+	for _, n := range names {
+		isCommand[n] = true
+	}
+	below := map[string][]string{}
+	for _, n := range names {
+		words := strings.Fields(n)
+		for i := 1; i < len(words); i++ {
+			prefix := strings.Join(words[:i], " ")
+			below[prefix] = append(below[prefix], n)
+		}
+	}
+	for _, want := range []string{"meeting", "admin", "admin tenant", "key", "sync"} {
+		if len(below[want]) == 0 {
+			t.Errorf("no commands below %q", want)
+		}
+	}
+	for prefix, subs := range below {
+		words := strings.Fields(prefix)
+		out, errOut, code := contracttest.Run(t, "office", env, append(append([]string{}, words...), "--help")...)
+		if code != 0 {
+			t.Errorf("office %s --help: exit %d: %s", prefix, code, errOut)
+			continue
+		}
+		for _, s := range subs {
+			if !strings.Contains(out, "  "+s+" ") {
+				t.Errorf("office %s --help does not list %q:\n%s", prefix, s, out)
+			}
+		}
+		if isCommand[prefix] {
+			continue
+		}
+		if again, _, code := contracttest.Run(t, "office", env, append([]string{"help"}, words...)...); !isTopic[prefix] && (code != 0 || again != out) {
+			t.Errorf("office help %s differs from office %s --help (exit %d)", prefix, prefix, code)
+		}
+		if _, errOut, code := contracttest.Run(t, "office", env, words...); code != 2 || !strings.Contains(errOut, "  "+subs[0]+" ") {
+			t.Errorf("office %s: exit %d, want 2 and the list of commands on stderr: %s", prefix, code, errOut)
+		}
+	}
+}
+
+// TestHelpSuggestsCommands: a mistyped command names the command that was probably meant.
+func TestHelpSuggestsCommands(t *testing.T) {
+	env := helpEnv(t)
+	for typed, want := range map[string]string{"meetng join": "meeting join", "join": "meeting join",
+		"admin tenat list": "admin tenant list"} {
+		_, errOut, code := contracttest.Run(t, "office", env, strings.Fields(typed)...)
+		if code != 2 || !strings.Contains(errOut, `did you mean "`+want+`"`) {
+			t.Errorf("office %s: exit %d, want a suggestion of %q: %s", typed, code, want, errOut)
+		}
+	}
+	// The error names what the user typed, not the --help that "office help" adds.
+	if _, errOut, _ := contracttest.Run(t, "office", env, "help", "no-such-command"); strings.Contains(errOut, "--help") {
+		t.Errorf("office help no-such-command: names --help: %s", errOut)
+	}
+}
+
 // TestHelpTopics: the topics are listed in "office help" and print text.
 func TestHelpTopics(t *testing.T) {
 	env := helpEnv(t)
