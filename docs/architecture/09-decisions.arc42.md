@@ -1197,8 +1197,12 @@ keeps its own interface for writing (`dec-records-per-type`).
   first heading is its title. The portal shows how far a reader can trust a page: its status,
   owner and reviews, and what the hub can find without a model, such as the last author, whether
   that was a human or an agent, and the age of its newest source. Ingest, answers and lint change documents only, never a source.
-- **The guide is a document of the tenant.** It tells agents how the team keeps its wiki: which
-  pages exist, how they are named and tagged, and how each operation works.
+- **A skill tells agents how to work with the wiki.** It ships with the office, is the same for
+  every tenant and changes with a release of the office. It explains the layers, the front matter,
+  where pages live when a tenant has no structure yet, and how to ingest, answer and lint. The
+  client shows it and installs it for the agent harness. Agents read it but never change it.
+  Rules of a team come from the role of an agent (`concept-client-configuration`) and from the
+  overview pages of the wiki.
 - **Links are plain relative Markdown links.** A part that writes a file reports every link that
   leads nowhere as a hint with its answer, and a push shows the same hints to the participant. A
   hint never refuses a write, so a rename, a deletion or a session end is never blocked by a link.
@@ -1217,7 +1221,7 @@ keeps its own interface for writing (`dec-records-per-type`).
   example the minutes or the ingest of the session, says so in the session, and the others leave it
   to them. The session log is the record of the claim, and the first claim counts
   (`concept-read-file-write-tools`). The agent runner tells every agent this rule in its first
-  prompt; the guide tells agents without a runner. Agents read and
+  prompt; the skill tells agents without a runner. Agents read and
   search their clone with their own tools, so the client, the CLI and the MCP server get no search.
 - **Navigation lives in the portal.** The stage shows only the artifacts that its session names
   (`dec-artifacts`), so a link on the stage that leads elsewhere does not open.
@@ -1243,6 +1247,8 @@ agents.
   path of every commit.
 - A wiki part that reads the fields of every type: the schema belongs to its type
   (`dec-artifact-sync`).
+- A guide document in the tenant that agents may change: it acts as a prompt for every agent, so
+  one member's agent could change the rules of all agents.
 - A fixed ingester per session, for example whoever keeps the minutes: a claim in the session is
   visible to humans and agents and needs no new rule in the hub.
 - A link check that refuses a write: a push check sees one file at a time, a rename would need to
@@ -1257,7 +1263,6 @@ agents.
 OPEN:
 
 - Who ingests a source that no session claimed, for example a note written outside a session.
-- Who may change the guide, since it acts as a prompt for every agent.
 - How a document cites a session, since the session logs are not in the artifact repository; and
   whether a citation of a document names its version.
 - The interfaces of the wiki part and the descriptions of the types enter chapter 5 with their code.

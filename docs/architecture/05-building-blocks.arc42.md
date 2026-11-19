@@ -299,9 +299,7 @@ path: hub/records/minutes/api
 
 Adds free notes, with or without a session, and lists them like the decisions. A note is a
 memory: it is written once and never changed; a correction is a new note that refers to the old
-one. The hub stores a note as a page that the portal and the stage can render, with its author,
-whether the author is a human or an agent, the time, the session and its tags (`dec-wiki`). Notes
-are sources of the wiki (`concept-wiki`). A sentence that is off the record must not go into a
+one. Notes are sources of the wiki (`dec-wiki`, `concept-wiki`). A sentence that is off the record must not go into a
 note. Ingest copies notes into documents, so the hub cannot remove a sentence that is marked off
 the record later from those copies.
 
@@ -516,7 +514,7 @@ there first: it reloads and takes the next free ID.
 :::building-block
 id: bb-records
 title: Records (decisions, minutes, notes)
-technology: Go / YAML and Markdown in the archive
+technology: Go / YAML in the archive
 parent: bb-office-hub
 path: hub/records
 requires: if-token-check, if-archive-storage, if-archive-watch
@@ -581,10 +579,7 @@ path: hub/tasks/check
 
 The documents part stores each text document as one Markdown file in the archive and one commit
 per change. It checks the base version of a change and tells the meeting session when a call names
-one. Documents are the pages of the wiki (`dec-wiki`). A document may carry front
-matter with a title, a summary, tags, its sources, a status, an owner and its reviews; the part
-owns that schema. When it writes a
-document, it reports links that lead nowhere as hints and accepts the write.
+one. Documents are the pages of the wiki (`dec-wiki`).
 
 ```arc42
 :::building-block
@@ -1185,7 +1180,9 @@ path: client/core/api
 The main access for humans and for agents with a shell. It joins a meeting and starts the
 replication (and the follow of the local clone, when it was started in a set-up directory), runs the agent runner, imports conversations, and covers slides, the stage,
 decisions, minutes, notes and tasks. It sets up, updates and follows the local clone of a tenant
-(`dec-artifact-sync`) but runs no other Git command: commits and pushes are plain Git. With a microphone, the terminal shows the user's own
+(`dec-artifact-sync`) but runs no other Git command: commits and pushes are plain Git. It shows the
+skill that tells agents how to work with the wiki of the tenant and installs it for an agent
+harness (`dec-wiki`). With a microphone, the terminal shows the user's own
 utterances with their status and lets the user pause and mark a sentence off the record.
 
 The CLI reads the configuration files of the client (`concept-client-configuration`), merges them
@@ -1233,7 +1230,8 @@ session and one agent key, it:
   the local log of the agent;
 - starts the agent harness, opens one ACP session, hands it the office tools as an MCP server with
   the key of the agent and sends a first prompt with the role of the agent and the meeting, and
-  with the rule that an agent says in the session which artifact it takes on (`dec-wiki`);
+  with the rule that an agent says in the session which artifact it takes on and the hint to follow
+  the skill of the wiki (`dec-wiki`);
 - decides with one wake strategy, chosen by the user at start, when to wake the agent
   (`dec-agent-runner-delivery`): at each change of speaker, or when a forwarding judge or a
   decision model that the user brings says so (`dec-wake-check-per-utterance`,

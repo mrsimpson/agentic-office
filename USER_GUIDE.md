@@ -992,6 +992,26 @@ each other. For example:
 All three can run in the meeting `weekly` at the same time. Each agent hears the others: the
 runner also tells it what the other agents said, and that they are agents.
 
+### Teach the agent the memory of the team
+
+The office ships a skill, `office-memory`, that tells an agent how to read and write the memory of
+the team: which artifacts never change (minutes, decisions and notes), how to write a page of the
+wiki with its front matter, and how to bring a meeting into the wiki. Install it where your
+harness finds skills, once per project and again after each update of the office:
+
+```bash
+office skill install
+```
+
+```bash
+office skill install ~/.claude/skills
+```
+
+Without an argument, it writes `.claude/skills/office-memory/SKILL.md` in the current directory,
+where Claude Code finds the skills of a project. `office skill show` prints the skill, for a
+harness without skills. Do not change the installed file: the next install replaces it. Put the
+rules of your team into the role of the agent instead.
+
 ### When the runner wakes the agent
 
 Waking a harness with a large model costs time and money. So you choose when the runner wakes

@@ -333,8 +333,9 @@ from page to page.
   have a one-line summary, tags, the sources that it draws on, a status (draft, reviewed or
   outdated), an owner and its reviews. It links to other pages and to
   sources.
-- **The guide** is one document that tells agents how the team keeps its wiki: which pages exist,
-  how they are named and tagged, and how each operation works.
+- **The skill** tells agents how to work with the wiki: the layers, the front matter, and each
+  operation. It ships with the office and is the same for every tenant; agents never change it.
+  Rules of a team come from the role of an agent and from the overview pages of the wiki.
 
 **Three operations.** All of them are work of an agent, because the hub has no model
 (`con-no-intelligence`).
