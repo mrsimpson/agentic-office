@@ -8,8 +8,14 @@ import (
 
 	"github.com/mrsimpson/agentic-office/hub/portal/web"
 
+	"connectrpc.com/connect/v2"
+
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
+	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	userv1 "github.com/mrsimpson/agentic-office/hub/identity/userapi"
+	sessionlistv1 "github.com/mrsimpson/agentic-office/hub/session/listapi"
+	"github.com/mrsimpson/agentic-office/hub/session/listapi/sessionlistv1connect"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
 )
 
 // user is the user of a session, as the auth API knows it (WhoAmI).
@@ -126,8 +132,18 @@ func (h *Handler) tenant(w http.ResponseWriter, r *http.Request, escaped, page s
 	}
 	switch page {
 	case "":
+		// The sessions that the user may see (if-session-list), with the tenant of the page.
+		ck, _ := r.Cookie(web.CookieName)
+		list := sessionlistv1connect.NewSessionListServiceClient(connect.NewClient(h.opts.Hub, auth.StaticToken(ck.Value), auth.Tenant(tenant)))
+		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+		defer cancel()
+		res, err := list.ListSessions(ctx, &sessionlistv1.ListSessionsRequest{})
+		if err != nil {
+			h.denied(w, err)
+			return
+		}
 		h.page(w, c.me, web.TenantPath(tenant), tenant, map[string]any{"Title": tenant, "Section": "Tenant", "Mode": "tenant",
-			"Tenant": tenant, "Role": roleName(m)})
+			"Tenant": tenant, "Role": roleName(m), "Sessions": sessionRows(res.GetSessions())})
 	case "members":
 		if !m.GetTenantAdmin() {
 			h.fail(w, http.StatusForbidden, "Not allowed", "Only a tenant admin sees the members of the tenant.")
@@ -157,4 +173,35 @@ func (h *Handler) tenant(w http.ResponseWriter, r *http.Request, escaped, page s
 	default:
 		h.fail(w, http.StatusNotFound, "Not found", "There is no such page.")
 	}
+}
+
+// sessionRow is a session in the list of a tenant.
+type sessionRow struct {
+	SessionId, Started, Ended string
+	Running, Imported         bool
+	Participants              []participantChip
+}
+
+type participantChip struct {
+	ParticipantId, Name string
+	Agent, Imported     bool
+}
+
+// sessionRows turns the sessions of the list into rows. Times are UTC.
+func sessionRows(ss []*sessionlistv1.Session) []sessionRow {
+	const layout = "2006-01-02 15:04"
+	var rows []sessionRow
+	for _, s := range ss {
+		row := sessionRow{SessionId: s.GetSessionId(), Started: s.GetStartedAt().AsTime().UTC().Format(layout),
+			Running: s.GetEndedAt() == nil, Imported: s.GetImported()}
+		if !row.Running {
+			row.Ended = s.GetEndedAt().AsTime().UTC().Format(layout)
+		}
+		for _, p := range s.GetParticipants() {
+			row.Participants = append(row.Participants, participantChip{ParticipantId: p.GetParticipantId(), Name: p.GetDisplayName(),
+				Agent: p.GetKind() == sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_AGENT, Imported: p.GetImported()})
+		}
+		rows = append(rows, row)
+	}
+	return rows
 }

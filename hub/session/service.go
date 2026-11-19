@@ -31,6 +31,9 @@ type Caller struct {
 	// StageSessionID is set for the read-only token of a stage link. Such a caller may only
 	// subscribe to this session.
 	StageSessionID string
+	// TenantAdmin is set for a tenant admin of the tenant of the call. A tenant admin sees every
+	// session of the tenant in the session list.
+	TenantAdmin bool
 	// Done is closed when the token expires or is revoked. An open stream ends then. Nil means
 	// never.
 	Done <-chan struct{}
@@ -77,6 +80,8 @@ type Service struct {
 
 	// activity keeps the short-lived activities of the participants (if-session-activity).
 	activity activities
+	// summaries keeps the list entries of finished sessions read from the archive (if-session-list).
+	summaries summaries
 
 	// The archive (dec-session-persistence), set by UseArchive. See RunArchive.
 	arch   *archiver

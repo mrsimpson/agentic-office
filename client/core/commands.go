@@ -25,6 +25,7 @@ import (
 	minutesv1 "github.com/mrsimpson/agentic-office/hub/records/minutes/api"
 	notev1 "github.com/mrsimpson/agentic-office/hub/records/note/api"
 	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
+	sessionlistv1 "github.com/mrsimpson/agentic-office/hub/session/listapi"
 	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
 	"github.com/mrsimpson/agentic-office/hub/session/streamapi/events"
 	slidesv1 "github.com/mrsimpson/agentic-office/hub/slides/api"
@@ -605,4 +606,14 @@ func (c *hubClient) Events(ctx context.Context, sessionID string, after, limit u
 func endedLog(path string) bool {
 	evs, err := locallog.Read(path)
 	return err == nil && len(evs) > 0 && evs[len(evs)-1].GetType() == events.SessionEnded
+}
+
+// ListSessions returns the sessions that the participant may see (if-session-list).
+func (c *hubClient) ListSessions(ctx context.Context) ([]*sessionlistv1.Session, error) {
+	var res *sessionlistv1.ListSessionsResponse
+	err := retry(ctx, func() (err error) {
+		res, err = c.sessionList.ListSessions(ctx, &sessionlistv1.ListSessionsRequest{})
+		return err
+	})
+	return res.GetSessions(), err
 }

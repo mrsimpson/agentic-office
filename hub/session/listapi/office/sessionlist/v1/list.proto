@@ -1,0 +1,48 @@
+// Session list (if-session-list): the sessions of a tenant that the caller may see
+// (dec-web-portal).
+//
+// A session is visible to the participants who joined it at any time, to the participant who
+// imported it, and to the tenant admins of the tenant. A system admin is no member of a tenant and
+// sees none. The list is read only; the events of one session come from the session stream.
+//
+// Every call needs an access token (see identity.proto) and names the tenant of the call. A stage
+// link cannot list sessions: permission_denied.
+syntax = "proto3";
+
+package office.sessionlist.v1;
+
+import "google/protobuf/timestamp.proto";
+import "office/sessionstream/v1/events.proto";
+
+option go_package = "github.com/mrsimpson/agentic-office/hub/session/listapi;sessionlistv1";
+
+service SessionListService {
+  // ListSessions returns the sessions that the caller may see, the newest first.
+  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
+}
+
+message ListSessionsRequest {}
+
+message ListSessionsResponse {
+  repeated Session sessions = 1;
+}
+
+message Session {
+  string session_id = 1;
+  // started_at is the time of the first event.
+  google.protobuf.Timestamp started_at = 2;
+  // ended_at is the time of session.ended; empty while the session runs.
+  google.protobuf.Timestamp ended_at = 3;
+  // imported is set for a session that was imported (dec-session-import).
+  bool imported = 4;
+  // participants are everyone who joined the session, in the order of their first join.
+  repeated Participant participants = 5;
+}
+
+message Participant {
+  string participant_id = 1;
+  string display_name = 2;
+  office.sessionstream.v1.ParticipantKind kind = 3;
+  // imported is set for a speaker of an imported conversation.
+  bool imported = 4;
+}

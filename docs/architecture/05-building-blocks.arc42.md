@@ -29,6 +29,7 @@ flowchart LR
     bb_participant_client -->|if-session-commands| bb_office_hub
     bb_participant_client -->|if-session-import| bb_office_hub
     bb_participant_client -->|if-session-activity| bb_office_hub
+    bb_participant_client -->|if-session-list| bb_office_hub
     bb_participant_client -->|if-decision-api| bb_office_hub
     bb_participant_client -->|if-minutes-api| bb_office_hub
     bb_participant_client -->|if-note-api| bb_office_hub
@@ -91,6 +92,8 @@ flowchart LR
     bb_portal -->|if-auth-api| bb_identity
     bb_portal -->|if-tenant-api| bb_tenants
     bb_portal -->|if-user-api| bb_identity
+    bb_portal -->|if-session-list| bb_session_service
+    bb_portal -->|if-session-stream| bb_session_service
     bb_documents -->|if-archive-storage| bb_archive
     bb_documents -->|if-session-notice| bb_session_service
     bb_documents -->|if-token-check| bb_identity
@@ -225,6 +228,27 @@ provider: bb-office-hub
 x-realized-by: bb-session-service
 protocol: Connect RPC, unary and server streaming (dec-connect-rpc); in-process for the stage
 path: hub/session/activityapi
+:::
+```
+
+### Session list
+
+The sessions of a tenant that the caller may see (`dec-web-portal`), the newest first: the name,
+the start, the end or that the session runs, the participants, and whether it was imported. A
+session is visible to everyone who joined it, to the participant who imported it, and to the
+tenant admins of its tenant. A system admin is no member of a tenant and sees none. The list
+covers running sessions and ended sessions that only the archive holds; it reads a stored log only
+after it verified it against its signed tree head. The events of one session come from the session
+stream.
+
+```arc42
+:::interface
+id: if-session-list
+title: Session list
+provider: bb-office-hub
+x-realized-by: bb-session-service
+protocol: Connect RPC, unary (dec-connect-rpc); in-process for the portal
+path: hub/session/listapi
 :::
 ```
 
@@ -430,7 +454,9 @@ path: hub/portal/web
 
 The portal part renders the portal on the server. It has no logic and no state of its own: every
 page asks the interfaces of the hub with the access token of the user and shows what it gets, so the
-portal has exactly the rights of the key (`dec-web-portal`).
+portal has exactly the rights of the key (`dec-web-portal`). It asks the auth API who the user is,
+the user and tenant APIs for the administration and the members, the session list for the
+sessions of a tenant, and the session stream for the events of one session.
 
 ```arc42
 :::building-block
@@ -438,7 +464,7 @@ id: bb-portal
 title: Portal
 technology: Go, rendered by the hub
 parent: bb-office-hub
-requires: if-auth-api, if-user-api, if-tenant-api
+requires: if-auth-api, if-user-api, if-tenant-api, if-session-list, if-session-stream
 path: hub/portal
 :::
 ```
@@ -481,8 +507,7 @@ participants, and writes everything to one append-only event log per session. It
 imported conversations (`if-session-import`) and writes them into the log of a new session, so a
 session log has one writer in every case. Next to the log, it keeps the short-lived activities of
 the participants (`if-session-activity`), in memory only. Subscribers receive the log from a cursor onwards.
-For the portal it lists the sessions that a caller may see: those in which the caller took part,
-and every session of the tenant for a tenant admin (`dec-web-portal`).
+It lists the sessions that a caller may see (`if-session-list`).
 Events are merged by time only: the participant model already says who spoke.
 
 ```arc42
@@ -1171,8 +1196,9 @@ The shared core of the CLI, the MCP server and the ears ("one core, two adapters
 `dec-cli-and-mcp`). It holds the configuration of a participant, authenticates with Identity,
 creates the command IDs and calls the interfaces of the office hub. It reads the import format
 of conversations and sends a conversation to the session import in pages
-(`dec-import-format`), so the CLI and the MCP server import in the same way. The adapters add only their
-own way of talking to a human or an agent.
+(`dec-import-format`), so the CLI and the MCP server import in the same way. It lists the sessions
+that the participant may see (`if-session-list`). The adapters add only their own way of talking
+to a human or an agent.
 
 ```arc42
 :::building-block
@@ -1181,7 +1207,7 @@ title: Client core
 technology: Go
 parent: bb-participant-client
 path: client/core
-requires: if-session-commands, if-session-stream, if-session-import, if-auth-api, if-user-api, if-tenant-api, if-decision-api, if-minutes-api, if-note-api, if-task-api, if-slides-api, if-local-log, if-document-api, if-archive-read
+requires: if-session-commands, if-session-stream, if-session-import, if-session-list, if-auth-api, if-user-api, if-tenant-api, if-decision-api, if-minutes-api, if-note-api, if-task-api, if-slides-api, if-local-log, if-document-api, if-archive-read
 :::
 ```
 

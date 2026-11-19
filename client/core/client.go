@@ -24,6 +24,7 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/records/note/api/notev1connect"
 	"github.com/mrsimpson/agentic-office/hub/session/commandsapi/sessioncommandsv1connect"
 	"github.com/mrsimpson/agentic-office/hub/session/importapi/sessionimportv1connect"
+	"github.com/mrsimpson/agentic-office/hub/session/listapi/sessionlistv1connect"
 	"github.com/mrsimpson/agentic-office/hub/session/streamapi/sessionstreamv1connect"
 	"github.com/mrsimpson/agentic-office/hub/slides/api/slidesv1connect"
 	"github.com/mrsimpson/agentic-office/hub/tasks/api/taskv1connect"
@@ -42,16 +43,18 @@ type hubClient struct {
 	stream     sessionstreamv1connect.SessionStreamServiceClient
 	// sessionImport imports conversations (if-session-import); see Import.
 	sessionImport sessionimportv1connect.SessionImportServiceClient
-	identity      identityv1connect.IdentityServiceClient
-	users         userv1connect.UserServiceClient
-	tenants       tenantv1connect.TenantServiceClient
-	decision      decisionv1connect.DecisionServiceClient
-	minutes       minutesv1connect.MinutesServiceClient
-	note          notev1connect.NoteServiceClient
-	task          taskv1connect.TaskServiceClient
-	slides        slidesv1connect.SlidesServiceClient
-	document      documentv1connect.DocumentServiceClient
-	archive       archivev1connect.ArchiveReadServiceClient
+	// sessionList lists the sessions that the participant may see (if-session-list).
+	sessionList sessionlistv1connect.SessionListServiceClient
+	identity    identityv1connect.IdentityServiceClient
+	users       userv1connect.UserServiceClient
+	tenants     tenantv1connect.TenantServiceClient
+	decision    decisionv1connect.DecisionServiceClient
+	minutes     minutesv1connect.MinutesServiceClient
+	note        notev1connect.NoteServiceClient
+	task        taskv1connect.TaskServiceClient
+	slides      slidesv1connect.SlidesServiceClient
+	document    documentv1connect.DocumentServiceClient
+	archive     archivev1connect.ArchiveReadServiceClient
 }
 
 var _ coreapi.Dial = Dial
@@ -78,6 +81,7 @@ func Dial(cfg coreapi.Config) (coreapi.Client, error) {
 		commands:      sessioncommandsv1connect.NewSessionCommandsServiceClient(cc),
 		stream:        sessionstreamv1connect.NewSessionStreamServiceClient(cc),
 		sessionImport: sessionimportv1connect.NewSessionImportServiceClient(cc),
+		sessionList:   sessionlistv1connect.NewSessionListServiceClient(cc),
 		identity:      identityv1connect.NewIdentityServiceClient(cc),
 		users:         userv1connect.NewUserServiceClient(cc),
 		tenants:       tenantv1connect.NewTenantServiceClient(cc),

@@ -4,9 +4,9 @@
 //
 // The portal (/portal/) is the web view of the hub for every user. It has the design of the
 // stage, in dark and light, and no scripts. It shows what the key of the user may see: the
-// tenants of the user and their pages, the members of a tenant to its tenant admins, and the
-// administration (users and keys, tenants, system admins) to system admins. The sessions, records
-// and artifacts of a tenant follow (#179).
+// tenants of the user, the sessions of a tenant that the user may see (if-session-list), the
+// members of a tenant to its tenant admins, and the administration (users and keys, tenants,
+// system admins) to system admins. The records and artifacts of a tenant follow (#179).
 //
 // How it works:
 //
@@ -21,6 +21,9 @@
 //     admin. Every page then asks the interfaces in-process with the token, so the portal has
 //     exactly the rights of the key and no rights of its own. A tenant of which the user is no
 //     member does not exist for it (404).
+//   - The page of a tenant lists the sessions that the user may see, the newest first: those it
+//     joined or imported, and every session for a tenant admin. It asks the session list with the
+//     tenant of the page.
 //   - The start page lists the tenants of the user. A user with one tenant and no administration
 //     goes straight to that tenant.
 //   - Register a key: "Register key" opens a form with the user ID, the display name (needed for a

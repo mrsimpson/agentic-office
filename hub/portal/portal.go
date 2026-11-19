@@ -25,10 +25,10 @@ import (
 
 // Options configure a Handler.
 type Options struct {
-	// Identity is a transport to the server of the hub behind the token check, for example
+	// Hub is a transport to the server of the hub behind the token check, for example
 	// connectinprocess.New on the server of office-hub. The portal calls it with the token of the
 	// user, so it has exactly the rights of the key of the user.
-	Identity connect.Transport
+	Hub connect.Transport
 }
 
 // Handler serves the portal (if-portal-web).
@@ -151,7 +151,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusUnauthorized, "Portal link not valid", "The link has no code. "+askForLink)
 		return
 	}
-	c := identityv1connect.NewIdentityServiceClient(connect.NewClient(h.opts.Identity))
+	c := identityv1connect.NewIdentityServiceClient(connect.NewClient(h.opts.Hub))
 	res, err := c.ExchangePortalLink(r.Context(), &identityv1.ExchangePortalLinkRequest{Code: code})
 	if err != nil {
 		h.fail(w, http.StatusUnauthorized, "Portal link not valid", "The link is unknown, was used before or has expired. "+askForLink)
@@ -181,7 +181,7 @@ func (h *Handler) client(w http.ResponseWriter, r *http.Request) (*backend, bool
 		h.fail(w, http.StatusUnauthorized, "Not signed in", "Open a portal link to sign in. "+askForLink)
 		return nil, false
 	}
-	cc := connect.NewClient(h.opts.Identity, auth.StaticToken(ck.Value))
+	cc := connect.NewClient(h.opts.Hub, auth.StaticToken(ck.Value))
 	b := &backend{identity: identityv1connect.NewIdentityServiceClient(cc), users: userv1connect.NewUserServiceClient(cc),
 		tenants: tenantv1connect.NewTenantServiceClient(cc)}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)

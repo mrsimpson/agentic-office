@@ -447,8 +447,17 @@ func TestPortalTenants(t *testing.T) {
 	tenantPage := "/portal/t/" + contracttest.DefaultTenant + "/"
 	membersPage := "/portal/t/" + contracttest.DefaultTenant + "/members"
 
-	// A member: the link of the tenant opens its page; no members, no administration.
+	// Bob took part in one session; Ada, the tenant admin, in none.
+	weekly := "weekly-" + coreapi.NewCommandID()
+	joinAs(t, bob, weekly)
+
+	// A member: the link of the tenant opens its page with its sessions; no members, no
+	// administration.
 	b, res, doc := openPortal(t, srv, bob, contracttest.DefaultTenant)
+	rows := findAll(doc, withAttr("data-session", weekly))
+	if len(rows) != 1 || len(findAll(rows[0], withAttr("data-participant", "bob"))) != 1 || !strings.Contains(text(rows[0]), "running") {
+		t.Errorf("sessions of bob: %q", text(doc))
+	}
 	if res.StatusCode != http.StatusOK || res.Request.URL.Path != tenantPage {
 		t.Fatalf("member: ends on %s with status %d", res.Request.URL.Path, res.StatusCode)
 	}
@@ -470,8 +479,11 @@ func TestPortalTenants(t *testing.T) {
 		t.Errorf("start page of a member with one tenant ends on %s", r.Request.URL.Path)
 	}
 
-	// The tenant admin sees the members.
+	// The tenant admin sees the members, and every session of the tenant.
 	b, _, doc = openPortal(t, srv, ada, contracttest.DefaultTenant)
+	if len(findAll(doc, withAttr("data-session", weekly))) != 1 {
+		t.Errorf("sessions of the tenant admin: %q", text(doc))
+	}
 	if len(findAll(doc, withAttr("data-nav", membersPage))) != 1 {
 		t.Fatalf("navigation of the tenant admin: %q", text(doc))
 	}

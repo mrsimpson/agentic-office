@@ -88,6 +88,12 @@
 //     after). WatchActivity sends the activities at once and after every change or expiry. A
 //     tool is a short name only; the hub refuses free text. The activities are lost when the hub
 //     restarts; the agent runner renews its report anyway.
+//   - Session list (dec-web-portal, list.go): the Service also realizes the session list
+//     (if-session-list). It summarizes every session in memory from the Store, and every ended
+//     session that only the archive holds from its stored log, after that log verified against its
+//     signed tree head; the summaries of finished stored sessions are kept, so each stored log is
+//     read once. A session that leaves memory during a list is read from the archive. A caller
+//     sees the sessions it joined or imported, a tenant admin (Caller.TenantAdmin) every session.
 //   - Where the archive lies: the session uses only the session-log repository of the tenant
 //     (storage.Archives.SessionLogs) for everything it stores, restores, lists and reads. The
 //     artifact repository of the tenant never holds a session log, because the log holds the

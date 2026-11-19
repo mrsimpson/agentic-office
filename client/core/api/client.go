@@ -15,6 +15,7 @@ import (
 	notev1 "github.com/mrsimpson/agentic-office/hub/records/note/api"
 	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
 	"github.com/mrsimpson/agentic-office/hub/session/commandsapi/sessioncommandsv1connect"
+	sessionlistv1 "github.com/mrsimpson/agentic-office/hub/session/listapi"
 	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
 	"github.com/mrsimpson/agentic-office/hub/session/streamapi/sessionstreamv1connect"
 	slidesv1 "github.com/mrsimpson/agentic-office/hub/slides/api"
@@ -167,6 +168,9 @@ type Client interface {
 	ListNotes(ctx context.Context, after uint32, sessionID string, limit uint32) ([]*notev1.Note, error)
 	GetMinutes(ctx context.Context, sessionID string) (*minutesv1.Minutes, error)
 	ListMinutes(ctx context.Context, after uint32, sessionID string, limit uint32) ([]*minutesv1.Minutes, error)
+	// ListSessions returns the sessions of the tenant that the participant may see, the newest
+	// first (if-session-list): those it joined or imported, and all for a tenant admin.
+	ListSessions(ctx context.Context) ([]*sessionlistv1.Session, error)
 
 	CreateTask(ctx context.Context, d TaskDraft) (*taskv1.CreateTaskResponse, error)
 	GetTask(ctx context.Context, ref string) (*taskv1.Task, error)

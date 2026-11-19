@@ -641,6 +641,14 @@ token of the next page is printed on stderr (--json: "nextPageToken"); pass it a
 changes nothing makes no new revision. --json prints {"task": ..., "duplicate": ...}.`,
 		Examples: []string{"office task update local:1 --status done", `office task update local:1 --assignee "" --session ""`}},
 
+	{Name: "session list", Group: groupRecords, Summary: "list the sessions that you may see",
+		Usage: "session list",
+		Details: `Lists the sessions of the tenant in which you took part or that you imported, the newest
+first; a tenant admin sees every session of the tenant. Each line: the session (marked when it was
+imported), the start, the end or "running" (UTC), and the participants. --json prints
+{"sessions": [{"sessionId", "startedAt", "endedAt", "imported", "participants": [...]}]}.`,
+		Examples: []string{"office session list", "office session list --json"}},
+
 	// Import.
 	{Name: "session import", Group: groupImport, Summary: "import a conversation as a new, marked session",
 		Usage: "session import <conversation.json | -> [--session S]",

@@ -5,7 +5,7 @@
 //
 //	GET  /portal/login?code=<code>        swaps the code of a portal link for a session
 //	GET  /portal/                         the start page: the tenants of the user
-//	GET  /portal/t/<tenant>/              the start page of a tenant
+//	GET  /portal/t/<tenant>/              the start page of a tenant: the role and the sessions
 //	GET  /portal/t/<tenant>/members       the members of a tenant (tenant admins)
 //	GET  /portal/admin/keys               the users and their keys (system admins)
 //	GET  /portal/admin/keys/new           the form that registers a key
@@ -94,6 +94,11 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.85rem
 .badge.revoked { color: var(--rec); border-color: currentColor; }
 .badge.admin { color: var(--text); border-color: var(--text); }
 .empty { color: var(--muted); }
+h2 { margin: 1.6rem 0 0.6rem; }
+.chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.chip { font-size: 0.8rem; padding: 0 0.55em; border: 1px solid var(--line); border-radius: 99px; }
+.chip.agent { border-radius: 0; }
+.badge.imported { color: var(--warn); border-color: currentColor; }
 .toolbar { display: flex; justify-content: flex-end; margin: -3.2rem 0 1.4rem; }
 .button, button { font: inherit; font-size: 0.9rem; font-weight: 500; padding: 0.4rem 1.1rem; border: 1px solid var(--ink); border-radius: 0; background: var(--ink); color: var(--on-ink); text-decoration: none; cursor: pointer; }
 .button.quiet, button.quiet { background: none; color: var(--text); border-color: var(--line); }
@@ -160,8 +165,17 @@ var Page = template.Must(template.New("page").Funcs(template.FuncMap{
 <tr><th>Tenant</th><th>Your role</th></tr>
 {{range .Tenants}}<tr data-tenant="{{.TenantId}}"><td><a class="name" href="{{.Href}}">{{.TenantId}}</a></td><td>{{.Role}}</td></tr>
 {{end}}</table>{{else}}<p class="empty" data-empty="tenants">You are no member of a tenant.{{if .SystemAdmin}} As a system admin you manage the hub in the sections on the left.{{end}}</p>{{end}}
-{{else if eq .Mode "tenant"}}<dl class="facts" data-tenant="{{.Tenant}}"><dt>Tenant</dt><dd>{{.Tenant}}</dd><dt>Your role</dt><dd data-role>{{.Role}}</dd></dl>
-<p class="muted">The sessions, minutes, notes, decisions, tasks, slides and documents of this tenant will appear here.</p>
+{{else if eq .Mode "tenant"}}<dl class="facts" data-tenant="{{.Tenant}}"><dt>Your role</dt><dd data-role>{{.Role}}</dd></dl>
+<h2>Sessions</h2>
+{{if .Sessions}}<table class="sessions">
+<tr><th>Session</th><th>Started (UTC)</th><th>Ended (UTC)</th><th>Participants</th></tr>
+{{range .Sessions}}<tr data-session="{{.SessionId}}"{{if .Running}} data-running{{end}}{{if .Imported}} data-imported{{end}}>
+<td><span class="name">{{.SessionId}}</span>{{if .Imported}} <span class="badge imported">imported</span>{{end}}</td>
+<td><small>{{.Started}}</small></td>
+<td>{{if .Running}}<span class="badge active">running</span>{{else}}<small>{{.Ended}}</small>{{end}}</td>
+<td><div class="chips">{{range .Participants}}<span class="chip{{if .Agent}} agent{{end}}" data-participant="{{.ParticipantId}}" title="{{.ParticipantId}}">{{.Name}}</span>{{end}}</div></td>
+</tr>
+{{end}}</table>{{else}}<p class="empty" data-empty="sessions">You took part in no session of this tenant yet.</p>{{end}}
 {{else if eq .Mode "members"}}<table class="members">
 <tr><th>User</th><th>Role</th><th>Since</th></tr>
 {{range .Members}}<tr data-member="{{.UserId}}"><td><span class="name">{{.UserId}}</span></td><td>{{.Role}}</td><td><small>{{.Since}}</small></td></tr>
