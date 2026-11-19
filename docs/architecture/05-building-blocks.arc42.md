@@ -94,6 +94,10 @@ flowchart LR
     bb_portal -->|if-user-api| bb_identity
     bb_portal -->|if-session-list| bb_session_service
     bb_portal -->|if-session-stream| bb_session_service
+    bb_portal -->|if-minutes-api| bb_records
+    bb_portal -->|if-decision-api| bb_records
+    bb_portal -->|if-note-api| bb_records
+    bb_portal -->|if-task-api| bb_tasks
     bb_documents -->|if-archive-storage| bb_archive
     bb_documents -->|if-session-notice| bb_session_service
     bb_documents -->|if-token-check| bb_identity
@@ -459,7 +463,8 @@ The portal part renders the portal on the server. It has no logic and no state o
 page asks the interfaces of the hub with the access token of the user and shows what it gets, so the
 portal has exactly the rights of the key (`dec-web-portal`). It asks the auth API who the user is,
 the user and tenant APIs for the administration and the members, the session list for the
-sessions of a tenant, and the session stream for the events of one session.
+sessions of a tenant, the session stream for the events of one session, and the minutes, decisions,
+notes and tasks of that session.
 
 ```arc42
 :::building-block
@@ -467,7 +472,7 @@ id: bb-portal
 title: Portal
 technology: Go, rendered by the hub
 parent: bb-office-hub
-requires: if-auth-api, if-user-api, if-tenant-api, if-session-list, if-session-stream
+requires: if-auth-api, if-user-api, if-tenant-api, if-session-list, if-session-stream, if-minutes-api, if-decision-api, if-note-api, if-task-api
 path: hub/portal
 :::
 ```
