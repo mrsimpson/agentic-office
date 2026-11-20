@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.1](https://github.com/mrsimpson/agentic-office/compare/v0.3.0...v0.3.1) (2026-11-20)
+
+
+### Bug fixes
+
+* **portal:** send the origin with forms, so a browser can release a session ([#255](https://github.com/mrsimpson/agentic-office/issues/255)) ([82807df](https://github.com/mrsimpson/agentic-office/commit/82807df728da57d4a1a1a64c6fda873c5d0c683b)), closes [#254](https://github.com/mrsimpson/agentic-office/issues/254)
+
+
+### Chores
+
+* **release:** record 0.3.0, which was tagged without the release pull request ([#256](https://github.com/mrsimpson/agentic-office/issues/256)) ([6e28ea3](https://github.com/mrsimpson/agentic-office/commit/6e28ea30932f9afeb314686dc7b60688543b046d))
+
 ## [0.3.0](https://github.com/mrsimpson/agentic-office/compare/v0.2.0...v0.3.0) (2026-11-20)
 
 
