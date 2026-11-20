@@ -30,6 +30,17 @@
 //     the session runs), the records and the transcript: a sentence off the record is a
 //     placeholder and does not appear, a correction replaces the text. A session ID may hold a
 //     slash; the pages of a tenant work on the escaped path.
+//   - The page of a session also shows its release (release.go, concept-session-release): the
+//     status and the deadline from GetRelease of the session commands, and the staged artifacts,
+//     read through the archive read API, which serves the staged version to the readers of the
+//     session. When GetRelease says that the user may release (a human who took part), the page
+//     has a form that releases and, while the session waits, one that objects. They post to
+//     .../s/<session>/release and .../object and call ReleaseSession and ObjectToRelease; each
+//     form carries a command ID, so a form sent twice has one effect. When the hub refuses a
+//     release because staged files quote sentences off the record, the page lists the places and
+//     a form "Release anyway" that carries the quote token. A member who may not read the session
+//     gets 404 from the session stream; for a released session the page then shows only the
+//     release: who released, the co-authors of the release commit and the released artifacts.
 //   - The start page lists the tenants of the user. A user with one tenant and no administration
 //     goes straight to that tenant.
 //   - Register a key: "Register key" opens a form with the user ID, the display name (needed for a

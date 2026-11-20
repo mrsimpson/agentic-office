@@ -1,7 +1,9 @@
 # Shows on every pull request whether it changes the architecture (docs/architecture).
 #
 # The job "Architecture diff" compares the pull request with the merge base of its target branch
-# (`arc42 diff <base>...HEAD`). It writes the result as one comment on the pull request and
+# (`arc42 diff <base>...HEAD`). The release pull request of release-please is the exception: it
+# holds only the next version and the CHANGELOG, so it compares with the last release tag and shows
+# what the release brings. It writes the result as one comment on the pull request and
 # updates that comment on every later push (the comment carries a hidden marker). When the
 # architecture changed, it also builds a review site with the differences marked
 # (`arc42 build --diff`):
@@ -58,13 +60,35 @@ jobs:
         with:
           node-version: 22
 
-      - name: Compare the architecture with the target branch
-        id: diff
+      # The release pull request of release-please has no content of its own: its branch starts with
+      # release-please--. It compares with the last release tag on the target branch. Without a
+      # tag, it compares with the target branch like every other pull request.
+      - name: Choose what to compare with
+        id: base
         env:
           BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          if [[ "$HEAD_REF" == release-please--* ]] \
+            && tag=$(git describe --tags --abbrev=0 --match 'v*' "origin/$BASE_REF" 2> /dev/null); then
+            echo "range=$tag...HEAD" >> "$GITHUB_OUTPUT"
+            echo "label=the last release $tag" >> "$GITHUB_OUTPUT"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "Release pull request: compare with $tag"
+          else
+            echo "range=origin/$BASE_REF...HEAD" >> "$GITHUB_OUTPUT"
+            echo "label=$BASE_REF" >> "$GITHUB_OUTPUT"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "Compare with origin/$BASE_REF"
+          fi
+
+      - name: Compare the architecture
+        id: diff
+        env:
+          RANGE: ${{ steps.base.outputs.range }}
         run: |
           set +e
-          $ARC42 diff "origin/$BASE_REF...HEAD" --format json > "$RUNNER_TEMP/diff.json" 2> "$RUNNER_TEMP/diff.err"
+          $ARC42 diff "$RANGE" --format json > "$RUNNER_TEMP/diff.json" 2> "$RUNNER_TEMP/diff.err"
           status=$?
           set -e
           # Exit 1 with a JSON result means consistency findings: they go into the report.
@@ -101,12 +125,12 @@ jobs:
       - name: Build the review site
         if: steps.diff.outputs.changed == 'true'
         env:
-          BASE_REF: ${{ github.base_ref }}
+          RANGE: ${{ steps.base.outputs.range }}
           SITE_PATH: ${{ steps.pages.outputs.path }}
           PAGE: architecture-review-pr-${{ github.event.pull_request.number }}.html
         run: |
-          $ARC42 build --out "$RUNNER_TEMP/site" --diff "origin/$BASE_REF...HEAD" --base "$SITE_PATH"
-          $ARC42 build --out "$RUNNER_TEMP/single" --diff "origin/$BASE_REF...HEAD" --single-file
+          $ARC42 build --out "$RUNNER_TEMP/site" --diff "$RANGE" --base "$SITE_PATH"
+          $ARC42 build --out "$RUNNER_TEMP/single" --diff "$RANGE" --single-file
           mkdir -p "$RUNNER_TEMP/page"
           mv "$RUNNER_TEMP/single/index.html" "$RUNNER_TEMP/page/$PAGE"
 
@@ -168,7 +192,8 @@ jobs:
           PAGES_ENABLED: ${{ steps.pages.outputs.enabled }}
           SITE_URL: ${{ steps.pages.outputs.url }}
           PAGE_URL: ${{ steps.artifact.outputs.artifact-url }}
-          BASE_REF: ${{ github.base_ref }}
+          BASE_LABEL: ${{ steps.base.outputs.label }}
+          RELEASE: ${{ steps.base.outputs.release }}
         with:
           script: |
             const fs = require("node:fs");
@@ -177,7 +202,9 @@ jobs:
             const changed = process.env.CHANGED === "true";
             const { owner, repo } = context.repo;
             const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
-            const base = `\`${process.env.BASE_REF}\` at ${diff.base.commit.slice(0, 7)}`;
+            const base = `\`${process.env.BASE_LABEL}\` at ${diff.base.commit.slice(0, 7)}`;
+            // The release pull request speaks for the release, not for its own small change.
+            const subject = process.env.RELEASE === "true" ? "This release" : "This pull request";
             const code = (text) => `\`${String(text).replaceAll("`", "'")}\``;
             const text = (v) => (Array.isArray(v) ? v.join(", ") : typeof v === "string" ? v : JSON.stringify(v));
             // Short values are shown; long ones (diagram sources, text) only as changed.
@@ -195,7 +222,7 @@ jobs:
             const lines = [marker, "### Architecture diff", ""];
             if (changed) {
               const sum = (key) => arch.documents.reduce((total, d) => total + d[key], 0);
-              lines.push(`This pull request **changes the architecture** (compared with ${base}).`, "");
+              lines.push(`${subject} **changes the architecture** (compared with ${base}).`, "");
               if (process.env.PAGES_ENABLED === "true" && process.env.SAME_REPO === "true") {
                 lines.push(`**[Open the review site](${process.env.SITE_URL})**: the chapters with the changes marked. Pages may need a minute to show a new push.`, "");
               } else {
@@ -222,7 +249,7 @@ jobs:
               ];
               lines.push(...limit(changes, 60), "");
             } else {
-              lines.push(`This pull request does **not change the architecture** (compared with ${base}).`, "");
+              lines.push(`${subject} does **not change the architecture** (compared with ${base}).`, "");
             }
             if (groups.warnings.length > 0) {
               lines.push(

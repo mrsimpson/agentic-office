@@ -462,9 +462,16 @@ neutral one.
    local copy of the log and no agent, so the speaker also corrects the staged artifacts or asks
    their authors. Any human who took part may release, or object; an objection holds the session
    until a human releases it.
-4. Before a human releases, the meeting session shows where a staged file quotes a sentence off the
-   record word for word. It holds the originals, and they never leave it. The human decides; the hub
-   changes no content.
+4. Before every release, the meeting session searches the staged files for sentences off the
+   record, word for word: sentences of at least three words, with case and spaces ignored. It
+   holds the originals, and they never leave it. While it finds a quote, a release by a human is
+   refused and creates no event. The answer lists the places (file, line, event of the sentence)
+   and a token over the session and the exact quotes. The human corrects the files, or releases
+   anyway with the token; the release goes through only if a new search gives the same token. If
+   the grace period ends while quotes exist, the hub holds the session, so only a human can
+   release it. A session without humans is released at its end all the same: nobody could confirm
+   the quotes, and only agents can have marked their own sentences there. The hub changes no
+   content. A false match costs one confirmation; a missed one leaks a sentence.
 5. The release closes the area for writes, moves everything in it into the artifact repository in
    one commit, and then cleans up. Each artifact replaces its stub. The author of the commit is the
    human who released, or the hub when the grace period ended, and it names the authors of the
@@ -501,7 +508,7 @@ archive (`if-artifact-changes`).
 | When the sentence is marked | What protects it |
 | --- | --- |
 | During the session | The interfaces show a placeholder; agents are told to keep it out of what they write |
-| After the end, before the release | The speaker marks the sentence, corrects the staged artifacts, or objects; any other human may still release; the release shows word-for-word quotes |
+| After the end, before the release | The speaker marks the sentence, corrects the staged artifacts, or objects; a word-for-word quote stops the release until a human confirms it, and holds the session at the end of the grace period |
 | After the release | Nothing removes it from clones and history (`risk-retraction-leak`) |
 
 A paraphrase can pass every step. The grace period gives the speaker time to read what is shared,
@@ -522,7 +529,7 @@ the wiki. A page cites records, never a session.
 **Example.** In the weekly meeting, Ada, Ben and an agent take part. The agent keeps the minutes and
 adds a note about a new price. Ben says a sentence about a colleague and marks it off the record a
 minute later; the agent takes it out of the running minutes. Ada ends the meeting, reads the staged
-minutes in the portal, sees no marked quote, and releases. The minutes and the note move into the
+minutes in the portal and releases; the hub finds no quote of Ben's sentence. The minutes and the note move into the
 artifact repository in one commit with Ada as its author. The agent that claimed the ingest in the
 meeting updates the pricing page and cites both records.
 

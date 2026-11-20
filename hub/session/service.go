@@ -790,7 +790,8 @@ func (s *Service) FocusArtifact(ctx context.Context, req *sessioncommandsv1.Focu
 
 // NoteArtifact appends artifact.created or artifact.changed for the participant of the access token
 // in ctx (dec-artifacts). The parts of the hub that write artifacts call it in-process after the
-// write, with the context of the caller. The participant must have joined the session. It is
+// write, with the context of the caller. The participant must have taken part in the session, as
+// release.Checker.TookPart says: it joined at any time, or it imported the session. It is
 // idempotent by command_id like every command. It also works after the end of the session, for a
 // participant who left too (dec-session-end-milestone).
 func (s *Service) NoteArtifact(ctx context.Context, sessionID, participantID, commandID string, created bool, path, version string) error {
@@ -800,7 +801,7 @@ func (s *Service) NoteArtifact(ctx context.Context, sessionID, participantID, co
 	}
 	_, err := s.run(ctx, command{
 		sessionID: sessionID, commandID: commandID, participantID: participantID, types: []string{typ},
-		afterEnd: func(*state) error { return nil },
+		afterEnd: func(*state) error { return nil }, tookPart: true,
 		build: func(*state, Caller) (*sessionstreamv1.Event, error) {
 			if created {
 				return &sessionstreamv1.Event{Payload: &sessionstreamv1.Event_ArtifactCreated{

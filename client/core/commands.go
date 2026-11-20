@@ -313,10 +313,11 @@ func (c *hubClient) EndSession(ctx context.Context, sessionID string) (*sessionc
 }
 
 // ReleaseSession releases what an ended session staged (concept-session-release).
-func (c *hubClient) ReleaseSession(ctx context.Context, sessionID string) (*sessioncommandsv1.ReleaseSessionResponse, error) {
+func (c *hubClient) ReleaseSession(ctx context.Context, sessionID, acceptQuotes string) (*sessioncommandsv1.ReleaseSessionResponse, error) {
 	var res *sessioncommandsv1.ReleaseSessionResponse
 	_, err := c.command(ctx, func(pid, id string) (r *sessioncommandsv1.CommandResult, err error) {
-		res, err = c.commands.ReleaseSession(ctx, &sessioncommandsv1.ReleaseSessionRequest{SessionId: sessionID, CommandId: id, ParticipantId: pid})
+		res, err = c.commands.ReleaseSession(ctx, &sessioncommandsv1.ReleaseSessionRequest{SessionId: sessionID, CommandId: id,
+			ParticipantId: pid, AcceptQuotes: acceptQuotes})
 		return res.GetResult(), err
 	})
 	return res, err

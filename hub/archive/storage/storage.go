@@ -233,7 +233,27 @@ type Staging interface {
 	// in step 1 stays, whatever author is given now. It fails with ErrNoArea if the session has
 	// no area, also after a complete release.
 	Release(ctx context.Context, session string, author Author) (string, error)
+	// Released returns the release commit of a session from the history of main in the artifact
+	// repository: the commit that names the session in its trailer "Office-Release". It fails
+	// with ErrNotReleased if there is no such commit: the session is not released, its release
+	// has not moved the area yet, or the area had nothing to move.
+	Released(ctx context.Context, session string) (ReleaseCommit, error)
 }
+
+// ReleaseCommit is the commit that moved the area of a session into the artifact repository.
+type ReleaseCommit struct {
+	ID   string
+	Time time.Time
+	// Author is the author of the commit; empty means the hub.
+	Author Author
+	// CoAuthors are the authors that the commit names as co-authors, in their order.
+	CoAuthors []Author
+	// Paths are the files that the commit wrote, ordered. Removed stubs are not in the list.
+	Paths []string
+}
+
+// ErrNotReleased is the error of Staging.Released for a session without a release commit.
+var ErrNotReleased = errors.New("archive: the session has no release commit")
 
 // AreaState is what the meeting session writes into the area of a session.
 type AreaState struct {

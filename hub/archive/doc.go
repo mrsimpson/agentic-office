@@ -60,6 +60,9 @@
 //     recorded again.
 //  3. Clean up: one commit in the staging repository removes the files and the state of the area.
 //
+// Released finds the release commit of a session in the history of main by its trailer, with its
+// author (empty for the hub), its co-authors and the paths it wrote.
+//
 // After a restart, a closed area shows its running release (Area.Release) and Release completes
 // it: the recorded commit is not made again when it lies in the history of main, which is never
 // rewritten. An area with nothing to move releases without a commit in the artifact repository.

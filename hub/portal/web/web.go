@@ -6,7 +6,9 @@
 //	GET  /portal/login?code=<code>        swaps the code of a portal link for a session
 //	GET  /portal/                         the start page: the tenants of the user
 //	GET  /portal/t/<tenant>/              the start page of a tenant: the role and the sessions
-//	GET  /portal/t/<tenant>/s/<session>   one session, read only: transcript, minutes, records
+//	GET  /portal/t/<tenant>/s/<session>   one session: transcript, minutes, records, release
+//	POST /portal/t/<tenant>/s/<session>/release  releases the session (a human who took part)
+//	POST /portal/t/<tenant>/s/<session>/object   objects to the release (a human who took part)
 //	GET  /portal/t/<tenant>/members       the members of a tenant (tenant admins)
 //	GET  /portal/admin/keys               the users and their keys (system admins)
 //	GET  /portal/admin/keys/new           the form that registers a key
@@ -56,6 +58,12 @@ func TenantPath(tenant string) string { return TenantPrefix + url.PathEscape(ten
 func SessionPath(tenant, session string) string {
 	return TenantPrefix + url.PathEscape(tenant) + "/s/" + url.PathEscape(session)
 }
+
+// ReleasePath takes the form that releases a session; ObjectPath the form that objects.
+func ReleasePath(tenant, session string) string { return SessionPath(tenant, session) + "/release" }
+
+// ObjectPath takes the form that objects to the release of a session.
+func ObjectPath(tenant, session string) string { return SessionPath(tenant, session) + "/object" }
 
 // MembersPath is the page with the members of a tenant.
 func MembersPath(tenant string) string { return TenantPrefix + url.PathEscape(tenant) + "/members" }
@@ -132,6 +140,9 @@ textarea { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.8
 .facts dt { font-size: 0.7rem; letter-spacing: 0.13em; text-transform: uppercase; color: var(--muted); margin-top: 0.8rem; }
 .facts dd { margin: 0.1rem 0 0; }
 .placeholder { max-width: 30rem; padding: 2rem 0; }
+pre.artifact { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.8rem; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--soft); padding: 0.8rem 1rem; max-width: 54rem; }
+summary { cursor: pointer; }
+[data-actions] { margin: 0 0 1.4rem; }
 .placeholder p { color: var(--muted); }
 body.error { display: block; }
 body.error main { padding: 4rem 3rem; }
@@ -192,12 +203,21 @@ var Page = template.Must(template.New("page").Funcs(template.FuncMap{
 </tr>
 {{end}}</table>{{else}}<p class="empty" data-empty="sessions">You took part in no session of this tenant yet.</p>{{end}}
 {{else if eq .Mode "session"}}{{with .Session}}<p class="back"><a class="link" href="{{$.Back}}">All sessions</a></p>
+{{if .Limited}}<p class="muted" data-limited>You did not take part in this session. You see what it released, as every member of the tenant does.</p>
+{{template "release" .Release}}{{else}}
 <dl class="facts" data-session="{{.SessionId}}"{{if .Running}} data-running{{end}}>
 <dt>Started (UTC)</dt><dd>{{.Started}}</dd>
 <dt>Ended (UTC)</dt><dd>{{if .Running}}<span class="badge active">running</span> <small>This page shows the session as it was when you opened it.</small>{{else}}{{.Ended}}{{end}}</dd>
 {{if .Source}}<dt>Imported</dt><dd data-origin><span class="badge imported">imported</span> {{.Source}}{{if .ImportTitle}}: {{.ImportTitle}}{{end}} <small>by {{.Importer}}. The office did not see this conversation happen.</small></dd>{{end}}
 <dt>Participants</dt><dd><div class="chips">{{range .Participants}}<span class="chip{{if .Agent}} agent{{end}}" data-participant="{{.ParticipantId}}" title="{{.ParticipantId}}">{{.Name}}</span>{{end}}</div></dd>
 </dl>
+{{with .Release}}{{template "release" .}}
+{{if .Quotes}}<div class="error" role="alert" data-quotes><p>The hub did not release the session: staged files quote sentences that are off the record, word for word. The places:</p>
+<ul>{{range .Quotes}}<li data-quote="{{.Path}}:{{.Line}}"><code>{{.Path}}</code>, line {{.Line}}: the sentence of event {{.UtteranceEventId}}</li>{{end}}</ul>
+<p>Correct these files, or release anyway if the quotes may be shared.</p>
+<form class="buttons" method="post" action="{{.ReleasePath}}" data-form="release-anyway"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="command_id" value="{{.AnywayCommand}}"><input type="hidden" name="accept_quotes" value="{{.QuoteToken}}"><button class="danger" type="submit">Release anyway</button></form></div>{{end}}
+{{if .MayRelease}}<div class="buttons" data-actions><form method="post" action="{{.ReleasePath}}" data-form="release"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="command_id" value="{{.ReleaseCommand}}"><button type="submit">Release now</button></form>
+{{if .Waiting}}<form method="post" action="{{.ObjectPath}}" data-form="object"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="command_id" value="{{.ObjectCommand}}"><button class="quiet" type="submit">Object</button></form>{{end}}</div>{{end}}{{end}}
 <h2>Minutes</h2>
 {{if .Minutes}}<div class="prose" data-minutes{{if .MinutesRunning}} data-running-minutes{{end}}>{{if .MinutesRunning}}<p class="muted">The running minutes; the session has not stored minutes yet.</p>{{end}}{{.Minutes}}</div>{{else}}<p class="empty" data-empty="minutes">Nobody wrote minutes.</p>{{end}}
 <h2>Decisions</h2>
@@ -209,7 +229,7 @@ var Page = template.Must(template.New("page").Funcs(template.FuncMap{
 {{if .Notes}}<ol class="records">{{range .Notes}}<li data-note="{{.Id}}"><div class="prose">{{.Text}}</div><small>{{.Author}}, {{.Time}} UTC</small>{{range .Tags}} <span class="chip" data-tag>{{.}}</span>{{end}}</li>{{end}}</ol>{{else}}<p class="empty" data-empty="notes">No notes.</p>{{end}}
 <h2>Transcript</h2>
 {{if .Lines}}<ol class="transcript">{{range .Lines}}<li data-utterance="{{.EventId}}" data-participant="{{.SpeakerId}}"><time>{{.Time}}</time><span class="speaker{{if .Agent}} agent{{end}}">{{.Speaker}}</span><span class="text">{{.Text}}</span>{{if .Corrected}} <small class="corrected">(corrected)</small>{{end}}</li>{{end}}</ol>{{else}}<p class="empty" data-empty="transcript">Nothing was said.</p>{{end}}
-{{end}}
+{{end}}{{end}}
 {{else if eq .Mode "members"}}<table class="members">
 <tr><th>User</th><th>Role</th><th>Since</th></tr>
 {{range .Members}}<tr data-member="{{.UserId}}"><td><span class="name">{{.UserId}}</span></td><td>{{.Role}}</td><td><small>{{.Since}}</small></td></tr>
@@ -249,6 +269,18 @@ var Page = template.Must(template.New("page").Funcs(template.FuncMap{
 {{end}}</table>{{else}}<p class="empty">There are no keys yet.</p>{{end}}{{end}}
 </main></body></html>
 `))
+
+// release is the release part of the page of a session: the status, the release commit and the
+// artifacts, staged or released.
+var _ = template.Must(Page.New("release").Parse(`<h2>Release</h2>
+<dl class="facts" data-release="{{.State}}">
+<dt>Status</dt><dd>{{if eq .State "released"}}<span class="badge active" data-release-state>released</span>{{else if eq .State "held"}}<span class="badge revoked" data-release-state>held</span> <small>Only a human who took part releases it.</small>{{else if eq .State "waiting"}}<span class="badge imported" data-release-state>waiting</span>{{if .Deadline}} <small data-deadline>The hub releases it on {{.Deadline}} UTC, unless a human objects.</small>{{end}}{{else}}<span class="badge" data-release-state>open</span> <small>What the session creates waits until it ends and is released.</small>{{end}}</dd>
+{{with .Commit}}<dt>Released by</dt><dd data-released-by>{{if .ReleasedBy}}{{.ReleasedBy}}{{else}}the hub, when the grace period ended{{end}}</dd>
+<dt>Authors</dt><dd data-authors>{{range $i, $a := .Authors}}{{if $i}}, {{end}}<span data-author>{{$a}}</span>{{else}}<small>none besides who released</small>{{end}}</dd>
+<dt>Release commit</dt><dd><code title="{{.ID}}" data-commit="{{.ID}}">{{.Short}}</code> <small>{{.Time}} UTC</small></dd>{{end}}
+</dl>
+<h2>{{if eq .State "released"}}Released artifacts{{else}}Staged artifacts{{end}}</h2>
+{{if .Artifacts}}<ol class="records">{{range .Artifacts}}<li data-artifact="{{.Path}}"{{if .Staged}} data-staged{{end}}><details><summary><code>{{.Path}}</code>{{if .Staged}} <span class="badge imported">staged</span>{{end}}</summary><pre class="artifact">{{.Content}}</pre>{{if .Cut}}<small>The page shows the start of the file only.</small>{{end}}</details></li>{{end}}</ol>{{else}}<p class="empty" data-empty="artifacts">{{if eq .State "released"}}The session released no artifact.{{else}}The session has staged no artifact.{{end}}</p>{{end}}`))
 
 // ErrorPage is the page for a missing, used or expired session or link. It shows no data. Fields:
 // Title, Message.
