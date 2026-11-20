@@ -1,0 +1,156 @@
+// Wiki (if-wiki-api): the derived view of the wiki of a tenant (concept-wiki, dec-wiki). The
+// portal shows it; it has no logic of its own (dec-web-portal).
+//
+// All artifacts of a tenant form its wiki. The hub follows the artifact repository of the tenant
+// and keeps a view of it: the index of the artifacts, the links and backlinks of each artifact,
+// the links that lead nowhere, the sources that no document cites yet (the ingest queue), and a
+// search by words. The part that owns a type describes its files (title, summary, tags, links,
+// sources); this interface only shows what they describe. The view is read only: it writes
+// nothing, and the hub builds it again from the repository at start.
+//
+// What the view holds:
+//
+//   - Only released artifacts. The view never reads the staging area. The stub of a staged
+//     artifact (concept-session-release) is not in the index, the search or the queue, but a link
+//     to a stub leads somewhere: the file is there.
+//   - Every path is relative to the top of the repository, with slashes, for example
+//     "notes/000003.md".
+//   - A link leads somewhere when its path is a file of the repository or a directory with files.
+//   - A source is a decision, minutes or a note. A document cites it in the field sources of its
+//     front matter.
+//   - A file that the hub cannot describe, for example one that is not valid, is not in the view.
+//
+// The view follows each change of the repository, from a write through an interface of the hub
+// or from a push. It may show a change a moment after the write returned.
+//
+// Every call needs an access token of a member of the tenant (see identity.proto), and every
+// member reads the whole view: every member may read every released artifact. A stage link cannot
+// use this interface (permission_denied). Agents read their clone with their own tools; the CLI
+// and the MCP server have no access to this interface.
+syntax = "proto3";
+
+package office.wiki.v1;
+
+option go_package = "github.com/mrsimpson/agentic-office/hub/wiki/api;wikiv1";
+
+service WikiService {
+  // ListArtifacts returns the index: every artifact of the view, ordered by path, and every tag
+  // with the number of its artifacts.
+  rpc ListArtifacts(ListArtifactsRequest) returns (ListArtifactsResponse);
+  // GetArtifact returns one artifact with its links, its backlinks, its sources and the documents
+  // that cite it. A path that is not in the view fails with not_found, also the path of a stub.
+  rpc GetArtifact(GetArtifactRequest) returns (GetArtifactResponse);
+  // ListBrokenLinks returns every link and every cited source that leads nowhere, ordered by the
+  // path of the artifact that has it, then by its target.
+  rpc ListBrokenLinks(ListBrokenLinksRequest) returns (ListBrokenLinksResponse);
+  // ListIngestQueue returns the sources that no document cites yet, ordered by path. A record of
+  // a session joins the queue when the session is released.
+  rpc ListIngestQueue(ListIngestQueueRequest) returns (ListIngestQueueResponse);
+  // Search returns the artifacts that contain words of the query, best first (see SearchRequest).
+  rpc Search(SearchRequest) returns (SearchResponse);
+}
+
+// Artifact is one entry of the index.
+message Artifact {
+  string path = 1;
+  // schema is the schema that the file names, for example "office.note.v1"; empty for a
+  // document without a schema.
+  string schema = 2;
+  string title = 3;
+  // summary is one line; it may be empty.
+  string summary = 4;
+  repeated string tags = 5;
+  // source is set for a source of the wiki: a decision, minutes or a note.
+  bool source = 6;
+}
+
+message ListArtifactsRequest {
+  // tag keeps only the artifacts with this tag (the same text, case and all). Empty: all
+  // artifacts.
+  string tag = 1;
+}
+
+message ListArtifactsResponse {
+  repeated Artifact artifacts = 1;
+  // tags are all tags of the view, not only those of the listed artifacts, ordered by tag.
+  repeated TagCount tags = 2;
+}
+
+message TagCount {
+  string tag = 1;
+  // count is the number of artifacts with the tag.
+  uint32 count = 2;
+}
+
+message GetArtifactRequest {
+  string path = 1;
+}
+
+message GetArtifactResponse {
+  Artifact artifact = 1;
+  // links are the links in the text of the artifact, in the order of the text.
+  repeated Link links = 2;
+  // backlinks are the artifacts whose text links to this one, ordered by path.
+  repeated Artifact backlinks = 3;
+  // sources are the sources that a document cites, in the order of its front matter.
+  repeated Link sources = 4;
+  // cited_by are the documents that cite this artifact as a source, ordered by path.
+  repeated Artifact cited_by = 5;
+}
+
+// Link is a link or a cited source of an artifact.
+message Link {
+  // path is the target, from the top of the repository.
+  string path = 1;
+  // broken is set when the target is neither a file nor a directory with files.
+  bool broken = 2;
+  // artifact is the target when it is in the index; unset for a stub, a directory or a broken
+  // link.
+  Artifact artifact = 3;
+}
+
+message ListBrokenLinksRequest {}
+
+message ListBrokenLinksResponse {
+  repeated BrokenLink links = 1;
+}
+
+message BrokenLink {
+  // from_path is the artifact that has the link.
+  string from_path = 1;
+  // to_path is the target that leads nowhere.
+  string to_path = 2;
+  // source is set for a cited source in the front matter of a document; unset for a link in the
+  // text.
+  bool source = 3;
+}
+
+message ListIngestQueueRequest {}
+
+message ListIngestQueueResponse {
+  repeated Artifact sources = 1;
+}
+
+// SearchRequest searches the view by words, without a model. A word is a run of letters and
+// digits; case does not matter, and the words must match whole. The hub ranks with BM25: a word
+// counts more when it is rare in the tenant and when it stands in the title (three times), the
+// tags or the summary (twice each) rather than only in the text (once), and less in a long
+// artifact. An artifact needs one word of the query to be found; more words of the query rank it
+// higher. Equal scores are ordered by path.
+message SearchRequest {
+  // query holds the words. A query without a word fails with invalid_argument.
+  string query = 1;
+  // limit is the most hits to return: 0 means 20, and more than 100 means 100.
+  uint32 limit = 2;
+}
+
+message SearchResponse {
+  repeated SearchHit hits = 1;
+}
+
+message SearchHit {
+  Artifact artifact = 1;
+  // score is the rank of the hit; a higher score is a better match. Scores of two searches are
+  // not comparable.
+  double score = 2;
+}

@@ -18,6 +18,7 @@ modules:
   - path: hub/archive/api
   - path: hub/archive/changes/api
   - path: hub/documents/api
+  - path: hub/wiki/api
 lint:
   use:
     - STANDARD

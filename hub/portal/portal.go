@@ -21,6 +21,7 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/portal/web"
 	tenantv1 "github.com/mrsimpson/agentic-office/hub/tenant/api"
 	"github.com/mrsimpson/agentic-office/hub/tenant/api/tenantv1connect"
+	"github.com/mrsimpson/agentic-office/hub/wiki/api/wikiv1connect"
 )
 
 // Options configure a Handler.
@@ -188,6 +189,8 @@ type backend struct {
 	identity identityv1connect.IdentityServiceClient
 	users    userv1connect.UserServiceClient
 	tenants  tenantv1connect.TenantServiceClient
+	// wiki is the view of the wiki of the tenant (if-wiki-api). OPEN: the pages of the wiki (#208).
+	wiki wikiv1connect.WikiServiceClient
 }
 
 func (h *Handler) client(w http.ResponseWriter, r *http.Request) (*backend, bool) {
@@ -198,7 +201,7 @@ func (h *Handler) client(w http.ResponseWriter, r *http.Request) (*backend, bool
 	}
 	cc := connect.NewClient(h.opts.Hub, auth.StaticToken(ck.Value))
 	b := &backend{identity: identityv1connect.NewIdentityServiceClient(cc), users: userv1connect.NewUserServiceClient(cc),
-		tenants: tenantv1connect.NewTenantServiceClient(cc)}
+		tenants: tenantv1connect.NewTenantServiceClient(cc), wiki: wikiv1connect.NewWikiServiceClient(cc)}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	who, err := b.identity.WhoAmI(ctx, &identityv1.WhoAmIRequest{})

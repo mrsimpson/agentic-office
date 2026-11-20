@@ -56,6 +56,7 @@ import (
 	taskv1connect "github.com/mrsimpson/agentic-office/hub/tasks/api/taskv1connect"
 	tenantv1 "github.com/mrsimpson/agentic-office/hub/tenant/api"
 	"github.com/mrsimpson/agentic-office/hub/tenant/api/tenantv1connect"
+	"github.com/mrsimpson/agentic-office/hub/wiki/api/wikiv1connect"
 )
 
 var (
@@ -446,6 +447,7 @@ type Clients struct {
 	Changes  changesv1connect.ArchiveChangesServiceClient
 	Document documentv1connect.DocumentServiceClient
 	Tenant   tenantv1connect.TenantServiceClient
+	Wiki     wikiv1connect.WikiServiceClient
 }
 
 // NewClients returns clients for baseURL that use hc (nil: a new default client) and the
@@ -472,6 +474,7 @@ func NewClients(baseURL string, hc *http.Client, interceptors ...connect.ClientI
 		Changes:  changesv1connect.NewArchiveChangesServiceClient(c),
 		Document: documentv1connect.NewDocumentServiceClient(c),
 		Tenant:   tenantv1connect.NewTenantServiceClient(c),
+		Wiki:     wikiv1connect.NewWikiServiceClient(c),
 	}
 }
 
