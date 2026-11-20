@@ -109,28 +109,24 @@ addresses: con-turn-based-agents, qg-usability
 **Context:** The runner must deliver what was said reliably, while the agent may be busy and the
 log may grow. The harness works in turns and does not follow the session by itself, so the runner
 decides when to notify it over ACP. **Decision:** The runner has one notification strategy with
-one exchangeable part, the wake strategy, which the user chooses at the start: `turn-end` (the
-default) wakes the agent at each change of speaker; `llm` and `decision-model` let a model that
-the user brings decide after each utterance (`dec-byo-decision-model`). The rest holds for all
-three. The runner joins with the key of the agent and runs the log replicator in its own process.
-It delivers utterances in the order of the log, from its last cursor, without the agent's own
-utterances and without sentences off the record. It sends everything new since the last delivery
-as one prompt, and one prompt at a time. After `session.ended` it sends what is left and a last
-prompt with the task of the role for the end, then stops the harness
-(`dec-session-end-milestone`). It answers permission requests of the harness by a rule of the
-user; by default it allows the office tools only. The agent reaches the meeting only through the
-office tools. If a turn ends with text in the agent's chat and the agent neither spoke nor raised
-its hand, the runner asks it once whether the text was meant for the meeting. A failing model never wakes the agent by
-itself: the utterances wait for the next change of speaker, and after repeated failures the
-runner works as `turn-end` until the model answers again. **Consequences:** Nothing is lost and
-nothing is sent twice within one ACP session. A slow agent gets fewer, larger prompts. A failing
-model costs at most the wake-ups of `turn-end`. An unattended agent cannot run other tools unless
-the user allows them. An answer that the agent wrote only in its chat costs one more prompt
-instead of being lost. **Rejected:** cancelling a running prompt when a new turn comes (the agent
-would lose its work); one prompt per turn while busy (the agent would lag behind more and more);
-checks in parallel (answers could come out of order); waking the agent at every utterance without
-a model (too many wake-ups); waking it at every failed check (a broken model would wake it at
-every utterance); branches on "is a model configured" instead of one exchangeable wake strategy.
+one exchangeable part, the wake strategy, which the user chooses at the start: by default it wakes
+the agent at each change of speaker, or a model that the user brings decides after each utterance
+(`dec-byo-decision-model`). The runner delivers everything new since the last delivery as one
+prompt, one prompt at a time, in the order of the log (`bb-agent-runner`). It answers permission
+requests of the harness by a rule of the user; by default it allows the office tools only. If a
+turn ends with text in the agent's chat and the agent neither spoke nor raised its hand, the runner
+asks it once whether the text was meant for the meeting. A failing model never wakes the agent by
+itself: the utterances wait for the next change of speaker, and after repeated failures the runner
+wakes at each change of speaker until the model answers again. **Consequences:** Nothing is lost
+and nothing is sent twice within one ACP session. A slow agent gets fewer, larger prompts. A
+failing model costs at most the wake-ups at each change of speaker. An unattended agent cannot run
+other tools unless the user allows them. An answer that the agent wrote only in its chat costs one
+more prompt instead of being lost. **Rejected:** cancelling a running prompt when a new turn comes
+(the agent would lose its work); one prompt per turn while busy (the agent would lag behind more
+and more); checks in parallel (answers could come out of order); waking the agent at every
+utterance without a model (too many wake-ups); waking it at every failed check (a broken model
+would wake it at every utterance); branches on "is a model configured" instead of one exchangeable
+wake strategy.
 
 ```arc42
 :::decision
@@ -150,17 +146,12 @@ an answer that the agent wrote only in its own chat is lost without a trace. The
 knows these facts. The session log is the wrong place for them: it is append-only, signed,
 replicated to every peer and kept forever, and the details of a tool call can carry sentences that
 are off the record. **Decision:** The activity of a participant is a short-lived state next to the
-log (`if-session-activity`). The agent runner reports what its agent does: working, with the short
-name of the tool it calls; waiting; or that its last reply reached nobody. A report names a tool by
-its name only, never by its arguments. The meeting session keeps only the latest activity of each
-participant, in memory. An activity lives a short time unless the runner renews it, and it ends
-when the participant leaves or the session ends. The stage shows it next to the participant.
-Only the participant itself reports its activity. **Consequences:** The humans see that an agent
-works and with which tool, and that an answer got lost. The log, the archive and the copies of the
-peers stay free of it, so it costs no storage and cannot leak into them. After a restart of the
-hub the activities are gone until the runners renew them. Whoever holds a stage link sees the tool
-names. OPEN: whether other agents should see the activities as well; whether partials, which the
-log does not carry either (`dec-no-partials-in-log`), should take the same way.
+log (`if-session-activity`). Only the participant reports its own activity; the agent runner does
+it for its agent. A report names a tool by its name only, never by its arguments. The stage shows
+the activity next to the participant. **Consequences:** The humans see that an agent works and with
+which tool, and that an answer got lost. The log, the archive and the copies of the peers stay free
+of it, so it costs no storage and cannot leak into them. After a restart of the hub the activities
+are gone until the runners renew them. Whoever holds a stage link sees the tool names.
 **Rejected:** an event for the activity in the log (stored forever, replicated to every peer,
 grows the log with noise, and its details could leak); the title or the arguments of a tool call
 on the stage (can carry what was said off the record); a channel outside the hub (a second server
@@ -314,7 +305,7 @@ addresses: con-turn-based-agents, qg-performance, qg-resumability
 ## One participant model
 
 **Decision:** Humans and agents are participants with the same tools. For humans with a microphone,
-speech is also transcribed. **Consequences:** The gateway is `join --mic`. The whole system can be
+speech is also transcribed. **Consequences:** The gateway is joining with the microphone. The whole system can be
 tested without any agent.
 
 ```arc42
@@ -544,10 +535,10 @@ read it. A retraction pretends that it was never said. **Decision:** What is sai
 Utterances are never retracted or removed. A participant can mark their own sentence off the
 record afterwards. This is its own command; the hub checks that the caller is the speaker. The
 mark is a new event. The interfaces then suppress the text: they deliver a placeholder with the
-same ID, the stage hides it, and it must not go into minutes, decisions or notes. This is a rule for
-the people and agents who write, not a check of the hub: what a session creates waits for a release,
-and until then the speaker may still mark the sentence, even after the end of the session, and have
-it taken out (`concept-session-release`). Agents that already read it must respect the mark. The raw log keeps the original. Marking the sentences of others
+same ID, the stage hides it, and it must not go into any artifact. This is a rule for
+the people and agents who write, not a check of the hub; the release gives the speaker time after
+the end of the session (`concept-session-release`). Agents that already read it must respect the
+mark. The raw log keeps the original. Marking the sentences of others
 (moderation) is out of scope for the first stage. **Consequences:** The log stays
 complete and honest. Suppression works for every reader that uses the interfaces, but not for
 what an agent already holds in its context. The published session keeps the original and the
@@ -569,14 +560,13 @@ addresses: risk-retraction-leak, qg-confidentiality
 ## Consent by joining with the microphone
 
 **Context:** Capture and storage of speech need consent (GDPR, § 201 German Criminal Code).
-**Decision:** Joining with `--mic` is the consent to capture and to storage, also of the raw
+**Decision:** Joining with the microphone is the consent to capture and to storage, also of the raw
 transcript. Only participants who join with the microphone are transcribed. Joining a session at
 all is the consent that every other participant keeps a copy of the session and that the hub
 stores it in the archive (`dec-session-persistence`). The stage shows the
 capture status to everyone. Censorship is possible only by marking a sentence off the record later
 (`dec-off-the-record`). **Consequences:** No extra step in the meeting. Raw audio still never
-leaves the device. OPEN: a data protection review before the first real use, and how long raw
-transcripts are kept.
+leaves the device.
 
 ```arc42
 :::decision
@@ -781,24 +771,21 @@ addresses: risk-forged-copy, qg-resumability
 
 ## The end of a session is a milestone, not a stop
 
-**Context:** People keep working after a meeting: artifacts arrive later, and the minutes and
-notes of a session wait for their release (`concept-session-release`). **Decision:**
-`session.ended` is a milestone that triggers other work, for example the write to the archive and
-the start of the grace period before the release. It never blocks other work; the triggered work
-runs in the background, and its result appears as an event in the session log. A session is never
-opened again: after the end, it takes no command of a participant, and a later meeting is a new
-session. It still takes three kinds of events: changes of the release status, notices about
-artifacts, and, until the release, a mark that puts a sentence off the record. While a session
-runs, participants write its running minutes through the session commands, and the hub adds each
-change to the log, so the stage and agents see them live. When the session ends, the hub stores
-the last version as the minutes of the session; until the release, participants change them
-through the minutes interface. Artifacts through their own interfaces (decisions, minutes, notes,
-tasks, slides) may refer to an ended session. **Consequences:** Streams, replicators and agents
-stop following a session at its end. A later meeting on the same topic starts a new session; a
-follow-up session that continues an ended one is OPEN. **Rejected:** an end that rejects all later
-work; opening an ended session again with a later command (its release would never be final);
-minutes written only through the minutes interface (the stage and agents would not see them
-change during the meeting).
+**Context:** People keep working after a meeting: artifacts arrive later, and what a session
+created waits for its release (`concept-session-release`). **Decision:** The end of a session is a
+milestone that triggers other work, for example the write to the archive and the start of the
+grace period. It never blocks other work; the triggered work runs in the background, and its result
+appears as an event in the session log. A session is never opened again: after the end, it takes no
+command of a participant, and a later meeting is a new session. It takes only three kinds of
+events: changes of the release status, notices about artifacts, and, until the release, a mark that
+puts a sentence off the record. The hub stores such an event before it acknowledges it, because no
+peer follows an ended session any more. Participants write the running minutes through the session
+commands, and the hub stores their last version at the end (`rs-session-ends`). **Consequences:**
+Streams, replicators and agents stop following a session at its end; its later events come only on
+request. A release is final, because nothing opens the session again. **Rejected:** an end that
+rejects all later work (artifacts and the release come after it); opening an ended session again
+with a later command (its release would never be final); minutes written only through the minutes
+interface (the stage and agents would not see them change during the meeting).
 
 ```arc42
 :::decision
@@ -829,8 +816,7 @@ since; they do not prove that the speakers said what it says. **Consequences:** 
 derive records from an imported session through the existing interfaces, without a second path.
 Readers recognise an imported session by its first event. The new events are a new revision of
 the session schema (`dec-session-schema`). OPEN: nobody can mark an imported sentence off the
-record, because the speakers are not participants with a key. OPEN: an import that stops halfway
-leaves an incomplete session that a new call of the client cannot continue. **Rejected:** a
+record, because the speakers are not participants with a key. **Rejected:** a
 separate part of the hub with its own log (two writers); a signature per imported message (it
 would claim an order the hub never saw); ending the session with the import (participants could
 not write minutes into it); matching imported speakers to registered participants by name (the
@@ -952,7 +938,7 @@ CamelCase words, acronyms and words of headings add terms that the model does no
 model only labels words; it never writes text. The forward pass in Go is slow on large projects,
 and the model was trained on news, so it misses many technical terms; the rules cover part of
 that. OPEN: whether the speed is good enough for large projects; the ONNX runtime is the faster
-option. OPEN: the German training data (CoNLL 2003) has its own terms of use. **Rejected:** the
+option. **Rejected:** the
 options above, for the reasons given.
 
 ```arc42
@@ -1060,9 +1046,8 @@ addresses: qg-confidentiality
 **Context:** Humans and agents work together in one session. They create notes, slide decks,
 documents and changes to documents, and the stage must be able to show any of them.
 **Decision:** An artifact is a file in the git repository of the tenant, and its path is its
-identity. What a session creates waits in the staging repository of the tenant under the same path
-until it is released, and a stub keeps its path in the artifact repository
-(`concept-session-release`, `dec-staging-repository`). Text (Markdown) and data (YAML) are artifacts; the hub refuses other files. The file
+identity. What a session creates waits for its release under the same path
+(`concept-session-release`). Text (Markdown) and data (YAML) are artifacts; the hub refuses other files. The file
 names its schema inside itself, the hub ships the schemas, and a schema decides how the hub checks
 the artifact and how the stage renders it. A text file without a schema is shown as plain text.
 Every type keeps its own interface that creates and changes its artifacts
@@ -1074,16 +1059,14 @@ author read; the hub refuses it when the artifact has changed since. A session r
 artifacts and exactly one has the focus. The minutes are the first artifact and keep the focus
 until another artifact gets it. The archive stores every change in one commit, and the rule for
 off the record applies when an artifact is created. The archive offers an interface to read
-artifacts by path (`if-archive-read`); the stage reads through it, and only paths that the log of
-its own session names; for a staged artifact it reads the staging area of its own session. **Consequences:** The stage chooses its renderer by the schema. The session
+artifacts by path (`if-archive-read`), and the stage reads through it (`bb-stage`).
+**Consequences:** The stage chooses its renderer by the schema. The session
 log needs events for created, changed and focused artifacts. Decisions, minutes, notes, slides and
 tasks keep their interfaces and each has a schema; what they share is the path, the schema
 reference, the commit per change, the version check and the focus. **Rejected:** schemas defined
 by the tenant; one artifact in focus per participant (it breaks the shared screen); branches and
 proposals for changes; files of any type (the stage cannot show them); one general write
-interface for all types (an agent should know what it writes). OPEN: which types the hub ships
-first (proposal: text document, slides, minutes); the exact events; how the stage learns the
-tenant of a session.
+interface for all types (an agent should know what it writes).
 
 ```arc42
 :::decision
@@ -1099,41 +1082,26 @@ addresses: qg-usability
 
 **Context:** People and agents want to read and change the artifacts of their tenant with ordinary
 tools on their own computer, and they want the changes of others to arrive there. A change can
-start in an interface of the hub or on a computer. **Decision:** The hub serves the repository of
-every tenant over the Git protocol. A gate checks the access token and the membership in the tenant
-before Git reads anything, and rules for the content run on every push. Git does the rest; the hub
-has no layer of its own that translates Git. The participant client keeps a clone of the tenant
-repository in a directory that the participant has set up on purpose. The main directory of the
-clone is a mirror of the branch main: the client only moves it to the state of the hub and never merges or commits
-there, and a check in the clone stops commits there. Local work happens in worktrees on local
-branches, and the participant pushes with plain Git. The office CLI sets up, updates and follows
-the clone and passes no other Git command on. The hub accepts a push only when it moves main
-forward without rewriting history, when the author of every new commit is the participant of the
-token, when only artifact files change, and when each
-file with a schema is valid against the schema that it names; a file without a schema only has to be valid Markdown
-or YAML. The schema belongs to its type: the part of the hub that owns a type owns its schemas and
-checks its files. A small part of the hub knows which type owns which schema and hands a check
-to it, and Git access knows no schema. Git refuses a push on an old base,
-which is the base version of the interfaces. The tenant has a second repository for its session logs, which Git access never serves, because
-the logs hold the original of sentences that are off the record (`dec-off-the-record`), and a third
-one for what sessions have not released (`dec-staging-repository`), which Git access never serves
-either. The push rules also refuse every change or removal of a stub of a staged artifact. The archive
-keeps the artifact repository without a work
-tree, and the archive and a push both move main in one atomic step of Git, so no lock is needed. After
-every change of main, from an interface or from a push, the archive tells the clients that follow
-the tenant which artifacts changed. An event has no content and no position. A client updates by
-fetching at start, after every reconnect and on request, so it never misses a change. A participant
-signs in with the key as for every other interface and gets an access token; the client gives it to
-Git. **Consequences:** Git is the position of a clone, so there is no cursor and no replay. A push
-passes the same rules as an interface call: the part of a type uses one check for both. The parts that keep files in memory (records, tasks, slides) learn about pushes from the archive
-(`if-archive-watch`) and reload, and a part never overwrites a file that a push put there first. The archive changes from a repository with a work tree to one without.
-**Rejected:** a Git protocol layer of our own in the hub (a gate and rules in Git are enough); a
-login over SSH (a second port and a second way to give access); a sync in both directions by the
-client (the participant solves conflicts anyway, and it would be a second writer); a lock around
-every push (it holds up the records for as long as an upload takes); branches and proposals on the
-hub (`dec-artifacts`); the session logs on a hidden branch of the same repository (the separation
-would hang on one setting); a part that owns all schemas (a schema belongs to its type); JSON as an
-artifact type (not now).
+start in an interface of the hub or on a computer. **Decision:** Git is the transport. The hub
+serves the artifact repository of every tenant over the Git protocol, behind a gate that checks
+the token and the membership, and with rules that every push must pass (`bb-git-access`). Git does
+the rest; the hub has no layer of its own that translates Git. The participant client keeps a clone
+in a directory that the participant has set up on purpose; its main directory is a mirror of the
+hub, and local work happens beside it (`bb-sync`). The schema belongs to its type: the part of the
+hub that owns a type owns its schemas and checks its files, for its interface and for a push alike
+(`bb-artifacts`). The archive and a push move the repository without a lock between them, and the
+archive tells the clients that follow the tenant which artifacts changed (`if-artifact-changes`).
+Git access never serves the session logs, which hold the original of sentences that are off the
+record (`dec-off-the-record`), or what sessions have not released (`concept-session-release`).
+**Consequences:** Git is the position of a clone, so there is no cursor and no replay. A push
+passes the same rules as an interface call. The parts that keep files of the archive learn about
+pushes from the archive (`if-archive-watch`). **Rejected:** a Git protocol layer of our own in the
+hub (a gate and rules in Git are enough); a login over SSH (a second port and a second way to give
+access); a sync in both directions by the client (the participant solves conflicts anyway, and it
+would be a second writer); a lock around every push (it holds up the records for as long as an
+upload takes); branches and proposals on the hub (`dec-artifacts`); the session logs on a hidden
+branch of the same repository (the separation would hang on one setting); a part that owns all
+schemas (a schema belongs to its type); JSON as an artifact type (not now).
 
 ```arc42
 :::decision
@@ -1148,48 +1116,29 @@ addresses: qg-usability, qg-confidentiality, risk-push-bypass, risk-push-size, r
 ## A web portal for the people of a tenant, behind a one-time link
 
 **Context:** The people of a tenant need a place to find their sessions after they ended, and to
-read the minutes, notes, decisions, tasks, slides and documents of the tenant, besides the CLI,
-MCP and their Git clone. The stage shows only one running session for a screen share. System
-admins need a view of users and keys, and tenant admins one of their members. People have Ed25519 keys and
-no passwords, and a browser cannot sign a challenge without more work. **Decision:** One web
-portal for every user of the hub, rendered by the hub on the server, in the design of the stage,
-without scripts and without logic of its own. A user asks for a link with the CLI. The link holds
-a code that works once and expires after a few minutes. The portal swaps the code for an access
-token of the key and keeps it in a cookie that scripts cannot read. Every page calls the
-interfaces of the hub with this token, so the portal has exactly the rights of the key. The portal
-shows what the key may see:
-
-- every member of a tenant: the sessions in which the member took part, with what they staged and
-  when their release is due, and the released minutes, notes, decisions, tasks, slides and
-  documents of the tenant;
-- a tenant admin, in addition: every session of the tenant and the members of the tenant;
-- a system admin, in addition: users and keys, tenants and system admins. A system admin who is
-  no member of a tenant sees no content of it.
-
-The tenant is part of the address of a page, so a user with several memberships switches between
-them. The portal reads only, except the administration of keys by system admins (register users and
-keys and revoke keys) and the release of a session and the objection to it by a human who took
-part (`concept-session-release`). Writing content stays with the CLI, MCP and Git
-(`dec-artifact-sync`). The stage stays separate: it is opened by a link without login, for one
-session, for a screen share. The meeting session lists the sessions that a caller may see, with
-their start, end, participants and whether they were imported, through an interface of its own
-(`if-session-list`); it takes the participants from the log. The session stream stays the log of
-one session. **Consequences:** No password and no new login flow; one link, one cookie and one design for
-every user and every admin. The code is useless after its first use, so a link on a shared screen
-does no harm once it was opened. The access token lives one hour. Every page goes through an
-interface that checks the rights, so the portal cannot show more than the CLI. A form carries a
-token that is derived from the session, and the portal refuses a post from another origin.
-Revoking asks for a confirmation on its own page, so no script is needed. Notes are visible to every member like the other records once they are released, also notes made
-in a session; only the session itself, whose log holds sentences off the record, stays with its
-readers.
-OPEN: a login with passkeys; creating tenants and managing memberships in the
-portal. **Rejected:** a separate admin view next to a portal (two logins, two designs, and no place for
-tenant admins); a password (a second secret to keep); a signature in the browser (needs scripts and
-a new key format); the stage link style with the token in the URL for the whole session (the URL
-stays in the history and on the screen); a single-page application with a frontend build (a second
-toolchain, `dec-languages`); the list of sessions as a call of the session stream (the stream
-replicates the log of one session; a list across sessions has another question and other rights);
-the portal reading the stored logs itself (logic and a check of rights in a view).
+read the artifacts and the wiki of the tenant, besides the CLI, MCP and their Git clone. The stage
+shows only one running session for a screen share. System admins need a view of users and keys,
+and tenant admins one of their members. People have keys and no passwords, and a browser cannot
+sign a challenge without more work. **Decision:** One web portal for every user of the hub
+(`if-portal-web`), part of the hub and without logic of its own. A user asks for a link with the
+CLI. The link works once and expires after a few minutes. The portal swaps it for an access token
+of the key, which the page cannot read. Every page calls the interfaces of the hub with this token, so the portal has
+exactly the rights of the key. The portal reads only, except the administration of keys by system
+admins and the release of a session by a human who took part (`concept-session-release`). Writing
+content stays with the CLI, MCP and Git (`dec-artifact-sync`). The stage stays separate: it is
+opened by a link without login, for one session, for a screen share. The meeting session lists the
+sessions that a caller may see through an interface of its own (`if-session-list`).
+**Consequences:** No password and no new login flow; one link and one design for every user and
+every admin. The link is useless after its first use, so a link on a shared screen does no harm
+once it was opened. Every page goes through an interface that checks the rights, so the portal
+cannot show more than the CLI. **Rejected:** separate views for admins and for members (two
+logins, two designs, and no place for tenant admins); a password (a second secret to keep); a
+signature in the browser (needs scripts and a new key format); a token in the URL for the whole
+session, like the stage link (the URL stays in the history and on the screen); a single-page
+application with a frontend build (a second toolchain, `dec-languages`); the list of sessions as a
+call of the session stream (the stream replicates the log of one session; a list across sessions
+has another question and other rights); the portal reading the stored logs itself (logic and a
+check of rights in a view).
 
 ```arc42
 :::decision
@@ -1251,82 +1200,27 @@ addresses: qg-usability
 **Context:** A team leaves a lot behind: minutes, decisions, notes and documents. Single records
 do not grow into knowledge. An agent has to find and combine the same facts again for every
 question, and a human cannot see how a note, a decision and a plan relate. The pattern "LLM wiki"
-solves this: agents read the sources once and keep a set of linked pages up to date, so knowledge
-builds up over time. The hub has no model of its own (`con-no-intelligence`), so agents do this
-work. Humans browse the knowledge in the portal (`dec-web-portal`); cross-references and search are
-the core of that experience. A session is read only by its participants, its importer and the
-tenant admins, because its log holds the original of sentences off the record
-(`dec-off-the-record`). Its records, also its notes, are visible to every member of the tenant
-once they are released (`concept-session-release`).
+solves this: agents read the sources once and keep a set of linked pages up to date. The hub has no
+model of its own (`con-no-intelligence`). A session is read only by its readers, because its log
+holds the original of sentences off the record (`dec-off-the-record`).
 
-**Decision:** All artifacts of a tenant form one wiki (`concept-wiki`), in three layers. Every type
-keeps its own interface for writing (`dec-records-per-type`).
+**Decision:** All artifacts of a tenant form one wiki with sources, pages and a skill, and agents
+maintain it (`concept-wiki`). The wiki holds artifacts, never sessions: pages cite released
+records, never a transcript. Every type keeps its own interface for writing
+(`dec-records-per-type`) and describes its own files. A read-only wiki part derives the index, the
+links, the backlinks and the search from these descriptions (`if-wiki-api`); humans browse it in
+the portal, and agents use their clone. Links are plain relative Markdown links, and a link that
+leads nowhere is a hint, never a refusal. Responsibility for an artifact is claimed in the session,
+and the history of the archive is the log of the wiki.
 
-- **The wiki holds artifacts, never sessions.** Pages cite and link minutes, decisions and notes,
-  not the transcript of a session, and agents bring into pages only what those records say. So a
-  page never shows a member what only the participants of a session may read. The index, the
-  backlinks and the search cover artifacts only.
-- **Sources are written once.** Minutes, decisions and notes are memories of something that
-  happened. They come into being as a side effect of a session or of other work. Once they are released
-  (`concept-session-release`), they never change. A correction is a new record that refers to the old one. The minutes are the
-  bridge from a session to the wiki: participants write them from what was said, and every member
-  reads them once they are released.
-- **Notes become readable pages.** A note keeps its interface: add and list. The hub stores it as a
-  Markdown file whose front matter names the schema, the author, whether the author is a human or
-  an agent, the time, the session and the tags. The author and the time are in the note on purpose,
-  even though the commit holds them too: a later import may write past notes with a technical
-  user, and the note must still name its real author.
-- **Documents are the pages of the wiki.** Humans and agents write them through the document
-  interface, with the version check that already exists. A document may carry front matter with a
-  title, a one-line summary, tags, the sources it draws on, a status (draft, reviewed or outdated),
-  an owner, and the reviews it got, each with the reviewer and the date. Without front matter, the
-  first heading is its title. The portal shows how far a reader can trust a page: its status,
-  owner and reviews, and what the hub can find without a model, such as the last author, whether
-  that was a human or an agent, and the age of its newest source. Ingest, answers and lint change documents only, never a source.
-- **A skill tells agents how to work with the wiki.** It ships with the office, is the same for
-  every tenant and changes with a release of the office. It explains the layers, the front matter,
-  where pages live when a tenant has no structure yet, and how to ingest, answer and lint. It
-  reaches agents like every skill of the office (`dec-skills`). Agents read it but never change
-  it.
-  Rules of a team come from the role of an agent (`concept-client-configuration`) and from the
-  overview pages of the wiki.
-- **Links are plain relative Markdown links.** A part that writes a file reports every link that
-  leads nowhere as a hint with its answer, and a push shows the same hints to the participant. A
-  hint never refuses a write, so a rename, a deletion or a session end is never blocked by a link.
-- **Each type describes its own files.** The part that owns a type gives the title, the summary
-  and the outgoing links of its files, the same way it checks them. No part reads the fields of
-  another type.
-- **A wiki part reads, it never writes.** It reads only the artifact repository, never the
-  staging area, and it leaves stubs out of the index, the search and the ingest queue. It follows the
-  changes of the archive (`if-archive-watch`)
-  for each tenant, like the other parts, and keeps a derived view: the index of all artifacts with
-  title, summary and tags, the links and backlinks of every artifact, the broken links, the sources
-  that no document cites yet, and a search by words without a model. Nothing of it is committed, and
-  it can be rebuilt from the archive at any time. It offers the view through an interface that
-  checks the token and the tenant of the caller, like every interface of the hub; the portal reads
-  it there and renders it without logic of its own. The wiki part is on no write path.
-- **Agents maintain the wiki.** The agents of all participants may ingest, answer and lint
-  (`concept-wiki`). The released sources that no document cites are the queue for ingest; a record
-  of a session becomes a source only when it is released (`concept-session-release`).
-- **Responsibility is claimed in the session.** A participant who takes on an artifact, for
-  example the minutes or the ingest of the session, says so in the session, and the others leave it
-  to them. The session log is the record of the claim, and the first claim counts
-  (`concept-read-file-write-tools`). The agent runner tells every agent this rule in its first
-  prompt; the skill tells agents without a runner. Agents read and
-  search their clone with their own tools, so the client, the CLI and the MCP server get no search.
-- **Navigation lives in the portal.** The stage shows only the artifacts that its session names
-  (`dec-artifacts`), so a link on the stage that leads elsewhere does not open.
-- **The history of the archive is the log of the wiki.** The hub writes no index file and no log
-  file.
-
-**Consequences:** Notes are Markdown (`dec-yaml-git-storage`). The note contract stays, and the note schema gains tags. Documents
-gain an optional schema for their front matter, owned by the documents part. Every part that owns a
-type gains a description of its files next to its check. Apart from the release, which gives time and stops at word-for-word quotes until a human confirms them
-(`concept-session-release`), nothing in the hub keeps a sentence off the record out of a record or a
-page: the rule binds the people and agents who write, and ingest copies statements into documents
-and into the history of every clone (`risk-retraction-leak`). A clone of the tenant repository opens as a wiki in ordinary
-Markdown tools (`dec-artifact-sync`). Semantic checks such as contradictions or gaps stay with the
-agents.
+**Consequences:** Notes are Markdown files with front matter (`dec-yaml-git-storage`), and
+documents have an optional schema for the front matter of a page. Every part that owns a type
+describes its files next to its check. Apart from the release (`concept-session-release`), nothing
+in the hub keeps a sentence off the record out of a record or a page: ingest copies statements into
+documents and into the history of every clone (`risk-retraction-leak`). A clone of the tenant
+repository opens as a wiki in ordinary Markdown tools (`dec-artifact-sync`). Semantic checks such
+as contradictions or gaps stay with the agents. The derived view grows with the tenant
+(`risk-wiki-memory`).
 
 **Rejected:**
 
@@ -1347,17 +1241,16 @@ agents.
 - The portal builds the index and the search: the portal has no logic of its own.
 - An index file and a log file that agents write: every ingest would change the same files.
 - Wiki links in double brackets: not plain Markdown, and renderers differ.
-- Search for agents through MCP and the CLI: agents have the clone, and their local tools are faster and more
-  flexible.
+- Search for agents through MCP and the CLI: agents have the clone, and their local tools are faster
+  and more flexible.
 - Semantic search in the hub: it needs a model (`con-no-intelligence`).
 
 OPEN:
 
 - Who ingests a source that no session claimed, for example a note written outside a session.
-- Whether a citation of a document names its version.
-- Content that only some members of a tenant may read: every member reads everything and holds a
-  clone, so this needs encryption for several parties in a distributed storage (issue #190).
-- How much memory the derived view needs for a large tenant.
+- Content that only some members of a tenant may read, such as a confidential session: every
+  member reads everything and holds a clone, so this needs encryption for several parties in a
+  distributed storage (#190, #194).
 
 ```arc42
 :::decision
@@ -1381,29 +1274,17 @@ the session logs is for the meeting session only, and no other part reads it.
 layout as its artifact repository. It holds one area for each session that is not released, with
 the staged artifacts, the readers of the session and the state of its release. Git access never
 serves it. In the artifact repository, a stub reserves the name of every staged artifact. The
-archive knows stubs as a concept, but not their type or their content: a part writes a stub
-through the archive, and the archive records the path in the area of the session together with the
-exact version of the stub that it wrote. The release is a transition that the archive owns. It
-moves the area of a session into the artifact repository in one commit; the author of that commit
-and its time record by whom and when the artifacts were released. An artifact replaces its path
-only if the artifact repository still holds exactly the recorded stub there, or no file. A path
-that holds anything else keeps its file: the artifact stays in the staging area, and the release
-reports the conflict with the path and the session and releases the rest. A participant discards
-such an artifact through the archive; the area goes with the last one. The meeting session
-decides when a session is released, and the archive moves the files and compares versions without
-reading their content.
+archive moves the area of a session into the artifact repository in one commit; the meeting
+session decides when. The author and the time of that commit record by whom and when the artifacts
+were released.
 
-**Consequences:** The archive keeps three repositories per tenant. The parts that keep artifacts in
-memory follow the staging repository like the artifact repository (`if-archive-watch`), and a part
-that reads a staged artifact checks the readers of the session, with the role of a reader from
-Identity. The note, decision and minutes interfaces offer a change and a removal while a record is
-staged. The part that owns a type also owns the stub of the type and its check, so documents need a
-check for the push rules too. The push rules refuse every change or removal of a stub. The state of
-every release lies in the staging repository, so the timers survive a restart without a scheduler
-of their own. Every member sees the names of staged artifacts and when a session writes, but not
-their content. The release never replaces a file that is not the recorded stub, whatever the order
-of the writes and wherever a crash cut them; the price is a staged artifact that a participant
-discards, or creates again at a new path first, when its path was taken.
+**Consequences:** The state of every release lies in the staging repository, so the deadlines
+survive a restart without a scheduler of their own. The parts that keep artifacts follow the
+staging repository like the artifact repository (`if-archive-watch`). The part that owns a type
+also owns its stub and the check of the stub. Every member sees the names of staged artifacts and
+when a session writes, but not their content. The release never replaces a file that is not the
+recorded stub (`if-archive-storage`); the price is a staged artifact that a participant discards
+when its path was taken.
 
 **Rejected:**
 
@@ -1417,18 +1298,15 @@ discards, or creates again at a new path first, when its path was taken.
   both, and history is never rewritten.
 - No stub, and a check of each push against the staging area: a link to a staged artifact would
   lead nowhere, and a name could still be taken between the check and the release.
-- A part that finds a staged file whose path holds another file at start moves the staged file to
-  a new path: a document has no ID to take the next one from, and every part would need its own
-  answer to the same race.
+- A part that moves a staged file to a new path when another file holds its path: a document has
+  no ID to take the next one from, and every part would need its own answer to the same race.
 - An archive that knows the content of a stub: it would have to know every type.
 - A move call that creates a kept artifact at a new path and discards it in one step: every type
   interface would need it, and a create followed by a discard does the same.
 - Kept artifacts that stay for good as a record of what was not released: the readers of the
-  session could not read the file that holds the path through the archive read interface.
+  session could not read the file that holds the path.
 - A message broker or a scheduler for the deadlines: the staging repository already keeps the
   state.
-
-The archive, Git access and the artifacts check in chapter 5 change with their code.
 
 ```arc42
 :::decision
@@ -1447,8 +1325,9 @@ can only work together if they follow the same conventions. The hub has no model
 (`con-no-intelligence`), so it cannot enforce them. **Decision:** The office writes its
 conventions for agents as skills in the open Agent Skills format. They ship with the office, are
 the same for every tenant and are never changed by a model. A human installs them with the usual
-skill tooling; the agent runner also hands the skills for agents of a tenant to the harness that it
-starts. Rules of one team come from the role of an agent. **Consequences:** Every harness that
+skill tooling. The office decides for each skill whether the agent runner also hands it to the
+harness that it starts: it hands over the office memory skill, but not the office assistant skill,
+which helps a human. Rules of one team come from the role of an agent. **Consequences:** Every harness that
 reads skills can take part, and a new convention reaches all agents with a release. Nothing checks
 that an agent follows a skill; the hub still checks every request. **Rejected:** conventions only
 in the help of the CLI (an agent reads them only when it asks); only in the first prompt of the
@@ -1458,7 +1337,7 @@ runner (an agent without a runner gets none).
 :::decision
 id: dec-skills
 title: Skills carry the conventions of the office to every agent
-status: proposed
+status: accepted
 date: 2026-11-20
 addresses: qg-usability, con-no-intelligence
 :::

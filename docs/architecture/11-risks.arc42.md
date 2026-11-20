@@ -4,19 +4,16 @@
 
 A sentence that is marked off the record afterwards is already in the local files and in the
 context of the agents that read it. It cannot be removed from an agent's context. Off the record is
-a rule for the people and agents who write, not a mechanism. The hub checks only one thing: the
-release of a session stops while what the session staged quotes such a sentence word for word, and
-a human must confirm the quotes. A paraphrase, or a sentence in an artifact that skips the staging
-area, passes. If an agent has written it into
-a record or a page of the wiki (`dec-wiki`), it is visible to every member of the tenant and stays
-in the history of every clone.
+a rule for the people and agents who write, not a mechanism. If an agent has written the sentence
+into a record or a page of the wiki, it is visible to every member of the tenant once released and
+stays in the history of every clone.
 
 ```arc42
 :::risk
 id: risk-retraction-leak
 title: Sentences marked off the record stay in agent context
 severity: high
-mitigation: The interfaces of the session suppress the text of sentences off the record for every later reader, and only the readers of a session see its log (dec-off-the-record); the runner prompt and the memory skill tell agents to respect the mark; outside the release, nothing checks records and documents. What a session creates waits in a staging area until a human releases it or a grace period ends, and a word-for-word quote of a sentence off the record stops the release until a human confirms it (concept-session-release, dec-staging-repository); a change to a released artifact during a session, a push during a session and a record without its session, a task, and agent writes after a release at the end bypass the hold; a human may release early
+mitigation: The interfaces hide the text for every later reader (dec-off-the-record), and the release of a session holds what it created and stops at word-for-word quotes until a human confirms them (concept-session-release)
 :::
 ```
 
@@ -257,5 +254,23 @@ id: risk-session-memory
 title: Memory grows with all sessions of all tenants
 severity: medium
 mitigation: Take ended sessions that nobody follows out of memory and load them from the archive on demand; restore only open sessions at start
+:::
+```
+
+## The wiki view grows with the tenant
+
+The wiki part keeps a derived view of each tenant: the index, the links, the backlinks and the
+search (`concept-wiki`). The decision for a derived view in the hub causes this risk (`dec-wiki`). It builds the view from the archive at start and holds it while the hub
+runs. A tenant with many artifacts needs a lot of memory for it, and several large tenants share
+one hub. It is not measured yet how much memory the view needs for a large tenant.
+
+```arc42
+:::ignore H007 dec-wiki causes this risk and no decision mitigates it yet; the mitigation is accepted until a measurement
+:::
+:::risk
+id: risk-wiki-memory
+title: The wiki view grows with the tenant
+severity: low
+mitigation: Accepted until a measurement with a large tenant shows the need; the view can be rebuilt from the archive at any time, so it can move to other storage without a change of the wiki interface
 :::
 ```
