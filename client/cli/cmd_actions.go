@@ -584,7 +584,7 @@ func cmdDocumentCreate(e *env, fs *flag.FlagSet) func([]string) error {
 		if err != nil {
 			return err
 		}
-		return e.printDocument(res.GetDocument().GetPath(), res.GetDocument().GetVersion(), res.GetDocument().GetStaged(), res.GetDuplicate())
+		return e.printDocument(res.GetDocument().GetPath(), res.GetDocument().GetVersion(), res.GetDocument().GetStaged(), res.GetDuplicate(), res.GetHints())
 	}
 }
 
@@ -610,7 +610,7 @@ func cmdDocumentChange(e *env, fs *flag.FlagSet) func([]string) error {
 		if err != nil {
 			return err
 		}
-		return e.printDocument(res.GetDocument().GetPath(), res.GetDocument().GetVersion(), res.GetDocument().GetStaged(), res.GetDuplicate())
+		return e.printDocument(res.GetDocument().GetPath(), res.GetDocument().GetVersion(), res.GetDocument().GetStaged(), res.GetDuplicate(), res.GetHints())
 	}
 }
 
@@ -637,14 +637,27 @@ func cmdDocumentRemove(e *env, fs *flag.FlagSet) func([]string) error {
 	}
 }
 
-// printDocument prints the result of a create or a change: the version, or JSON.
-func (e *env) printDocument(path, version string, staged, duplicate bool) error {
+// printDocument prints the result of a create or a change: the version, or JSON. The hints of
+// the hub, such as a link that leads nowhere, go to stderr as "hint:" lines, or into the field
+// hints of the JSON.
+func (e *env) printDocument(path, version string, staged, duplicate bool, hints []string) error {
 	if e.json {
-		e.printJSON(map[string]any{"path": path, "version": version, "staged": staged, "duplicate": duplicate})
-	} else {
-		fmt.Fprintln(e.stdout, version)
+		e.printJSON(map[string]any{"path": path, "version": version, "staged": staged, "duplicate": duplicate, "hints": nonNil(hints)})
+		return nil
+	}
+	fmt.Fprintln(e.stdout, version)
+	for _, h := range hints {
+		fmt.Fprintln(e.stderr, "hint: "+h)
 	}
 	return nil
+}
+
+// nonNil returns s, or an empty list for nil, so JSON shows [] and not null.
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }
 
 func cmdDocumentGet(e *env, fs *flag.FlagSet) func([]string) error {

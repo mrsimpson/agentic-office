@@ -22,6 +22,18 @@
 // name that session. Read a staged document through the archive (archive.proto): only the readers
 // of the session see its content. A change of a released document is not held, whatever session
 // it names. No call changes a stub, and no call writes the content of a stub.
+//
+// A document may name the schema office.document.v1 in the field "schema" of its front matter
+// (dec-wiki). Then the hub checks the other fields of the front matter, all optional: title and
+// summary (one line each), tags (a list), sources (a list of paths of records from the top of the
+// repository, for example minutes/000012.yaml), status (draft, reviewed or outdated), owner (a
+// participant ID) and reviewed (a list of reviews, each with the fields id, a participant ID, and
+// date, YYYY-MM-DD). Any other field is invalid. A create or a change with invalid front matter, or
+// with front matter that names another schema, fails with invalid_argument and the reasons. A
+// document without front matter is valid; its first heading is its title.
+//
+// A create or a change answers with a hint for every relative Markdown link of the document that
+// leads to no file of the repository. A stub counts as a file. A hint never refuses the write.
 syntax = "proto3";
 
 package office.document.v1;
@@ -57,6 +69,9 @@ message CreateDocumentRequest {
 message CreateDocumentResponse {
   DocumentVersion document = 1;
   bool duplicate = 2;
+  // hints are notes in plain words, such as a link that leads nowhere. They never refuse the
+  // write.
+  repeated string hints = 3;
 }
 
 message ChangeDocumentRequest {
@@ -71,6 +86,9 @@ message ChangeDocumentRequest {
 message ChangeDocumentResponse {
   DocumentVersion document = 1;
   bool duplicate = 2;
+  // hints are notes in plain words, such as a link that leads nowhere. They never refuse the
+  // write.
+  repeated string hints = 3;
 }
 
 message RemoveDocumentRequest {

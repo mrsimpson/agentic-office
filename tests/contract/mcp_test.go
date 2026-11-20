@@ -814,4 +814,13 @@ func TestMCPDocuments(t *testing.T) {
 	if len(files) != 1 {
 		t.Fatalf("document_list: %v", files)
 	}
+	// A link that leads nowhere is a hint, and the document is written all the same. Invalid front
+	// matter is refused.
+	if h := s.ok("document_create", map[string]any{"path": "documents/links.md", "content": "[notes](notes.md) [gone](gone.md)"}); fmt.Sprint(h["hints"]) != `[the link "gone.md" leads nowhere: there is no documents/gone.md]` {
+		t.Fatalf("document_create: hints %v", h["hints"])
+	}
+	if h := s.ok("document_change", map[string]any{"path": "documents/notes.md", "content": "[links](links.md)", "baseVersion": cur}); fmt.Sprint(h["hints"]) != "[]" {
+		t.Fatalf("document_change: hints %v", h["hints"])
+	}
+	s.fails("invalid_argument", "document_create", map[string]any{"path": "documents/bad.md", "content": "---\nschema: office.document.v1\nowner: Ada Lovelace\n---\n# Bad\n"})
 }

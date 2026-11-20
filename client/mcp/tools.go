@@ -330,8 +330,11 @@ func (s *Server) addTools(srv *sdk.Server) {
 			return map[string]any{"id": in.ID, "duplicate": res.GetDuplicate()}, nil
 		})
 
-	documentResult := func(path, version string, staged, dup bool) any {
-		return map[string]any{"path": path, "version": version, "staged": staged, "duplicate": dup}
+	documentResult := func(path, version string, staged, dup bool, hints []string) any {
+		if hints == nil {
+			hints = []string{}
+		}
+		return map[string]any{"path": path, "version": version, "staged": staged, "duplicate": dup, "hints": hints}
 	}
 	tool(srv, s, tools.DocumentCreate,
 		func(ctx context.Context, c coreapi.Client, in tools.DocumentIn) (any, error) {
@@ -342,7 +345,7 @@ func (s *Server) addTools(srv *sdk.Server) {
 			if err != nil {
 				return nil, err
 			}
-			return documentResult(res.GetDocument().GetPath(), res.GetDocument().GetVersion(), res.GetDocument().GetStaged(), res.GetDuplicate()), nil
+			return documentResult(res.GetDocument().GetPath(), res.GetDocument().GetVersion(), res.GetDocument().GetStaged(), res.GetDuplicate(), res.GetHints()), nil
 		})
 	tool(srv, s, tools.DocumentChange,
 		func(ctx context.Context, c coreapi.Client, in tools.DocumentIn) (any, error) {
@@ -353,7 +356,7 @@ func (s *Server) addTools(srv *sdk.Server) {
 			if err != nil {
 				return nil, err
 			}
-			return documentResult(res.GetDocument().GetPath(), res.GetDocument().GetVersion(), res.GetDocument().GetStaged(), res.GetDuplicate()), nil
+			return documentResult(res.GetDocument().GetPath(), res.GetDocument().GetVersion(), res.GetDocument().GetStaged(), res.GetDuplicate(), res.GetHints()), nil
 		})
 	tool(srv, s, tools.DocumentRemove,
 		func(ctx context.Context, c coreapi.Client, in tools.DocumentRemoveIn) (any, error) {

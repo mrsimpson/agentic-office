@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"slices"
+	"strings"
 	"sync"
 	"unicode/utf8"
 
@@ -118,7 +119,7 @@ func (s *Service) CreateDocument(ctx context.Context, req *documentv1.CreateDocu
 	if err != nil {
 		return nil, err
 	}
-	return &documentv1.CreateDocumentResponse{Document: v, Duplicate: dup}, nil
+	return &documentv1.CreateDocumentResponse{Document: v, Duplicate: dup, Hints: s.hints(ctx, req.GetPath(), req.GetContent())}, nil
 }
 
 // ChangeDocument implements the RPC.
@@ -134,7 +135,7 @@ func (s *Service) ChangeDocument(ctx context.Context, req *documentv1.ChangeDocu
 	if err != nil {
 		return nil, err
 	}
-	return &documentv1.ChangeDocumentResponse{Document: v, Duplicate: dup}, nil
+	return &documentv1.ChangeDocumentResponse{Document: v, Duplicate: dup, Hints: s.hints(ctx, req.GetPath(), req.GetContent())}, nil
 }
 
 // RemoveDocument implements the RPC.
@@ -175,8 +176,24 @@ func (s *Service) command(ctx context.Context, p, commandID string, hasContent b
 		if check.IsStub([]byte(content)) {
 			return c, invalid("the content is the stub of a document; a document never has this content")
 		}
+		if reasons := check.Check(p, []byte(content)); len(reasons) > 0 {
+			return c, invalid("the document is not valid: " + strings.Join(reasons, "; "))
+		}
 	}
 	return c, nil
+}
+
+// hints returns the hints of a document that was just written: a link that leads to no file of
+// the artifact repository. A stub is a file there, so a link to a staged document works. A path
+// that cannot be read counts as a file, so no hint is wrong.
+func (s *Service) hints(ctx context.Context, p, content string) []string {
+	return check.Hints(p, []byte(content), func(target string) bool {
+		if storage.CheckPath(target) != nil {
+			return false
+		}
+		files, err := s.opts.Archive.List(ctx, target)
+		return err != nil || len(files) > 0
+	})
 }
 
 // previous returns the result of an earlier command with the same command_id, and false if there

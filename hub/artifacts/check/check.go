@@ -18,6 +18,8 @@
 //   - A file is the stub of a staged artifact (concept-session-release) when it names a schema and
 //     the part that owns the schema recognises it as the stub of its type (IsStub). Git access
 //     asks this for the old state of every path that a push changes or removes.
+//   - The parts may give hints for a file, such as a link of a document that leads nowhere
+//     (Hints). A hint never makes a file invalid. Git access shows them with a push.
 package check
 
 import (
@@ -64,6 +66,23 @@ func IsStub(filePath string, content []byte) bool {
 	}
 	owner, ok := artifacts.Owner(schema)
 	return ok && owner.IsStub(schema, content) && len(owner.Validate(schema, clean, content)) == 0
+}
+
+// Hints returns hints in plain words for the file at filePath, a path relative to the repository
+// of the tenant, with the given content: what the parts of the hub find worth a look, such as a
+// link of a document that leads nowhere. exists reports whether a clean path inside the
+// repository is a file or a directory with files, in the state that the file belongs to. A hint
+// never makes a file invalid.
+func Hints(filePath string, content []byte, exists func(path string) bool) []string {
+	clean, _, _, err := schemaOf(filePath, content)
+	if err != nil {
+		return nil
+	}
+	var hints []string
+	for _, p := range artifacts.Hinters() {
+		hints = append(hints, p.Hints(clean, content, exists)...)
+	}
+	return hints
 }
 
 // schemaOf returns the clean path of a file and the schema that the file names, if any. The error

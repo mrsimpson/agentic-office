@@ -466,6 +466,19 @@ and each change must name that session. A change of a released document is not h
 document is read through the archive read interface, which shows its content only to the readers
 of the session.
 
+A document may name the schema of documents in its front matter (`dec-wiki`). Then the hub checks
+the fields of the front matter, all optional: a title and a summary of one line each, tags, the
+sources it draws on as paths of records, a status (draft, reviewed or outdated), an owner, and
+the reviews it got, each with the reviewer and the day. Any other field is invalid. A create or a
+change with invalid front matter, or with front matter that names another schema, is refused with
+the reasons. A document without front matter is valid, and its first heading is its title. The
+rules are the same as for a push, because the check is the same.
+
+A create or a change answers with a hint for every relative Markdown link of the document that
+leads to no file of the artifact repository. A stub counts as a file, so a link to a staged
+document works. A hint never refuses the write. The CLI prints the hints, and the MCP server
+returns them to the agent.
+
 ```arc42
 :::interface
 id: if-document-api
@@ -765,7 +778,11 @@ write. If it cannot write the stub of a document that it has just staged, becaus
 path first, it takes the staged document back, and the staging area forgets the path.
 
 The part owns the schema of documents. Most documents name no schema and are plain Markdown. A
-document may name the schema; the stub always does.
+document may name the schema; the stub always does. The part checks the front matter of a
+document that names the schema with its own check interface, at its interface and for a push, so
+every rule exists once. After a write it finds the relative links of the document that lead to
+no file and answers with a hint for each; it never refuses a write for a link
+(`concept-wiki`).
 
 ```arc42
 :::building-block
@@ -782,11 +799,17 @@ implements: concept-wiki, concept-session-release
 #### Documents check
 
 Lets the artifacts part check a document that names the schema of documents before it accepts a
-push. A document of the schema is Markdown under the directory of the documents; the stub of a
-document is one of them. The part also tells whether a content is the stub of a document, byte for
-byte, so the documents part and the push rules decide the same way. The part names the schemas
-that it owns. A call gives the path, the content and the name of the schema; the part answers that
-the file is valid, or that it is invalid, with the reasons in plain words.
+push. A document of the schema is Markdown under the directory of the documents, and its front
+matter has only the fields of the schema, each in its form; the stub of a document is one of
+them. The part also tells whether a content is the stub of a document, byte for byte, so the
+documents part and the push rules decide the same way. The part names the schemas that it owns.
+A call gives the path, the content and the name of the schema; the part answers that the file is
+valid, or that it is invalid, with the reasons in plain words.
+
+A second call gives the hints of a document: every relative Markdown link that leads to no file.
+The caller gives the path, the content and a way to ask whether a path holds a file in the state
+that the document belongs to. A file that is not a document, and the stub of a document, get no
+hints. A hint never makes a document invalid.
 
 ```arc42
 :::interface
@@ -1037,6 +1060,10 @@ rules. It does three things:
   of a path, so Git access asks the artifacts part whether the file that a push changes or
   removes is a stub. A push next to a stub passes. Git access never serves the staging
   repository, so a clone holds stubs and never staged content.
+- Hints for every push (`concept-wiki`): Git access asks the artifacts part for the hints of each
+  file that the push adds or changes, such as a link of a document that leads nowhere, and shows
+  them to the participant. A link resolves in the state of main after the push, so links between
+  the files of one push work, and so does a link to a stub. A hint never refuses a push.
 - After an accepted push, it tells the archive that main moved.
 
 Git alone decides whether a push builds on the current state: a push on an old base is refused,
@@ -1080,7 +1107,9 @@ owns no schema, because a schema belongs to its type (`dec-artifacts`). It finds
 name of the schema that the file names. A file that names no schema is plain text, and a file
 that names a schema that no part owns is invalid. Each part also recognises the stub of its types
 (`concept-session-release`), so this part can tell a stub from any other file without knowing the
-stubs itself. A new type needs a check in its own part and a line in this part.
+stubs itself. A part may give hints for the files of its types, such as a link of a document that
+leads nowhere; each part decides which files are of its types. A new type needs a check in its
+own part and a line in this part.
 
 ```arc42
 :::building-block
@@ -1099,7 +1128,9 @@ path: hub/artifacts
 Checks the content of one file against the schema that the file names, whichever part owns the
 schema. The answer is valid, or invalid with the reasons in plain words. A second call tells
 whether a file is the stub of a staged artifact: the file names a schema, is valid, and the part
-that owns the schema recognises it as the stub of its type.
+that owns the schema recognises it as the stub of its type. A third call gives the hints of the
+parts for a file, such as the links of a document that lead nowhere. The caller says which paths
+hold a file in the state that the file belongs to. A hint never makes a file invalid.
 
 ```arc42
 :::interface
