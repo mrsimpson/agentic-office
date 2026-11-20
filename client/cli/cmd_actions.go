@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"connectrpc.com/connect/v2"
 	"google.golang.org/protobuf/proto"
 
+	portalweb "github.com/mrsimpson/agentic-office/hub/portal/web"
 	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
 	slidesv1 "github.com/mrsimpson/agentic-office/hub/slides/api"
 )
@@ -156,6 +158,21 @@ func cmdStageFocus(e *env, fs *flag.FlagSet) func([]string) error {
 	}
 }
 
+// withPortalAddress adds the address of the portal page of the session in the tenant of the
+// client to a stage link, as the parameter "portal". The stage shows it as a link and holds no
+// knowledge of the portal. The address has no credential: the portal asks for its own sign-in.
+// Without a tenant, the link stays as it is.
+func (e *env) withPortalAddress(stageURL, sessionID string) string {
+	u, err := url.Parse(stageURL)
+	if e.cfg.Tenant == "" || err != nil {
+		return stageURL
+	}
+	q := u.Query()
+	q.Set("portal", portalweb.SessionPath(e.cfg.Tenant, sessionID))
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
 func cmdStageLink(e *env, fs *flag.FlagSet) func([]string) error {
 	return func(args []string) error {
 		if err := noArgs(args); err != nil {
@@ -173,10 +190,11 @@ func cmdStageLink(e *env, fs *flag.FlagSet) func([]string) error {
 		if err != nil {
 			return err
 		}
+		link := e.withPortalAddress(res.GetUrl(), sid)
 		if e.json {
-			e.printJSON(map[string]any{"url": res.GetUrl(), "expiresAt": res.GetExpiresAt().AsTime().Format(time.RFC3339)})
+			e.printJSON(map[string]any{"url": link, "expiresAt": res.GetExpiresAt().AsTime().Format(time.RFC3339)})
 		} else {
-			fmt.Fprintln(e.stdout, res.GetUrl())
+			fmt.Fprintln(e.stdout, link)
 		}
 		return nil
 	}

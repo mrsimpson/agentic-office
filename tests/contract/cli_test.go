@@ -7,6 +7,7 @@ package contract
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -301,6 +302,14 @@ func TestCLIJoinPrintsStageLink(t *testing.T) {
 	}
 	if j := ada.join(sid); !strings.Contains(j.StageURL, "/stage/") {
 		t.Fatalf("join --json must have the stage link as stageUrl, got %q", j.StageURL)
+	}
+	// The link carries the address of the portal page of the session, and no credential for it.
+	link, _, code := ada.run("stage", "link")
+	if code != 0 || !strings.Contains(link, "portal=%2Fportal%2Ft%2F") || !strings.Contains(link, "%2Fs%2F"+url.QueryEscape(sid)) {
+		t.Fatalf("stage link must carry the portal address, got %q (exit %d)", link, code)
+	}
+	if strings.Count(link, "token=") != 1 || strings.Contains(link, "opl_") {
+		t.Fatalf("stage link must carry no portal credential, got %q", link)
 	}
 }
 

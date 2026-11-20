@@ -154,7 +154,7 @@ var Page = template.Must(template.New("page").Parse(`<!DOCTYPE html>
 <meta name="referrer" content="no-referrer">
 <title>{{.Session}} · Agentic office stage</title><style>` + css + `</style></head>
 <body>
-<header><div class="brand"><div class="logo"></div><div><div class="eyebrow">Agentic office</div><h1>Session <span id="session">{{.Session}}</span></h1></div></div><div class="side"><a id="portal" href="{{.Portal}}" rel="noreferrer" target="_blank">Open in portal</a><div id="status">{{.Regions.status}}</div></div></header>
+<header><div class="brand"><div class="logo"></div><div><div class="eyebrow">Agentic office</div><h1>Session <span id="session">{{.Session}}</span></h1></div></div><div class="side">{{with .Portal}}<a id="portal" href="{{.}}" rel="noreferrer" target="_blank">Open in portal</a>{{end}}<div id="status">{{.Regions.status}}</div></div></header>
 <div id="origin">{{.Regions.origin}}</div>
 <noscript><p class="note">This page needs JavaScript for live updates.</p></noscript>
 <main id="stage" class="stage" data-events="{{.Events}}">

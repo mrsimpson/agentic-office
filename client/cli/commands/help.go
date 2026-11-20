@@ -482,7 +482,10 @@ and revoke keys there. Every page asks the hub with your rights.`,
 	{Name: "stage link", Group: groupStage, Summary: "create a read-only link to the stage of a session",
 		Usage: "stage link",
 		Details: `Prints https://<hub>/stage/<session>?token=... for one session. The link is read only and
-lives 24 hours (hub flag -stage-link-ttl). Open it in a browser and share that window in your
+lives 24 hours (hub flag -stage-link-ttl).
+The link also carries the address of the portal page of the session in your tenant (parameter
+"portal"); the stage shows it as "Open in portal". It has no credential: the portal asks you
+to sign in with "office portal link". Open it in a browser and share that window in your
 meeting tool. The stage belongs to the tenant of the user who creates the link.`,
 		Examples: []string{"office stage link --session weekly"}},
 	{Name: "slides render", Group: groupStage, Summary: "render a slide deck and print its ID",

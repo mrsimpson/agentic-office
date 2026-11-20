@@ -366,22 +366,11 @@ func TestStagePageNeedsStageLink(t *testing.T) {
 	}
 	// No external assets: no element loads anything from an address.
 	for _, n := range findAll(doc, func(n *html.Node) bool { _, s := attr(n, "src"); _, h := attr(n, "href"); return s || h }) {
-		if id, _ := attr(n, "id"); id == "portal" {
-			continue
-		}
 		t.Errorf("page loads an asset: <%s %v>", n.Data, n.Attr)
 	}
-	// The one link leaves the page: to the portal page of the session. It carries no token and
-	// sends no referrer, so the stage link does not leak.
-	if p := findAll(doc, withAttr("id", "portal")); len(p) != 1 {
-		t.Errorf("page should have exactly one link #portal")
-	} else {
-		href, _ := attr(p[0], "href")
-		rel, _ := attr(p[0], "rel")
-		if !strings.HasPrefix(href, "/portal/t/") || !strings.HasSuffix(href, "/s/"+url.PathEscape(m.sid)) ||
-			strings.Contains(href, "token") || !strings.Contains(rel, "noreferrer") {
-			t.Errorf("portal link: href %q, rel %q", href, rel)
-		}
+	// Without the parameter "portal", the page has no link at all.
+	if p := findAll(doc, withAttr("id", "portal")); len(p) != 0 {
+		t.Errorf("page has a portal link without the parameter portal")
 	}
 	// The one inline script is allowed by its hash in the Content-Security-Policy, nothing else is.
 	if scripts := findAll(doc, byTag("script")); len(scripts) != 1 || scripts[0].FirstChild == nil {
@@ -440,6 +429,32 @@ func TestStagePageNeedsStageLink(t *testing.T) {
 // stage: participants with their capture status and agents marked, raised hands, the shown
 // artifact (and a note for an unknown one), minutes, utterances (off the record ones disappear), and
 // the end of the session.
+// TestStageShowsPortalAddress: a stage link may carry the address of the portal in the parameter
+// "portal". The page shows a plain link to a path on its own server, without a token and without a
+// referrer. Any other value shows no link.
+func TestStageShowsPortalAddress(t *testing.T) {
+	m := newStageMeeting(t)
+	portal := func(value string) []*html.Node {
+		_, body := get(t, m.srv, m.link+"&portal="+url.QueryEscape(value))
+		return findAll(parseDoc(t, body), withAttr("id", "portal"))
+	}
+	want := "/portal/t/acme/s/" + url.PathEscape(m.sid)
+	p := portal(want)
+	if len(p) != 1 {
+		t.Fatalf("page should have exactly one link #portal, has %d", len(p))
+	}
+	href, _ := attr(p[0], "href")
+	rel, _ := attr(p[0], "rel")
+	if href != want || strings.Contains(href, "token") || !strings.Contains(rel, "noreferrer") {
+		t.Errorf("portal link: href %q, rel %q", href, rel)
+	}
+	for _, bad := range []string{"https://evil.example/portal/", "//evil.example/", "javascript:alert(1)", "portal/t/acme", "/portal\\evil", "/portal/\n", ""} {
+		if p := portal(bad); len(p) != 0 {
+			t.Errorf("the address %q must show no link", bad)
+		}
+	}
+}
+
 func TestStageShowsTheSession(t *testing.T) {
 	m := newStageMeeting(t)
 	st := openStage(t, m.srv, m.link)

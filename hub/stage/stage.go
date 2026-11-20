@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	portalweb "github.com/mrsimpson/agentic-office/hub/portal/web"
 	"github.com/mrsimpson/agentic-office/hub/stage/web"
 
 	"connectrpc.com/connect/v2"
@@ -35,9 +34,6 @@ type Slides interface {
 type StageLink struct {
 	// SessionID is the session of the link.
 	SessionID string
-	// TenantID is the tenant of the link. The page links to the portal page of the session in this
-	// tenant. The link carries no credential: the portal asks for its own sign-in.
-	TenantID string
 	// Slides loads the shown decks of the tenant of the link (artifact IDs "slides/<n>"). Nil
 	// means the stage shows a note instead.
 	Slides Slides
@@ -109,7 +105,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.events(w, r, sid, token, link)
 		return
 	}
-	h.page(w, r, sid, token, link)
+	h.page(w, r, sid, token)
 }
 
 // check returns http.StatusOK if token is a valid stage link for the session.
@@ -144,12 +140,12 @@ func (h *Handler) fail(w http.ResponseWriter, status int, title, msg string) {
 }
 
 // page renders the page with an empty view. The event stream fills it.
-func (h *Handler) page(w http.ResponseWriter, r *http.Request, sid, token string, link StageLink) {
+func (h *Handler) page(w http.ResponseWriter, r *http.Request, sid, token string) {
 	w.Header().Set("Content-Security-Policy", web.PageCSP)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	events := web.PathPrefix + url.PathEscape(sid) + "/events?" + url.Values{"token": {token}}.Encode()
 	_ = web.Page.Execute(w, map[string]any{"Session": sid, "Events": events,
-		"Portal": portalweb.SessionPath(link.TenantID, sid), "Regions": newView().renderAll(), "Script": template.JS(web.Script)})
+		"Portal": portalLink(r.URL.Query().Get("portal")), "Regions": newView().renderAll(), "Script": template.JS(web.Script)})
 }
 
 // coalesce is how long the stream waits for more events before it sends the changed regions.
@@ -313,4 +309,20 @@ func writeEvent(w io.Writer, name, data string) {
 	}
 	b.WriteString("\n")
 	_, _ = io.WriteString(w, b.String())
+}
+
+// portalLink returns the optional address of the portal that the stage link carries (parameter
+// portal), or "" if there is none or it is not safe to show. Only a path on this server is
+// shown: it starts with one slash and has no backslash and no control character. The stage
+// knows nothing else about it; the client that created the link chose it.
+func portalLink(p string) string {
+	if len(p) < 1 || len(p) > 512 || p[0] != '/' || strings.HasPrefix(p, "//") {
+		return ""
+	}
+	for _, r := range p {
+		if r == '\\' || r < 0x20 || r == 0x7f {
+			return ""
+		}
+	}
+	return p
 }

@@ -160,7 +160,7 @@ func cmdJoin(e *env, fs *flag.FlagSet) func([]string) error {
 		if sl, err := c.StageLink(e.ctx, j.SessionID); err != nil {
 			e.progress(fmt.Sprintf("no stage link: %v", err))
 		} else {
-			stageURL = sl.GetUrl()
+			stageURL = e.withPortalAddress(sl.GetUrl(), j.SessionID)
 		}
 		if e.json {
 			out := map[string]any{"sessionId": j.SessionID, "participantId": j.ParticipantID, "logPath": j.Paths.Log,

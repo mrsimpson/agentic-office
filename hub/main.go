@@ -418,7 +418,7 @@ func main() {
 			if err != nil {
 				return stage.StageLink{}, err
 			}
-			return stage.StageLink{SessionID: c.StageSessionID, TenantID: c.TenantID, Slides: rt.slides, Artifacts: rt.archiveRead}, nil
+			return stage.StageLink{SessionID: c.StageSessionID, Slides: rt.slides, Artifacts: rt.archiveRead}, nil
 		},
 	}))
 

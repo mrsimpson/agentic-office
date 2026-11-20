@@ -1410,7 +1410,7 @@ id: bb-stage
 title: Stage
 technology: Go, rendered by the hub / server-sent events
 parent: bb-office-hub
-requires: if-session-stream, if-session-activity, if-slides-api, if-auth-api, if-archive-read, if-portal-web
+requires: if-session-stream, if-session-activity, if-slides-api, if-auth-api, if-archive-read
 implements: concept-transparency, concept-session-release
 path: hub/stage
 :::
@@ -1749,7 +1749,7 @@ id: bb-cli
 title: office CLI
 technology: Go, single binary
 parent: bb-participant-client
-requires: if-client-core, if-replication, if-local-log, if-session-commands, if-session-stream, if-slides-api, if-auth-api, if-user-api, if-sync
+requires: if-client-core, if-replication, if-local-log, if-session-commands, if-session-stream, if-slides-api, if-auth-api, if-user-api, if-sync, if-portal-web
 implements: concept-read-file-write-tools, concept-client-configuration
 path: client/cli
 :::
