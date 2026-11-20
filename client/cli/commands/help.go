@@ -514,7 +514,10 @@ gets artifact.created, and the document waits for the release of the session. Un
 its participants read it; everyone else reads its stub. Prints the version of the document.
 Never put a sentence that is off the record into a document; the release of the session is
 refused while a staged file quotes one word for word.
---json prints {"path", "version", "staged", "duplicate"}.`,
+Front matter that names "schema: office.document.v1" must follow the schema of documents, or
+the hub refuses the document with invalid_argument. Every relative link that leads to no file
+is printed as a "hint:" line on stderr; the document is written all the same.
+--json prints {"path", "version", "staged", "duplicate", "hints"}.`,
 		Examples: []string{"V=$(office document create documents/plan.md --file plan.md --session weekly)"}},
 	{Name: "document change", Group: groupStage, Summary: "replace a text document",
 		Usage: "document change <path> --base VERSION <text> | --file F",
@@ -523,7 +526,9 @@ change fails with "aborted" and names the current version: read the document aga
 your change. Of two changes with the same base, the first one wins. Your name is recorded as
 the author of the change. --session links the change to a session (artifact.changed). A
 document that waits for the release of its session changes only with --session of that
-session, and only for a participant of it. A released document changes at once.`,
+session, and only for a participant of it. A released document changes at once. The front
+matter is checked and the hints are printed as with "document create".
+--json prints {"path", "version", "staged", "duplicate", "hints"}.`,
 		Examples: []string{`office document change documents/plan.md --base "$V" --file plan.md`}},
 	{Name: "document remove", Group: groupStage, Summary: "remove a staged text document before the release",
 		Usage: "document remove <path> --base VERSION --session S",

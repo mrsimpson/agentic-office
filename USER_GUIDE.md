@@ -616,6 +616,40 @@ meantime, the change fails with `aborted` and tells you the current version: rea
 again and redo your change. Your name is recorded as the author of every change. Never put a
 sentence that is off the record into a document.
 
+**Front matter.** Documents are the pages of the wiki of your team. A document may start with
+front matter that names the schema of documents. The hub then checks its fields and refuses a
+document with a wrong field, both through `office document` and with a push. Every field is
+optional, and no other field is allowed:
+
+```markdown
+---
+schema: office.document.v1
+title: ACME GmbH                       # one line
+summary: Customer since 2025.          # one line
+tags: [customer]                       # a list; no tag twice
+sources: [minutes/000012.yaml]         # paths of records, from the top of the repository
+status: draft                          # draft, reviewed or outdated
+owner: ada                             # a participant ID
+reviewed:                              # reviews, each with exactly id and date
+  - id: bob
+    date: 2026-11-19
+---
+# ACME GmbH
+```
+
+A document without front matter is fine too; its first heading is its title.
+
+**Links that lead nowhere.** Link other files with plain relative Markdown links, for example
+`[minutes](../minutes/000012.yaml)` from `documents/acme.md`. When a link of a document leads to no
+file, the hub writes the document anyway and gives a hint. `office document create` and
+`office document change` print each hint on stderr; `--json` puts them into the field `hints`:
+
+```text
+hint: the link "pricing.md" leads nowhere: there is no documents/pricing.md
+```
+
+A link to a document that waits for a release works: its stub is there.
+
 A document that names a session (`--session`) waits for the release of the session, like the
 minutes (see [Release what a session created](#release-what-a-session-created)).
 
@@ -774,6 +808,14 @@ changes nothing. The reasons are shown as `remote:` lines. Fix the cause and pus
 
 Only the end result of a push counts for the file checks. A file that is broken in one commit and
 fixed in the next one is fine.
+
+**Hints.** A push of a document with a link that leads nowhere is accepted, and the hub shows a
+hint for each such link. Links between the files of the same push work.
+
+```text
+remote: hints, which do not refuse the push:
+remote:   - documents/budget.md: the link "plan.md" leads nowhere: there is no documents/plan.md
+```
 
 **What is not allowed.**
 
@@ -1101,15 +1143,24 @@ runner also tells it what the other agents said, and that they are agents.
 
 The office ships a skill, `office-memory`, that tells an agent how to read and write the memory of
 the team: which artifacts never change (minutes, decisions and notes), how to write a page of the
-wiki with its front matter, and how to bring a meeting into the wiki. It lies in
-`skills/office-memory` of the repository. Install it in the folder of the agent with the
-[skills CLI](https://www.npmjs.com/package/skills):
+wiki with its front matter, and how to bring a meeting into the wiki.
 
-```bash
-npx skills add mrsimpson/agentic-office --skill office-memory
-```
+With the runner, you do not install it. Before the runner starts the harness, it writes the skill
+into the folder of the agent (`--cwd`), and the harness offers it to the agent:
 
-Do not change the installed skill. Put the rules of your team into the role of the agent instead.
+- `.agent/skills/office-memory/`: Kiro and opencode read skills from there.
+- `.claude/skills/office-memory`: a link to the same folder, for Claude Code.
+
+The runner writes the skill of its own release at every start and replaces its earlier copy. It
+never replaces a folder `office-memory` that it did not write, for example one that you installed
+yourself: it keeps it and warns in its log. Remove that folder if the agent should get the skill
+of the office.
+
+If the folder of the agent is in a Git repository, the runner adds both paths to the file
+`.git/info/exclude` of the repository, so you do not commit them by accident. It does not change
+your `.gitignore`. Without Git, nothing needs to be done.
+
+Do not change the skill. Put the rules of your team into the role of the agent instead.
 
 ### When the runner wakes the agent
 
@@ -1364,6 +1415,13 @@ standard input and output. It takes the same flags and `OFFICE_*` variables as t
 `--session` sets the default session of the tools. The key must exist and be registered first.
 Add `office mcp` as an MCP server in the agent's folder. In a configuration file, write absolute
 paths: no `~` and no `$HOME`. The `cat <<EOF` in the Kiro example fills them in for you.
+
+Without the runner, nobody hands the agent the memory skill. Install it in the folder of the agent
+with the [skills CLI](https://www.npmjs.com/package/skills):
+
+```bash
+npx skills add mrsimpson/agentic-office --skill office-memory
+```
 
 ```sh
 # Claude Code

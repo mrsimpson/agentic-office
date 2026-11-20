@@ -38,6 +38,7 @@ flowchart LR
     actor_agent -->|if-acp-client| bb_participant_client
     actor_agent -->|if-git-access| bb_office_hub
     actor_agent -->|if-office-assistant-skill| bb_skills
+    actor_agent -->|if-office-memory-skill| bb_skills
     actor_container_platform -->|if-health| bb_office_hub
     actor_decision_model -->|if-decision-model| bb_participant_client
     actor_forwarding_judge -->|if-forwarding-judge| bb_participant_client
@@ -86,13 +87,18 @@ starts the harness, opens one ACP session for the meeting and sends it what was 
 (`dec-agent-runner-acp`). The harness answers as the ACP agent, and the client is the ACP client.
 The agent still acts through the office tools, which the runner hands to the harness session.
 
+The agent follows the conventions of the office from its skills (`dec-skills`): the office
+assistant skill when it helps a human to use the office, and the office memory skill when it reads
+or writes the memory of the team. In the runner, the harness gets the office memory skill from the
+runner; without the runner, its human installs it.
+
 ```arc42
 :::actor
 id: actor-agent
 title: Agent
 type: system
 description: Reads the session log as a file or gets it from the agent runner over ACP, writes through tools; keeps minutes, raises its hand, creates artifacts
-requires: if-mcp, if-cli, if-local-log, if-acp-client, if-git-access, if-office-assistant-skill
+requires: if-mcp, if-cli, if-local-log, if-acp-client, if-git-access, if-office-assistant-skill, if-office-memory-skill
 :::
 ```
 

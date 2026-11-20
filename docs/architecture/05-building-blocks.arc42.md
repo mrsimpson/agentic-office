@@ -44,6 +44,7 @@ flowchart LR
     bb_participant_client -->|if-user-api| bb_office_hub
     bb_participant_client -->|if-tenant-api| bb_office_hub
     bb_participant_client -->|if-session-stream| bb_office_hub
+    bb_participant_client -->|if-office-memory-skill| bb_skills
 ```
 
 ## Office hub
@@ -480,6 +481,19 @@ and each change must name that session. A change of a released document is not h
 document is read through the archive read interface, which shows its content only to the readers
 of the session.
 
+A document may name the schema of documents in its front matter (`dec-wiki`). Then the hub checks
+the fields of the front matter, all optional: a title and a summary of one line each, tags, the
+sources it draws on as paths of records, a status (draft, reviewed or outdated), an owner, and
+the reviews it got, each with the reviewer and the day. Any other field is invalid. A create or a
+change with invalid front matter, or with front matter that names another schema, is refused with
+the reasons. A document without front matter is valid, and its first heading is its title. The
+rules are the same as for a push, because the check is the same.
+
+A create or a change answers with a hint for every relative Markdown link of the document that
+leads to no file of the artifact repository. A stub counts as a file, so a link to a staged
+document works. A hint never refuses the write. The CLI prints the hints, and the MCP server
+returns them to the agent.
+
 ```arc42
 :::interface
 id: if-document-api
@@ -793,7 +807,11 @@ write. If it cannot write the stub of a document that it has just staged, becaus
 path first, it takes the staged document back, and the staging area forgets the path.
 
 The part owns the schema of documents. Most documents name no schema and are plain Markdown. A
-document may name the schema; the stub always does.
+document may name the schema; the stub always does. The part checks the front matter of a
+document that names the schema with its own check interface, at its interface and for a push, so
+every rule exists once. After a write it finds the relative links of the document that lead to
+no file and answers with a hint for each; it never refuses a write for a link
+(`concept-wiki`).
 
 ```arc42
 :::building-block
@@ -810,11 +828,17 @@ implements: concept-wiki, concept-session-release
 #### Documents check
 
 Lets the artifacts part check a document that names the schema of documents before it accepts a
-push. A document of the schema is Markdown under the directory of the documents; the stub of a
-document is one of them. The part also tells whether a content is the stub of a document, byte for
-byte, so the documents part and the push rules decide the same way. The part names the schemas
-that it owns. A call gives the path, the content and the name of the schema; the part answers that
-the file is valid, or that it is invalid, with the reasons in plain words.
+push. A document of the schema is Markdown under the directory of the documents, and its front
+matter has only the fields of the schema, each in its form; the stub of a document is one of
+them. The part also tells whether a content is the stub of a document, byte for byte, so the
+documents part and the push rules decide the same way. The part names the schemas that it owns.
+A call gives the path, the content and the name of the schema; the part answers that the file is
+valid, or that it is invalid, with the reasons in plain words.
+
+A second call gives the hints of a document: every relative Markdown link that leads to no file.
+The caller gives the path, the content and a way to ask whether a path holds a file in the state
+that the document belongs to. A file that is not a document, and the stub of a document, get no
+hints. A hint never makes a document invalid.
 
 ```arc42
 :::interface
@@ -1067,6 +1091,10 @@ rules. It does three things:
   of a path, so Git access asks the artifacts part whether the file that a push changes or
   removes is a stub. A push next to a stub passes. Git access never serves the staging
   repository, so a clone holds stubs and never staged content.
+- Hints for every push (`concept-wiki`): Git access asks the artifacts part for the hints of each
+  file that the push adds or changes, such as a link of a document that leads nowhere, and shows
+  them to the participant. A link resolves in the state of main after the push, so links between
+  the files of one push work, and so does a link to a stub. A hint never refuses a push.
 - After an accepted push, it tells the archive that main moved.
 
 Git alone decides whether a push builds on the current state: a push on an old base is refused,
@@ -1110,7 +1138,9 @@ owns no schema, because a schema belongs to its type (`dec-artifacts`). It finds
 name of the schema that the file names. A file that names no schema is plain text, and a file
 that names a schema that no part owns is invalid. Each part also recognises the stub of its types
 (`concept-session-release`), so this part can tell a stub from any other file without knowing the
-stubs itself. A new type needs a check in its own part and a line in this part.
+stubs itself. A part may give hints for the files of its types, such as a link of a document that
+leads nowhere; each part decides which files are of its types. A new type needs a check in its
+own part and a line in this part.
 
 ```arc42
 :::building-block
@@ -1129,7 +1159,9 @@ path: hub/artifacts
 Checks the content of one file against the schema that the file names, whichever part owns the
 schema. The answer is valid, or invalid with the reasons in plain words. A second call tells
 whether a file is the stub of a staged artifact: the file names a schema, is valid, and the part
-that owns the schema recognises it as the stub of its type.
+that owns the schema recognises it as the stub of its type. A third call gives the hints of the
+parts for a file, such as the links of a document that lead nowhere. The caller says which paths
+hold a file in the state that the file belongs to. A hint never makes a file invalid.
 
 ```arc42
 :::interface
@@ -1526,13 +1558,20 @@ session and one agent key, it:
 
 - joins the session as the agent and runs the log replicator in its own process, so it follows
   the local log of the agent;
-- starts the agent harness, opens one ACP session, hands it the office tools as an MCP server with
-  the key of the agent and sends a first prompt with the role of the agent and the meeting, and
-  with the rule that an agent says in the session which artifact it takes on and the hint to follow
-  the skill of the wiki (`dec-wiki`);
 - hands the harness, with its skills injector, the skills that every agent of a tenant needs
-  (`dec-skills`), so the agent follows the conventions of the office without a step of its human;
-  OPEN: how the injector hands a skill to a harness, since ACP has no notion of skills;
+  (`dec-skills`), so the agent follows the conventions of the office without a step of its human.
+  ACP has no notion of skills, so the injector writes each skill, before the harness starts, into
+  the folder of skills in the working directory of the agent that Kiro and opencode read, and
+  links it into the folder that Claude Code reads: one copy for all harnesses. It replaces only a
+  copy that the office wrote; a skill of the same name from elsewhere stays, and the runner warns.
+  It keeps what it wrote out of the commits of a Git work tree. Today every agent gets the
+  office memory skill;
+- starts the agent harness, opens one ACP session, hands it the office tools as an MCP server with
+  the key of the agent and sends a first prompt with the role of the agent and the meeting, with
+  the rule that an agent says in the session which artifact it takes on (`dec-wiki`), and with
+  what only the runner knows: the session that everything from the meeting must name, and that
+  tasks are not held. The first prompt does not mention the skills, because the harness offers
+  them to the agent itself;
 - decides with one wake strategy, chosen by the user at start, when to wake the agent
   (`dec-agent-runner-delivery`): at each change of speaker, or when a forwarding judge or a
   decision model that the user brings says so (`dec-wake-check-per-utterance`,
@@ -1561,7 +1600,7 @@ id: bb-agent-runner
 title: Agent runner
 technology: Go / Agent Client Protocol
 parent: bb-participant-client
-requires: if-client-core, if-replication, if-local-log, if-session-stream, if-session-activity
+requires: if-client-core, if-replication, if-local-log, if-session-stream, if-session-activity, if-office-memory-skill
 implements: concept-read-file-write-tools, concept-participant-model
 path: client/agentrunner
 :::
@@ -1715,5 +1754,26 @@ title: Office assistant skill
 provider: bb-skills
 protocol: Agent Skills
 path: skills/office-assistant
+:::
+```
+
+### Office memory skill
+
+How an agent reads and writes the memory of the team, its wiki (`dec-wiki`, `concept-wiki`):
+which artifacts never change once released, how to find what the team knows, how to write a page
+with its front matter, and how to ingest, answer and lint. Agents read it but never change it. The
+agent runner hands it to every harness that it starts; an agent without a runner gets it from its
+human with the usual skill tooling (`dec-skills`). The skill also offers its files to the agent
+runner inside the office, so the runner hands out exactly the skill of its own release.
+
+```arc42
+:::ignore H011 an agent reads a skill as a file and the runner only copies it; there is no interaction to show
+:::
+:::interface
+id: if-office-memory-skill
+title: Office memory skill
+provider: bb-skills
+protocol: Agent Skills
+path: skills/office-memory
 :::
 ```
