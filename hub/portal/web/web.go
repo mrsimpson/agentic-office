@@ -10,6 +10,11 @@
 //	POST /portal/t/<tenant>/s/<session>/release  releases the session (a human who took part)
 //	POST /portal/t/<tenant>/s/<session>/object   objects to the release (a human who took part)
 //	GET  /portal/t/<tenant>/members       the members of a tenant (tenant admins)
+//	GET  /portal/t/<tenant>/wiki          the index of the wiki of a tenant; ?tag=<tag> filters it
+//	GET  /portal/t/<tenant>/wiki/a/<path> one artifact of the wiki, with its links and backlinks
+//	GET  /portal/t/<tenant>/wiki/search   searches the wiki; ?q=<words>
+//	GET  /portal/t/<tenant>/wiki/broken   the links of the wiki that lead nowhere
+//	GET  /portal/t/<tenant>/wiki/queue    the sources that no document cites yet
 //	GET  /portal/admin/keys               the users and their keys (system admins)
 //	GET  /portal/admin/keys/new           the form that registers a key
 //	POST /portal/admin/keys/register      registers a key
@@ -26,6 +31,7 @@ package web
 import (
 	"html/template"
 	"net/url"
+	"strings"
 )
 
 const (
@@ -67,6 +73,31 @@ func ObjectPath(tenant, session string) string { return SessionPath(tenant, sess
 
 // MembersPath is the page with the members of a tenant.
 func MembersPath(tenant string) string { return TenantPrefix + url.PathEscape(tenant) + "/members" }
+
+// WikiPath is the index of the wiki of a tenant.
+func WikiPath(tenant string) string { return TenantPrefix + url.PathEscape(tenant) + "/wiki" }
+
+// WikiTagPath is the index of the wiki of a tenant, filtered by a tag.
+func WikiTagPath(tenant, tag string) string { return WikiPath(tenant) + "?tag=" + url.QueryEscape(tag) }
+
+// WikiArtifactPath is the page of one artifact of the wiki. The path of the artifact keeps its
+// slashes; each part is escaped.
+func WikiArtifactPath(tenant, artifact string) string {
+	parts := strings.Split(artifact, "/")
+	for i, p := range parts {
+		parts[i] = url.PathEscape(p)
+	}
+	return WikiPath(tenant) + "/a/" + strings.Join(parts, "/")
+}
+
+// WikiSearchPath is the search of the wiki of a tenant; the query is the parameter q.
+func WikiSearchPath(tenant string) string { return WikiPath(tenant) + "/search" }
+
+// WikiBrokenPath lists the links of the wiki that lead nowhere.
+func WikiBrokenPath(tenant string) string { return WikiPath(tenant) + "/broken" }
+
+// WikiQueuePath lists the sources that no document cites yet (the ingest queue).
+func WikiQueuePath(tenant string) string { return WikiPath(tenant) + "/queue" }
 
 // CSP is the Content-Security-Policy of every page. The pages cannot be framed.
 const CSP = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
@@ -144,6 +175,14 @@ pre.artifact { font-family: ui-monospace, Menlo, Consolas, monospace; font-size:
 summary { cursor: pointer; }
 [data-actions] { margin: 0 0 1.4rem; }
 .placeholder p { color: var(--muted); }
+.wikibar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1.2rem; margin: -0.6rem 0 1.6rem; }
+.wikibar form { display: flex; gap: 0.5rem; }
+.wikibar a.on { color: var(--text); font-weight: 600; text-decoration: none; }
+a.chip { color: var(--text); text-decoration: none; }
+a.chip.on { border-color: var(--ink); font-weight: 600; }
+.chip small { margin-left: 0.1em; }
+ul.refs { list-style: none; margin: 0; padding: 0; max-width: 54rem; }
+ul.refs li { padding: 0.35rem 0; border-bottom: 1px solid var(--line); }
 body.error { display: block; }
 body.error main { padding: 4rem 3rem; }
 body.error h1 { color: var(--warn); }
@@ -234,6 +273,7 @@ var Page = template.Must(template.New("page").Funcs(template.FuncMap{
 <tr><th>User</th><th>Role</th><th>Since</th></tr>
 {{range .Members}}<tr data-member="{{.UserId}}"><td><span class="name">{{.UserId}}</span></td><td>{{.Role}}</td><td><small>{{.Since}}</small></td></tr>
 {{end}}</table>
+{{else if eq .Mode "wiki"}}{{template "wiki" .Wiki}}
 {{else if eq .Mode "admins"}}<table class="keys">
 <tr><th>User</th><th>Kind</th><th>Key</th><th>Status</th></tr>
 {{range .Keys}}<tr data-participant="{{.ParticipantId}}" data-key="{{.KeyId}}">
@@ -281,6 +321,49 @@ var _ = template.Must(Page.New("release").Parse(`<h2>Release</h2>
 </dl>
 <h2>{{if eq .State "released"}}Released artifacts{{else}}Staged artifacts{{end}}</h2>
 {{if .Artifacts}}<ol class="records">{{range .Artifacts}}<li data-artifact="{{.Path}}"{{if .Staged}} data-staged{{end}}{{if .NotReleased}} data-not-released{{end}}><details><summary><code>{{.Path}}</code>{{if .NotReleased}} <span class="badge revoked">not released: the path is taken</span> <small>Move it to a new path by hand, through the interface of its type.</small>{{else if .Staged}} <span class="badge imported">staged</span>{{end}}</summary><pre class="artifact">{{.Content}}</pre>{{if .Cut}}<small>The page shows the start of the file only.</small>{{end}}</details></li>{{end}}</ol>{{else}}<p class="empty" data-empty="artifacts">{{if eq .State "released"}}The session released no artifact.{{else}}The session has staged no artifact.{{end}}</p>{{end}}`))
+
+// wiki is the wiki of a tenant: a bar with the views and the search, then the index, one
+// artifact, the search results, the broken links or the ingest queue.
+var _ = template.Must(Page.New("wiki").Parse(`<div class="wikibar" data-wikibar><a class="link{{if eq .Page "index"}} on{{end}}" href="{{.IndexHref}}">Index</a>
+<a class="link{{if eq .Page "broken"}} on{{end}}" href="{{.BrokenHref}}">Broken links</a>
+<a class="link{{if eq .Page "queue"}} on{{end}}" href="{{.QueueHref}}">Ingest queue</a>
+<form method="get" action="{{.SearchHref}}" role="search" data-form="search"><input type="search" name="q" value="{{.Query}}" aria-label="Search the wiki" placeholder="Search the wiki"><button class="quiet" type="submit">Search</button></form></div>
+{{if eq .Page "index"}}{{if .Tags}}<div class="chips" data-tags><a class="chip{{if not .Tag}} on{{end}}" href="{{.IndexHref}}" data-tag-filter="">all</a>{{range .Tags}}<a class="chip{{if .On}} on{{end}}" href="{{.Href}}" data-tag-filter="{{.Tag}}">{{.Tag}} <small data-count>{{.Count}}</small></a>{{end}}</div>{{end}}
+{{if .Tag}}<h2 data-filter="{{.Tag}}">Tagged {{.Tag}}</h2>{{else}}<h2>All artifacts</h2>{{end}}
+{{template "wiki-entries" .Artifacts}}{{if not .Artifacts}}<p class="empty" data-empty="wiki">{{if .Tag}}No artifact has this tag.{{else}}The wiki of this tenant is empty. Its artifacts appear here once they are released.{{end}}</p>{{end}}
+{{else if eq .Page "search"}}{{if .Query}}<h2>Results for {{.Query}}</h2>
+{{template "wiki-entries" .Artifacts}}{{if not .Artifacts}}<p class="empty" data-empty="hits">No artifact contains these words. A word matches whole; case does not matter.</p>{{end}}{{else}}<p class="empty" data-empty="query">Type words to search the titles, tags, summaries and texts of the artifacts.</p>{{end}}
+{{else if eq .Page "broken"}}{{if .Broken}}<table class="broken"><tr><th>Artifact</th><th>Leads to</th><th>Kind</th></tr>
+{{range .Broken}}<tr data-broken="{{.FromPath}} -> {{.ToPath}}"><td><a class="name" href="{{.FromHref}}"><code>{{.FromPath}}</code></a></td><td><code>{{.ToPath}}</code></td><td>{{if .Source}}cited source{{else}}link in the text{{end}}</td></tr>
+{{end}}</table>{{else}}<p class="empty" data-empty="broken">Every link of the wiki leads somewhere.</p>{{end}}
+{{else if eq .Page "queue"}}<p class="muted">The decisions, minutes and notes that no document cites yet. Agents bring them into the pages of the wiki.</p>
+{{template "wiki-entries" .Artifacts}}{{if not .Artifacts}}<p class="empty" data-empty="queue">Every source is cited by a document.</p>{{end}}
+{{else if eq .Page "artifact"}}{{with .Artifact}}<dl class="facts" data-artifact="{{.Entry.Path}}">
+<dt>Path</dt><dd><code>{{.Entry.Path}}</code>{{if .Staged}} <span class="badge imported">staged</span> <small>You read the version that waits for the release of your session.</small>{{end}}</dd>
+<dt>Kind</dt><dd data-kind>{{.Kind}}{{if .Entry.Schema}} <small><code>{{.Entry.Schema}}</code></small>{{end}}</dd>
+{{if .Entry.Summary}}<dt>Summary</dt><dd data-summary>{{.Entry.Summary}}</dd>{{end}}
+{{if .Entry.Tags}}<dt>Tags</dt><dd><div class="chips">{{range .Entry.Tags}}<a class="chip" href="{{.Href}}" data-tag="{{.Tag}}">{{.Tag}}</a>{{end}}</div></dd>{{end}}
+{{if .FrontMatter}}<dt>Front matter</dt><dd><details data-front-matter><summary><small>As written: status, owner and reviews of a document; the author and time of a note</small></summary><pre class="artifact">{{.FrontMatter}}</pre></details></dd>{{end}}
+</dl>
+{{if .Missing}}<p class="empty" data-empty="content">The file cannot be read now.</p>{{else if .Text}}<pre class="artifact" data-content>{{.Text}}</pre>{{else}}<div class="prose" data-content>{{.Body}}</div>{{end}}{{if .Cut}}<small>The page shows the start of the file only.</small>{{end}}
+<h2>Links</h2>
+{{template "wiki-links" .Links}}{{if not .Links}}<p class="empty" data-empty="links">The text links no other file.</p>{{end}}
+<h2>Backlinks</h2>
+{{template "wiki-entries" .Backlinks}}{{if not .Backlinks}}<p class="empty" data-empty="backlinks">No artifact links here.</p>{{end}}
+{{if .Sources}}<h2>Sources</h2>
+{{template "wiki-links" .Sources}}{{end}}
+{{if .Entry.Source}}<h2>Cited by</h2>
+{{template "wiki-entries" .CitedBy}}{{if not .CitedBy}}<p class="empty" data-empty="cited-by">No document cites this source yet. It waits in the ingest queue.</p>{{end}}{{end}}
+{{end}}{{end}}`))
+
+// wiki-entries is a list of artifacts of the wiki.
+var _ = template.Must(Page.New("wiki-entries").Parse(`{{if .}}<table class="wiki"><tr><th>Artifact</th><th>Summary</th><th>Tags</th></tr>
+{{range .}}<tr data-entry="{{.Path}}"><td><a class="name" href="{{.Href}}">{{.Title}}</a>{{if .Source}} <span class="badge imported">source</span>{{end}}<br><small><code>{{.Path}}</code></small></td>
+<td>{{.Summary}}</td><td><div class="chips">{{range .Tags}}<a class="chip" href="{{.Href}}" data-tag="{{.Tag}}">{{.Tag}}</a>{{end}}</div></td></tr>
+{{end}}</table>{{end}}`))
+
+// wiki-links is a list of links or cited sources of an artifact.
+var _ = template.Must(Page.New("wiki-links").Parse(`{{if .}}<ul class="refs">{{range .}}<li data-link="{{.Path}}"{{if .Broken}} data-broken-link{{end}}>{{if .Href}}<a class="name" href="{{.Href}}">{{.Title}}</a> <small><code>{{.Path}}</code></small>{{else}}<code>{{.Path}}</code>{{if .Broken}} <span class="badge revoked">leads nowhere</span>{{else}} <small>not in the wiki: a directory, or a file that waits for the release of its session</small>{{end}}{{end}}</li>{{end}}</ul>{{end}}`))
 
 // ErrorPage is the page for a missing, used or expired session or link. It shows no data. Fields:
 // Title, Message.

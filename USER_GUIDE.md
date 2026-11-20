@@ -330,8 +330,9 @@ keeps at least one tenant admin, and the hub at least one system admin.
 The last key of a user cannot be revoked.
 
 Every user has a web portal in the browser. It shows what your key may see: your tenants, the
-sessions of a tenant in which you took part (a tenant admin sees all of them), the members of a
-tenant to its tenant admins, and the administration to system admins. There a system
+sessions of a tenant in which you took part (a tenant admin sees all of them), the wiki of a tenant
+to its members (see [Work on documents](#work-on-documents)), the members of a tenant to its
+tenant admins, and the administration to system admins. There a system
 admin lists all users and keys, creates a user or adds a key with a form, and revokes a key after a
 confirmation, and sees the tenants and the system admins, read only. Tenants and memberships stay
 with the commands above:
@@ -660,6 +661,23 @@ minutes (see [Release what a session created](#release-what-a-session-created)).
 
 To work on the files with your own tools, or to let an agent with a shell do it, see
 [Work on files in a local directory](#work-on-files-in-a-local-directory).
+
+**Read the wiki in the portal.** All released artifacts of a tenant form its wiki. Every member
+reads it in the portal (`office portal link`), under **Wiki** in the navigation:
+
+- **Index**: every artifact with its title, summary and tags. Click a tag to see only the
+  artifacts with it; the number next to a tag counts its artifacts.
+- **An artifact**: its text, with the links between artifacts as links between pages of the portal,
+  its links and the pages that link to it (backlinks). A document also shows the sources it cites;
+  a decision, minutes or a note shows the documents that cite it. A document shows its front
+  matter as written, with its status, owner and reviews.
+- **Search**: type words into the search field. A word matches whole, case does not matter, and a
+  word in the title or the tags counts more than one in the text. The best hits come first.
+- **Broken links**: every link and every cited source that leads nowhere, with the artifact that
+  has it.
+- **Ingest queue**: the decisions, minutes and notes that no document cites yet.
+
+An artifact that waits for the release of its session is not in the wiki yet.
 
 ### Work on files in a local directory
 

@@ -6,7 +6,7 @@
 // stage, in dark and light, and no scripts. It shows what the key of the user may see: the
 // tenants of the user, the sessions of a tenant that the user may see (if-session-list), the
 // members of a tenant to its tenant admins, and the administration (users and keys, tenants,
-// system admins) to system admins. The records and artifacts of a tenant follow (#179).
+// system admins) to system admins, and the wiki of a tenant to its members.
 //
 // How it works:
 //
@@ -41,6 +41,17 @@
 //     a form "Release anyway" that carries the quote token. A member who may not read the session
 //     gets 404 from the session stream; for a released session the page then shows only the
 //     release: who released, the co-authors of the release commit and the released artifacts.
+//   - The wiki of a tenant (wiki.go, concept-wiki) asks the view of the wiki (if-wiki-api) with
+//     the tenant of the page; every member reads it. /wiki is the index with every tag and its
+//     count, and ?tag=<tag> filters it. /wiki/a/<path> is one artifact: what the index says about
+//     it, its content from the archive read API, its links, its backlinks, its cited sources and
+//     the documents that cite it. A Markdown file shows its front matter as written (the status,
+//     owner and reviews of a document) and its text rendered without raw HTML; a link in the text
+//     whose target the view knows as an artifact leads to the page of that artifact, and any other
+//     relative link shows only its text. Any other file shows as text. /wiki/search?q=<words> is
+//     a form without scripts and its hits, best first. /wiki/broken lists the links that lead
+//     nowhere, /wiki/queue the sources that no document cites yet. The view leaves out staged
+//     artifacts, so their pages give 404.
 //   - The start page lists the tenants of the user. A user with one tenant and no administration
 //     goes straight to that tenant.
 //   - Register a key: "Register key" opens a form with the user ID, the display name (needed for a
