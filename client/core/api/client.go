@@ -164,7 +164,8 @@ type Client interface {
 
 	RecordDecision(ctx context.Context, text, sessionID string) (*decisionv1.RecordDecisionResponse, error)
 	ListDecisions(ctx context.Context, after uint32, sessionID string, limit uint32) ([]*decisionv1.Decision, error)
-	AddNote(ctx context.Context, text, sessionID string) (*notev1.AddNoteResponse, error)
+	// AddNote adds a note in Markdown with optional tags.
+	AddNote(ctx context.Context, text, sessionID string, tags []string) (*notev1.AddNoteResponse, error)
 	ListNotes(ctx context.Context, after uint32, sessionID string, limit uint32) ([]*notev1.Note, error)
 	GetMinutes(ctx context.Context, sessionID string) (*minutesv1.Minutes, error)
 	ListMinutes(ctx context.Context, after uint32, sessionID string, limit uint32) ([]*minutesv1.Minutes, error)

@@ -571,8 +571,8 @@ func TestPortalSessionView(t *testing.T) {
 		AuthorParticipantId: "bob", SessionId: "other"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := bob.Note.AddNote(ctx, &notev1.AddNoteRequest{CommandId: coreapi.NewCommandID(), Text: "Ask the bank.", AuthorParticipantId: "bob",
-		SessionId: sid}); err != nil {
+	if _, err := bob.Note.AddNote(ctx, &notev1.AddNoteRequest{CommandId: coreapi.NewCommandID(), Text: "Ask the *bank*.", AuthorParticipantId: "bob",
+		SessionId: sid, Tags: []string{"bank"}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := bob.Task.CreateTask(ctx, &taskv1.CreateTaskRequest{CommandId: coreapi.NewCommandID(), Title: "Send the numbers", AuthorParticipantId: "bob",
@@ -601,7 +601,8 @@ func TestPortalSessionView(t *testing.T) {
 		len(findAll(d[0], byTag("strong"))) != 1 {
 		t.Errorf("decisions of the session: %d\n%s", len(d), all)
 	}
-	if len(findAll(doc, withAttr("data-note", ""))) != 1 || !strings.Contains(all, "Ask the bank.") || !strings.Contains(all, "Send the numbers") {
+	if n := findAll(doc, withAttr("data-note", "")); len(n) != 1 || !strings.Contains(text(n[0]), "Ask the bank.") || len(findAll(n[0], byTag("em"))) != 1 ||
+		len(findAll(n[0], withAttr("data-tag", ""))) != 1 || !strings.Contains(text(n[0]), "bank") || !strings.Contains(all, "Send the numbers") {
 		t.Errorf("notes and tasks: %q", all)
 	}
 	lines := findAll(doc, withAttr("data-utterance", ""))

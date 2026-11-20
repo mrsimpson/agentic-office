@@ -31,8 +31,8 @@ table{border-collapse:collapse}td,th{border:1px solid #d5dae3;padding:.3rem .6re
 var markdown = goldmark.New(goldmark.WithExtensions(extension.GFM))
 
 // loadFile loads a Markdown or YAML file of the archive and renders it as an HTML document for a
-// sandboxed frame. A schema decides the rendering later (dec-artifacts); a Markdown file without
-// a schema is shown as text with formatting, and a YAML file as it is.
+// sandboxed frame. A schema decides the rendering later (dec-artifacts); a Markdown file, such as
+// a note, is shown as text with formatting without its front matter, and a YAML file as it is.
 func loadFile(ctx context.Context, p string, files Artifacts) artifactView {
 	av := artifactView{ID: p, Kind: "file"}
 	if files == nil {
@@ -57,7 +57,7 @@ func loadFile(ctx context.Context, p string, files Artifacts) artifactView {
 	case ".md":
 		av.Kind = "document"
 		var b bytes.Buffer
-		if err := markdown.Convert(data, &b); err != nil {
+		if err := markdown.Convert(withoutFrontMatter(data), &b); err != nil {
 			av.Note = "The artifact " + p + " could not be rendered."
 			return av
 		}
@@ -69,4 +69,24 @@ func loadFile(ctx context.Context, p string, files Artifacts) artifactView {
 	av.MediaType = "text/html"
 	av.Content = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><style>" + paperCSS + "</style></head><body>" + body + "</body></html>"
 	return av
+}
+
+// withoutFrontMatter returns a Markdown file without its YAML front matter: the text between a
+// first line "---" and the next line "---". A file without such a block stays as it is.
+func withoutFrontMatter(data []byte) []byte {
+	rest, ok := bytes.CutPrefix(data, []byte("---\n"))
+	if !ok {
+		rest, ok = bytes.CutPrefix(data, []byte("---\r\n"))
+	}
+	if !ok {
+		return data
+	}
+	for len(rest) > 0 {
+		line, next, _ := bytes.Cut(rest, []byte("\n"))
+		if string(bytes.TrimSuffix(line, []byte("\r"))) == "---" {
+			return next
+		}
+		rest = next
+	}
+	return data
 }

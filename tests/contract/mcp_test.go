@@ -571,9 +571,9 @@ func TestMCPRecords(t *testing.T) {
 		}
 	}
 
-	v = s.ok("note_add", map[string]any{"text": "A note.", "session": "s1"})
+	v = s.ok("note_add", map[string]any{"text": "A note.", "session": "s1", "tags": []any{"budget"}})
 	if n, _ := v["note"].(map[string]any); v["duplicate"] != false || n["id"] != float64(1) || n["sessionId"] != "s1" ||
-		n["authorParticipantId"] != "bot" || n["authorKind"] != "AUTHOR_KIND_AGENT" {
+		n["authorParticipantId"] != "bot" || n["authorKind"] != "AUTHOR_KIND_AGENT" || fmt.Sprint(n["tags"]) != "[budget]" {
 		t.Fatalf("note_add: %v", v)
 	}
 	ada.ok("note", "add", "Ada's note.")

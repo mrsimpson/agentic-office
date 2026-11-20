@@ -43,13 +43,17 @@ author_kind: AUTHOR_KIND_AGENT
 time: "2026-11-16T10:00:00Z"
 command_id: c-1
 `
-	noteFile = `schema: office.note.v1
+	noteFile = `---
+schema: office.note.v1
 id: 3
-text: Call the bank.
 author_participant_id: ada
 author_kind: AUTHOR_KIND_HUMAN
 time: "2026-11-16T10:00:00Z"
 command_id: c-3
+tags:
+  - bank
+---
+Call the bank.
 `
 	taskFile = `schema: office.task.v1
 ref: "local:2"
@@ -133,24 +137,41 @@ func TestRecordsCheck(t *testing.T) {
 	runChecks(t, recordscheck.Validate, []checkCase{
 		{"decision", d, "decisions/000001.yaml", decisionFile, ""},
 		{"minutes", m, "minutes/000001.yaml", minutesFile, ""},
-		{"note", n, "notes/000003.yaml", noteFile, ""},
+		{"note", n, "notes/000003.md", noteFile, ""},
+		{"a note without tags", n, "notes/000003.md", replace(t, noteFile, "tags:\n  - bank\n", ""), ""},
+		{"a note with a session", n, "notes/000003.md", replace(t, noteFile, "command_id: c-3\n", "command_id: c-3\nsession_id: s1\n"), ""},
+		{"a note with Markdown over several lines", n, "notes/000003.md", replace(t, noteFile, "Call the bank.\n", "# Bank\n\n- Call the bank.\n- Ask about the loan.\n"), ""},
+		{"a note with CRLF", n, "notes/000003.md", strings.ReplaceAll(noteFile, "\n", "\r\n"), ""},
 		{"unknown fields are ignored", d, "decisions/000001.yaml", decisionFile + "later: yes\n", ""},
 		{"a schema of another part", "office.task.v1", "tasks/000001.yaml", taskFile, "not a schema of the records"},
 		{"a schema that nobody owns", "office.other.v1", "decisions/000001.yaml", decisionFile, "not a schema of the records"},
 		{"the file names another schema", d, "decisions/000001.yaml", replace(t, decisionFile, "office.decision.v1", "office.note.v1"), "schema must be"},
 		{"no schema in the file", d, "decisions/000001.yaml", replace(t, decisionFile, "schema: office.decision.v1\n", ""), "schema must be"},
 		{"no text", d, "decisions/000001.yaml", replace(t, decisionFile, "text: Use Go for every component.\n", ""), "text is missing"},
-		{"a blank text", n, "notes/000003.yaml", replace(t, noteFile, "Call the bank.", "'  '"), "text is missing"},
-		{"no id", n, "notes/000003.yaml", replace(t, noteFile, "id: 3\n", ""), "id is missing"},
-		{"no command id", n, "notes/000003.yaml", replace(t, noteFile, "command_id: c-3\n", ""), "command_id is missing"},
-		{"no author", n, "notes/000003.yaml", replace(t, noteFile, "author_participant_id: ada\n", ""), "author_participant_id is missing"},
+		{"a blank text", n, "notes/000003.md", replace(t, noteFile, "Call the bank.", "  "), "text is missing"},
+		{"a note without a body", n, "notes/000003.md", replace(t, noteFile, "Call the bank.\n", ""), "text is missing"},
+		{"a note with the text in the front matter", n, "notes/000003.md", replace(t, noteFile, "id: 3\n", "id: 3\ntext: Call the bank.\n"), "the text is the body"},
+		{"a note without front matter", n, "notes/000003.md", "Call the bank.\n", "no front matter"},
+		{"a note with an unclosed front matter", n, "notes/000003.md", replace(t, noteFile, "---\nCall", "Call"), "no front matter"},
+		{"a note with broken front matter", n, "notes/000003.md", "---\nid: [unclosed\n---\nText\n", "front matter is not valid YAML"},
+		{"a note with empty front matter", n, "notes/000003.md", "---\n---\nText\n", "front matter is empty"},
+		{"a blank tag", n, "notes/000003.md", replace(t, noteFile, "  - bank\n", "  - bank\n  - ' '\n"), "tag 2 is blank"},
+		{"a repeated tag", n, "notes/000003.md", replace(t, noteFile, "  - bank\n", "  - bank\n  - bank\n"), "tag 2 (\"bank\") is repeated"},
+		{"a tag with spaces around it", n, "notes/000003.md", replace(t, noteFile, "  - bank\n", "  - ' bank'\n"), "spaces around"},
+		{"a tag with a line break", n, "notes/000003.md", replace(t, noteFile, "  - bank\n", "  - \"a\\nb\"\n"), "line break"},
+		{"tags that are no list", n, "notes/000003.md", replace(t, noteFile, "tags:\n  - bank\n", "tags: {a: b}\n"), "do not fit the schema"},
+		{"no id", n, "notes/000003.md", replace(t, noteFile, "id: 3\n", ""), "id is missing"},
+		{"no command id", n, "notes/000003.md", replace(t, noteFile, "command_id: c-3\n", ""), "command_id is missing"},
+		{"no author", n, "notes/000003.md", replace(t, noteFile, "author_participant_id: ada\n", ""), "author_participant_id is missing"},
 		{"minutes without a session", m, "minutes/000001.yaml", replace(t, minutesFile, "session_id: s1\n", ""), "session_id is missing"},
-		{"a wrong type of a field", n, "notes/000003.yaml", replace(t, noteFile, "id: 3", "id: three"), "do not fit the schema"},
-		{"the path does not match the id", n, "notes/000004.yaml", noteFile, "belongs in notes/000003.yaml"},
-		{"the directory is of another type", n, "decisions/000003.yaml", noteFile, "belongs in notes/000003.yaml"},
-		{"another ending", n, "notes/000003.yml", noteFile, "ending .yaml"},
-		{"not YAML", n, "notes/000003.yaml", "text: [unclosed\n", "not valid YAML"},
-		{"empty", n, "notes/000003.yaml", "", "empty"},
+		{"a wrong type of a field", n, "notes/000003.md", replace(t, noteFile, "id: 3", "id: three"), "do not fit the schema"},
+		{"the path does not match the id", n, "notes/000004.md", noteFile, "belongs in notes/000003.md"},
+		{"the directory is of another type", n, "decisions/000003.md", noteFile, "belongs in notes/000003.md"},
+		{"a note as YAML", n, "notes/000003.yaml", noteFile, "ending .md"},
+		{"another ending of a decision", d, "decisions/000001.yml", decisionFile, "ending .yaml"},
+		{"not YAML", d, "decisions/000001.yaml", "text: [unclosed\n", "not valid YAML"},
+		{"empty", d, "decisions/000001.yaml", "", "empty"},
+		{"an empty note", n, "notes/000003.md", "", "no front matter"},
 	})
 }
 
@@ -221,7 +242,10 @@ func TestArtifactCheck(t *testing.T) {
 		// Files that name a schema go to the owner.
 		{"a decision", "decisions/000001.yaml", decisionFile, ""},
 		{"minutes", "minutes/000001.yaml", minutesFile, ""},
-		{"a note", "notes/000003.yaml", noteFile, ""},
+		{"a note", "notes/000003.md", noteFile, ""},
+		{"an invalid note", "notes/000003.md", replace(t, noteFile, "author_participant_id: ada\n", ""), "author_participant_id is missing"},
+		{"a note as YAML", "notes/000003.yaml", "schema: office.note.v1\nid: 3\n", "ending .md"},
+		{"a Markdown page in the notes without a schema", "notes/plan.md", "# Plan\n", ""},
 		{"a task", "tasks/000002.yaml", taskFile, ""},
 		{"a deck", "slides/000004.yaml", deckFile, ""},
 		{"an invalid decision", "decisions/000001.yaml", replace(t, decisionFile, "text: Use Go for every component.\n", ""), "text is missing"},
@@ -288,12 +312,12 @@ func TestArtifactCheck(t *testing.T) {
 // TestArtifactCheckIsTheCheckOfTheOwner: the answer of the artifact check for a file with a schema
 // is the answer of the check of the part that owns the schema, with the same reasons.
 func TestArtifactCheckIsTheCheckOfTheOwner(t *testing.T) {
-	bad := replace(t, noteFile, "text: Call the bank.\n", "")
-	ownReasons := recordscheck.Validate("office.note.v1", "notes/000003.yaml", []byte(bad))
+	bad := replace(t, noteFile, "Call the bank.\n", "")
+	ownReasons := recordscheck.Validate("office.note.v1", "notes/000003.md", []byte(bad))
 	if len(ownReasons) == 0 {
 		t.Fatal("the records check accepts a note without text")
 	}
-	got := artifactcheck.Validate("notes/000003.yaml", []byte(bad))
+	got := artifactcheck.Validate("notes/000003.md", []byte(bad))
 	if !slices.Equal(got, ownReasons) {
 		t.Fatalf("artifact check %q, records check %q", got, ownReasons)
 	}
@@ -350,12 +374,12 @@ func TestRecordsInterfaceUsesTheCheck(t *testing.T) {
 	ada := srv.Participant(t, "ada", "Ada", human)
 	recordDecision(t, ada, "Use Go.", "s1")
 	addNote(t, ada, "Call the bank.", "")
-	for _, c := range []struct{ schema, path string }{
-		{"office.decision.v1", "decisions/000001.yaml"},
-		{"office.note.v1", "notes/000001.yaml"},
+	for _, c := range []struct{ schema, path, start string }{
+		{"office.decision.v1", "decisions/000001.yaml", "schema: office.decision.v1\n"},
+		{"office.note.v1", "notes/000001.md", "---\nschema: office.note.v1\n"},
 	} {
 		raw := show(t, srv, c.path)
-		if !strings.HasPrefix(raw, "schema: "+c.schema+"\n") {
+		if !strings.HasPrefix(raw, c.start) {
 			t.Fatalf("%s does not start with its schema:\n%s", c.path, raw)
 		}
 		if reasons := recordscheck.Validate(c.schema, c.path, []byte(raw)); len(reasons) != 0 {

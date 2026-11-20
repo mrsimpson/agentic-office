@@ -206,7 +206,7 @@ var Page = template.Must(template.New("page").Funcs(template.FuncMap{
 {{if .Tasks}}<table class="tasks"><tr><th>Task</th><th>Status</th><th>Assignee</th></tr>
 {{range .Tasks}}<tr data-task="{{.Ref}}"><td>{{.Title}}</td><td>{{.Status}}</td><td>{{.Assignee}}</td></tr>{{end}}</table>{{else}}<p class="empty" data-empty="tasks">No tasks.</p>{{end}}
 <h2>Notes</h2>
-{{if .Notes}}<ol class="records">{{range .Notes}}<li data-note="{{.Id}}"><div class="prose">{{.Text}}</div><small>{{.Author}}, {{.Time}} UTC</small></li>{{end}}</ol>{{else}}<p class="empty" data-empty="notes">No notes.</p>{{end}}
+{{if .Notes}}<ol class="records">{{range .Notes}}<li data-note="{{.Id}}"><div class="prose">{{.Text}}</div><small>{{.Author}}, {{.Time}} UTC</small>{{range .Tags}} <span class="chip" data-tag>{{.}}</span>{{end}}</li>{{end}}</ol>{{else}}<p class="empty" data-empty="notes">No notes.</p>{{end}}
 <h2>Transcript</h2>
 {{if .Lines}}<ol class="transcript">{{range .Lines}}<li data-utterance="{{.EventId}}" data-participant="{{.SpeakerId}}"><time>{{.Time}}</time><span class="speaker{{if .Agent}} agent{{end}}">{{.Speaker}}</span><span class="text">{{.Text}}</span>{{if .Corrected}} <small class="corrected">(corrected)</small>{{end}}</li>{{end}}</ol>{{else}}<p class="empty" data-empty="transcript">Nothing was said.</p>{{end}}
 {{end}}

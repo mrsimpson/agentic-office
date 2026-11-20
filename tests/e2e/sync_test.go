@@ -383,10 +383,11 @@ func waitSameAsHub(t *testing.T, w *world, p *person, tenant, dir string) {
 	})
 }
 
-// noteYAML is a valid note file. The hub checks the schema of YAML files that are pushed.
-func noteYAML(n int, author, kind string) string {
-	return fmt.Sprintf("schema: office.note.v1\nid: %d\ntext: Note number %d of the agent.\nauthor_participant_id: %s\n"+
-		"author_kind: %s\ntime: \"2026-11-16T10:00:00Z\"\ncommand_id: c-%d\n", n, n, author, kind, n)
+// noteMarkdown is a valid note file: Markdown with front matter. The hub checks the schema of the
+// files that are pushed.
+func noteMarkdown(n int, author, kind string) string {
+	return fmt.Sprintf("---\nschema: office.note.v1\nid: %d\nauthor_participant_id: %s\n"+
+		"author_kind: %s\ntime: \"2026-11-16T10:00:00Z\"\ncommand_id: c-%d\n---\nNote number %d of the agent.\n", n, author, kind, n, n)
 }
 
 // Two participants, a human and an agent, each with a clone and a running follower. The first
@@ -464,7 +465,7 @@ func TestSyncTwoParticipantsWholePath(t *testing.T) {
 		}
 	}
 	for i := 1; i <= 6; i++ {
-		put(t, roboWt, fmt.Sprintf("notes/%06d.yaml", i), noteYAML(i, roboID, "AUTHOR_KIND_AGENT"))
+		put(t, roboWt, fmt.Sprintf("notes/%06d.md", i), noteMarkdown(i, roboID, "AUTHOR_KIND_AGENT"))
 	}
 	robo.commitAll(roboWt, "notes of the agent")
 	robo.pushMain(roboWt)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"slices"
 	"strings"
 
 	"connectrpc.com/connect/v2"
@@ -69,11 +70,11 @@ func Open(ctx context.Context, arch storage.Archive, w watch.Watcher, logf func(
 		return nil, fmt.Errorf("records: watch the archive: %w", err)
 	}
 	s := &Service{watcher: w, logf: logf, done: make(chan struct{}),
-		decisions: newCollection(arch, "decision", DecisionsDir, check.SchemaDecision, func() *decisionv1.Decision { return &decisionv1.Decision{} },
+		decisions: newCollection(arch, "decision", DecisionsDir, check.SchemaDecision, marshalYAML, func() *decisionv1.Decision { return &decisionv1.Decision{} },
 			func(r *decisionv1.Decision, id uint32) { r.Id = id }, logf),
-		minutes: newCollection(arch, "minutes", MinutesDir, check.SchemaMinutes, func() *minutesv1.Minutes { return &minutesv1.Minutes{} },
+		minutes: newCollection(arch, "minutes", MinutesDir, check.SchemaMinutes, marshalYAML, func() *minutesv1.Minutes { return &minutesv1.Minutes{} },
 			func(r *minutesv1.Minutes, id uint32) { r.Id = id }, logf),
-		notes: newCollection(arch, "note", NotesDir, check.SchemaNote, func() *notev1.Note { return &notev1.Note{} },
+		notes: newCollection(arch, "note", NotesDir, check.SchemaNote, marshalMarkdown, func() *notev1.Note { return &notev1.Note{} },
 			func(r *notev1.Note, id uint32) { r.Id = id }, logf)}
 	for _, load := range []func(context.Context, bool) error{s.decisions.loadAll, s.minutes.loadAll, s.notes.loadAll} {
 		if err := load(ctx, true); err != nil {
@@ -227,16 +228,37 @@ func (s *Service) AddNote(ctx context.Context, req *notev1.AddNoteRequest) (*not
 	if err != nil {
 		return nil, err
 	}
+	tags, err := noteTags(req.GetTags())
+	if err != nil {
+		return nil, err
+	}
 	ak := map[kind]notev1.AuthorKind{kindHuman: notev1.AuthorKind_AUTHOR_KIND_HUMAN, kindAgent: notev1.AuthorKind_AUTHOR_KIND_AGENT}[k]
 	n, dup, err := s.notes.add(ctx, &notev1.Note{CommandId: req.GetCommandId(), Text: req.GetText(),
-		AuthorParticipantId: req.GetAuthorParticipantId(), AuthorKind: ak, SessionId: req.GetSessionId(), Time: timestamppb.Now()},
+		AuthorParticipantId: req.GetAuthorParticipantId(), AuthorKind: ak, SessionId: req.GetSessionId(), Time: timestamppb.Now(), Tags: tags},
 		func(a, b *notev1.Note) bool {
-			return a.GetText() == b.GetText() && a.GetAuthorParticipantId() == b.GetAuthorParticipantId() && a.GetSessionId() == b.GetSessionId()
+			return a.GetText() == b.GetText() && a.GetAuthorParticipantId() == b.GetAuthorParticipantId() && a.GetSessionId() == b.GetSessionId() &&
+				slices.Equal(a.GetTags(), b.GetTags())
 		}, "Note", req.GetText())
 	if err != nil {
 		return nil, err
 	}
 	return &notev1.AddNoteResponse{Note: n, Duplicate: dup}, nil
+}
+
+// noteTags returns the tags of a new note: without the spaces around each tag and without
+// repeats. A blank tag or a tag with a line break is InvalidArgument.
+func noteTags(in []string) ([]string, error) {
+	var out []string
+	for _, t := range in {
+		t = strings.TrimSpace(t)
+		if !slices.Contains(out, t) {
+			out = append(out, t)
+		}
+	}
+	if reasons := check.TagProblems(out); len(reasons) > 0 {
+		return nil, invalid(strings.Join(reasons, "; "))
+	}
+	return out, nil
 }
 
 // ListNotes returns the notes after the cursor, oldest first.

@@ -146,9 +146,9 @@ func TestGitPushAccepted(t *testing.T) {
 	p.mustPush()
 	expect(changesv1.ChangeKind_CHANGE_KIND_CREATED, "docs/plan.md")
 
-	p.commitFile("notes/000003.yaml", noteFile)
+	p.commitFile("notes/000003.md", noteFile)
 	p.mustPush()
-	expect(changesv1.ChangeKind_CHANGE_KIND_CREATED, "notes/000003.yaml")
+	expect(changesv1.ChangeKind_CHANGE_KIND_CREATED, "notes/000003.md")
 
 	p.commitFile("docs/plan.md", "# Plan\n\nMore.\n")
 	p.mustPush()
@@ -168,7 +168,7 @@ func TestGitPushAccepted(t *testing.T) {
 	}
 	// A second clone has the result, and the hub still reads and writes through its interfaces.
 	q := newPusher(t, srv, cy, "Cy", contracttest.DefaultTenant)
-	if _, err := os.Stat(filepath.Join(q.dir, "notes/000003.yaml")); err != nil {
+	if _, err := os.Stat(filepath.Join(q.dir, "notes/000003.md")); err != nil {
 		t.Errorf("second clone: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(q.dir, "docs/plan.md")); err == nil {
@@ -341,7 +341,7 @@ func TestGitPushInvalidFiles(t *testing.T) {
 	before := mainOf(t, srv, contracttest.DefaultTenant)
 	for name, c := range map[string]struct{ file, content, want string }{
 		"broken yaml":    {"notes/x.yaml", "a: [unclosed\n", "notes/x.yaml"},
-		"wrong schema":   {"notes/000003.yaml", strings.Replace(noteFile, "text: Call the bank.\n", "", 1), "text is missing"},
+		"wrong schema":   {"notes/000003.md", strings.Replace(noteFile, "Call the bank.\n", "", 1), "text is missing"},
 		"unknown schema": {"docs/x.yaml", "schema: office.nothing.v1\n", "not known"},
 		"front matter":   {"docs/x.md", "---\nschema: office.nothing.v1\n---\n# x\n", "not known"},
 		"not utf-8":      {"docs/x.md", "\xff\xfe\x00bad", "UTF-8"},
@@ -355,8 +355,8 @@ func TestGitPushInvalidFiles(t *testing.T) {
 	}
 	t.Run("broken and fixed in one push", func(t *testing.T) {
 		p := newPusher(t, srv, ada, "Ada", contracttest.DefaultTenant)
-		p.commitFile("notes/000004.yaml", "a: [unclosed\n")
-		p.commitFile("notes/000004.yaml", strings.Replace(noteFile, "id: 3", "id: 4", 1))
+		p.commitFile("notes/000004.md", "---\nschema: office.note.v1\nid: [unclosed\n---\nx\n")
+		p.commitFile("notes/000004.md", strings.Replace(noteFile, "id: 3", "id: 4", 1))
 		p.mustPush()
 	})
 }
