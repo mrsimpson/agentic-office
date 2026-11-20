@@ -87,6 +87,11 @@ starts the harness, opens one ACP session for the meeting and sends it what was 
 (`dec-agent-runner-acp`). The harness answers as the ACP agent, and the client is the ACP client.
 The agent still acts through the office tools, which the runner hands to the harness session.
 
+The agent follows the conventions of the office from its skills (`dec-skills`): the office
+assistant skill when it helps a human to use the office, and the office memory skill when it reads
+or writes the memory of the team. In the runner, the harness gets the office memory skill from the
+runner; without the runner, its human installs it.
+
 ```arc42
 :::actor
 id: actor-agent
