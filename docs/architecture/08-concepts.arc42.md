@@ -432,8 +432,9 @@ session may name it. The part that owns the type asks the meeting session for th
 **The staging area of a session.** The meeting session opens it when the session starts. Every
 participant who joins, and the importer, becomes a reader of it; tenant admins read by their role.
 Every part that reads a staged artifact checks this. Until the release, every participant may
-change or remove a staged artifact, the minutes too. A removed record comes back only as a new
-record.
+change or remove a staged artifact, the minutes too, through the interface of its type; a removed
+record comes back only as a new record. The same interface discards an artifact that the release
+kept back.
 
 **Stubs.** For each staged artifact, a stub with the same name lies in the artifact repository.
 Every stub of a type has the same content: the artifact waits for a release. A stub names no session
@@ -455,9 +456,11 @@ names and when; an author who fears that a name says too much chooses a neutral 
    their authors. Any human who took part may release, or object; an objection holds the session
    until a human releases it.
 4. Before every release of a session with humans, the meeting session searches the staged files
-   for word-for-word quotes of sentences off the record. While it finds one, a human must confirm the quotes to release
-   (`if-session-commands`), and a deadline holds the session instead of releasing it. A false match
-   costs one confirmation; a missed one, such as a paraphrase, leaks a sentence.
+   for word-for-word quotes of sentences off the record; it searches because it holds the
+   originals, and they never leave it. While it finds one, a human must confirm the quotes
+   (`if-session-commands`), and a deadline holds the session instead of releasing it. A session
+   without humans is released at its end all the same, because nobody could confirm the quotes. A
+   false match costs one confirmation; a missed one, such as a paraphrase, leaks a sentence.
 5. The archive moves the area into the artifact repository in one commit. The author of the commit
    is the human who released, or the hub when the deadline passed, so the history says for good
    when and by whom each artifact was released. An artifact whose path holds anything but its stub is
@@ -501,7 +504,7 @@ note move into the artifact repository in one commit with Ada as its author. The
 the ingest in the meeting updates the pricing page and cites both records.
 
 OPEN: who releases when no human who took part is available, for example tenant admins as a
-fallback or a quorum of the humans, and how confidential sessions fit in (#194).
+fallback or a quorum of the humans (#194).
 
 ```arc42
 :::concept

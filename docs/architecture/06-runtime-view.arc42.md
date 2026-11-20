@@ -2,9 +2,9 @@
 
 ## Agent joins a meeting
 
-The agent calls `meeting.join`. The MCP server registers it as a participant, starts the log
+The agent joins the meeting through the MCP server. The MCP server registers it as a participant, starts the log
 replicator and returns the file path. The agent follows the file in the background. It filters for
-the events that should wake it up, for example `turn.end` and `addressed`.
+the events that should wake it up, for example the end of a turn or being addressed by name.
 
 ```arc42
 :::runtime-scenario
@@ -30,7 +30,7 @@ sequenceDiagram
     participant bb_mcp as MCP server
     participant bb_session as Meeting session
     participant bb_replicator as Log replicator
-    actor_agent->>bb_mcp: meeting.join(session)
+    actor_agent->>bb_mcp: join the meeting (session)
     bb_mcp->>bb_session: join (kind=agent)
     bb_session-->>bb_mcp: participant id
     bb_mcp->>bb_replicator: start(session, path)
@@ -42,10 +42,10 @@ sequenceDiagram
 
 ## Human speaks
 
-A human joined with `--mic`. The ears detect the end of a sentence, Whisper transcribes it locally,
+A human joined with the microphone. The ears detect the end of a sentence, Whisper transcribes it locally,
 and the utterance is sent. The session appends it to the log. Every replicator writes it to its
 local file. The speaker's terminal shows the status "sent". When the human stays silent for longer
-after the last sentence, the ears submit `turn.end`. Agents that wait for the end of a turn wake up.
+after the last sentence, the ears submit the end of the turn. Agents that wait for the end of a turn wake up.
 
 ```arc42
 :::runtime-scenario
@@ -74,15 +74,15 @@ sequenceDiagram
     participant bb_cli as office CLI
     actor_human->>bb_ears: speaks (headset)
     bb_ears->>bb_ears: VAD + Whisper (local)
-    bb_ears->>bb_session: utterance.submit (text, modality=voice)
+    bb_ears->>bb_session: submit the utterance (text, voice)
     bb_session-->>bb_ears: event id
-    bb_session-->>bb_replicator: utterance.final
+    bb_session-->>bb_replicator: final utterance
     bb_replicator->>bb_replicator: append line
     bb_cli->>bb_replicator: read own events
     bb_cli-->>actor_human: status sent
     actor_human->>bb_ears: stays silent (turn silence)
-    bb_ears->>bb_session: signal turn.end (own participant)
-    bb_session-->>bb_replicator: turn.end
+    bb_ears->>bb_session: signal the end of the turn (own participant)
+    bb_session-->>bb_replicator: end of the turn
 ```
 
 ## Network drop and resume
@@ -119,7 +119,7 @@ sequenceDiagram
     bb_ears->>bb_ears: queue utterances (text only)
     bb_replicator->>bb_replicator: retry with backoff
     Note over bb_ears,bb_replicator: network is back
-    bb_ears->>bb_session: utterance.submit (client id, in order)
+    bb_ears->>bb_session: submit the utterances (client IDs, in order)
     bb_session-->>bb_ears: event id (existing id if already stored)
     bb_replicator->>bb_session: subscribe(cursor=last line)
     bb_session-->>bb_replicator: missed events, then live
@@ -144,8 +144,8 @@ involves: bb-cli, bb-mcp, bb-ears, bb-client-core, bb-identity, bb-session-servi
 ## Agent raises its hand and shows an artifact
 
 The agent renders a slide deck through the CLI and raises its hand on the stage. The slides part
-stores the input and the rendered deck in the archive before it returns the ID. When the agent
-gets the floor, it shows the deck by its ID. The stage reads the same events from the session
+stores the input of the deck in the archive before it returns its path. When the agent gets the
+floor, it shows the deck by its path. The stage reads the same events from the session
 stream and loads the deck from the slides part inside the hub.
 
 ```arc42
@@ -174,25 +174,25 @@ sequenceDiagram
     participant bb_archive as Archive
     participant bb_session as Meeting session
     participant bb_stage as Stage
-    actor_agent->>bb_cli: office slides render deck.md
+    actor_agent->>bb_cli: render a slide deck
     bb_cli->>bb_slides: render
     bb_slides->>bb_archive: commit the input
-    bb_slides-->>bb_cli: deck slides/42
-    actor_agent->>bb_cli: office hand raise --topic budget
-    bb_cli->>bb_session: hand.raise
-    bb_session-->>bb_stage: hand.raised
+    bb_slides-->>bb_cli: the deck with its path
+    actor_agent->>bb_cli: raise the hand, with a topic
+    bb_cli->>bb_session: raise the hand
+    bb_session-->>bb_stage: the hand is raised
     Note over bb_session: the moderator gives the floor, event addressed
-    actor_agent->>bb_cli: office stage focus slides/42
-    bb_cli->>bb_session: stage.focus
-    bb_session-->>bb_stage: artifact.focused
-    bb_stage->>bb_slides: load deck slides/42
+    actor_agent->>bb_cli: focus the deck on the stage
+    bb_cli->>bb_session: focus the artifact
+    bb_session-->>bb_stage: the artifact is in focus
+    bb_stage->>bb_slides: load the deck by its path
 ```
 
 ## Participant changes a document in a session
 
 A participant reads a document from the archive, changes it and sends the change with the version
 that they read and the ID of the session. The documents part writes one commit with the participant
-as author and tells the meeting session, which appends `artifact.changed`. When another change
+as author and tells the meeting session, which logs the change. When another change
 came first, the documents part refuses the change and gives the current version, and the participant
 reads again.
 
@@ -223,13 +223,13 @@ sequenceDiagram
     Note over bb_documents: change with base version and session ID
     bb_documents->>bb_archive: commit, refused if the base is stale
     bb_documents->>bb_session: artifact notice
-    bb_session-->>bb_stage: artifact.changed
+    bb_session-->>bb_stage: the artifact changed
     bb_stage->>bb_archive: read the document by its path
 ```
 
 ## Participant sets up a local directory
 
-A participant starts `office sync init` in a directory. The sync part gets an access token with the
+A participant sets up a directory for the artifacts of the tenant. The sync part gets an access token with the
 key of the participant and clones the branch main of the tenant through Git access. It writes the
 author, the way to get a token and the check for the main directory into the own configuration of
 the clone, and it remembers the directory.
@@ -342,7 +342,7 @@ sequenceDiagram
     participant bb_git_access as Git access
     bb_documents->>bb_archive: commit, author is the participant
     Note over bb_archive: compares the old and the new state of main, keeps artifacts only
-    bb_archive-->>bb_sync: notes/plan.md changed, new version
+    bb_archive-->>bb_sync: an artifact changed, with its new version
     bb_sync->>bb_git_access: fetch
     bb_git_access-->>bb_sync: new commit
     Note over bb_sync: main moves forward without a merge
@@ -441,7 +441,7 @@ sequenceDiagram
     participant bb_identity as Identity
     participant bb_portal as Portal
     participant bb_session_service as Meeting session
-    actor_human->>bb_cli: office portal link
+    actor_human->>bb_cli: ask for a portal link
     bb_cli->>bb_identity: create portal link
     bb_identity-->>bb_cli: link with a code that works once
     actor_human->>bb_portal: opens the link in a browser
@@ -546,9 +546,8 @@ sequenceDiagram
 ## Human marks a sentence off the record
 
 What is said stays said (`dec-off-the-record`). The human presses a key in the gateway terminal
-to mark their own sentence off the record. The CLI sends `utterance.mark_off_the_record`. The
-hub checks that the caller is the speaker. The log gets a new event `utterance.off_the_record`
-that points to the original utterance. Existing lines are never rewritten. From then on, the
+to mark their own sentence off the record. The CLI sends the mark to the hub. The hub checks that
+the caller is the speaker. The log gets a new event that points to the original utterance. Existing lines are never rewritten. From then on, the
 interfaces deliver the utterance only as a placeholder without its text, the stage hides it, and
 it does not go into minutes, decisions or notes. Agents that already read it must respect the
 mark.
@@ -584,19 +583,20 @@ involves: bb-mcp, bb-cli, bb-session-service, bb-records, bb-archive, bb-replica
 
 ## A participant writes an artifact during a session
 
-An agent records a decision in a running session and names the session. The records part asks the
-meeting session whether the agent took part and whether the session is released. The session is
-open, so the decision goes into the staging area of the session, and its stub into the artifact
+An agent writes a new document in a running session and names the session. The documents part asks
+the meeting session whether the agent took part and whether the session is released. The session
+is open, so the document goes into the staging area of the session, and its stub into the artifact
 repository; the archive records the stub with its version (`concept-session-release`). The
-meeting session logs the new artifact. The readers of the session read the decision; every other
-member, and every clone, sees only the stub. A participant who did not take part is refused.
+documents part tells the meeting session, which logs the new artifact. The readers of the session
+read the document; every other member, and every clone, sees only the stub. A participant who did
+not take part is refused.
 
 ```arc42
 :::runtime-scenario
 id: rs-write-in-session
 title: A participant writes an artifact during a session
-trigger: A participant writes a record that names a running session
-involves: bb-mcp, bb-records, bb-session-service, bb-archive, bb-participant-client, bb-office-hub
+trigger: A participant writes a document that names a running session
+involves: bb-mcp, bb-documents, bb-session-service, bb-archive, bb-participant-client, bb-office-hub
 :::
 ```
 
@@ -605,7 +605,7 @@ involves: bb-mcp, bb-records, bb-session-service, bb-archive, bb-participant-cli
 id: seq-write-in-session
 notation: mermaid-sequence
 scenario: rs-write-in-session
-aliases: actor_agent=actor-agent, bb_mcp=bb-mcp, bb_records=bb-records, bb_session=bb-session-service, bb_archive=bb-archive
+aliases: actor_agent=actor-agent, bb_mcp=bb-mcp, bb_documents=bb-documents, bb_session=bb-session-service, bb_archive=bb-archive
 :::
 ```
 
@@ -613,30 +613,28 @@ aliases: actor_agent=actor-agent, bb_mcp=bb-mcp, bb_records=bb-records, bb_sessi
 sequenceDiagram
     participant actor_agent as Agent
     participant bb_mcp as MCP server
-    participant bb_records as Records
+    participant bb_documents as Documents
     participant bb_session as Meeting session
     participant bb_archive as Archive
-    actor_agent->>bb_mcp: record a decision for the session
-    bb_mcp->>bb_records: record decision (session, command ID)
-    bb_records->>bb_session: took part? released?
-    bb_session-->>bb_records: took part, open
-    bb_records->>bb_archive: write the decision into the area of the session
-    bb_records->>bb_archive: write the stub into the artifact repository
+    actor_agent->>bb_mcp: write a new document for the session
+    bb_mcp->>bb_documents: create the document (path, session)
+    bb_documents->>bb_session: took part? released?
+    bb_session-->>bb_documents: took part, open
+    bb_documents->>bb_archive: write the document into the area of the session
+    bb_documents->>bb_archive: write the stub into the artifact repository
     Note over bb_archive: the area records the stub with its version
-    bb_records->>bb_session: notice: new artifact
-    bb_records-->>bb_mcp: decision
+    bb_documents->>bb_session: notice: new artifact
+    bb_documents-->>bb_mcp: the document, with its hints
 ```
 
 ## A human releases a session
 
 A session with humans has ended and waits for its release. A human who took part reads the staged
-artifacts in the portal and releases. The meeting session searches the staged files for
-word-for-word quotes of sentences off the record and finds one. It refuses the release without an
-event and names the places and a token (`if-session-commands`). The human reads the places and
-either corrects the file or confirms the quotes with the token. The meeting session searches again;
-with the same quotes, it logs the release, and the archive moves the area into the artifact
-repository in one commit with the human as its author (`concept-session-release`). An agent that
-tries to release is refused.
+artifacts in the portal and releases. The meeting session finds a word-for-word quote of a
+sentence off the record in a staged file and refuses the release. The human reads the places and
+confirms the quotes (`if-session-commands`). The meeting session logs the release, and the archive
+moves the area into the artifact repository in one commit with the human as its author
+(`concept-session-release`). An agent that tries to release is refused.
 
 ```arc42
 :::runtime-scenario
@@ -730,8 +728,8 @@ sequenceDiagram
 
 ## Agent creates a task, a human finishes it
 
-In a meeting, a human asks the agent to note a task for a colleague. The agent calls
-`task.create` with a title, the assignee and the session. The tasks part checks the token, writes
+In a meeting, a human asks the agent to note a task for a colleague. The agent creates
+a task with a title, the assignee and the session. The tasks part checks the token, writes
 the task as one YAML file into the archive and commits it before it answers with the reference of
 the task (`dec-yaml-git-storage`). Later the assignee lists the open tasks assigned to them and
 sets the status to done. The tasks part rewrites the file in a new commit, so the archive keeps
@@ -765,10 +763,10 @@ sequenceDiagram
     bb_mcp->>bb_tasks: create task (title, assignee, session, command ID)
     bb_tasks->>bb_archive: commit (one YAML file)
     bb_archive-->>bb_tasks: commit ID
-    bb_tasks-->>bb_mcp: task with reference local:7
+    bb_tasks-->>bb_mcp: task with its reference
     bb_cli->>bb_tasks: list tasks (status open, assignee)
     bb_tasks-->>bb_cli: tasks
-    bb_cli->>bb_tasks: update task local:7 (status done, command ID)
+    bb_cli->>bb_tasks: update the task (status done, command ID)
     bb_tasks->>bb_archive: commit (the file again)
     bb_tasks-->>bb_cli: task, revision 2
 ```
@@ -804,7 +802,7 @@ aliases: bb_session=bb-session-service, bb_archive=bb-archive
 sequenceDiagram
     participant bb_session as Meeting session
     participant bb_archive as Archive
-    Note over bb_session: interval passed or session.ended
+    Note over bb_session: interval passed or session ended
     bb_session->>bb_session: take the changed sessions, sign their tree heads
     bb_session->>bb_archive: commit (log and tree head of each session)
     Note over bb_session: commands and the stream go on
@@ -871,7 +869,7 @@ sequenceDiagram
 ## Agent imports a conversation and writes its minutes
 
 An agent has a conversation from another tool as a file in the import format
-(`dec-import-format`). It calls `session.import` with the file. The client core reads the file
+(`dec-import-format`). It imports the file through the MCP server. The client core reads the file
 and sends the conversation in pages to the session import. The first page creates the session:
 the meeting session writes an event that marks the session as imported, the imported
 participants and the first utterances. Every further page adds utterances, and the last page
@@ -907,7 +905,7 @@ sequenceDiagram
     participant bb_session as Meeting session
     participant bb_archive as Archive
     participant bb_records as Records
-    actor_agent->>bb_mcp: session.import(file)
+    actor_agent->>bb_mcp: import the conversation (file)
     bb_mcp->>bb_client_core: read the import format
     bb_client_core->>bb_session: first page (source, participants, utterances)
     bb_session-->>bb_client_core: events stored, signed tree head
@@ -927,14 +925,14 @@ An agent takes part through the agent runner (`dec-agent-runner-acp`). The runne
 session with the key of the agent and follows its local log. It started the harness, opened one
 ACP session with the office tools and sent a first prompt with the role.
 
-A human talks. Each sentence reaches the local log as `utterance.final`. The wake strategy that
+A human talks. Each sentence reaches the local log as a final utterance. The wake strategy that
 the user chose decides when to wake the agent (`dec-agent-runner-delivery`). With a model that
 the user brings, the runner asks it after each utterance whether the agent should act now, for
 example because the speaker addressed it or started a new topic (`dec-wake-check-per-utterance`,
-`dec-byo-decision-model`). With `turn-end`, or when the model fails, the runner waits until the
+`dec-byo-decision-model`). Without a model, or when the model fails, the runner waits until the
 speaker ends the turn. When the agent should act, the runner sends what others said since its
 last delivery as one prompt, without the agent's own utterances and sentences off the record. The
-agent decides how to act: it answers with `utterance_say` when the speaker asked it, raises its
+agent decides how to act: it speaks through the office tools when the speaker asked it, raises its
 hand instead of interrupting, or updates the minutes silently. If the agent is still busy, the
 runner queues what comes and sends it together afterwards. When the session ends, the runner
 sends a last prompt with what is left and stops the harness.
@@ -969,8 +967,8 @@ sequenceDiagram
     participant actor_agent as Agent harness
     participant bb_mcp as MCP server
     actor_human->>bb_cli: speaks or types a question
-    bb_cli->>bb_session: utterance.submit
-    bb_session-->>bb_replicator: utterance.final
+    bb_cli->>bb_session: submit the utterance
+    bb_session-->>bb_replicator: final utterance
     bb_replicator->>bb_replicator: append lines to the local log of the agent
     bb_agent_runner->>bb_replicator: read new lines
     alt wake strategy llm
@@ -980,13 +978,13 @@ sequenceDiagram
         bb_agent_runner->>actor_decision_model: state of the meeting, questions
         actor_decision_model-->>bb_agent_runner: probabilities of act and topic_closed, addressed
     else wake strategy turn-end, or the model failed
-        Note over bb_agent_runner: waits for the turn.end of the speaker
+        Note over bb_agent_runner: waits for the end of the turn of the speaker
     end
     bb_agent_runner->>actor_agent: session/prompt (who said what)
     actor_agent->>bb_mcp: utterance_say (answer)
-    bb_mcp->>bb_session: utterance.submit (as the agent)
+    bb_mcp->>bb_session: submit the utterance (as the agent)
     actor_agent-->>bb_agent_runner: end of turn
-    bb_session-->>bb_replicator: utterance.final of the agent
+    bb_session-->>bb_replicator: final utterance of the agent
     Note over bb_agent_runner: leaves out the agent's own utterance
 ```
 

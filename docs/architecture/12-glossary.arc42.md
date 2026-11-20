@@ -153,7 +153,7 @@ tenant and names its schema (`dec-artifacts`).
 :::glossary-term
 id: term-artifact
 title: Artifact
-definition: Anything that the stage can show by its path in the tenant repository, for example the slide deck slides/42
+definition: A file in the repository of the tenant, identified by its path, that names its schema and that the stage can show, for example a slide deck
 :::
 ```
 
@@ -171,13 +171,13 @@ definition: The main directory of a local clone of the tenant repository; the cl
 
 ## Slide deck
 
-One type of record of the hub, and the first type of artifact.
+One type of artifact of the hub.
 
 ```arc42
 :::glossary-term
 id: term-slide-deck
 title: Slide deck
-definition: A set of slides (title, bullets, speaker notes) that the hub renders deterministically to one HTML document; the hub keeps its input in the archive
+definition: A set of slides (title, bullets, speaker notes) that the hub renders deterministically for the stage; the hub keeps its input in the archive
 :::
 ```
 
@@ -511,7 +511,7 @@ Who may read a session (`concept-multi-tenancy`).
 :::glossary-term
 id: term-session-reader
 title: Reader of a session
-definition: Everyone who ever joined the session, the participant who imported it, and the tenant admins of its tenant
+definition: Everyone who ever joined the session, the participant who imported it, the tenant admins of its tenant, and a stage link of the session
 :::
 ```
 
@@ -523,7 +523,7 @@ Where the artifacts of a session wait (`concept-session-release`).
 :::glossary-term
 id: term-staging-area
 title: Staging area
-definition: The place of one session in the staging repository of its tenant: the artifacts the session created that are not released yet, read only by the readers of the session
+definition: The place of one session in the staging repository of its tenant: the artifacts the session created that are not released yet, read only by the readers of the session and its stage
 :::
 ```
 

@@ -260,11 +260,13 @@ mitigation: Take ended sessions that nobody follows out of memory and load them 
 ## The wiki view grows with the tenant
 
 The wiki part keeps a derived view of each tenant: the index, the links, the backlinks and the
-search (`concept-wiki`). It builds the view from the archive at start and holds it while the hub
+search (`concept-wiki`). The decision for a derived view in the hub causes this risk (`dec-wiki`). It builds the view from the archive at start and holds it while the hub
 runs. A tenant with many artifacts needs a lot of memory for it, and several large tenants share
 one hub. It is not measured yet how much memory the view needs for a large tenant.
 
 ```arc42
+:::ignore H007 dec-wiki causes this risk and no decision mitigates it yet; the mitigation is accepted until a measurement
+:::
 :::risk
 id: risk-wiki-memory
 title: The wiki view grows with the tenant
