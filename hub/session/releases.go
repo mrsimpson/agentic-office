@@ -123,8 +123,10 @@ func (s *Service) UseRelease(ctx context.Context, opts ReleaseOptions) error {
 	waiting, held := 0, 0
 	for _, a := range areas {
 		if a.Release != nil {
-			r.due[a.Session] = now // a release that a restart cut off
-			continue
+			if !a.Release.Done {
+				r.due[a.Session] = now // a release that a restart cut off
+			}
+			continue // a done release keeps only the files whose path is taken
 		}
 		st, err := s.lock(a.Session)
 		if err != nil {
@@ -311,15 +313,18 @@ func (s *Service) moveArea(ctx context.Context, sid string) error {
 		author = storage.Author{Name: name, Email: by + "@office.invalid"}
 	}
 	st.mu.Unlock()
-	id, err := s.rel.opts.Staging.Release(ctx, sid, author)
+	res, err := s.rel.opts.Staging.Release(ctx, sid, author)
 	if errors.Is(err, storage.ErrNoArea) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	if id != "" {
-		s.rel.opts.Logf("release: session %q moved into the artifact repository in commit %s", sid, id)
+	if res.Commit != "" {
+		s.rel.opts.Logf("release: session %q moved into the artifact repository in commit %s", sid, res.Commit)
+	}
+	for _, c := range res.Conflicts {
+		s.rel.opts.Logf("release: session %q: %s is not released, the path is taken; it stays in the staging area", c.Session, c.Path)
 	}
 	return nil
 }
@@ -568,6 +573,17 @@ func (s *Service) GetRelease(ctx context.Context, req *sessioncommandsv1.GetRele
 		}
 		out.Staged = paths
 		return out, nil
+	}
+	if reader {
+		// The files that a done release kept back because their path is taken. While the area
+		// has not moved yet, nothing is kept back.
+		a, err := s.rel.opts.Staging.Area(ctx, sid)
+		if err != nil && !errors.Is(err, storage.ErrNoArea) {
+			return nil, connect.NewError(connect.CodeUnavailable, "read the files that were not released: "+err.Error())
+		}
+		if a.Release != nil && a.Release.Done {
+			out.Unreleased = a.Names
+		}
 	}
 	rc, err := s.rel.opts.Staging.Released(ctx, sid)
 	if errors.Is(err, storage.ErrNotReleased) {

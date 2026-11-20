@@ -444,8 +444,10 @@ the readers of the session see, and a removed record comes back only as a new re
 **Stubs.** For each staged artifact, a stub with the same name goes into the artifact repository.
 Every stub says the same: the artifact waits for a release. It names no session and no time, its
 author is the hub, and the commit that writes it says nothing about the artifact. The part that owns
-the type writes, checks and describes the stub of its type. The stub keeps the name free for the
-release and lets links to the artifact work. No interface may change a stub, and the push rules
+the type decides, checks and describes the stub of its type. It writes the stub through the
+archive, which records the path in the staging area of the session with the exact version of the
+stub that it wrote. The archive knows no type and no content of a stub. The stub keeps the name
+free for the release and lets links to the artifact work. No interface may change a stub, and the push rules
 refuse every change or removal of one. Every member can still see that a session stages artifacts,
 how many, under which names and when; an author who fears that a name says too much chooses a
 neutral one.
@@ -472,11 +474,18 @@ neutral one.
    release it. A session without humans is released at its end all the same: nobody could confirm
    the quotes, and only agents can have marked their own sentences there. The hub changes no
    content. A false match costs one confirmation; a missed one leaks a sentence.
-5. The release closes the area for writes, moves everything in it into the artifact repository in
-   one commit, and then cleans up. Each artifact replaces its stub. The author of the commit is the
-   human who released, or the hub when the grace period ended, and it names the authors of the
-   artifacts as co-authors. So the history says for good when and by whom each artifact was
-   released.
+5. The release is a transition that the archive owns. It closes the area for writes, moves the
+   artifacts into the artifact repository in one commit, and then cleans up. An artifact replaces
+   its path only where the artifact repository still holds exactly the recorded stub, or no file.
+   The author of the commit is the human who released, or the hub when the grace period ended,
+   and it names the authors of the artifacts as co-authors. So the history says for good when and
+   by whom each artifact was released.
+   A path that holds anything else keeps its file, for example a file that a participant pushed
+   while a crash had left the path without a stub. That artifact is not released: the release
+   reports the conflict with the path and the session, and releases the rest. The artifact stays
+   in the staging area with the readers of the session; the area stays closed, and the session
+   counts as released. Its readers see the artifact as "not released: the path is taken", and a
+   participant moves it to a new path by hand, through the interface of its type.
 6. Every member sees the artifacts, and the wiki can ingest them. A record no longer changes; other
    artifacts change like any other.
 
@@ -493,8 +502,9 @@ never releases or objects. An assistant that works with the key of a human count
 it acts only when its human tells it to. The humans of a session are trusted: one of them may
 release early or lift an objection.
 
-**The timers.** The staging area records the name of a staged artifact before its stub is written,
-and the deadline of each session, set once when the session ends. The meeting session rebuilds the
+**The timers.** The staging area records the name of each staged artifact and the version of its
+stub, in whichever order the part writes them, and the deadline of each session, set once when the
+session ends. The meeting session rebuilds the
 deadlines of a tenant from the staging area at start. Each step of a release is recorded, so a
 release that a restart cut off is completed, never done twice, and no write is acknowledged and
 then lost. A deadline that passed while the hub was down is released at start.

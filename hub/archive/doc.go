@@ -37,34 +37,45 @@
 // state of each area lies in .areas/<name>/area.yaml, where <name> is the session ID, or "=" plus
 // its base64url form when the ID is not safe as a file name. The state holds the session ID, the
 // readers, the deadline, whether an objection holds the release, every name that ever lay in the
-// area, the authors of its changes and the steps of a running release. The directory starts with a
+// area, the recorded stubs (path and Git object ID), the authors of its changes and the steps of
+// its release. The directory starts with a
 // dot, so no artifact path can lie in it, and no read of artifacts and no watcher sees it. A write
 // to an area reads the state of every area first, so a path belongs to one area only. Every
 // method takes the commit queue of the staging repository for its whole read and write, and only
 // the archive writes this repository, so the state it reads is the state it builds on.
 //
-// A part that staged a file and then could not write its stub takes the file back (TakeBack): the
-// file goes away and the area forgets its name, because the path may hold a file that a push put
-// there in between. So the release never removes a file at a path whose stub was never written.
+// A part writes the stub of a staged file through Stub. The archive computes the object ID of the
+// stub, records it with the path in the state of the area, and then commits the stub into the
+// artifact repository; when that commit fails, it forgets the record again. A crash in between
+// leaves a record of a stub that the artifact repository does not hold, which the release treats
+// like any other file that is not the recorded stub. The archive never reads or checks the content
+// of a stub. A part that staged a file and then could not write its stub may take the file back
+// (TakeBack): the file, the name and the recorded stub go away.
 //
 // The release runs one at a time per tenant and has three steps, each recorded:
 //
 //  1. Close: the state gets the release author; from now on writes and OpenArea fail with
 //     storage.ErrAreaClosed.
-//  2. Move: one commit in the artifact repository with every file of the area and the removal of
-//     the stub of every name whose file is gone. The author is the release author (or office-hub),
+//  2. Move: one commit in the artifact repository. A file of the area is written where the path
+//     holds its recorded stub or no file; the recorded stub of a name whose file is gone is
+//     removed. Each file carries that version as its base, so a push that takes the path while
+//     the commit is built makes the commit fail, and the step decides again. A file whose path
+//     holds anything else is kept back: its name is recorded as kept, with the commit, and Release
+//     returns it as a conflict. The author is the release author (or office-hub),
 //     the message names the session in the trailer "Office-Release" and lists the authors of the
 //     area as "Co-authored-by", except the author of the commit. The archive copies the file
 //     objects as they are and reads no content. The ID of the commit is written into the state
 //     before main moves to it; when main moved in the meantime, the commit is built again and
 //     recorded again.
-//  3. Clean up: one commit in the staging repository removes the files and the state of the area.
+//  3. Clean up: one commit in the staging repository removes the released files. Without kept
+//     names it removes the state of the area too. Otherwise the area stays with the kept names,
+//     their files and its readers, and its release is marked done: it stays closed, a reader
+//     still reads its files, and Release returns the same result again.
 //
 // Released finds the release commit of a session in the history of main by its trailer, with its
 // author (empty for the hub), its co-authors and the paths it wrote.
 //
-// After a restart, a closed area shows its running release (Area.Release) and Release completes
-// it: the recorded commit is not made again when it lies in the history of main, which is never
+// After a restart, a closed area shows its release (Area.Release) and Release completes it: the recorded commit is not made again when it lies in the history of main, which is never
 // rewritten. An area with nothing to move releases without a commit in the artifact repository.
 //
 // It provides if-archive-watch (package watch): the in-process form of the changes. The parts that

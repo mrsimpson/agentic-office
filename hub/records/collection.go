@@ -317,7 +317,8 @@ func (c *collection[T]) lenient(key, version string, err error) {
 // loadAll reads every file of the directory, in the artifact repository and in every staging
 // area. With strict, the first file that is not valid fails it (the start of the hub). Otherwise
 // such a file is logged and ignored, and a record whose file is gone is removed. A staged record
-// without a stub, which a crash between the two commits leaves, gets its stub.
+// without a stub, which a crash between the two commits leaves, gets its stub. When a push took its
+// path meanwhile, the stub fails: the record stays staged, and the release keeps it back.
 func (c *collection[T]) loadAll(ctx context.Context, strict bool) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -327,18 +328,25 @@ func (c *collection[T]) loadAll(ctx context.Context, strict bool) error {
 	if err := c.loadStage(ctx, strict); err != nil {
 		return err
 	}
-	for p := range c.stage {
+	for p, s := range c.stage {
 		if _, ok := c.art[p]; ok {
 			continue
 		}
-		if _, err := c.arch.Commit(context.WithoutCancel(ctx), storage.Change{Message: StubMessage,
-			Files: []storage.File{{Path: p, Data: check.Stub(c.schema), Base: storage.NoFile}}}); err != nil {
+		if err := c.writeStub(ctx, s.session, p); err != nil {
 			c.logf("records: write the missing stub of %s: %v", p, err)
 			continue
 		}
 		c.setArt(p, released[T]{stub: true})
 	}
 	return nil
+}
+
+// writeStub writes the stub of a staged record through the staging area of its session, so the
+// area records it (storage.Staging.Stub). The path must hold no file yet.
+func (c *collection[T]) writeStub(ctx context.Context, session, p string) error {
+	_, err := c.staging.Stub(context.WithoutCancel(ctx), session, storage.Change{Message: StubMessage,
+		Files: []storage.File{{Path: p, Data: check.Stub(c.schema), Base: storage.NoFile}}})
+	return err
 }
 
 // loadArt reads the directory of the artifact repository. The caller holds c.mu.
@@ -688,9 +696,7 @@ func (c *collection[T]) add(ctx context.Context, r T, same func(stored, r T) boo
 		}
 		c.high = id
 		c.names[p] = to.session
-		_, err = c.arch.Commit(ctx, storage.Change{Message: StubMessage,
-			Files: []storage.File{{Path: p, Data: check.Stub(c.schema), Base: storage.NoFile}}})
-		if err != nil {
+		if err := c.writeStub(ctx, to.session, p); err != nil {
 			// Take the staged file back, and the area forgets the path. A push that put a file at
 			// this path first keeps it, also at the release.
 			if rerr := c.staging.TakeBack(ctx, to.session, p); rerr != nil {

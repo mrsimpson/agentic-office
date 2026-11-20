@@ -896,6 +896,14 @@ office session release weekly --accept-quotes <token>   # release despite quotes
   object with `office session hold`. An objection holds the session until a human releases it.
 - **The release** moves everything the session staged into the artifact repository in one commit,
   with you (or the hub) as the author, and the authors of the artifacts as co-authors.
+- **A path that is taken.** The release replaces only the stub of a staged artifact, or writes
+  where no file is. If someone pushed their own file at that path, for example while the hub was
+  down, the release keeps the pushed file and releases everything else. The staged artifact is
+  then not released: it stays in the staging area, and the people who took part still read it.
+  The page of the session in the portal shows it as "not released: the path is taken". To keep
+  it, read it and create it again at a new path with the command of its type, for example
+  `office document get documents/plan.md` and then `office document create documents/plan-2.md
+  --file plan.md`.
 - **Quotes off the record.** Before every release, the hub searches the staged files for
   sentences that are off the record, word for word (sentences of at least three words; case and
   spaces do not count). If it finds one, it refuses the release. `office session release` then
