@@ -60,7 +60,7 @@ func (k Kind) String() string {
 
 // Change is one artifact that changed.
 type Change struct {
-	// Path is the path of the file in the artifact repository, for example "notes/000003.yaml".
+	// Path is the path of the file in the artifact repository, for example "notes/000003.md".
 	Path string
 	Kind Kind
 	// Version is the object ID of the new content. It is empty for a removed artifact.

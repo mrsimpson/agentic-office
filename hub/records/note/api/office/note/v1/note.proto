@@ -1,5 +1,6 @@
 // Notes (if-note-api): free notes of a participant, with or without a meeting session. One of the
-// record types of the hub (dec-records-per-type). The hub stores every note in the archive.
+// record types of the hub (dec-records-per-type). The hub stores every note in the archive as a
+// Markdown file: the text is the body, and the other fields are its front matter (dec-wiki).
 //
 // Every call needs an access token of a participant (see identity.proto). A stage link cannot
 // read or write notes. A sentence that is off the record must not go into a note
@@ -14,8 +15,8 @@ option go_package = "github.com/mrsimpson/agentic-office/hub/records/note/api;no
 
 service NoteService {
   // AddNote adds a note. It is idempotent by command_id: a repeated request returns the stored
-  // note with duplicate set. The same command_id with another text, author or session fails
-  // with already_exists.
+  // note with duplicate set. The same command_id with another text, author, session or tags
+  // fails with already_exists.
   rpc AddNote(AddNoteRequest) returns (AddNoteResponse);
   // ListNotes returns notes with an ID greater than after_id, oldest first.
   rpc ListNotes(ListNotesRequest) returns (ListNotesResponse);
@@ -24,6 +25,7 @@ service NoteService {
 message Note {
   // id grows by one with every note and starts at 1.
   uint32 id = 1;
+  // text is Markdown.
   string text = 2;
   // author_participant_id is the human or agent who wrote the note.
   string author_participant_id = 3;
@@ -33,6 +35,8 @@ message Note {
   string session_id = 5;
   google.protobuf.Timestamp time = 6;
   string command_id = 7;
+  // tags are keywords for the note, in the order the author gave them, without repeats.
+  repeated string tags = 8;
 }
 
 message AddNoteRequest {
@@ -44,6 +48,9 @@ message AddNoteRequest {
   string author_participant_id = 3;
   // session_id links the note to a meeting session. Optional; it is not checked.
   string session_id = 4;
+  // tags are optional keywords, for example "budget". A tag is one line and not blank. The hub
+  // removes the spaces around a tag and drops a tag that is repeated.
+  repeated string tags = 5;
 }
 
 message AddNoteResponse {

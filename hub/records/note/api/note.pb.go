@@ -1,5 +1,6 @@
 // Notes (if-note-api): free notes of a participant, with or without a meeting session. One of the
-// record types of the hub (dec-records-per-type). The hub stores every note in the archive.
+// record types of the hub (dec-records-per-type). The hub stores every note in the archive as a
+// Markdown file: the text is the body, and the other fields are its front matter (dec-wiki).
 //
 // Every call needs an access token of a participant (see identity.proto). A stage link cannot
 // read or write notes. A sentence that is off the record must not go into a note
@@ -82,16 +83,19 @@ func (AuthorKind) EnumDescriptor() ([]byte, []int) {
 type Note struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// id grows by one with every note and starts at 1.
-	Id   uint32 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Id uint32 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	// text is Markdown.
 	Text string `protobuf:"bytes,2,opt,name=text,proto3" json:"text,omitempty"`
 	// author_participant_id is the human or agent who wrote the note.
 	AuthorParticipantId string `protobuf:"bytes,3,opt,name=author_participant_id,json=authorParticipantId,proto3" json:"author_participant_id,omitempty"`
 	// author_kind tells whether the author is a human or an agent, at the time of writing.
 	AuthorKind AuthorKind `protobuf:"varint,4,opt,name=author_kind,json=authorKind,proto3,enum=office.note.v1.AuthorKind" json:"author_kind,omitempty"`
 	// session_id is set if the note belongs to a meeting session.
-	SessionId     string                 `protobuf:"bytes,5,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	Time          *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=time,proto3" json:"time,omitempty"`
-	CommandId     string                 `protobuf:"bytes,7,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
+	SessionId string                 `protobuf:"bytes,5,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	Time      *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=time,proto3" json:"time,omitempty"`
+	CommandId string                 `protobuf:"bytes,7,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
+	// tags are keywords for the note, in the order the author gave them, without repeats.
+	Tags          []string `protobuf:"bytes,8,rep,name=tags,proto3" json:"tags,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -175,6 +179,13 @@ func (x *Note) GetCommandId() string {
 	return ""
 }
 
+func (x *Note) GetTags() []string {
+	if x != nil {
+		return x.Tags
+	}
+	return nil
+}
+
 type AddNoteRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// command_id is created by the client. A repeated request with the same command_id has no
@@ -184,7 +195,10 @@ type AddNoteRequest struct {
 	// author_participant_id must be the participant of the access token.
 	AuthorParticipantId string `protobuf:"bytes,3,opt,name=author_participant_id,json=authorParticipantId,proto3" json:"author_participant_id,omitempty"`
 	// session_id links the note to a meeting session. Optional; it is not checked.
-	SessionId     string `protobuf:"bytes,4,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	SessionId string `protobuf:"bytes,4,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	// tags are optional keywords, for example "budget". A tag is one line and not blank. The hub
+	// removes the spaces around a tag and drops a tag that is repeated.
+	Tags          []string `protobuf:"bytes,5,rep,name=tags,proto3" json:"tags,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -245,6 +259,13 @@ func (x *AddNoteRequest) GetSessionId() string {
 		return x.SessionId
 	}
 	return ""
+}
+
+func (x *AddNoteRequest) GetTags() []string {
+	if x != nil {
+		return x.Tags
+	}
+	return nil
 }
 
 type AddNoteResponse struct {
@@ -409,7 +430,7 @@ var File_office_note_v1_note_proto protoreflect.FileDescriptor
 
 const file_office_note_v1_note_proto_rawDesc = "" +
 	"\n" +
-	"\x19office/note/v1/note.proto\x12\x0eoffice.note.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x89\x02\n" +
+	"\x19office/note/v1/note.proto\x12\x0eoffice.note.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x9d\x02\n" +
 	"\x04Note\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x12\x12\n" +
 	"\x04text\x18\x02 \x01(\tR\x04text\x122\n" +
@@ -420,14 +441,16 @@ const file_office_note_v1_note_proto_rawDesc = "" +
 	"session_id\x18\x05 \x01(\tR\tsessionId\x12.\n" +
 	"\x04time\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\x12\x1d\n" +
 	"\n" +
-	"command_id\x18\a \x01(\tR\tcommandId\"\x96\x01\n" +
+	"command_id\x18\a \x01(\tR\tcommandId\x12\x12\n" +
+	"\x04tags\x18\b \x03(\tR\x04tags\"\xaa\x01\n" +
 	"\x0eAddNoteRequest\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x12\n" +
 	"\x04text\x18\x02 \x01(\tR\x04text\x122\n" +
 	"\x15author_participant_id\x18\x03 \x01(\tR\x13authorParticipantId\x12\x1d\n" +
 	"\n" +
-	"session_id\x18\x04 \x01(\tR\tsessionId\"Y\n" +
+	"session_id\x18\x04 \x01(\tR\tsessionId\x12\x12\n" +
+	"\x04tags\x18\x05 \x03(\tR\x04tags\"Y\n" +
 	"\x0fAddNoteResponse\x12(\n" +
 	"\x04note\x18\x01 \x01(\v2\x14.office.note.v1.NoteR\x04note\x12\x1c\n" +
 	"\tduplicate\x18\x02 \x01(\bR\tduplicate\"b\n" +

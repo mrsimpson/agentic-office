@@ -789,7 +789,7 @@ office hand raise --topic "Budget"
 office minutes update --file minutes.md                # the running minutes, shown on the stage
 office decision record "We rent the new office from January."
 office decision record --session weekly --file decision.md
-office note add "Ask the bank about the loan."
+office note add --tag bank "Ask the bank about the loan."
 office task create "Send the numbers to the bank" --assignee grace --session weekly
 office task list --status open,in_progress --assignee grace
 office task update local:1 --status done
@@ -806,6 +806,9 @@ office meeting end
   to read it: its minutes, decisions, tasks, notes and transcript. Sentences off the record do not
   appear.
 - A decision or a note is linked to a session only with `--session`.
+- A note is Markdown. Give it tags with `--tag`, once per tag. The hub stores it as a Markdown file
+  `notes/NNNNNN.md`: the front matter names the author, whether the author is a human or an agent,
+  the time, the session and the tags, and the body is the text.
 - For now a task is a local draft in the hub. Its reference, for example `local:42`, is opaque:
   keep it and pass it back. The statuses are `open`, `in_progress`, `done` and `cancelled`. Any
   participant may read and change every task. With `--session ""` or `--assignee ""` you remove

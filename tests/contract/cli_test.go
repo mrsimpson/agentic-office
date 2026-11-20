@@ -582,10 +582,10 @@ func TestCLIRecords(t *testing.T) {
 		t.Fatalf("decision list without --json: exit %d, %q", code, out)
 	}
 
-	v = ada.ok("note", "add", "--session", "s1", "A note")
+	v = ada.ok("note", "add", "--session", "s1", "--tag", "budget", "--tag", "bank", "A note")
 	n, _ := v["note"].(map[string]any)
 	if v["duplicate"] != false || n["id"] != float64(1) || n["text"] != "A note" || n["authorParticipantId"] != "ada" ||
-		n["authorKind"] != "AUTHOR_KIND_HUMAN" || n["sessionId"] != "s1" {
+		n["authorKind"] != "AUTHOR_KIND_HUMAN" || n["sessionId"] != "s1" || fmt.Sprint(n["tags"]) != "[budget bank]" {
 		t.Fatalf("note add: %v", v)
 	}
 	if out, _, code := bot.run("note", "add", "Another note"); code != 0 || out != "note 2\n" {
@@ -604,6 +604,7 @@ func TestCLIRecords(t *testing.T) {
 	bot.fails(2, "usage", "decision", "record")
 	bot.fails(2, "usage", "decision", "record", "  ")
 	bot.fails(2, "usage", "note", "add")
+	bot.fails(1, "invalid_argument", "note", "add", "--tag", " ", "A note with a blank tag")
 	bot.fails(2, "usage", "decision", "list", "extra")
 	bot.fails(2, "usage", "minutes", "show", "a", "b")
 	bot.fails(2, "usage", "journal", "list")

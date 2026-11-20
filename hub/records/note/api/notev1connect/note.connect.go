@@ -1,5 +1,6 @@
 // Notes (if-note-api): free notes of a participant, with or without a meeting session. One of the
-// record types of the hub (dec-records-per-type). The hub stores every note in the archive.
+// record types of the hub (dec-records-per-type). The hub stores every note in the archive as a
+// Markdown file: the text is the body, and the other fields are its front matter (dec-wiki).
 //
 // Every call needs an access token of a participant (see identity.proto). A stage link cannot
 // read or write notes. A sentence that is off the record must not go into a note
@@ -57,8 +58,8 @@ var (
 // NoteServiceClient is a client for the office.note.v1.NoteService service.
 type NoteServiceClient interface {
 	// AddNote adds a note. It is idempotent by command_id: a repeated request returns the stored
-	// note with duplicate set. The same command_id with another text, author or session fails
-	// with already_exists.
+	// note with duplicate set. The same command_id with another text, author, session or tags
+	// fails with already_exists.
 	AddNote(context.Context, *api.AddNoteRequest) (*api.AddNoteResponse, error)
 	// ListNotes returns notes with an ID greater than after_id, oldest first.
 	ListNotes(context.Context, *api.ListNotesRequest) (*api.ListNotesResponse, error)
@@ -73,8 +74,8 @@ func NewNoteServiceClient(client *connect.Client) NoteServiceClient {
 // NoteServiceHandler is an implementation of the office.note.v1.NoteService service.
 type NoteServiceHandler interface {
 	// AddNote adds a note. It is idempotent by command_id: a repeated request returns the stored
-	// note with duplicate set. The same command_id with another text, author or session fails
-	// with already_exists.
+	// note with duplicate set. The same command_id with another text, author, session or tags
+	// fails with already_exists.
 	AddNote(context.Context, *api.AddNoteRequest) (*api.AddNoteResponse, error)
 	// ListNotes returns notes with an ID greater than after_id, oldest first.
 	ListNotes(context.Context, *api.ListNotesRequest) (*api.ListNotesResponse, error)

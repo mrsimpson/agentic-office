@@ -53,15 +53,17 @@ command_id: pushed-minutes-%d
 `, id, id, text, id)
 }
 
-func noteYAML(id int, text string) string {
-	return fmt.Sprintf(`schema: office.note.v1
+func noteMarkdown(id int, text string) string {
+	return fmt.Sprintf(`---
+schema: office.note.v1
 id: %d
-text: %s
 author_participant_id: ada
 author_kind: AUTHOR_KIND_HUMAN
 time: "2026-11-16T10:00:00Z"
 command_id: pushed-note-%d
-`, id, text, id)
+---
+%s
+`, id, id, text)
 }
 
 func taskYAML(n int, title string) string {
@@ -115,7 +117,7 @@ func TestPushedArtifactsAreSeenWithoutRestart(t *testing.T) {
 
 	p.write("decisions/000007.yaml", decisionYAML(7, "Pushed decision."))
 	p.write("minutes/000002.yaml", minutesYAML(2, "Pushed minutes."))
-	p.write("notes/000003.yaml", noteYAML(3, "Pushed note."))
+	p.write("notes/000003.md", noteMarkdown(3, "Pushed note."))
 	p.write("tasks/000005.yaml", taskYAML(5, "Pushed task"))
 	p.write("slides/000004.yaml", deckYAML(4, "Pushed deck"))
 	p.commit("add the artifacts of five parts")
@@ -139,7 +141,7 @@ func TestPushedArtifactsAreSeenWithoutRestart(t *testing.T) {
 	})
 
 	// A changed file shows its new content.
-	p.commitFile("notes/000003.yaml", noteYAML(3, "Changed note."))
+	p.commitFile("notes/000003.md", noteMarkdown(3, "Changed note."))
 	p.commitFile("tasks/000005.yaml", taskYAML(5, "Changed task"))
 	p.commitFile("slides/000004.yaml", deckYAML(4, "Changed deck"))
 	p.mustPush()
@@ -165,7 +167,7 @@ func TestPushedArtifactsAreSeenWithoutRestart(t *testing.T) {
 
 	// A removed file is gone.
 	p.mustGit("pull", "-q", "--no-rebase", "--no-edit")
-	for _, f := range []string{"notes/000003.yaml", "tasks/000005.yaml", "slides/000004.yaml", "decisions/000007.yaml", "minutes/000002.yaml"} {
+	for _, f := range []string{"notes/000003.md", "tasks/000005.yaml", "slides/000004.yaml", "decisions/000007.yaml", "minutes/000002.yaml"} {
 		p.mustGit("rm", "-q", f)
 	}
 	p.mustGit("commit", "-q", "-m", "remove the pushed files")
@@ -196,7 +198,7 @@ func TestHubCreateTakesNextIDWhenAPushCameFirst(t *testing.T) {
 	srv := contracttest.StartHub(t, race.Env)
 	ada := srv.Participant(t, "ada", "Ada", human)
 
-	race.Arm(t, "notes/000001.yaml", noteYAML(1, "Foreign note."))
+	race.Arm(t, "notes/000001.md", noteMarkdown(1, "Foreign note."))
 	n := addNote(t, ada, "Hub note", "")
 	if !race.Fired() {
 		t.Fatal("the foreign change was not made")
@@ -209,10 +211,10 @@ func TestHubCreateTakesNextIDWhenAPushCameFirst(t *testing.T) {
 		return len(got) == 2 && got[1] == "Foreign note." && got[2] == "Hub note"
 	})
 	files := strings.Join(contracttest.Files(t, srv.ArchiveDir()), ",")
-	if !strings.Contains(files, "notes/000001.yaml") || !strings.Contains(files, "notes/000002.yaml") {
+	if !strings.Contains(files, "notes/000001.md") || !strings.Contains(files, "notes/000002.md") {
 		t.Errorf("files in the repository: %s", files)
 	}
-	if got := contracttest.Git(t, srv.ArchiveDir(), "show", "main:notes/000001.yaml"); !strings.Contains(got, "Foreign note.") {
+	if got := contracttest.Git(t, srv.ArchiveDir(), "show", "main:notes/000001.md"); !strings.Contains(got, "Foreign note.") {
 		t.Errorf("the pushed file was overwritten:\n%s", got)
 	}
 }
@@ -247,7 +249,7 @@ func TestPushedAndCreatedNotesKeepBoth(t *testing.T) {
 			p.mustGit("reset", "-q", "--hard", "origin/main")
 			id := nextNoteNumber(t, p.dir)
 			text := fmt.Sprintf("pushed %d", i)
-			p.write(fmt.Sprintf("notes/%06d.yaml", id), noteYAML(id, text))
+			p.write(fmt.Sprintf("notes/%06d.md", id), noteMarkdown(id, text))
 			p.commit("note " + text)
 			if _, code := p.push(); code == 0 {
 				pushed[id] = text
@@ -303,16 +305,16 @@ func TestPushedInvalidFileIsIgnored(t *testing.T) {
 	ada := srv.Participant(t, "ada", "Ada", human)
 	addNote(t, ada, "First", "")
 
-	broken := strings.Replace(noteYAML(9, "Broken."), "author_participant_id: ada\n", "", 1)
+	broken := strings.Replace(noteMarkdown(9, "Broken."), "author_participant_id: ada\n", "", 1)
 	contracttest.Edit(t, srv.ArchiveDir(), "a broken note", func(work string) {
-		contracttest.WriteFile(t, work, "notes/000009.yaml", broken)
+		contracttest.WriteFile(t, work, "notes/000009.md", broken)
 		contracttest.WriteFile(t, work, "tasks/000009.yaml", "schema: office.task.v1\nref: nonsense\n")
 		contracttest.WriteFile(t, work, "slides/000009.yaml", "not: a deck\n")
 	})
 	// The next commit of the hub reports the foreign change to the parts.
 	second := addNote(t, ada, "Second", "")
 	waitFor(t, "the log of the ignored note", func() bool {
-		return strings.Contains(srv.Stderr(), "ignore the pushed file notes/000009.yaml")
+		return strings.Contains(srv.Stderr(), "ignore the pushed file notes/000009.md")
 	})
 	if got := noteTexts(t, ada); len(got) != 2 {
 		t.Errorf("notes: %v", got)
@@ -345,7 +347,7 @@ func nextNoteNumber(t *testing.T, clone string) int {
 	highest := 0
 	for _, e := range entries {
 		var n int
-		if _, err := fmt.Sscanf(e.Name(), "%d.yaml", &n); err == nil && n > highest {
+		if _, err := fmt.Sscanf(e.Name(), "%d.md", &n); err == nil && n > highest {
 			highest = n
 		}
 	}

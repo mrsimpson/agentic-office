@@ -354,11 +354,11 @@ func (s *Server) addTools(srv *sdk.Server) {
 		})
 
 	tool(srv, s, tools.NoteAdd,
-		func(ctx context.Context, c coreapi.Client, in tools.RecordIn) (any, error) {
+		func(ctx context.Context, c coreapi.Client, in tools.NoteIn) (any, error) {
 			if blank(in.Text) {
 				return nil, usagef("text is required")
 			}
-			res, err := c.AddNote(ctx, in.Text, in.Session)
+			res, err := c.AddNote(ctx, in.Text, in.Session, in.Tags)
 			if err != nil {
 				return nil, err
 			}

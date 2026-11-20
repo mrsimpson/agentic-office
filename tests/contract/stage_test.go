@@ -24,6 +24,7 @@ import (
 
 	documentv1 "github.com/mrsimpson/agentic-office/hub/documents/api"
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
+	notev1 "github.com/mrsimpson/agentic-office/hub/records/note/api"
 	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
 	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
@@ -734,6 +735,20 @@ func TestStageShowsDocuments(t *testing.T) {
 	})
 	if !strings.Contains(text(n), "cannot show") {
 		t.Errorf("note: %q", text(n))
+	}
+
+	// A note is Markdown with front matter: the stage shows its text formatted, without the front
+	// matter.
+	if _, err := a.Note.AddNote(m.ctx(), &notev1.AddNoteRequest{CommandId: coreapi.NewCommandID(), Text: "Ask the *bank*.",
+		AuthorParticipantId: bot, SessionId: m.sid, Tags: []string{"bank"}}); err != nil {
+		t.Fatal(err)
+	}
+	focus("notes/000001.md")
+	n = st.wait("artifact", "the note as formatted text", func(n *html.Node) bool {
+		return strings.Contains(srcdoc(n), "<em>bank</em>")
+	})
+	if doc := srcdoc(n); strings.Contains(doc, "office.note.v1") || strings.Contains(doc, "<hr") {
+		t.Errorf("the note shows its front matter:\n%s", doc)
 	}
 }
 

@@ -35,12 +35,14 @@ type record interface {
 const maxCreateAttempts = 50
 
 // collection is the list of records of one type. It keeps all records in memory and writes every
-// new record as one YAML file and one commit to the archive. It reloads the files that a push
-// changed (see reloadPaths).
+// new record as one file and one commit to the archive: a YAML file, or a Markdown file with
+// front matter for a note. It reloads the files that a push changed (see reloadPaths).
 type collection[T record] struct {
 	kind   string // for messages, for example "decision"
 	dir    string // directory in the archive, for example "decisions"
 	schema string // the schema that every file of the collection names, for example "office.decision.v1"
+	ext    string // the ending of the files, for example ".yaml"
+	encode func(schema string, m proto.Message) ([]byte, error)
 	arch   storage.Archive
 	newT   func() T
 	setID  func(T, uint32)
@@ -56,27 +58,35 @@ type collection[T record] struct {
 	dirty    bool
 }
 
-func newCollection[T record](arch storage.Archive, kind, dir, schema string, newT func() T, setID func(T, uint32), logf func(string, ...any)) *collection[T] {
-	return &collection[T]{kind: kind, dir: dir, schema: schema, arch: arch, newT: newT, setID: setID, logf: logf,
+// newCollection returns an empty collection. encode writes the file of a record (marshalYAML
+// or marshalMarkdown).
+func newCollection[T record](arch storage.Archive, kind, dir, schema string, encode func(string, proto.Message) ([]byte, error),
+	newT func() T, setID func(T, uint32), logf func(string, ...any)) *collection[T] {
+	return &collection[T]{kind: kind, dir: dir, schema: schema, ext: check.Ext(schema), encode: encode, arch: arch, newT: newT, setID: setID, logf: logf,
 		files: map[string]T{}, versions: map[string]string{}, cmds: map[string]string{}, bad: map[string]string{}}
 }
 
-// numberOf returns the number in the name of a record file such as "decisions/000042.yaml".
-func numberOf(p string) (uint32, bool) {
-	n, err := strconv.ParseUint(strings.TrimSuffix(path.Base(p), ".yaml"), 10, 32)
+// numberOf returns the number in the name of a record file such as "decisions/000042.yaml", and
+// false if the name is not a number with the ending of the collection.
+func (c *collection[T]) numberOf(p string) (uint32, bool) {
+	base, ok := strings.CutSuffix(path.Base(p), c.ext)
+	if !ok {
+		return 0, false
+	}
+	n, err := strconv.ParseUint(base, 10, 32)
 	return uint32(n), err == nil
 }
 
 // load reads one file into the collection. It returns an error and changes nothing if the file is
 // not valid. The caller holds c.mu. A file that is not valid still counts for the next ID, so
-// the part never takes its number.
+// the part never takes its number. A file whose name is not a number with the ending of the
+// collection is not a record, for example a page in the directory, and is ignored.
 func (c *collection[T]) load(f storage.File) error {
-	if path.Ext(f.Path) != ".yaml" {
+	n, ok := c.numberOf(f.Path)
+	if !ok {
 		return nil
 	}
-	if n, ok := numberOf(f.Path); ok && n > c.high {
-		c.high = n
-	}
+	c.high = max(c.high, n)
 	if v, ok := c.versions[f.Path]; ok && v == f.Version {
 		return nil
 	}
@@ -85,7 +95,7 @@ func (c *collection[T]) load(f storage.File) error {
 		return fmt.Errorf("%s: %s", f.Path, strings.Join(reasons, "; "))
 	}
 	r := c.newT()
-	if err := unmarshalYAML(f.Data, r); err != nil {
+	if err := decode(c.schema, f.Data, r); err != nil {
 		return fmt.Errorf("%s: %w", f.Path, err)
 	}
 	if p, dup := c.cmds[r.GetCommandId()]; dup && p != f.Path {
@@ -139,7 +149,7 @@ func (c *collection[T]) loadAll(ctx context.Context, strict bool) error {
 		return fmt.Errorf("records: list the names in %s: %w", c.dir, err)
 	}
 	for _, p := range names {
-		if n, ok := numberOf(p); ok {
+		if n, ok := c.numberOf(p); ok {
 			c.high = max(c.high, n)
 		}
 	}
@@ -166,7 +176,7 @@ func (c *collection[T]) loadAll(ctx context.Context, strict bool) error {
 // loaded, a file that is gone is removed. The caller holds c.mu.
 func (c *collection[T]) reloadPaths(ctx context.Context, paths []string) error {
 	for _, p := range paths {
-		if path.Ext(p) != ".yaml" {
+		if _, ok := c.numberOf(p); !ok {
 			continue
 		}
 		files, err := c.arch.Read(ctx, p)
@@ -216,7 +226,7 @@ func (c *collection[T]) sorted() []T {
 }
 
 // path returns the file of the record with this ID.
-func (c *collection[T]) path(id uint32) string { return check.FilePath(c.dir, id) }
+func (c *collection[T]) path(id uint32) string { return check.FilePath(c.schema, id) }
 
 // add stores r as the next record, or returns the stored record of the same command and true.
 // same reports whether the stored record has the content of r. The commit message is title, the
@@ -239,7 +249,7 @@ func (c *collection[T]) add(ctx context.Context, r T, same func(stored, r T) boo
 		}
 		id := c.high + 1
 		c.setID(r, id)
-		data, err := marshalYAML(c.schema, r)
+		data, err := c.encode(c.schema, r)
 		if err != nil {
 			return zero, false, connect.NewError(connect.CodeInternal, "encode the "+c.kind+": "+err.Error())
 		}
@@ -325,38 +335,77 @@ func (c *collection[T]) latest(sessionID string) (T, bool) {
 }
 
 // marshalYAML returns the YAML form of a record: the name of its schema, then the fields of the
-// contract in their order, in block style. Strings keep their quotes, so an ID such as "123" stays a string; a text with line
-// breaks is a literal block if it reads back the same.
+// contract in their order, in block style. Strings keep their quotes, so an ID such as "123" stays
+// a string; a text with line breaks is a literal block if it reads back the same.
 func marshalYAML(schema string, m proto.Message) ([]byte, error) {
 	raw, err := protojson.MarshalOptions{UseProtoNames: true, EmitUnpopulated: true}.Marshal(m)
 	if err != nil {
 		return nil, err
 	}
 	for _, literal := range []bool{true, false} {
-		// JSON is YAML: parse it into a node, which keeps the order of the fields.
-		var doc yaml.Node
-		if err := yaml.Unmarshal(raw, &doc); err != nil {
-			return nil, err
-		}
-		if len(doc.Content) != 1 || doc.Content[0].Kind != yaml.MappingNode {
-			return nil, errors.New("the record is not a mapping")
-		}
-		mapping := doc.Content[0]
-		mapping.Content = append([]*yaml.Node{
-			{Kind: yaml.ScalarNode, Tag: "!!str", Value: check.SchemaKey},
-			{Kind: yaml.ScalarNode, Tag: "!!str", Value: schema},
-		}, mapping.Content...)
-		style(&doc, literal)
-		out, err := yaml.Marshal(&doc)
+		out, err := yamlOf(raw, schema, "", func(n *yaml.Node) { style(n, literal) })
 		if err != nil {
 			return nil, err
 		}
 		back := m.ProtoReflect().New().Interface()
-		if err := unmarshalYAML(out, back); err == nil && proto.Equal(back, m) {
+		if err := decode(schema, out, back); err == nil && proto.Equal(back, m) {
 			return out, nil
 		}
 	}
 	return nil, fmt.Errorf("the YAML form does not read back the same")
+}
+
+// marshalMarkdown returns the Markdown form of a record (dec-wiki): front matter with the name of
+// its schema and the fields of the contract that are set, in their order, then the text as the
+// body, ended by one line break. Strings are plain where that reads back the same.
+func marshalMarkdown(schema string, m proto.Message) ([]byte, error) {
+	raw, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(m)
+	if err != nil {
+		return nil, err
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return nil, err
+	}
+	text, _ := fields[check.TextKey].(string)
+	for _, plain := range []bool{true, false} {
+		front, err := yamlOf(raw, schema, check.TextKey, func(n *yaml.Node) { style(n, false); unquote(n, plain) })
+		if err != nil {
+			return nil, err
+		}
+		out := slices.Concat([]byte("---\n"), front, []byte("---\n"), []byte(text), []byte("\n"))
+		back := m.ProtoReflect().New().Interface()
+		if err := decode(schema, out, back); err == nil && proto.Equal(back, m) {
+			return out, nil
+		}
+	}
+	return nil, fmt.Errorf("the Markdown form does not read back the same")
+}
+
+// yamlOf returns the YAML of the JSON form of a record: the field schema first, then the fields
+// in their order without the field skip. format changes the style of the nodes.
+func yamlOf(raw []byte, schema, skip string, format func(*yaml.Node)) ([]byte, error) {
+	// JSON is YAML: parse it into a node, which keeps the order of the fields.
+	var doc yaml.Node
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		return nil, err
+	}
+	if len(doc.Content) != 1 || doc.Content[0].Kind != yaml.MappingNode {
+		return nil, errors.New("the record is not a mapping")
+	}
+	mapping := doc.Content[0]
+	content := []*yaml.Node{
+		{Kind: yaml.ScalarNode, Tag: "!!str", Value: check.SchemaKey},
+		{Kind: yaml.ScalarNode, Tag: "!!str", Value: schema},
+	}
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		if skip == "" || mapping.Content[i].Value != skip {
+			content = append(content, mapping.Content[i], mapping.Content[i+1])
+		}
+	}
+	mapping.Content = content
+	format(&doc)
+	return yaml.Marshal(&doc)
 }
 
 func style(n *yaml.Node, literal bool) {
@@ -372,13 +421,26 @@ func style(n *yaml.Node, literal bool) {
 	}
 }
 
-// unmarshalYAML parses the YAML form of a record. Unknown fields are ignored, so a newer hub
-// can add fields.
-func unmarshalYAML(data []byte, m proto.Message) error {
-	var v map[string]any
-	if err := yaml.Unmarshal(data, &v); err != nil {
-		return err
+// unquote writes the strings without quotes where YAML allows it. The YAML library still quotes
+// a string that would read back as another type, such as "123".
+func unquote(n *yaml.Node, plain bool) {
+	if plain && n.Kind == yaml.ScalarNode && n.Tag == "!!str" {
+		n.Style = 0
 	}
+	for _, c := range n.Content {
+		unquote(c, plain)
+	}
+}
+
+// decode parses the file of a record of the schema, through the check of the part (Fields), so
+// the part reads a file as the check sees it. Unknown fields are ignored, so a newer hub can add
+// fields.
+func decode(schema string, data []byte, m proto.Message) error {
+	v, reason := check.Fields(schema, data)
+	if reason != "" {
+		return errors.New(reason)
+	}
+	delete(v, check.SchemaKey)
 	raw, err := json.Marshal(v)
 	if err != nil {
 		return err

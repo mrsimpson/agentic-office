@@ -543,13 +543,13 @@ func (c *hubClient) ListDecisions(ctx context.Context, after uint32, sessionID s
 	return res.GetDecisions(), err
 }
 
-// AddNote adds a note. The author is the caller. sessionID may be empty.
-func (c *hubClient) AddNote(ctx context.Context, text, sessionID string) (*notev1.AddNoteResponse, error) {
+// AddNote adds a note in Markdown. The author is the caller. sessionID and tags may be empty.
+func (c *hubClient) AddNote(ctx context.Context, text, sessionID string, tags []string) (*notev1.AddNoteResponse, error) {
 	pid, err := c.ParticipantID(ctx)
 	if err != nil {
 		return nil, err
 	}
-	req := &notev1.AddNoteRequest{CommandId: coreapi.NewCommandID(), Text: text, AuthorParticipantId: pid, SessionId: sessionID}
+	req := &notev1.AddNoteRequest{CommandId: coreapi.NewCommandID(), Text: text, AuthorParticipantId: pid, SessionId: sessionID, Tags: tags}
 	var res *notev1.AddNoteResponse
 	err = retry(ctx, func() (err error) {
 		res, err = c.note.AddNote(ctx, req)

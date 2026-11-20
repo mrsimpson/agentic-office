@@ -43,9 +43,11 @@ correct or remove what you wrote; do so at once when a sentence goes off the rec
 files from a meeting with Git: a push skips the release. Tasks are never held, so keep sentences
 from the meeting out of them.
 
-- **Note** (`note_add`): one observation or fact, complete on its own, so that a reader
-  understands it without the meeting. Add a note when something is worth remembering and no
-  other type fits.
+- **Note** (`note_add`): one observation or fact in Markdown, complete on its own, so that a
+  reader understands it without the meeting. Add a note when something is worth remembering and
+  no other type fits. Give it `tags`, and use the tags that similar notes and pages already use.
+  The hub stores it as `notes/NNNNNN.md`, with its author, time, session and tags in the front
+  matter.
 - **Decision** (`decision_record`): only what the humans actually decided, in one clear sentence.
 - **Minutes** (`minutes_update`): only if your role asks for it. Every member reads the minutes
   once a human released them, but only the participants read the meeting. When a sentence goes off the record, take it out of
@@ -67,7 +69,7 @@ summary: Customer since 2025; contract, contacts and open topics.
 tags: [customer]
 sources:
   - minutes/000012.yaml
-  - notes/000031.yaml
+  - notes/000031.md
 status: draft
 owner: <participant ID of the human who owns the page>
 reviewed:

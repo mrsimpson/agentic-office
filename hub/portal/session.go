@@ -66,6 +66,7 @@ type recordView struct {
 	Author string
 	Time   string
 	Text   template.HTML
+	Tags   []string // only notes have tags
 }
 
 type taskView struct {
@@ -140,7 +141,7 @@ func (h *Handler) session(w http.ResponseWriter, r *http.Request, c *backend, te
 	}
 	for _, n := range notes {
 		v.Notes = append(v.Notes, recordView{Id: n.GetId(), Author: n.GetAuthorParticipantId(),
-			Time: n.GetTime().AsTime().UTC().Format(timeLayout), Text: markdownHTML(n.GetText())})
+			Time: n.GetTime().AsTime().UTC().Format(timeLayout), Text: markdownHTML(n.GetText()), Tags: n.GetTags()})
 	}
 	tasks := taskv1connect.NewTaskServiceClient(cc)
 	for token := ""; ; {

@@ -103,6 +103,26 @@ func archivedYAML(t *testing.T, srv *contracttest.Hub, path string) map[string]a
 	return v
 }
 
+// archivedNote reads the Markdown file of a note in the archive: the fields of its YAML front
+// matter and its body.
+func archivedNote(t *testing.T, srv *contracttest.Hub, path string) (map[string]any, string) {
+	t.Helper()
+	raw := contracttest.Git(t, srv.ArchiveDir(), "show", "HEAD:"+path)
+	rest, ok := strings.CutPrefix(raw, "---\n")
+	if !ok {
+		t.Fatalf("%s does not start with front matter:\n%s", path, raw)
+	}
+	front, body, ok := strings.Cut(rest, "\n---\n")
+	if !ok {
+		t.Fatalf("%s has no end of its front matter:\n%s", path, raw)
+	}
+	var v map[string]any
+	if err := yaml.Unmarshal([]byte(front), &v); err != nil {
+		t.Fatalf("the front matter of %s: %v", path, err)
+	}
+	return v, body
+}
+
 // commitsOf returns how many commits changed path in the archive.
 func commitsOf(t *testing.T, srv *contracttest.Hub, path string) int {
 	t.Helper()
@@ -207,9 +227,14 @@ func TestNotesAddAndList(t *testing.T) {
 	wantIDs(t, "all notes", listNotes(t, ada, &notev1.ListNotesRequest{}), 1, 2)
 	wantIDs(t, "notes of s1", listNotes(t, ada, &notev1.ListNotesRequest{SessionId: "s1"}), 1)
 	wantIDs(t, "notes after 1", listNotes(t, ada, &notev1.ListNotesRequest{AfterId: 1}), 2)
-	if y := archivedYAML(t, srv, "notes/000001.yaml"); y["text"] != "Remember the budget." || y["session_id"] != "s1" ||
-		y["author_participant_id"] != "bot" {
-		t.Fatalf("notes/000001.yaml: %v", y)
+	// A note is a Markdown file: the fields in the front matter, the text as the body.
+	if y, body := archivedNote(t, srv, "notes/000001.md"); y["schema"] != "office.note.v1" || y["session_id"] != "s1" ||
+		y["author_participant_id"] != "bot" || y["author_kind"] != "AUTHOR_KIND_AGENT" || y["time"] == nil || y["id"] != 1 ||
+		y["text"] != nil || body != "Remember the budget.\n" {
+		t.Fatalf("notes/000001.md: %v, body %q", y, body)
+	}
+	if y, _ := archivedNote(t, srv, "notes/000002.md"); y["session_id"] != nil || y["tags"] != nil {
+		t.Fatalf("a note without a session and tags has them in its front matter: %v", y)
 	}
 
 	for i := range 103 {
@@ -288,10 +313,24 @@ func TestRecordsIdempotent(t *testing.T) {
 	if err != nil || !n2.GetDuplicate() || n2.GetNote().String() != n1.GetNote().String() {
 		t.Fatalf("repeated note: %v, %v", n2, err)
 	}
+	nreq.Tags = []string{"ship"}
+	_, err = ada.Note.AddNote(ctx10(t), nreq)
+	wantCode(t, "note with other tags", err, connect.CodeAlreadyExists)
+	nreq.Tags = nil
 	nreq.Text = "Other"
 	_, err = ada.Note.AddNote(ctx10(t), nreq)
 	wantCode(t, "note with other text", err, connect.CodeAlreadyExists)
 	wantIDs(t, "notes", listNotes(t, ada, &notev1.ListNotesRequest{}), 1)
+
+	// Tags that the hub cleans up count as the same tags.
+	treq := &notev1.AddNoteRequest{CommandId: coreapi.NewCommandID(), Text: "Tagged.", AuthorParticipantId: "ada", Tags: []string{"a", "b"}}
+	if _, err := ada.Note.AddNote(ctx10(t), treq); err != nil {
+		t.Fatal(err)
+	}
+	treq.Tags = []string{" a", "b", "a"}
+	if res, err := ada.Note.AddNote(ctx10(t), treq); err != nil || !res.GetDuplicate() {
+		t.Fatalf("repeated note with the same tags in another spelling: %v, %v", res, err)
+	}
 }
 
 // TestRecordsErrors: bad requests, a wrong author, no token and stage links.
@@ -362,6 +401,16 @@ func TestRecordsErrors(t *testing.T) {
 	if ds := listDecisions(t, ada, &decisionv1.ListDecisionsRequest{}); len(ds) != 0 {
 		t.Fatalf("failed calls stored decisions: %v", ds)
 	}
+	for name, tags := range map[string][]string{
+		"a blank tag":           {"budget", " "},
+		"an empty tag":          {""},
+		"a tag with line break": {"a\nb"},
+	} {
+		n := okN()
+		n.Tags = tags
+		_, err := ada.Note.AddNote(ctx10(t), n)
+		wantCode(t, "note with "+name, err, connect.CodeInvalidArgument)
+	}
 	if ns := listNotes(t, ada, &notev1.ListNotesRequest{}); len(ns) != 0 {
 		t.Fatalf("failed calls stored notes: %v", ns)
 	}
@@ -376,6 +425,12 @@ func TestRecordsSurviveRestart(t *testing.T) {
 	d1 := recordDecision(t, ada, "We ship.", "s1")
 	d2 := recordDecision(t, bot, "Line one\nline two\n\n  indented: yes # not a comment\n", "")
 	n1 := addNote(t, bot, "123", "")
+	tagged, err := bot.Note.AddNote(ctx10(t), &notev1.AddNoteRequest{CommandId: coreapi.NewCommandID(), AuthorParticipantId: "bot",
+		Text: "# Budget\n\n- one\n- two\n\n---\n\nsession_id: no front matter\n\n", Tags: []string{"true", "123", "budget: 2027"}, SessionId: "s1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	n2 := tagged.GetNote()
 	sid := "s-" + coreapi.NewCommandID()
 	if _, err := bot.Commands.Join(ctx10(t), &sessioncommandsv1.JoinRequest{SessionId: sid, CommandId: coreapi.NewCommandID()}); err != nil {
 		t.Fatal(err)
@@ -398,8 +453,8 @@ func TestRecordsSurviveRestart(t *testing.T) {
 	if got := listDecisions(t, ada, &decisionv1.ListDecisionsRequest{}); len(got) != 2 || got[0].String() != d1.String() || got[1].String() != d2.String() {
 		t.Fatalf("decisions after restart: %v, want %v and %v", got, d1, d2)
 	}
-	if got := listNotes(t, ada, &notev1.ListNotesRequest{}); len(got) != 1 || got[0].String() != n1.String() {
-		t.Fatalf("notes after restart: %v, want %v", got, n1)
+	if got := listNotes(t, ada, &notev1.ListNotesRequest{}); len(got) != 2 || got[0].String() != n1.String() || got[1].String() != n2.String() {
+		t.Fatalf("notes after restart: %v, want %v and %v", got, n1, n2)
 	}
 	if got := listMinutes(t, ada, &minutesv1.ListMinutesRequest{}); len(got) != 1 || len(m1) != 1 || got[0].String() != m1[0].String() {
 		t.Fatalf("minutes after restart: %v, want %v", got, m1)
@@ -416,11 +471,14 @@ func TestRecordsSurviveRestart(t *testing.T) {
 	if d3 := recordDecision(t, ada, "After the restart.", ""); d3.GetId() != 3 {
 		t.Fatalf("next ID after restart: %d, want 3", d3.GetId())
 	}
-	if n2 := addNote(t, ada, "After the restart.", ""); n2.GetId() != 2 {
-		t.Fatalf("next note ID after restart: %d, want 2", n2.GetId())
+	if n3 := addNote(t, ada, "After the restart.", ""); n3.GetId() != 3 {
+		t.Fatalf("next note ID after restart: %d, want 3", n3.GetId())
 	}
-	if y := archivedYAML(t, srv, "notes/000001.yaml"); y["text"] != "123" {
-		t.Fatalf("a number-like text must stay a string: %v", y)
+	if _, body := archivedNote(t, srv, "notes/000001.md"); body != "123\n" {
+		t.Fatalf("the body of a note is its text: %q", body)
+	}
+	if y, _ := archivedNote(t, srv, "notes/000002.md"); fmt.Sprint(y["tags"]) != "[true 123 budget: 2027]" {
+		t.Fatalf("tags that look like other types must stay strings: %#v", y["tags"])
 	}
 }
 
@@ -560,5 +618,33 @@ func TestSessionEndStoresMinutesAfterRestart(t *testing.T) {
 	res, err := ada.Minutes.GetMinutes(ctx10(t), &minutesv1.GetMinutesRequest{SessionId: "standup"})
 	if err != nil || res.GetMinutes().GetText() != "Monday" {
 		t.Fatalf("minutes of standup: %v, %v", res, err)
+	}
+}
+
+// TestPageInTheNotesIsNoNote: a Markdown page without a schema in the directory of the notes is
+// not a note. The push is accepted, the notes do not list it, its name takes no number, and the
+// hub still starts with it.
+func TestPageInTheNotesIsNoNote(t *testing.T) {
+	srv := contracttest.StartHub(t, nil)
+	ada := srv.Participant(t, "ada", "Ada", human)
+	p := newPusher(t, srv, ada, "Ada", contracttest.DefaultTenant)
+	p.write("notes/plan.md", "# Plan\n\nA page, not a note.\n")
+	p.write("notes/000002.md", noteMarkdown(2, "Pushed note."))
+	p.commit("a page and a note")
+	p.mustPush()
+	waitFor(t, "the pushed note", func() bool { return noteTexts(t, ada)[2] == "Pushed note." })
+	if got := noteTexts(t, ada); len(got) != 1 {
+		t.Errorf("notes: %v, want only the pushed note", got)
+	}
+	if code, err := srv.Stop(5 * time.Second); err != nil || code != 0 {
+		t.Fatalf("stop: %d, %v", code, err)
+	}
+	srv = contracttest.StartHubIn(t, srv.DataDir, srv.AdminKey, nil)
+	ada = srv.WithKey(t, ada.Key)
+	if got := noteTexts(t, ada); len(got) != 1 || got[2] != "Pushed note." {
+		t.Errorf("notes after the restart: %v", got)
+	}
+	if n := addNote(t, ada, "Hub note", ""); n.GetId() != 3 {
+		t.Errorf("the next note has ID %d, want 3", n.GetId())
 	}
 }

@@ -335,6 +335,8 @@ func cmdDecisionList(e *env, fs *flag.FlagSet) func([]string) error {
 
 func cmdNoteAdd(e *env, fs *flag.FlagSet) func([]string) error {
 	file := fs.String("file", "", "read the text from this file (- for stdin)")
+	var tags stringList
+	fs.Var(&tags, "tag", "a tag of the note; repeat it for more tags")
 	return func(args []string) error {
 		text, err := e.readRecordText(args, *file, "note add")
 		if err != nil {
@@ -345,7 +347,7 @@ func cmdNoteAdd(e *env, fs *flag.FlagSet) func([]string) error {
 			return err
 		}
 		// Only an explicit --session links the note to a session.
-		res, err := c.AddNote(e.ctx, text, e.session)
+		res, err := c.AddNote(e.ctx, text, e.session, tags)
 		if err != nil {
 			return err
 		}

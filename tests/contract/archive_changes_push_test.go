@@ -73,7 +73,7 @@ func TestArtifactChangesOfPushes(t *testing.T) {
 	both("push, removed", change(changesv1.ChangeKind_CHANGE_KIND_REMOVED, "documents/one.md", ""))
 
 	p.write("z.md", "z")
-	p.write("notes/000003.yaml", noteFile)
+	p.write("notes/000003.md", noteFile)
 	p.write("m/n.md", "n")
 	p.write("a.md", "a")
 	p.commit("several files")
@@ -81,7 +81,7 @@ func TestArtifactChangesOfPushes(t *testing.T) {
 	both("push, several files",
 		change(changesv1.ChangeKind_CHANGE_KIND_CREATED, "a.md", versionIn(t, p, "a.md")),
 		change(changesv1.ChangeKind_CHANGE_KIND_CREATED, "m/n.md", versionIn(t, p, "m/n.md")),
-		change(changesv1.ChangeKind_CHANGE_KIND_CREATED, "notes/000003.yaml", versionIn(t, p, "notes/000003.yaml")),
+		change(changesv1.ChangeKind_CHANGE_KIND_CREATED, "notes/000003.md", versionIn(t, p, "notes/000003.md")),
 		change(changesv1.ChangeKind_CHANGE_KIND_CREATED, "z.md", versionIn(t, p, "z.md")))
 }
 

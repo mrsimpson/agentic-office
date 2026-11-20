@@ -353,7 +353,9 @@ path: hub/records/minutes/api
 
 ### Notes
 
-Adds free notes, with or without a session, and lists them like the decisions. A note is a
+Adds free notes, with or without a session, and lists them like the decisions. A note is
+Markdown text with optional tags. It keeps its author, whether the author is a human or an agent,
+the time and the session, if any. A note is a
 memory: once it is released, it never changes; a correction is a new note that refers to the old
 one. Notes are sources of the wiki (`dec-wiki`, `concept-wiki`). A sentence that is off the record must not go into a
 note. Ingest copies notes into documents, so the hub cannot remove a sentence that is marked off
@@ -568,7 +570,10 @@ The memory of the team: decisions, minutes and notes (`dec-records-per-type`). E
 own interface and its own types, and each record keeps who wrote it and whether that was a human
 or an agent. Decisions, minutes and notes are the sources of the wiki (`dec-wiki`). Tasks are not part of this block; they have their own part of the hub.
 
-Every new record is one commit in the archive (`dec-yaml-git-storage`). A command returns only
+Decisions and minutes are YAML files. A note is a Markdown file whose front matter names the
+schema, the author, whether the author is a human or an agent, the time, the session, if any, and
+the tags; its body is the text of the note (`dec-wiki`). So a clone of the tenant opens the notes
+as readable pages. Every new record is one commit in the archive (`dec-yaml-git-storage`). A command returns only
 after its commit, so a record that a client got back is stored. Local commits are fast, so this
 does not slow the meeting; the commit of the minutes is part of ending a session. The block reads
 its records back from the archive at start, so they survive a restart. It also reloads a record file
@@ -579,7 +584,7 @@ there first: it reloads and takes the next free ID.
 :::building-block
 id: bb-records
 title: Records (decisions, minutes, notes)
-technology: Go / YAML in the archive
+technology: Go / YAML and Markdown in the archive
 parent: bb-office-hub
 path: hub/records
 requires: if-token-check, if-archive-storage, if-archive-watch
@@ -589,7 +594,8 @@ implements: concept-wiki
 
 #### Records check
 
-Lets the artifacts part check a file of a record type (decision, minutes or note) before it accepts a push. The part owns the schemas of
+Lets the artifacts part check a file of a record type (decision, minutes or note) before it accepts a push. A decision or minutes is
+checked as YAML, and a note as Markdown with front matter and a text in its body. The part owns the schemas of
 its types, and the same check serves its own interface, so every rule exists once. The part names the schemas that it owns. A call
 gives the path, the content and the name of the schema; the part answers that the file is valid, or
 that it is invalid, with the reasons in plain words.

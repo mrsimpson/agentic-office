@@ -164,7 +164,7 @@ var DecisionList = &sdk.Tool{Name: "decision_list", Title: "List decisions", Ann
 
 // NoteAdd is the tool note_add.
 var NoteAdd = &sdk.Tool{Name: "note_add", Title: "Add a note", Annotations: Additive,
-	Description: `Add a free note, with you as its author. Never put a sentence that is off the record into a note. Give session to link it to a meeting. Returns {"note", "duplicate"}.`}
+	Description: `Add a free note in Markdown, with you as its author and optional tags, for example ["budget"]. The hub stores it as notes/NNNNNN.md with front matter. Never put a sentence that is off the record into a note. Give session to link it to a meeting. Returns {"note", "duplicate"}.`}
 
 // NoteList is the tool note_list.
 var NoteList = &sdk.Tool{Name: "note_list", Title: "List notes", Annotations: ReadOnly,
@@ -313,6 +313,13 @@ type FileIn struct {
 type RecordIn struct {
 	Text    string `json:"text" jsonschema:"The text. Never include a sentence that is off the record."`
 	Session string `json:"session,omitempty" jsonschema:"Link the record to this session. Default: no session (unlike the session commands)."`
+}
+
+// NoteIn is the input of the tool note_add.
+type NoteIn struct {
+	Text    string   `json:"text" jsonschema:"The text in Markdown. Never include a sentence that is off the record."`
+	Tags    []string `json:"tags,omitempty" jsonschema:"Tags of the note, for example [\"budget\"]. Use the tags that similar notes and pages already use."`
+	Session string   `json:"session,omitempty" jsonschema:"Link the note to this session. Default: no session (unlike the session commands)."`
 }
 
 // ListIn is the input of a tool.
