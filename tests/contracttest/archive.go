@@ -30,6 +30,12 @@ func (s *Hub) TenantSessionLogsDir(tenantID string) string {
 	return filepath.Join(s.DataDir, "repos", "session-logs", tenantID)
 }
 
+// TenantStagingDir is the staging repository of a tenant: what sessions have not released
+// (dec-staging-repository). It exists once the tenant is created. Git access never serves it.
+func (s *Hub) TenantStagingDir(tenantID string) string {
+	return filepath.Join(s.DataDir, "repos", "staging", tenantID)
+}
+
 // HubRepoDir is the Git repository of the hub: users, tenants and memberships (system/).
 func (s *Hub) HubRepoDir() string { return filepath.Join(s.DataDir, "repos", "hub") }
 

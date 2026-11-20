@@ -5,8 +5,10 @@
 // (dec-artifact-sync, risk-stale-memory).
 //
 // The interface is in-process and needs no token. A part calls Watcher.Watch with the directories
-// it cares about and gets a Subscription. The archive implements Watcher for each tenant (the
-// type archive.Repo).
+// it cares about and gets a Subscription. The archive implements Watcher for the artifact
+// repository and for the staging repository of each tenant (the type archive.Repo). The staging
+// repository has the same layout, so a part watches the same directories there and gets the
+// staged artifacts; the state of the staging areas is never reported.
 //
 // The changes are the same that if-artifact-changes reports to a participant: the artifacts
 // (Markdown and YAML files) that were created, changed or removed, with the version of the new

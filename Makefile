@@ -32,12 +32,13 @@ arch:
 	$(GO) test -count=1 ./tests/architecture/...
 
 # Contract tests: black-box tests per building block against real processes. make test runs
-# them together with the architecture test.
+# them together with the architecture test. The contract tests of the in-process interfaces of the
+# archive lie in its own tree (hub/archive), because a test under tests/ may not open the archive.
 test: arch contract
 
 contract: build
 	$(GO) vet ./...
-	OFFICE_BIN_DIR=$(BIN) $(GO) test -count=1 ./tests/contract/...
+	OFFICE_BIN_DIR=$(BIN) $(GO) test -count=1 ./tests/contract/... ./hub/archive/...
 
 # End-to-end tests: real processes across several building blocks. make e2e is the quick run for
 # local work: it skips the tests that wait in real time on purpose (go test -short). make e2e-all

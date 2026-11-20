@@ -8,14 +8,15 @@
 // success (issue #43 covers the real remote).
 //
 // The hub has several repositories (concept-multi-tenancy), kept in Repos (storage.Archives): the
-// hub repository, where Identity keeps users, tenants and memberships, and one repository for each
-// tenant: one for its artifacts and one for its session logs. They lie below one root in a fixed
-// layout, hub/, tenants/<id>/ (artifacts) and session-logs/<id>/ (session logs). The three
-// directories keep the repositories apart, whatever the tenant ID is. Each is a Repo with its own
-// commit queue, so a busy tenant does not hold up another tenant or the hub repository, and a
-// session write does not hold up a record. Both repositories of a tenant are created with the
-// tenant and stay when the tenant is removed. At start, Repos opens both and creates the
-// session-log repository if a tenant has none yet.
+// hub repository, where Identity keeps users, tenants and memberships, and three repositories for
+// each tenant: one for its artifacts, one for its session logs and one for what sessions have not
+// released (the staging repository). They lie below one root in a fixed layout, hub/,
+// tenants/<id>/ (artifacts), session-logs/<id>/ (session logs) and staging/<id>/ (staging). The
+// four directories keep the repositories apart, whatever the tenant ID is. Each is a Repo with its
+// own commit queue, so a busy tenant does not hold up another tenant or the hub repository, and a
+// session write does not hold up a record. The repositories of a tenant are created with the
+// tenant and stay when the tenant is removed. At start, Repos opens them and creates the
+// session-log and the staging repository if a tenant has none yet.
 //
 // The artifact repository of a tenant starts with one first commit that holds no artifact: an
 // empty commit by office-hub, so the branch main exists from the start and a clone of a new tenant
@@ -24,8 +25,38 @@
 //
 // The session logs hold the original of sentences that are off the record (dec-off-the-record),
 // so they have a repository of their own: only the meeting session uses it (Archives.SessionLogs),
-// Git access never serves it, and no interface for participants reads it. if-archive-read,
+// Git access never serves it, and no interface for participants reads it. Git access never
+// serves the staging repository either: if-archive-repository gives it only the artifact
+// repository. if-archive-read,
 // if-archive-repository and if-artifact-changes concern the artifact repository only.
+//
+// The staging repository (dec-staging-repository, type Staging, storage.Staging) has the layout
+// of the artifact repository: a staged file lies at the path that it gets on its release. The
+// state of each area lies in .areas/<name>/area.yaml, where <name> is the session ID, or "=" plus
+// its base64url form when the ID is not safe as a file name. The state holds the session ID, the
+// readers, the deadline, whether an objection holds the release, every name that ever lay in the
+// area, the authors of its changes and the steps of a running release. The directory starts with a
+// dot, so no artifact path can lie in it, and no read of artifacts and no watcher sees it. A write
+// to an area reads the state of every area first, so a path belongs to one area only. Every
+// method takes the commit queue of the staging repository for its whole read and write, and only
+// the archive writes this repository, so the state it reads is the state it builds on.
+//
+// The release runs one at a time per tenant and has three steps, each recorded:
+//
+//  1. Close: the state gets the release author; from now on writes and OpenArea fail with
+//     storage.ErrAreaClosed.
+//  2. Move: one commit in the artifact repository with every file of the area and the removal of
+//     the stub of every name whose file is gone. The author is the release author (or office-hub),
+//     the message names the session in the trailer "Office-Release" and lists the authors of the
+//     area as "Co-authored-by", except the author of the commit. The archive copies the file
+//     objects as they are and reads no content. The ID of the commit is written into the state
+//     before main moves to it; when main moved in the meantime, the commit is built again and
+//     recorded again.
+//  3. Clean up: one commit in the staging repository removes the files and the state of the area.
+//
+// After a restart, a closed area shows its running release (Area.Release) and Release completes
+// it: the recorded commit is not made again when it lies in the history of main, which is never
+// rewritten. An area with nothing to move releases without a commit in the artifact repository.
 //
 // It provides if-archive-watch (package watch): the in-process form of the changes. The parts that
 // keep files in memory (records, tasks, slides) ask Repo.Watch (Repos.Watcher for a tenant) for the
@@ -33,7 +64,8 @@
 // follower of the same delivery as a call of the changes stream (follow.go): one path serves both,
 // with the same buffer of 16 events, and a watcher that does not read fast enough is dropped and
 // its subscription ends with watch.ErrDropped. The watcher is registered when Watch returns. No
-// token is needed. Only the artifact repository of a tenant has watchers.
+// token is needed. The artifact repository (Repos.Watcher) and the staging repository
+// (Repos.StagingWatcher) of a tenant have watchers.
 //
 // It provides if-archive-read (ReadService, the Protobuf contract in package api), if-archive-repository
 // (Repos implements package repository: where Git finds the bare repository of a tenant, and the

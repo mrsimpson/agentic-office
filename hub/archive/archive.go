@@ -166,27 +166,46 @@ func exitCode(err error) int {
 
 // Commit implements storage.Archive.
 func (r *Repo) Commit(ctx context.Context, c storage.Change) (string, error) {
+	if err := checkChange(c); err != nil {
+		return "", err
+	}
+	r.turn.Lock()
+	defer r.turn.Unlock()
+	return r.commitLocked(ctx, c, nil)
+}
+
+// checkChange checks the message, the paths and the author of a change.
+func checkChange(c storage.Change) error {
 	if strings.TrimSpace(c.Message) == "" {
-		return "", errors.New("archive: a change needs a message")
+		return errors.New("archive: a change needs a message")
 	}
 	seen := map[string]bool{}
 	for _, f := range c.Files {
 		if err := storage.CheckPath(f.Path); err != nil {
-			return "", err
+			return err
 		}
 		if seen[f.Path] {
-			return "", fmt.Errorf("archive: path %q is twice in one change", f.Path)
+			return fmt.Errorf("archive: path %q is twice in one change", f.Path)
 		}
 		seen[f.Path] = true
 	}
 	if a := c.Author; a != (storage.Author{}) && (a.Name == "" || a.Email == "") {
-		return "", errors.New("archive: an author needs a name and an email")
+		return errors.New("archive: an author needs a name and an email")
 	}
-	r.turn.Lock()
-	defer r.turn.Unlock()
-	// Write the files as objects once; a retry reuses them.
+	return nil
+}
+
+// commitLocked carries out a change that checkChange accepted, or a change of the archive itself
+// whose paths may lie in a directory that starts with a dot (the state of the staging areas). The
+// caller holds r.turn. beforeRef, if not nil, runs with the ID of every commit that is built,
+// before main moves to it; if it fails, main does not move.
+func (r *Repo) commitLocked(ctx context.Context, c storage.Change, beforeRef func(id string) error) (string, error) {
+	// Write the files as objects once; a retry reuses them. A removed file has no object.
 	blobs := make([]string, len(c.Files))
 	for i, f := range c.Files {
+		if f.Remove {
+			continue
+		}
 		out, err := r.runInput(ctx, f.Data, "hash-object", "-w", "--stdin")
 		if err != nil {
 			return "", err
@@ -228,6 +247,11 @@ func (r *Repo) Commit(ctx context.Context, c storage.Change) (string, error) {
 			return "", err
 		}
 		id := strings.TrimSpace(string(out))
+		if beforeRef != nil {
+			if err := beforeRef(id); err != nil {
+				return "", err
+			}
+		}
 		// The one atomic step: main moves to the new commit only if it is still at old. An empty
 		// old value means that main must not exist yet.
 		if _, err := r.run(ctx, "update-ref", "-m", "office-hub commit", "refs/heads/main", id, old); err != nil {
@@ -279,6 +303,11 @@ func (r *Repo) buildTree(ctx context.Context, old string, files []storage.File, 
 	}
 	var entries bytes.Buffer
 	for i, f := range files {
+		if f.Remove {
+			// Mode 0 removes the path from the index.
+			fmt.Fprintf(&entries, "0 %s\t%s\x00", strings.Repeat("0", 40), f.Path)
+			continue
+		}
 		fmt.Fprintf(&entries, "100644 %s\t%s\x00", blobs[i], f.Path)
 	}
 	if entries.Len() > 0 {
@@ -392,8 +421,13 @@ func (r *Repo) Read(ctx context.Context, dir string) ([]storage.File, error) {
 	if err != nil || head == "" {
 		return nil, err
 	}
+	return r.readAt(ctx, head, dir)
+}
+
+// readAt returns the files under the paths in the commit head, ordered by path.
+func (r *Repo) readAt(ctx context.Context, head string, paths ...string) ([]storage.File, error) {
 	// One entry per file: "<mode> <type> <object>\t<path>", separated by NUL.
-	list, err := r.run(ctx, "ls-tree", "-r", "-z", "--full-tree", head, "--", dir)
+	list, err := r.run(ctx, append([]string{"ls-tree", "-r", "-z", "--full-tree", head, "--"}, paths...)...)
 	if err != nil {
 		return nil, err
 	}

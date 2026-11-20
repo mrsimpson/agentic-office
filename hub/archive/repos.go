@@ -14,18 +14,20 @@ import (
 )
 
 // The layout below the root is fixed (concept-multi-tenancy): the hub repository and, apart from
-// it, two repositories for each tenant: hub/, tenants/<id>/ for the artifacts and
-// session-logs/<id>/ for the session logs. The three kinds lie in three directories, so no
-// tenant ID can make one repository the same as another.
+// it, three repositories for each tenant: hub/, tenants/<id>/ for the artifacts,
+// session-logs/<id>/ for the session logs and staging/<id>/ for what sessions have not released.
+// The four kinds lie in four directories, so no tenant ID can make one repository the same as
+// another.
 const (
 	hubName         = "hub"
 	tenantsName     = "tenants"
 	sessionLogsName = "session-logs"
+	stagingName     = "staging"
 )
 
-// Repos is the set of the repositories of the hub: the hub repository and two for each tenant (the
-// artifacts and the session logs). It implements storage.Archives. Each repository is a Repo with
-// its own commit queue.
+// Repos is the set of the repositories of the hub: the hub repository and three for each tenant
+// (the artifacts, the session logs and the staging areas). It implements storage.Archives. Each
+// repository is a Repo with its own commit queue.
 type Repos struct {
 	root string
 	opts Options
@@ -36,15 +38,17 @@ type Repos struct {
 	// sessionLogs holds the session-log repository of each tenant. Nothing but Archives hands it
 	// out, and only to the meeting session.
 	sessionLogs map[string]*Repo
+	// staging holds the staging repository of each tenant. Git access never gets it.
+	staging map[string]*Staging
 }
 
 var _ storage.Archives = (*Repos)(nil)
 
 // OpenRepos opens the repositories below root and creates the hub repository if needed. It opens
 // the repositories of every tenant that already has an artifact repository and creates the
-// session-log repository of such a tenant if it is missing. opts.Dir is ignored.
+// session-log and the staging repository of such a tenant if one is missing. opts.Dir is ignored.
 func OpenRepos(ctx context.Context, root string, opts Options) (*Repos, error) {
-	r := &Repos{root: root, opts: opts, tenants: map[string]*Repo{}, sessionLogs: map[string]*Repo{}}
+	r := &Repos{root: root, opts: opts, tenants: map[string]*Repo{}, sessionLogs: map[string]*Repo{}, staging: map[string]*Staging{}}
 	var err error
 	if r.hub, err = r.open(ctx, filepath.Join(root, hubName)); err != nil {
 		return nil, err
@@ -63,6 +67,11 @@ func OpenRepos(ctx context.Context, root string, opts Options) (*Repos, error) {
 		if r.sessionLogs[e.Name()], err = r.open(ctx, filepath.Join(root, sessionLogsName, e.Name())); err != nil {
 			return nil, err
 		}
+		staging, err := r.open(ctx, filepath.Join(root, stagingName, e.Name()))
+		if err != nil {
+			return nil, err
+		}
+		r.staging[e.Name()] = &Staging{repo: staging, artifacts: r.tenants[e.Name()]}
 	}
 	return r, nil
 }
@@ -102,14 +111,27 @@ func (r *Repos) Changes(tenant string) (*ChangesService, error) {
 	return NewChangesService(repo), nil
 }
 
-// Watcher returns the watch interface (if-archive-watch) of a tenant. It fails with
-// repository.ErrNoTenant if the tenant has no repository.
+// Watcher returns the watch interface (if-archive-watch) of the artifact repository of a tenant.
+// It fails with repository.ErrNoTenant if the tenant has no repository.
 func (r *Repos) Watcher(tenant string) (watch.Watcher, error) {
 	repo, err := r.tenant(tenant)
 	if err != nil {
 		return nil, err
 	}
 	return repo, nil
+}
+
+// StagingWatcher returns the watch interface (if-archive-watch) of the staging repository of a
+// tenant: the staged artifacts that were created, changed or removed, in the same form as for
+// the artifact repository. The state of the areas is not reported. It fails with
+// repository.ErrNoTenant if the tenant has no repository.
+func (r *Repos) StagingWatcher(tenant string) (watch.Watcher, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if s := r.staging[tenant]; s != nil {
+		return s.repo, nil
+	}
+	return nil, repository.ErrNoTenant
 }
 
 func (r *Repos) tenant(id string) (*Repo, error) {
@@ -128,7 +150,8 @@ func (r *Repos) HubDir() string { return r.hub.Dir() }
 func (r *Repos) Hub() storage.Archive { return r.hub }
 
 // CreateTenant implements storage.Archives. The artifact repository starts with one first commit
-// that holds no artifact, so main exists from the start. The session-log repository stays empty.
+// that holds no artifact, so main exists from the start. The session-log and the staging
+// repository stay empty.
 func (r *Repos) CreateTenant(ctx context.Context, id string) error {
 	if err := storage.CheckTenantID(id); err != nil {
 		return err
@@ -149,7 +172,12 @@ func (r *Repos) CreateTenant(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
+	staging, err := r.open(ctx, filepath.Join(r.root, stagingName, id))
+	if err != nil {
+		return err
+	}
 	r.tenants[id], r.sessionLogs[id] = repo, logs
+	r.staging[id] = &Staging{repo: staging, artifacts: repo}
 	return nil
 }
 
@@ -169,6 +197,16 @@ func (r *Repos) SessionLogs(id string) (storage.Archive, error) {
 	defer r.mu.Unlock()
 	if repo := r.sessionLogs[id]; repo != nil {
 		return repo, nil
+	}
+	return nil, storage.ErrNoTenant
+}
+
+// Staging implements storage.Archives.
+func (r *Repos) Staging(id string) (storage.Staging, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if s := r.staging[id]; s != nil {
+		return s, nil
 	}
 	return nil, storage.ErrNoTenant
 }
