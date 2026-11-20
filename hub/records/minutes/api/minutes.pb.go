@@ -3,8 +3,13 @@
 //
 // While a session runs, its participants write the running minutes through the session commands
 // (minutes.update in commands.proto). When the session ends, the hub stores the last version as
-// the minutes of the session (rs-session-ends). This interface reads the stored minutes. Clients
-// do not write minutes here.
+// the minutes of the session (rs-session-ends). Clients never create minutes here.
+//
+// The stored minutes wait for the release of the session (concept-session-release): they are
+// staged. Until the release, every participant of the session may change or remove them here,
+// and only the readers of the session (its participants and the tenant admins) see their content.
+// Everyone else sees their stub: minutes with only their id and stub set. Released minutes never
+// change.
 //
 // Every call needs an access token of a participant (see identity.proto). A stage link cannot
 // read the minutes. A sentence that is off the record must not go into minutes
@@ -100,7 +105,13 @@ type Minutes struct {
 	Time *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=time,proto3" json:"time,omitempty"`
 	// command_id is "office/session-end/" plus the command ID of the command that ended the
 	// session.
-	CommandId     string `protobuf:"bytes,7,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
+	CommandId string `protobuf:"bytes,7,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
+	// staged is set in a response for minutes that wait for the release of their session. It is
+	// never stored.
+	Staged bool `protobuf:"varint,8,opt,name=staged,proto3" json:"staged,omitempty"`
+	// stub is set in a response for staged minutes that the caller may not read: only the id is
+	// set then. It is never stored.
+	Stub          bool `protobuf:"varint,9,opt,name=stub,proto3" json:"stub,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -182,6 +193,20 @@ func (x *Minutes) GetCommandId() string {
 		return x.CommandId
 	}
 	return ""
+}
+
+func (x *Minutes) GetStaged() bool {
+	if x != nil {
+		return x.Staged
+	}
+	return false
+}
+
+func (x *Minutes) GetStub() bool {
+	if x != nil {
+		return x.Stub
+	}
+	return false
 }
 
 type GetMinutesRequest struct {
@@ -272,6 +297,252 @@ func (x *GetMinutesResponse) GetMinutes() *Minutes {
 	return nil
 }
 
+type ChangeMinutesRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// command_id is created by the client.
+	CommandId string `protobuf:"bytes,1,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
+	// id is the minutes to change.
+	Id uint32 `protobuf:"varint,2,opt,name=id,proto3" json:"id,omitempty"`
+	// session_id must be the session of the minutes.
+	SessionId string `protobuf:"bytes,3,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	Text      string `protobuf:"bytes,4,opt,name=text,proto3" json:"text,omitempty"`
+	// author_participant_id must be the participant of the access token.
+	AuthorParticipantId string `protobuf:"bytes,5,opt,name=author_participant_id,json=authorParticipantId,proto3" json:"author_participant_id,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *ChangeMinutesRequest) Reset() {
+	*x = ChangeMinutesRequest{}
+	mi := &file_office_minutes_v1_minutes_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ChangeMinutesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ChangeMinutesRequest) ProtoMessage() {}
+
+func (x *ChangeMinutesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_office_minutes_v1_minutes_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ChangeMinutesRequest.ProtoReflect.Descriptor instead.
+func (*ChangeMinutesRequest) Descriptor() ([]byte, []int) {
+	return file_office_minutes_v1_minutes_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ChangeMinutesRequest) GetCommandId() string {
+	if x != nil {
+		return x.CommandId
+	}
+	return ""
+}
+
+func (x *ChangeMinutesRequest) GetId() uint32 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *ChangeMinutesRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *ChangeMinutesRequest) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
+func (x *ChangeMinutesRequest) GetAuthorParticipantId() string {
+	if x != nil {
+		return x.AuthorParticipantId
+	}
+	return ""
+}
+
+type ChangeMinutesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Minutes       *Minutes               `protobuf:"bytes,1,opt,name=minutes,proto3" json:"minutes,omitempty"`
+	Duplicate     bool                   `protobuf:"varint,2,opt,name=duplicate,proto3" json:"duplicate,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ChangeMinutesResponse) Reset() {
+	*x = ChangeMinutesResponse{}
+	mi := &file_office_minutes_v1_minutes_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ChangeMinutesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ChangeMinutesResponse) ProtoMessage() {}
+
+func (x *ChangeMinutesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_office_minutes_v1_minutes_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ChangeMinutesResponse.ProtoReflect.Descriptor instead.
+func (*ChangeMinutesResponse) Descriptor() ([]byte, []int) {
+	return file_office_minutes_v1_minutes_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ChangeMinutesResponse) GetMinutes() *Minutes {
+	if x != nil {
+		return x.Minutes
+	}
+	return nil
+}
+
+func (x *ChangeMinutesResponse) GetDuplicate() bool {
+	if x != nil {
+		return x.Duplicate
+	}
+	return false
+}
+
+type RemoveMinutesRequest struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	CommandId string                 `protobuf:"bytes,1,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
+	Id        uint32                 `protobuf:"varint,2,opt,name=id,proto3" json:"id,omitempty"`
+	// session_id must be the session of the minutes.
+	SessionId string `protobuf:"bytes,3,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	// author_participant_id must be the participant of the access token.
+	AuthorParticipantId string `protobuf:"bytes,4,opt,name=author_participant_id,json=authorParticipantId,proto3" json:"author_participant_id,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *RemoveMinutesRequest) Reset() {
+	*x = RemoveMinutesRequest{}
+	mi := &file_office_minutes_v1_minutes_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RemoveMinutesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RemoveMinutesRequest) ProtoMessage() {}
+
+func (x *RemoveMinutesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_office_minutes_v1_minutes_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RemoveMinutesRequest.ProtoReflect.Descriptor instead.
+func (*RemoveMinutesRequest) Descriptor() ([]byte, []int) {
+	return file_office_minutes_v1_minutes_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *RemoveMinutesRequest) GetCommandId() string {
+	if x != nil {
+		return x.CommandId
+	}
+	return ""
+}
+
+func (x *RemoveMinutesRequest) GetId() uint32 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *RemoveMinutesRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *RemoveMinutesRequest) GetAuthorParticipantId() string {
+	if x != nil {
+		return x.AuthorParticipantId
+	}
+	return ""
+}
+
+type RemoveMinutesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Duplicate     bool                   `protobuf:"varint,1,opt,name=duplicate,proto3" json:"duplicate,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RemoveMinutesResponse) Reset() {
+	*x = RemoveMinutesResponse{}
+	mi := &file_office_minutes_v1_minutes_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RemoveMinutesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RemoveMinutesResponse) ProtoMessage() {}
+
+func (x *RemoveMinutesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_office_minutes_v1_minutes_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RemoveMinutesResponse.ProtoReflect.Descriptor instead.
+func (*RemoveMinutesResponse) Descriptor() ([]byte, []int) {
+	return file_office_minutes_v1_minutes_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *RemoveMinutesResponse) GetDuplicate() bool {
+	if x != nil {
+		return x.Duplicate
+	}
+	return false
+}
+
 type ListMinutesRequest struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
 	AfterId uint32                 `protobuf:"varint,1,opt,name=after_id,json=afterId,proto3" json:"after_id,omitempty"`
@@ -285,7 +556,7 @@ type ListMinutesRequest struct {
 
 func (x *ListMinutesRequest) Reset() {
 	*x = ListMinutesRequest{}
-	mi := &file_office_minutes_v1_minutes_proto_msgTypes[3]
+	mi := &file_office_minutes_v1_minutes_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -297,7 +568,7 @@ func (x *ListMinutesRequest) String() string {
 func (*ListMinutesRequest) ProtoMessage() {}
 
 func (x *ListMinutesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_office_minutes_v1_minutes_proto_msgTypes[3]
+	mi := &file_office_minutes_v1_minutes_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -310,7 +581,7 @@ func (x *ListMinutesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMinutesRequest.ProtoReflect.Descriptor instead.
 func (*ListMinutesRequest) Descriptor() ([]byte, []int) {
-	return file_office_minutes_v1_minutes_proto_rawDescGZIP(), []int{3}
+	return file_office_minutes_v1_minutes_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ListMinutesRequest) GetAfterId() uint32 {
@@ -343,7 +614,7 @@ type ListMinutesResponse struct {
 
 func (x *ListMinutesResponse) Reset() {
 	*x = ListMinutesResponse{}
-	mi := &file_office_minutes_v1_minutes_proto_msgTypes[4]
+	mi := &file_office_minutes_v1_minutes_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -355,7 +626,7 @@ func (x *ListMinutesResponse) String() string {
 func (*ListMinutesResponse) ProtoMessage() {}
 
 func (x *ListMinutesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_office_minutes_v1_minutes_proto_msgTypes[4]
+	mi := &file_office_minutes_v1_minutes_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -368,7 +639,7 @@ func (x *ListMinutesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMinutesResponse.ProtoReflect.Descriptor instead.
 func (*ListMinutesResponse) Descriptor() ([]byte, []int) {
-	return file_office_minutes_v1_minutes_proto_rawDescGZIP(), []int{4}
+	return file_office_minutes_v1_minutes_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ListMinutesResponse) GetMinutes() []*Minutes {
@@ -382,7 +653,7 @@ var File_office_minutes_v1_minutes_proto protoreflect.FileDescriptor
 
 const file_office_minutes_v1_minutes_proto_rawDesc = "" +
 	"\n" +
-	"\x1foffice/minutes/v1/minutes.proto\x12\x11office.minutes.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x8f\x02\n" +
+	"\x1foffice/minutes/v1/minutes.proto\x12\x11office.minutes.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xbb\x02\n" +
 	"\aMinutes\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x12\x1d\n" +
 	"\n" +
@@ -393,12 +664,34 @@ const file_office_minutes_v1_minutes_proto_rawDesc = "" +
 	"authorKind\x12.\n" +
 	"\x04time\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\x12\x1d\n" +
 	"\n" +
-	"command_id\x18\a \x01(\tR\tcommandId\"2\n" +
+	"command_id\x18\a \x01(\tR\tcommandId\x12\x16\n" +
+	"\x06staged\x18\b \x01(\bR\x06staged\x12\x12\n" +
+	"\x04stub\x18\t \x01(\bR\x04stub\"2\n" +
 	"\x11GetMinutesRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\"J\n" +
 	"\x12GetMinutesResponse\x124\n" +
-	"\aminutes\x18\x01 \x01(\v2\x1a.office.minutes.v1.MinutesR\aminutes\"d\n" +
+	"\aminutes\x18\x01 \x01(\v2\x1a.office.minutes.v1.MinutesR\aminutes\"\xac\x01\n" +
+	"\x14ChangeMinutesRequest\x12\x1d\n" +
+	"\n" +
+	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x0e\n" +
+	"\x02id\x18\x02 \x01(\rR\x02id\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x03 \x01(\tR\tsessionId\x12\x12\n" +
+	"\x04text\x18\x04 \x01(\tR\x04text\x122\n" +
+	"\x15author_participant_id\x18\x05 \x01(\tR\x13authorParticipantId\"k\n" +
+	"\x15ChangeMinutesResponse\x124\n" +
+	"\aminutes\x18\x01 \x01(\v2\x1a.office.minutes.v1.MinutesR\aminutes\x12\x1c\n" +
+	"\tduplicate\x18\x02 \x01(\bR\tduplicate\"\x98\x01\n" +
+	"\x14RemoveMinutesRequest\x12\x1d\n" +
+	"\n" +
+	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x0e\n" +
+	"\x02id\x18\x02 \x01(\rR\x02id\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x03 \x01(\tR\tsessionId\x122\n" +
+	"\x15author_participant_id\x18\x04 \x01(\tR\x13authorParticipantId\"5\n" +
+	"\x15RemoveMinutesResponse\x12\x1c\n" +
+	"\tduplicate\x18\x01 \x01(\bR\tduplicate\"d\n" +
 	"\x12ListMinutesRequest\x12\x19\n" +
 	"\bafter_id\x18\x01 \x01(\rR\aafterId\x12\x1d\n" +
 	"\n" +
@@ -410,11 +703,13 @@ const file_office_minutes_v1_minutes_proto_rawDesc = "" +
 	"AuthorKind\x12\x1b\n" +
 	"\x17AUTHOR_KIND_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11AUTHOR_KIND_HUMAN\x10\x01\x12\x15\n" +
-	"\x11AUTHOR_KIND_AGENT\x10\x022\xc9\x01\n" +
+	"\x11AUTHOR_KIND_AGENT\x10\x022\x91\x03\n" +
 	"\x0eMinutesService\x12Y\n" +
 	"\n" +
 	"GetMinutes\x12$.office.minutes.v1.GetMinutesRequest\x1a%.office.minutes.v1.GetMinutesResponse\x12\\\n" +
-	"\vListMinutes\x12%.office.minutes.v1.ListMinutesRequest\x1a&.office.minutes.v1.ListMinutesResponseBGZEgithub.com/mrsimpson/agentic-office/hub/records/minutes/api;minutesv1b\x06proto3"
+	"\vListMinutes\x12%.office.minutes.v1.ListMinutesRequest\x1a&.office.minutes.v1.ListMinutesResponse\x12b\n" +
+	"\rChangeMinutes\x12'.office.minutes.v1.ChangeMinutesRequest\x1a(.office.minutes.v1.ChangeMinutesResponse\x12b\n" +
+	"\rRemoveMinutes\x12'.office.minutes.v1.RemoveMinutesRequest\x1a(.office.minutes.v1.RemoveMinutesResponseBGZEgithub.com/mrsimpson/agentic-office/hub/records/minutes/api;minutesv1b\x06proto3"
 
 var (
 	file_office_minutes_v1_minutes_proto_rawDescOnce sync.Once
@@ -429,30 +724,39 @@ func file_office_minutes_v1_minutes_proto_rawDescGZIP() []byte {
 }
 
 var file_office_minutes_v1_minutes_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_office_minutes_v1_minutes_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_office_minutes_v1_minutes_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_office_minutes_v1_minutes_proto_goTypes = []any{
 	(AuthorKind)(0),               // 0: office.minutes.v1.AuthorKind
 	(*Minutes)(nil),               // 1: office.minutes.v1.Minutes
 	(*GetMinutesRequest)(nil),     // 2: office.minutes.v1.GetMinutesRequest
 	(*GetMinutesResponse)(nil),    // 3: office.minutes.v1.GetMinutesResponse
-	(*ListMinutesRequest)(nil),    // 4: office.minutes.v1.ListMinutesRequest
-	(*ListMinutesResponse)(nil),   // 5: office.minutes.v1.ListMinutesResponse
-	(*timestamppb.Timestamp)(nil), // 6: google.protobuf.Timestamp
+	(*ChangeMinutesRequest)(nil),  // 4: office.minutes.v1.ChangeMinutesRequest
+	(*ChangeMinutesResponse)(nil), // 5: office.minutes.v1.ChangeMinutesResponse
+	(*RemoveMinutesRequest)(nil),  // 6: office.minutes.v1.RemoveMinutesRequest
+	(*RemoveMinutesResponse)(nil), // 7: office.minutes.v1.RemoveMinutesResponse
+	(*ListMinutesRequest)(nil),    // 8: office.minutes.v1.ListMinutesRequest
+	(*ListMinutesResponse)(nil),   // 9: office.minutes.v1.ListMinutesResponse
+	(*timestamppb.Timestamp)(nil), // 10: google.protobuf.Timestamp
 }
 var file_office_minutes_v1_minutes_proto_depIdxs = []int32{
-	0, // 0: office.minutes.v1.Minutes.author_kind:type_name -> office.minutes.v1.AuthorKind
-	6, // 1: office.minutes.v1.Minutes.time:type_name -> google.protobuf.Timestamp
-	1, // 2: office.minutes.v1.GetMinutesResponse.minutes:type_name -> office.minutes.v1.Minutes
-	1, // 3: office.minutes.v1.ListMinutesResponse.minutes:type_name -> office.minutes.v1.Minutes
-	2, // 4: office.minutes.v1.MinutesService.GetMinutes:input_type -> office.minutes.v1.GetMinutesRequest
-	4, // 5: office.minutes.v1.MinutesService.ListMinutes:input_type -> office.minutes.v1.ListMinutesRequest
-	3, // 6: office.minutes.v1.MinutesService.GetMinutes:output_type -> office.minutes.v1.GetMinutesResponse
-	5, // 7: office.minutes.v1.MinutesService.ListMinutes:output_type -> office.minutes.v1.ListMinutesResponse
-	6, // [6:8] is the sub-list for method output_type
-	4, // [4:6] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	0,  // 0: office.minutes.v1.Minutes.author_kind:type_name -> office.minutes.v1.AuthorKind
+	10, // 1: office.minutes.v1.Minutes.time:type_name -> google.protobuf.Timestamp
+	1,  // 2: office.minutes.v1.GetMinutesResponse.minutes:type_name -> office.minutes.v1.Minutes
+	1,  // 3: office.minutes.v1.ChangeMinutesResponse.minutes:type_name -> office.minutes.v1.Minutes
+	1,  // 4: office.minutes.v1.ListMinutesResponse.minutes:type_name -> office.minutes.v1.Minutes
+	2,  // 5: office.minutes.v1.MinutesService.GetMinutes:input_type -> office.minutes.v1.GetMinutesRequest
+	8,  // 6: office.minutes.v1.MinutesService.ListMinutes:input_type -> office.minutes.v1.ListMinutesRequest
+	4,  // 7: office.minutes.v1.MinutesService.ChangeMinutes:input_type -> office.minutes.v1.ChangeMinutesRequest
+	6,  // 8: office.minutes.v1.MinutesService.RemoveMinutes:input_type -> office.minutes.v1.RemoveMinutesRequest
+	3,  // 9: office.minutes.v1.MinutesService.GetMinutes:output_type -> office.minutes.v1.GetMinutesResponse
+	9,  // 10: office.minutes.v1.MinutesService.ListMinutes:output_type -> office.minutes.v1.ListMinutesResponse
+	5,  // 11: office.minutes.v1.MinutesService.ChangeMinutes:output_type -> office.minutes.v1.ChangeMinutesResponse
+	7,  // 12: office.minutes.v1.MinutesService.RemoveMinutes:output_type -> office.minutes.v1.RemoveMinutesResponse
+	9,  // [9:13] is the sub-list for method output_type
+	5,  // [5:9] is the sub-list for method input_type
+	5,  // [5:5] is the sub-list for extension type_name
+	5,  // [5:5] is the sub-list for extension extendee
+	0,  // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_office_minutes_v1_minutes_proto_init() }
@@ -466,7 +770,7 @@ func file_office_minutes_v1_minutes_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_office_minutes_v1_minutes_proto_rawDesc), len(file_office_minutes_v1_minutes_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   5,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

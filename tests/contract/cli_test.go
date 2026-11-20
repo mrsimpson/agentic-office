@@ -546,6 +546,9 @@ func TestCLIRecords(t *testing.T) {
 	m := newMachine(t)
 	bot := m.user("bot", "Bot", "agent")
 	ada := m.user("ada", "Ada", "human")
+	s1 := newSession()
+	bot.join(s1)
+	ada.join(s1)
 
 	v := bot.ok("decision", "record", "We ship")
 	d, _ := v["decision"].(map[string]any)
@@ -558,8 +561,8 @@ func TestCLIRecords(t *testing.T) {
 	if err := os.WriteFile(f, []byte("Line one\nline two"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if d := ada.ok("decision", "record", "--session", "s1", "--file", f)["decision"].(map[string]any); d["text"] != "Line one\nline two" ||
-		d["authorKind"] != "AUTHOR_KIND_HUMAN" || d["sessionId"] != "s1" {
+	if d := ada.ok("decision", "record", "--session", s1, "--file", f)["decision"].(map[string]any); d["text"] != "Line one\nline two" ||
+		d["authorKind"] != "AUTHOR_KIND_HUMAN" || d["sessionId"] != s1 {
 		t.Fatalf("decision record from a file: %v", d)
 	}
 	if out, _, code := ada.run("decision", "record", "We wait"); code != 0 || out != "decision 3\n" {
@@ -570,7 +573,7 @@ func TestCLIRecords(t *testing.T) {
 		want string
 	}{
 		{nil, "1,2,3"},
-		{[]string{"--session", "s1"}, "2"},
+		{[]string{"--session", s1}, "2"},
 		{[]string{"--after", "1", "--limit", "1"}, "2"},
 		{[]string{"--after", "3"}, ""},
 	} {
@@ -578,14 +581,14 @@ func TestCLIRecords(t *testing.T) {
 			t.Fatalf("decision list %v: %s, want %s", c.args, got, c.want)
 		}
 	}
-	if out, _, code := ada.run("decision", "list", "--session", "s1"); code != 0 || out != "#2 ada: Line one line two\n" {
+	if out, _, code := ada.run("decision", "list", "--session", s1); code != 0 || out != "#2 ada (staged): Line one line two\n" {
 		t.Fatalf("decision list without --json: exit %d, %q", code, out)
 	}
 
-	v = ada.ok("note", "add", "--session", "s1", "--tag", "budget", "--tag", "bank", "A note")
+	v = ada.ok("note", "add", "--session", s1, "--tag", "budget", "--tag", "bank", "A note")
 	n, _ := v["note"].(map[string]any)
 	if v["duplicate"] != false || n["id"] != float64(1) || n["text"] != "A note" || n["authorParticipantId"] != "ada" ||
-		n["authorKind"] != "AUTHOR_KIND_HUMAN" || n["sessionId"] != "s1" || fmt.Sprint(n["tags"]) != "[budget bank]" {
+		n["authorKind"] != "AUTHOR_KIND_HUMAN" || n["sessionId"] != s1 || fmt.Sprint(n["tags"]) != "[budget bank]" {
 		t.Fatalf("note add: %v", v)
 	}
 	if out, _, code := bot.run("note", "add", "Another note"); code != 0 || out != "note 2\n" {
@@ -594,11 +597,32 @@ func TestCLIRecords(t *testing.T) {
 	if got := idsOf(listOf(t, bot.ok("note", "list"), "notes")); got != "1,2" {
 		t.Fatalf("note list: %s", got)
 	}
-	if got := idsOf(listOf(t, bot.ok("note", "list", "--session", "s1"), "notes")); got != "1" {
+	if got := idsOf(listOf(t, bot.ok("note", "list", "--session", s1), "notes")); got != "1" {
 		t.Fatalf("note list --session: %s", got)
 	}
 	if out, _, code := bot.run("note", "list", "--after", "1"); code != 0 || out != "#2 bot: Another note\n" {
 		t.Fatalf("note list without --json: exit %d, %q", code, out)
+	}
+	// A staged record changes and goes away before the release; others see its stub.
+	if out, _, code := bot.run("note", "change", "1", "--session", s1, "--tag", "bank", "A changed note"); code != 0 || out != "note 1 changed\n" {
+		t.Fatalf("note change: exit %d, %q", code, out)
+	}
+	if n, _ := bot.ok("note", "change", "1", "--session", s1, "--tag", "bank", "A changed note")["note"].(map[string]any); n["text"] != "A changed note" ||
+		n["authorParticipantId"] != "bot" || n["staged"] != true {
+		t.Fatalf("note change --json: %v", n)
+	}
+	bot.fails(1, "failed_precondition", "note", "change", "1", "Without the session")
+	bot.fails(1, "failed_precondition", "note", "change", "2", "--session", s1, "A released note")
+	bot.fails(2, "usage", "note", "change", "x", "--session", s1, "Not an ID")
+	if out, _, code := ada.run("decision", "remove", "2", "--session", s1); code != 0 || out != "decision 2 removed\n" {
+		t.Fatalf("decision remove: exit %d, %q", code, out)
+	}
+	if got := idsOf(listOf(t, bot.ok("decision", "list"), "decisions")); got != "1,3" {
+		t.Fatalf("decision list after the removal: %s", got)
+	}
+	carl := m.user("carl", "Carl", "human")
+	if out, _, code := carl.run("note", "list"); code != 0 || out != "#1 (waits for the release of its session)\n#2 bot: Another note\n" {
+		t.Fatalf("note list of a member who did not take part: exit %d, %q", code, out)
 	}
 
 	bot.fails(2, "usage", "decision", "record")
@@ -629,9 +653,19 @@ func TestCLIRecords(t *testing.T) {
 	if got := listOf(t, ada.ok("minutes", "list", "--session", sid), "minutes"); len(got) != 1 || got[0]["text"] != "Final: we ship" {
 		t.Fatalf("minutes list --session: %v", got)
 	}
-	if out, _, code := ada.run("minutes", "list"); code != 0 || out != "#1 "+sid+" bot: Final: we ship\n" {
+	if out, _, code := ada.run("minutes", "list"); code != 0 || out != "#1 "+sid+" bot (staged): Final: we ship\n" {
 		t.Fatalf("minutes list without --json: exit %d, %q", code, out)
 	}
+	if out, _, code := ada.run("minutes", "change", "1", "--session", sid, "Final: we ship on Friday"); code != 0 || out != "minutes 1 changed\n" {
+		t.Fatalf("minutes change: exit %d, %q", code, out)
+	}
+	if out, _, code := ada.run("minutes", "show", sid); code != 0 || out != "Final: we ship on Friday\n" {
+		t.Fatalf("minutes show after the change: exit %d, %q", code, out)
+	}
+	if out, _, code := ada.run("minutes", "remove", "1", "--session", sid); code != 0 || out != "minutes 1 removed\n" {
+		t.Fatalf("minutes remove: exit %d, %q", code, out)
+	}
+	bot.fails(1, "not_found", "minutes", "show", sid)
 }
 
 // TestCLIEarsCheck: join --mic and --wav check the ears before they join. If a model, the WAV

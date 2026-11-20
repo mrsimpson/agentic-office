@@ -1,9 +1,10 @@
 package contract
 
 // Contract tests of the release of a session (concept-session-release) through
-// if-session-commands and if-session-stream, against the real office-hub. No part writes the
-// staging area yet (#201, #202), so the tests stage files with contracttest.StageFile, as a part
-// of the hub would.
+// if-session-commands and if-session-stream, against the real office-hub. The documents part does
+// not write the staging area yet (#202), so the tests stage documents with
+// contracttest.StageFile, as a part of the hub would. The records stage themselves
+// (staged_records_test.go).
 
 import (
 	"context"
@@ -149,7 +150,7 @@ func TestReleaseByAHuman(t *testing.T) {
 		t.Fatal(err)
 	}
 	notes := "# Notes\n\nPlan:\nben will leave the\n  company in March\n"
-	contracttest.StageFile(t, m.staging(), m.sid, "notes/000001.md", notes)
+	contracttest.StageFile(t, m.staging(), m.sid, "documents/notes.md", notes)
 	contracttest.StageFile(t, m.staging(), m.sid, "documents/plan.md", "# Plan\n\nWe meet on Monday.\n")
 
 	end := m.endWithStatus(ada)
@@ -171,7 +172,7 @@ func TestReleaseByAHuman(t *testing.T) {
 	wantCode(t, "release by a human who did not take part", err, connect.CodeNotFound)
 	_, err = m.objectBy(carl)
 	wantCode(t, "objection by a human who did not take part", err, connect.CodeNotFound)
-	if m.released(ada) != nil || m.artifact("notes/000001.md") != "" {
+	if m.released(ada) != nil || m.artifact("documents/notes.md") != "" {
 		t.Fatal("a refused release released the session")
 	}
 
@@ -183,12 +184,12 @@ func TestReleaseByAHuman(t *testing.T) {
 	if ev.GetType() != events.SessionReleased || ev.GetActorParticipantId() != ada {
 		t.Fatalf("release event %v", ev)
 	}
-	want := []*sessioncommandsv1.Quote{{Path: "notes/000001.md", Line: 4, UtteranceEventId: secret.GetId()}}
+	want := []*sessioncommandsv1.Quote{{Path: "documents/notes.md", Line: 4, UtteranceEventId: secret.GetId()}}
 	if got := rel.GetQuotes(); len(got) != len(want) || got[0].GetPath() != want[0].Path ||
 		got[0].GetLine() != want[0].Line || got[0].GetUtteranceEventId() != want[0].UtteranceEventId {
 		t.Fatalf("quotes %v, want %v", got, want)
 	}
-	if got := m.artifact("notes/000001.md"); got != notes {
+	if got := m.artifact("documents/notes.md"); got != notes {
 		t.Errorf("released note %q, want it unchanged %q", got, notes)
 	}
 	if m.artifact("documents/plan.md") == "" {

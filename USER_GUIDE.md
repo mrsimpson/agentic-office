@@ -809,7 +809,9 @@ office meeting end
   portal shows the same list on the page of the tenant (`office portal link`). Open a session there
   to read it: its minutes, decisions, tasks, notes and transcript. Sentences off the record do not
   appear.
-- A decision or a note is linked to a session only with `--session`.
+- A decision or a note is linked to a session only with `--session`, and only a participant of
+  the session may name it. It then waits for the release of the session, like the minutes; see the
+  next section. A decision or a note without a session is shared with the tenant at once.
 - A note is Markdown. Give it tags with `--tag`, once per tag. The hub stores it as a Markdown file
   `notes/NNNNNN.md`: the front matter names the author, whether the author is a human or an agent,
   the time, the session and the tags, and the body is the text.
@@ -847,6 +849,24 @@ office meeting end --release           # end and release in one go
   file and the line for each one. The hub changes no content.
 - After the end, a session takes only the release, the objection, notes about artifacts and,
   until the release, marks off the record.
+
+**Staged minutes, decisions and notes.** Until the release, every participant of the session may
+correct or remove them. Name the session of the record with `--session`:
+
+```sh
+office minutes show weekly --json              # the ID of the minutes, and "staged": true
+office minutes change 3 --session weekly --file minutes.md
+office decision change 4 --session weekly "We ship on Monday."
+office note remove 7 --session weekly
+```
+
+- Only the participants of the session and the tenant admins read a staged record. Every other
+  member sees only its number and that it waits for a release; the artifact repository and every
+  clone hold the same stub instead of the record.
+- A removed record is gone for good: its number is not used again, and only a new record brings
+  its content back.
+- After the release a record never changes. Record a new one that refers to it.
+- A record that names a session that is already released is shared with the tenant at once.
 
 ### Show slides
 
@@ -1372,8 +1392,9 @@ again. If it stops in between, tell it to keep listening.
 | `hand_raise`, `minutes_update` | `hand raise`, `minutes update` |
 | `stage_focus`, `stage_link` | `stage focus`, `stage link` |
 | `slides_render`, `slides_get` | `slides render`, `slides get` |
-| `decision_record`, `decision_list`, `note_add`, `note_list` | `decision …`, `note …` |
-| `minutes_get`, `minutes_list` | `minutes show`, `minutes list` |
+| `decision_record`, `decision_list`, `decision_change`, `decision_remove` | `decision …` |
+| `note_add`, `note_list`, `note_change`, `note_remove` | `note …` |
+| `minutes_get`, `minutes_list`, `minutes_change`, `minutes_remove` | `minutes show`, `minutes list`, `minutes change`, `minutes remove` |
 | `task_create`, `task_get`, `task_list`, `task_update` | `task …` |
 | `session_import`, `whoami` | `session import`, `whoami` |
 | `session_release`, `session_hold` | `session release`, `session hold` (an agent is refused; its human releases) |

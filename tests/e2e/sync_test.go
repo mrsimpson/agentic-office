@@ -653,7 +653,7 @@ func TestSyncTwoTenantsNeverLeak(t *testing.T) {
 		createDoc(t, human, "documents/plan/shared.md", "# Plan of "+tn.marker+"\n")
 		createDoc(t, human, "documents/"+strings.ToLower(tn.marker)+"/only.md", "# "+tn.marker+" path\n")
 		if _, err := human.Decision.RecordDecision(syncCtx(t), &decisionv1.RecordDecisionRequest{CommandId: coreapi.NewCommandID(),
-			Text: "Decision with " + tn.marker + ".", AuthorParticipantId: human.ParticipantID, SessionId: "weekly"}); err != nil {
+			Text: "Decision with " + tn.marker + ".", AuthorParticipantId: human.ParticipantID}); err != nil {
 			t.Fatal(err)
 		}
 		// A push from a worktree of the human and one from the agent.

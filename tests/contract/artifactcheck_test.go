@@ -372,7 +372,7 @@ func show(t *testing.T, srv *contracttest.Hub, rel string) string {
 func TestRecordsInterfaceUsesTheCheck(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
-	recordDecision(t, ada, "Use Go.", "s1")
+	recordDecision(t, ada, "Use Go.", "")
 	addNote(t, ada, "Call the bank.", "")
 	for _, c := range []struct{ schema, path, start string }{
 		{"office.decision.v1", "decisions/000001.yaml", "schema: office.decision.v1\n"},

@@ -335,6 +335,10 @@ author and whether the author is a human or an agent. Each command carries an ID
 client, so a repeated command has no extra effect. A sentence that is off the record must not go
 into a decision (`dec-off-the-record`).
 
+A decision that names a session waits for the release of that session (`concept-session-release`).
+Until then, every participant of the session may change or remove it, and only the readers of the
+session see its content; everyone else sees its stub. A released decision never changes.
+
 ```arc42
 :::interface
 id: if-decision-api
@@ -350,8 +354,14 @@ path: hub/records/decision/api
 
 The minutes of a session. While the session runs, participants write the running minutes through
 the session commands. When the session ends, the meeting session stores the last version through
-this interface (`rs-session-ends`). Clients only read the stored minutes here, so the stored
-minutes have one writer. A sentence that is off the record must not go into the minutes.
+this interface (`rs-session-ends`). The stored minutes wait for the release of the session
+(`concept-session-release`). Until then, every participant of the session may change or remove
+them here, and only the readers of the session see them; everyone else sees their stub. Clients
+never create minutes here. A sentence that is off the record must not go into the minutes.
+
+The meeting session stores the minutes while it ends the session. This one write does not ask the
+meeting session back: the meeting session states that the session is not released and that the
+minute taker took part. So the records part and the meeting session never wait for each other.
 
 ```arc42
 :::interface
@@ -370,7 +380,8 @@ Adds free notes, with or without a session, and lists them like the decisions. A
 Markdown text with optional tags. It keeps its author, whether the author is a human or an agent,
 the time and the session, if any. A note is a
 memory: once it is released, it never changes; a correction is a new note that refers to the old
-one. Notes are sources of the wiki (`dec-wiki`, `concept-wiki`). A sentence that is off the record must not go into a
+one. A note that names a session waits for the release of that session, like a decision, and
+until then every participant of the session may change or remove it. Notes are sources of the wiki (`dec-wiki`, `concept-wiki`). A sentence that is off the record must not go into a
 note. Ingest copies notes into documents, so the hub cannot remove a sentence that is marked off
 the record later from those copies.
 
@@ -627,6 +638,25 @@ its records back from the archive at start, so they survive a restart. It also r
 that a push changed or added (`if-archive-watch`), and it never overwrites a file that a push put
 there first: it reloads and takes the next free ID.
 
+It routes every write that names a session (`concept-session-release`):
+
+- Only a participant of the session may name it. The block asks the meeting session
+  (`if-session-release`).
+- A new record goes into the staging area of the session while the session is not released.
+  Otherwise, and without a session, it goes into the artifact repository.
+- For each staged record, the block writes a stub of its type into the artifact repository. Every
+  stub of a type has the same content, names no session and no time, and its commit is by the hub
+  with a message that says nothing about the record. No interface changes a stub.
+- Until the release, every participant may change or remove a staged record. A change that names
+  another session, or no session, is refused, and so is a write when the release status and the
+  staging area disagree. A released record never changes.
+- A staged record shows its content only to the readers of its session and to the tenant admins,
+  whose role comes from the token check. Everyone else sees the stub.
+- It follows the staging repository like the artifact repository (`if-archive-watch`).
+
+The meeting session stores the minutes through this block while it ends a session. That write
+does not ask the meeting session back, so the two blocks never call each other in a loop.
+
 ```arc42
 :::building-block
 id: bb-records
@@ -634,8 +664,8 @@ title: Records (decisions, minutes, notes)
 technology: Go / YAML and Markdown in the archive
 parent: bb-office-hub
 path: hub/records
-requires: if-token-check, if-archive-storage, if-archive-watch
-implements: concept-wiki
+requires: if-token-check, if-archive-storage, if-archive-watch, if-session-release
+implements: concept-wiki, concept-session-release
 :::
 ```
 
@@ -643,7 +673,9 @@ implements: concept-wiki
 
 Lets the artifacts part check a file of a record type (decision, minutes or note) before it accepts a push. A decision or minutes is
 checked as YAML, and a note as Markdown with front matter and a text in its body. The part owns the schemas of
-its types, and the same check serves its own interface, so every rule exists once. The part names the schemas that it owns. A call
+its types, and the same check serves its own interface, so every rule exists once. A schema has a
+second form: the stub of a staged record (`concept-session-release`). Every stub of a type has the
+same content, and the check accepts exactly that content. The part names the schemas that it owns. A call
 gives the path, the content and the name of the schema; the part answers that the file is valid, or
 that it is invalid, with the reasons in plain words.
 
@@ -1166,7 +1198,8 @@ path: client/cli/commands
 
 The office as tools for an agent, with the same features as the CLI: join and leave a meeting,
 raise a hand, update the minutes, focus an artifact, render slides, record decisions, add notes,
-create and update tasks, import a session. The names say what an agent does, not how the hub works.
+change or remove the records of a session before its release, create and update tasks, import a
+session. The names say what an agent does, not how the hub works.
 
 ```arc42
 :::interface

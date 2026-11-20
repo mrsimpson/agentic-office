@@ -414,6 +414,78 @@ func (s *Server) addTools(srv *sdk.Server) {
 			return map[string]any{"notes": out}, nil
 		})
 
+	tool(srv, s, tools.DecisionChange,
+		func(ctx context.Context, c coreapi.Client, in tools.ChangeIn) (any, error) {
+			if in.ID == 0 || blank(in.Text) || blank(in.Session) {
+				return nil, usagef("id, text and session are required")
+			}
+			res, err := c.ChangeDecision(ctx, in.ID, in.Session, in.Text)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"decision": coreapi.MessageJSON(res.GetDecision()), "duplicate": res.GetDuplicate()}, nil
+		})
+
+	tool(srv, s, tools.DecisionRemove,
+		func(ctx context.Context, c coreapi.Client, in tools.RemoveIn) (any, error) {
+			if in.ID == 0 || blank(in.Session) {
+				return nil, usagef("id and session are required")
+			}
+			res, err := c.RemoveDecision(ctx, in.ID, in.Session)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"id": in.ID, "duplicate": res.GetDuplicate()}, nil
+		})
+
+	tool(srv, s, tools.NoteChange,
+		func(ctx context.Context, c coreapi.Client, in tools.ChangeIn) (any, error) {
+			if in.ID == 0 || blank(in.Text) || blank(in.Session) {
+				return nil, usagef("id, text and session are required")
+			}
+			res, err := c.ChangeNote(ctx, in.ID, in.Session, in.Text, in.Tags)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"note": coreapi.MessageJSON(res.GetNote()), "duplicate": res.GetDuplicate()}, nil
+		})
+
+	tool(srv, s, tools.NoteRemove,
+		func(ctx context.Context, c coreapi.Client, in tools.RemoveIn) (any, error) {
+			if in.ID == 0 || blank(in.Session) {
+				return nil, usagef("id and session are required")
+			}
+			res, err := c.RemoveNote(ctx, in.ID, in.Session)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"id": in.ID, "duplicate": res.GetDuplicate()}, nil
+		})
+
+	tool(srv, s, tools.MinutesChange,
+		func(ctx context.Context, c coreapi.Client, in tools.ChangeIn) (any, error) {
+			if in.ID == 0 || blank(in.Text) || blank(in.Session) {
+				return nil, usagef("id, text and session are required")
+			}
+			res, err := c.ChangeMinutes(ctx, in.ID, in.Session, in.Text)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"minutes": coreapi.MessageJSON(res.GetMinutes()), "duplicate": res.GetDuplicate()}, nil
+		})
+
+	tool(srv, s, tools.MinutesRemove,
+		func(ctx context.Context, c coreapi.Client, in tools.RemoveIn) (any, error) {
+			if in.ID == 0 || blank(in.Session) {
+				return nil, usagef("id and session are required")
+			}
+			res, err := c.RemoveMinutes(ctx, in.ID, in.Session)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"id": in.ID, "duplicate": res.GetDuplicate()}, nil
+		})
+
 	tool(srv, s, tools.MinutesGet,
 		func(ctx context.Context, c coreapi.Client, in tools.MinutesGetIn) (any, error) {
 			sid, err := s.sessionID(ctx, c, in.Session)

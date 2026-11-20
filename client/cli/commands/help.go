@@ -605,19 +605,25 @@ name and a fresh access token of your key, but only for the hub of this connecti
 	{Name: "decision record", Group: groupRecords, Summary: "record a decision",
 		Usage: "decision record <text> | --file F [--session S]",
 		Details: `The decision gets the author and kind from your key. It is linked to a session only with an
-explicit --session. Never put a sentence that is off the record into a record; the hub does not
-check this. --json prints {"decision": ..., "duplicate": ...}.`,
+explicit --session, and only a participant of the session may name it. A decision of a session
+that is not released waits in the staging area of the session until the release; until then every
+participant may change or remove it (decision change, decision remove). Never put a sentence that
+is off the record into a record; the hub does not check this. --json prints {"decision": ...,
+"duplicate": ...}.`,
 		Examples: []string{`office decision record "We ship on Friday."`, "office decision record --session weekly --file decision.md"}},
 	{Name: "decision list", Group: groupRecords, Summary: "list recorded decisions",
 		Usage: "decision list [--after N] [--limit N] [--session S]",
 		Details: `Oldest first, after the record ID N, at most --limit records (default 100, at most 1000). To
-read the next page, pass the ID of the last record. --json prints {"decisions": [...]}.`,
+read the next page, pass the ID of the last record. A staged record shows "(staged)" to the
+participants of its session and to tenant admins; everyone else sees only its ID and that it waits
+for the release of its session (in --json: "stub": true). --json prints {"decisions": [...]}.`,
 		Examples: []string{"office decision list --after 10 --limit 20"}},
 	{Name: "note add", Group: groupRecords, Summary: "add a note",
 		Usage: "note add <text> | --file F [--tag T]... [--session S]",
 		Details: `The text is Markdown. The hub stores the note as a Markdown file with front matter
 (notes/NNNNNN.md). --tag adds a tag; repeat it for more tags. Like a decision, a note is linked to
-a session only with an explicit --session. --json prints {"note": ..., "duplicate": ...}.`,
+a session only with an explicit --session, and it waits for the release of that session.
+--json prints {"note": ..., "duplicate": ...}.`,
 		Examples: []string{`office note add "Ask the bank about the loan."`, `office note add --tag budget --tag bank --file note.md`}},
 	{Name: "note list", Group: groupRecords, Summary: "list notes",
 		Usage:    "note list [--after N] [--limit N] [--session S]",
@@ -626,12 +632,44 @@ a session only with an explicit --session. --json prints {"note": ..., "duplicat
 	{Name: "minutes show", Group: groupRecords, Summary: "show the minutes stored when a session ended",
 		Usage: "minutes show [<session>]",
 		Details: `Prints the text of the newest stored minutes of the session (default: --session), or fails
-with not_found. --json prints {"minutes": ...}.`,
+with not_found. Until the release of the session, only its participants and the tenant admins
+read its minutes. --json prints {"minutes": ...}.`,
 		Examples: []string{"office minutes show weekly"}},
 	{Name: "minutes list", Group: groupRecords, Summary: "list stored minutes",
 		Usage:    "minutes list [--after N] [--limit N] [--session S]",
 		Details:  "Paging as for \"decision list\". --json prints {\"minutes\": [...]}.",
 		Examples: []string{"office minutes list"}},
+	{Name: "decision change", Group: groupRecords, Summary: "change a staged decision before the release",
+		Usage: "decision change <id> <text> | --file F --session S",
+		Details: `Replaces the text of a decision that waits for the release of its session. --session must
+name that session, and only a participant of it may change it; you become the author. A released
+decision never changes: record a new one that refers to it. --json prints {"decision": ...,
+"duplicate": ...}.`,
+		Examples: []string{`office decision change 4 --session weekly "We ship on Monday."`}},
+	{Name: "decision remove", Group: groupRecords, Summary: "remove a staged decision before the release",
+		Usage: "decision remove <id> --session S",
+		Details: `Removes a decision that waits for the release of its session, with the rules of "decision
+change". Its ID is not used again. --json prints {"id": ..., "duplicate": ...}.`,
+		Examples: []string{"office decision remove 4 --session weekly"}},
+	{Name: "note change", Group: groupRecords, Summary: "change a staged note before the release",
+		Usage: "note change <id> <text> | --file F [--tag T]... --session S",
+		Details: `Replaces the text and the tags of a note that waits for the release of its session, with
+the rules of "decision change". --json prints {"note": ..., "duplicate": ...}.`,
+		Examples: []string{`office note change 7 --session weekly --tag bank "Ask the bank about the loan in May."`}},
+	{Name: "note remove", Group: groupRecords, Summary: "remove a staged note before the release",
+		Usage:    "note remove <id> --session S",
+		Details:  `Removes a note that waits for the release of its session, with the rules of "decision remove".`,
+		Examples: []string{"office note remove 7 --session weekly"}},
+	{Name: "minutes change", Group: groupRecords, Summary: "change the staged minutes before the release",
+		Usage: "minutes change <id> <text> | --file F --session S",
+		Details: `Replaces the text of the minutes that the hub stored when the session ended, while they
+wait for the release, with the rules of "decision change". Take the ID from "minutes show --json".
+--json prints {"minutes": ..., "duplicate": ...}.`,
+		Examples: []string{"office minutes change 3 --session weekly --file minutes.md"}},
+	{Name: "minutes remove", Group: groupRecords, Summary: "remove the staged minutes before the release",
+		Usage:    "minutes remove <id> --session S",
+		Details:  `Removes the minutes of a session that wait for the release, with the rules of "decision remove".`,
+		Examples: []string{"office minutes remove 3 --session weekly"}},
 	{Name: "task create", Group: groupRecords, Summary: "create a task",
 		Usage: "task create <title> [--description D | --description-file F] [--assignee P] [--status S] [--session S]",
 		Details: `For now every task is a local draft of the hub. Its ref, for example local:42, is opaque: keep

@@ -4,18 +4,20 @@
 // It keeps three types of records of the team, each behind its own interface
 // (dec-records-per-type):
 //
-//   - decisions (if-decision-api, DecisionService): record and list decisions;
-//   - minutes (if-minutes-api, MinutesService): read the minutes of ended sessions. The meeting
-//     session stores them with Service.StoreMinutes when a session ends (rs-session-ends);
-//     clients cannot write minutes here;
-//   - notes (if-note-api, NoteService): add and list free notes, with or without a session.
+//   - decisions (if-decision-api, DecisionService): record and list decisions, and change or
+//     remove staged ones;
+//   - minutes (if-minutes-api, MinutesService): read the minutes of ended sessions, and change or
+//     remove staged ones. The meeting session stores them with Service.StoreMinutes when a session
+//     ends (rs-session-ends); clients never create minutes;
+//   - notes (if-note-api, NoteService): add and list free notes, with or without a session, and
+//     change or remove staged ones.
 //
 // Service implements all three. Tasks have their own building block (package tasks).
 //
 // How it works:
 //
 //   - Every record type is a list of records. Each record has an ID that grows by one per type
-//     and starts at 1. The hub never changes a record; a push can.
+//     and starts at 1. The hub never changes a released record; a push can.
 //   - Storage (dec-yaml-git-storage, dec-wiki): every record is one file in the archive
 //     (if-archive-storage): decisions/NNNNNN.yaml, minutes/NNNNNN.yaml and notes/NNNNNN.md,
 //     where NNNNNN is the ID with at least six digits. A decision or minutes is YAML with the
@@ -53,10 +55,42 @@
 //   - Every call of a client needs the caller from the identity token check (if-token-check).
 //     author_participant_id must name the participant of the token, or the call fails with
 //     PermissionDenied. The hub sets author_kind (human or agent) from the token. A stage link
-//     cannot read or write records. Any participant may write and read all records; rights by
+//     cannot read or write records. Any member may write records and read the released ones; rights by
 //     role are open (#14, #15, #22).
-//   - session_id on a record is not checked against the meeting sessions. It only links the
-//     record to a session, and the list calls can filter by it.
+//   - Staged records (concept-session-release, dec-staging-repository). A write that names a
+//     session is routed by the meeting session (if-session-release, UseSessions): only a
+//     participant may name a session (else PermissionDenied, also for a session that does not
+//     exist). While the session is not released, a new record goes into the staging area of the
+//     session (storage.Staging), with the participant as the author of the commit, and then its
+//     stub into the artifact repository: the same content for every stub of a type
+//     (check.Stub), no session, no time, the hub as the author and StubMessage as the commit
+//     message. A record that names a released session, or none, goes into the artifact
+//     repository at once, with the title, the ID and the first 60 characters of its text as the
+//     message. The staging area keeps the name before the stub is written; a crash in between
+//     leaves a staged record without a stub, and Open writes the stub. A stub whose path a push
+//     took first takes the staged file back, and the record gets the next ID.
+//   - The meeting session stores the minutes while it holds the lock of the session. StoreMinutes
+//     therefore never asks the meeting session; it stages the minutes at once. All other calls
+//     ask the meeting session before they take a lock of the part, so the two never wait for
+//     each other.
+//   - Until the release, every participant of the session may change or remove a staged record
+//     (Change*, Remove*). The request names the session of the record (else FailedPrecondition),
+//     and the caller must have taken part in it (else PermissionDenied). A released record and a
+//     stub never change (FailedPrecondition). A write while the session is released but its area
+//     is still moving is Unavailable; a write to a closed area (storage.ErrAreaClosed) too; a
+//     session that is not released but has no area is FailedPrecondition. A change makes the
+//     caller the author and sets the time; it keeps the command_id of the record. A removed
+//     record keeps its stub until the release, which removes it, and its ID is never used again.
+//     Changes and removals are idempotent by command_id while the hub runs.
+//   - Reads: a staged record shows its content, with staged set, to the readers of the staging
+//     area of its session (storage.Area.Readers) and to tenant admins by their role
+//     (tokencheck.RoleTenantAdmin). Everyone else gets its stub: only the ID, with stub set. A
+//     filter by session never returns a stub, and GetMinutes finds only minutes the caller may
+//     read. A removed staged record is not listed for the readers.
+//   - The part follows the staging repository like the artifact repository (if-archive-watch).
+//     A released record wins over a staged one at the same path, so the release, which first
+//     writes the records into the artifact repository and then cleans up the area, never hides a
+//     record.
 //   - Writes are idempotent by command_id (dec-idempotent-commands), per record type. A
 //     repeated request returns the stored record with duplicate set. The same command_id with
 //     another text, author or session (or other tags, for a note) fails with AlreadyExists.

@@ -5,6 +5,13 @@
 // Every call needs an access token of a participant (see identity.proto). A stage link cannot
 // read or write notes. A sentence that is off the record must not go into a note
 // (dec-off-the-record).
+//
+// A note that names a meeting session waits for the release of that session
+// (concept-session-release): it is staged. Only a participant of the session may name it. Until
+// the release, every participant of the session may change or remove a staged note, and only the
+// readers of the session (its participants and the tenant admins) see its content. Everyone else
+// sees its stub: a note with only its id and stub set. A released note, or a note without a
+// session, never changes.
 syntax = "proto3";
 
 package office.note.v1;
@@ -20,6 +27,15 @@ service NoteService {
   rpc AddNote(AddNoteRequest) returns (AddNoteResponse);
   // ListNotes returns notes with an ID greater than after_id, oldest first.
   rpc ListNotes(ListNotesRequest) returns (ListNotesResponse);
+  // ChangeNote replaces the text and the tags of a staged note. The caller becomes its author.
+  // It fails with failed_precondition for a released note, or when session_id is not the session
+  // of the note, with permission_denied for a caller who did not take part in that session, and
+  // with not_found for a note that does not exist or was removed. It is idempotent by command_id
+  // while the hub runs.
+  rpc ChangeNote(ChangeNoteRequest) returns (ChangeNoteResponse);
+  // RemoveNote removes a staged note, with the same rules as ChangeNote. Its number is not used
+  // again; the stub goes away with the release of the session.
+  rpc RemoveNote(RemoveNoteRequest) returns (RemoveNoteResponse);
 }
 
 message Note {
@@ -37,6 +53,12 @@ message Note {
   string command_id = 7;
   // tags are keywords for the note, in the order the author gave them, without repeats.
   repeated string tags = 8;
+  // staged is set in a response for a note that waits for the release of its session. It is
+  // never stored.
+  bool staged = 9;
+  // stub is set in a response for a staged note that the caller may not read: only the id is
+  // set then. It is never stored.
+  bool stub = 10;
 }
 
 message AddNoteRequest {
@@ -46,7 +68,8 @@ message AddNoteRequest {
   string text = 2;
   // author_participant_id must be the participant of the access token.
   string author_participant_id = 3;
-  // session_id links the note to a meeting session. Optional; it is not checked.
+  // session_id links the note to a meeting session. Optional. Only a participant of the
+  // session may name it; the note is staged until the release of the session.
   string session_id = 4;
   // tags are optional keywords, for example "budget". A tag is one line and not blank. The hub
   // removes the spaces around a tag and drops a tag that is repeated.
@@ -56,6 +79,38 @@ message AddNoteRequest {
 message AddNoteResponse {
   Note note = 1;
   bool duplicate = 2;
+}
+
+message ChangeNoteRequest {
+  // command_id is created by the client.
+  string command_id = 1;
+  // id is the note to change.
+  uint32 id = 2;
+  // session_id must be the session of the note.
+  string session_id = 3;
+  string text = 4;
+  // author_participant_id must be the participant of the access token.
+  string author_participant_id = 5;
+  // tags replace the tags of the note, cleaned up like in AddNoteRequest.
+  repeated string tags = 6;
+}
+
+message ChangeNoteResponse {
+  Note note = 1;
+  bool duplicate = 2;
+}
+
+message RemoveNoteRequest {
+  string command_id = 1;
+  uint32 id = 2;
+  // session_id must be the session of the note.
+  string session_id = 3;
+  // author_participant_id must be the participant of the access token.
+  string author_participant_id = 4;
+}
+
+message RemoveNoteResponse {
+  bool duplicate = 1;
 }
 
 message ListNotesRequest {

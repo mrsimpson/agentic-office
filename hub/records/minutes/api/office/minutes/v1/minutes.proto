@@ -3,8 +3,13 @@
 //
 // While a session runs, its participants write the running minutes through the session commands
 // (minutes.update in commands.proto). When the session ends, the hub stores the last version as
-// the minutes of the session (rs-session-ends). This interface reads the stored minutes. Clients
-// do not write minutes here.
+// the minutes of the session (rs-session-ends). Clients never create minutes here.
+//
+// The stored minutes wait for the release of the session (concept-session-release): they are
+// staged. Until the release, every participant of the session may change or remove them here,
+// and only the readers of the session (its participants and the tenant admins) see their content.
+// Everyone else sees their stub: minutes with only their id and stub set. Released minutes never
+// change.
 //
 // Every call needs an access token of a participant (see identity.proto). A stage link cannot
 // read the minutes. A sentence that is off the record must not go into minutes
@@ -23,6 +28,15 @@ service MinutesService {
   rpc GetMinutes(GetMinutesRequest) returns (GetMinutesResponse);
   // ListMinutes returns stored minutes with an ID greater than after_id, oldest first.
   rpc ListMinutes(ListMinutesRequest) returns (ListMinutesResponse);
+  // ChangeMinutes replaces the text of staged minutes. The caller becomes their author. It fails
+  // with failed_precondition for released minutes, or when session_id is not the session of the
+  // minutes, with permission_denied for a caller who did not take part in that session, and with
+  // not_found for minutes that do not exist or were removed. It is idempotent by command_id while
+  // the hub runs.
+  rpc ChangeMinutes(ChangeMinutesRequest) returns (ChangeMinutesResponse);
+  // RemoveMinutes removes staged minutes, with the same rules as ChangeMinutes. Their number is
+  // not used again; the stub goes away with the release of the session.
+  rpc RemoveMinutes(RemoveMinutesRequest) returns (RemoveMinutesResponse);
 }
 
 message Minutes {
@@ -41,6 +55,12 @@ message Minutes {
   // command_id is "office/session-end/" plus the command ID of the command that ended the
   // session.
   string command_id = 7;
+  // staged is set in a response for minutes that wait for the release of their session. It is
+  // never stored.
+  bool staged = 8;
+  // stub is set in a response for staged minutes that the caller may not read: only the id is
+  // set then. It is never stored.
+  bool stub = 9;
 }
 
 message GetMinutesRequest {
@@ -49,6 +69,36 @@ message GetMinutesRequest {
 
 message GetMinutesResponse {
   Minutes minutes = 1;
+}
+
+message ChangeMinutesRequest {
+  // command_id is created by the client.
+  string command_id = 1;
+  // id is the minutes to change.
+  uint32 id = 2;
+  // session_id must be the session of the minutes.
+  string session_id = 3;
+  string text = 4;
+  // author_participant_id must be the participant of the access token.
+  string author_participant_id = 5;
+}
+
+message ChangeMinutesResponse {
+  Minutes minutes = 1;
+  bool duplicate = 2;
+}
+
+message RemoveMinutesRequest {
+  string command_id = 1;
+  uint32 id = 2;
+  // session_id must be the session of the minutes.
+  string session_id = 3;
+  // author_participant_id must be the participant of the access token.
+  string author_participant_id = 4;
+}
+
+message RemoveMinutesResponse {
+  bool duplicate = 1;
 }
 
 message ListMinutesRequest {

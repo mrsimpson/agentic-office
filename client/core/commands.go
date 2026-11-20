@@ -599,6 +599,96 @@ func (c *hubClient) GetMinutes(ctx context.Context, sessionID string) (*minutesv
 	return res.GetMinutes(), err
 }
 
+// ChangeDecision changes a staged decision before the release of its session. The author is the caller.
+func (c *hubClient) ChangeDecision(ctx context.Context, id uint32, sessionID, text string) (*decisionv1.ChangeDecisionResponse, error) {
+	pid, err := c.ParticipantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	req := &decisionv1.ChangeDecisionRequest{CommandId: coreapi.NewCommandID(), Id: id, SessionId: sessionID, Text: text, AuthorParticipantId: pid}
+	var res *decisionv1.ChangeDecisionResponse
+	err = retry(ctx, func() (err error) {
+		res, err = c.decision.ChangeDecision(ctx, req)
+		return err
+	})
+	return res, err
+}
+
+// RemoveDecision removes a staged decision before the release of its session.
+func (c *hubClient) RemoveDecision(ctx context.Context, id uint32, sessionID string) (*decisionv1.RemoveDecisionResponse, error) {
+	pid, err := c.ParticipantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	req := &decisionv1.RemoveDecisionRequest{CommandId: coreapi.NewCommandID(), Id: id, SessionId: sessionID, AuthorParticipantId: pid}
+	var res *decisionv1.RemoveDecisionResponse
+	err = retry(ctx, func() (err error) {
+		res, err = c.decision.RemoveDecision(ctx, req)
+		return err
+	})
+	return res, err
+}
+
+// ChangeNote changes a staged note before the release of its session. The author is the caller.
+func (c *hubClient) ChangeNote(ctx context.Context, id uint32, sessionID, text string, tags []string) (*notev1.ChangeNoteResponse, error) {
+	pid, err := c.ParticipantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	req := &notev1.ChangeNoteRequest{CommandId: coreapi.NewCommandID(), Id: id, SessionId: sessionID, Text: text, AuthorParticipantId: pid, Tags: tags}
+	var res *notev1.ChangeNoteResponse
+	err = retry(ctx, func() (err error) {
+		res, err = c.note.ChangeNote(ctx, req)
+		return err
+	})
+	return res, err
+}
+
+// RemoveNote removes a staged note before the release of its session.
+func (c *hubClient) RemoveNote(ctx context.Context, id uint32, sessionID string) (*notev1.RemoveNoteResponse, error) {
+	pid, err := c.ParticipantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	req := &notev1.RemoveNoteRequest{CommandId: coreapi.NewCommandID(), Id: id, SessionId: sessionID, AuthorParticipantId: pid}
+	var res *notev1.RemoveNoteResponse
+	err = retry(ctx, func() (err error) {
+		res, err = c.note.RemoveNote(ctx, req)
+		return err
+	})
+	return res, err
+}
+
+// ChangeMinutes changes a staged minutes before the release of its session. The author is the caller.
+func (c *hubClient) ChangeMinutes(ctx context.Context, id uint32, sessionID, text string) (*minutesv1.ChangeMinutesResponse, error) {
+	pid, err := c.ParticipantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	req := &minutesv1.ChangeMinutesRequest{CommandId: coreapi.NewCommandID(), Id: id, SessionId: sessionID, Text: text, AuthorParticipantId: pid}
+	var res *minutesv1.ChangeMinutesResponse
+	err = retry(ctx, func() (err error) {
+		res, err = c.minutes.ChangeMinutes(ctx, req)
+		return err
+	})
+	return res, err
+}
+
+// RemoveMinutes removes a staged minutes before the release of its session.
+func (c *hubClient) RemoveMinutes(ctx context.Context, id uint32, sessionID string) (*minutesv1.RemoveMinutesResponse, error) {
+	pid, err := c.ParticipantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	req := &minutesv1.RemoveMinutesRequest{CommandId: coreapi.NewCommandID(), Id: id, SessionId: sessionID, AuthorParticipantId: pid}
+	var res *minutesv1.RemoveMinutesResponse
+	err = retry(ctx, func() (err error) {
+		res, err = c.minutes.RemoveMinutes(ctx, req)
+		return err
+	})
+	return res, err
+}
+
 // ListMinutes lists stored minutes after a cursor. sessionID may be empty (all); limit 0 is the
 // default of the hub.
 func (c *hubClient) ListMinutes(ctx context.Context, after uint32, sessionID string, limit uint32) ([]*minutesv1.Minutes, error) {

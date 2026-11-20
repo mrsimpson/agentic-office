@@ -34,8 +34,8 @@ func AreaState(t testing.TB, staging, sessionID string) map[string]any {
 
 // StageFile puts a file into the staging area of a session like a part of the hub would: it
 // writes the file and records its name in the area. The area must exist (the meeting session
-// opens it when the session starts). No part writes the staging area yet (#201, #202), so tests
-// stage their files this way.
+// opens it when the session starts). The documents part does not write the staging area yet
+// (#202), so tests stage documents this way.
 func StageFile(t testing.TB, staging, sessionID, path, content string) {
 	t.Helper()
 	Edit(t, staging, "stage "+path, func(work string) {

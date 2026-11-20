@@ -44,7 +44,7 @@ func TestSessionLogsLieInTheirOwnRepository(t *testing.T) {
 			t.Fatal(err)
 		}
 		// A record written while the session writes lands in the artifact repository.
-		recordDecision(t, c.a, "Decision of "+c.a.TenantID+".", "weekly")
+		recordDecision(t, c.a, "Decision of "+c.a.TenantID+".", "")
 	}
 	// Acme ends its session; globex keeps it open over the restart.
 	if _, err := m.ada.Commands.EndSession(ctx10(t), &sessioncommandsv1.EndSessionRequest{SessionId: "weekly",

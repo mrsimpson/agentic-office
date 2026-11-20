@@ -534,6 +534,9 @@ func TestMCPRecords(t *testing.T) {
 	bot := m.user("bot", "Bot", "agent")
 	ada := m.user("ada", "Ada", "human")
 	s := startMCP(t, bot)
+	s1 := newSession()
+	bot.join(s1)
+	ada.join(s1)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -555,14 +558,14 @@ func TestMCPRecords(t *testing.T) {
 		d["authorParticipantId"] != "bot" || d["authorKind"] != "AUTHOR_KIND_AGENT" || d["sessionId"] != nil {
 		t.Fatalf("decision_record: %v", v)
 	}
-	ada.ok("decision", "record", "--session", "s1", "Ada writes the plan.")
-	s.ok("decision_record", map[string]any{"text": "We wait.", "session": "s1"})
+	ada.ok("decision", "record", "--session", s1, "Ada writes the plan.")
+	s.ok("decision_record", map[string]any{"text": "We wait.", "session": s1})
 	for _, c := range []struct {
 		args map[string]any
 		want string
 	}{
 		{nil, "1,2,3"},
-		{map[string]any{"session": "s1"}, "2,3"},
+		{map[string]any{"session": s1}, "2,3"},
 		{map[string]any{"afterId": 1, "limit": 1}, "2"},
 		{map[string]any{"afterId": 3}, ""},
 	} {
@@ -571,8 +574,8 @@ func TestMCPRecords(t *testing.T) {
 		}
 	}
 
-	v = s.ok("note_add", map[string]any{"text": "A note.", "session": "s1", "tags": []any{"budget"}})
-	if n, _ := v["note"].(map[string]any); v["duplicate"] != false || n["id"] != float64(1) || n["sessionId"] != "s1" ||
+	v = s.ok("note_add", map[string]any{"text": "A note.", "session": s1, "tags": []any{"budget"}})
+	if n, _ := v["note"].(map[string]any); v["duplicate"] != false || n["id"] != float64(1) || n["sessionId"] != s1 ||
 		n["authorParticipantId"] != "bot" || n["authorKind"] != "AUTHOR_KIND_AGENT" || fmt.Sprint(n["tags"]) != "[budget]" {
 		t.Fatalf("note_add: %v", v)
 	}
@@ -583,13 +586,32 @@ func TestMCPRecords(t *testing.T) {
 	if got := listOf(t, s.ok("note_list", map[string]any{"afterId": 1}), "notes"); len(got) != 1 || got[0]["authorParticipantId"] != "ada" {
 		t.Fatalf("note_list after 1: %v", got)
 	}
+	// A staged note changes and goes away before the release.
+	if n, _ := s.ok("note_change", map[string]any{"id": 1, "session": s1, "text": "A changed note.", "tags": []any{"bank"}})["note"].(map[string]any); n["text"] != "A changed note." ||
+		n["staged"] != true || fmt.Sprint(n["tags"]) != "[bank]" {
+		t.Fatalf("note_change: %v", n)
+	}
+	s.fails("failed_precondition", "note_change", map[string]any{"id": 2, "session": s1, "text": "A released note."})
+	s.fails("usage", "note_change", map[string]any{"id": 1, "text": "No session."})
+	if v := s.ok("note_remove", map[string]any{"id": 1, "session": s1}); v["id"] != float64(1) || v["duplicate"] != false {
+		t.Fatalf("note_remove: %v", v)
+	}
+	if got := idsOf(listOf(t, s.ok("note_list", nil), "notes")); got != "2" {
+		t.Fatalf("note_list after the removal: %s", got)
+	}
+	if v := s.ok("decision_remove", map[string]any{"id": 2, "session": s1}); v["id"] != float64(2) {
+		t.Fatalf("decision_remove: %v", v)
+	}
+	if d, _ := s.ok("decision_change", map[string]any{"id": 3, "session": s1, "text": "We wait a week."})["decision"].(map[string]any); d["text"] != "We wait a week." {
+		t.Fatalf("decision_change: %v", d)
+	}
 
 	// The minutes of the session are stored when it ends.
 	sid := newSession()
 	s.ok("meeting_join", map[string]any{"session": sid})
-	s.ok("minutes_update", map[string]any{"text": "Final: we ship"})
+	s.ok("minutes_update", map[string]any{"text": "Final: we ship", "session": sid})
 	s.fails("not_found", "minutes_get", map[string]any{"session": sid})
-	s.ok("meeting_end", nil)
+	s.ok("meeting_end", map[string]any{"session": sid})
 	mm, _ := s.ok("minutes_get", map[string]any{"session": sid})["minutes"].(map[string]any)
 	if mm["text"] != "Final: we ship" || mm["authorParticipantId"] != "bot" || mm["sessionId"] != sid {
 		t.Fatalf("minutes_get: %v", mm)
@@ -600,6 +622,9 @@ func TestMCPRecords(t *testing.T) {
 	if got := listOf(t, s.ok("minutes_list", map[string]any{"afterId": 1}), "minutes"); len(got) != 0 {
 		t.Fatalf("minutes_list after 1: %v", got)
 	}
+	// No human took part, so the session was released at its end, and its minutes never change.
+	s.fails("failed_precondition", "minutes_change", map[string]any{"id": 1, "session": sid, "text": "Final: we ship on Friday"})
+	s.fails("failed_precondition", "minutes_remove", map[string]any{"id": 1, "session": sid})
 }
 
 // TestMCPSlides: slides_render and slides_get against the real slides part of the hub. The three
