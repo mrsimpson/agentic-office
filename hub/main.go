@@ -85,6 +85,7 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/tasks/api/taskv1connect"
 	"github.com/mrsimpson/agentic-office/hub/tenant"
 	"github.com/mrsimpson/agentic-office/hub/tenant/api/tenantv1connect"
+	"github.com/mrsimpson/agentic-office/hub/wiki/api/wikiv1connect"
 )
 
 func defaultDataDir() string {
@@ -384,6 +385,7 @@ func main() {
 	documentv1connect.RegisterDocumentServiceHandler(cs, documentMux{rts})
 	archivev1connect.RegisterArchiveReadServiceHandler(cs, archiveReadMux{rts})
 	changesv1connect.RegisterArchiveChangesServiceHandler(cs, archiveChangesMux{rts})
+	wikiv1connect.RegisterWikiServiceHandler(cs, wikiMux{rts})
 	mux := http.NewServeMux()
 	connecthttp.Mount(mux, cs)
 	// The health check needs no token and reads no state, so a container probe can use it.

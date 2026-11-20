@@ -366,14 +366,15 @@ func (r *Repo) checkBases(ctx context.Context, old string, files []storage.File)
 
 // List implements storage.Archive.
 func (r *Repo) List(ctx context.Context, dir string) ([]string, error) {
-	if err := storage.CheckPath(dir); err != nil {
+	paths, err := dirPaths(dir)
+	if err != nil {
 		return nil, err
 	}
 	head, err := r.head(ctx)
 	if err != nil || head == "" {
 		return nil, err
 	}
-	list, err := r.run(ctx, "ls-tree", "-r", "-z", "--name-only", "--full-tree", head, "--", dir)
+	list, err := r.run(ctx, append([]string{"ls-tree", "-r", "-z", "--name-only", "--full-tree", head, "--"}, paths...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -414,14 +415,26 @@ func (r *Repo) Names(ctx context.Context, dir string) ([]string, error) {
 // Read implements storage.Archive. It lists the files of dir (or reads the file dir) in the current commit and reads
 // their content in one more run of git. It does not wait for a running change.
 func (r *Repo) Read(ctx context.Context, dir string) ([]storage.File, error) {
-	if err := storage.CheckPath(dir); err != nil {
+	paths, err := dirPaths(dir)
+	if err != nil {
 		return nil, err
 	}
 	head, err := r.head(ctx)
 	if err != nil || head == "" {
 		return nil, err
 	}
-	return r.readAt(ctx, head, dir)
+	return r.readAt(ctx, head, paths...)
+}
+
+// dirPaths returns the paths for git ls-tree that name dir: none for the whole repository ("").
+func dirPaths(dir string) ([]string, error) {
+	if dir == storage.Root {
+		return nil, nil
+	}
+	if err := storage.CheckPath(dir); err != nil {
+		return nil, err
+	}
+	return []string{dir}, nil
 }
 
 // readAt returns the files under the paths in the commit head, ordered by path.

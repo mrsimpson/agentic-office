@@ -17,6 +17,7 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/session"
 	"github.com/mrsimpson/agentic-office/hub/slides"
 	"github.com/mrsimpson/agentic-office/hub/tasks"
+	"github.com/mrsimpson/agentic-office/hub/wiki"
 )
 
 // tenantRuntime is the content of one tenant: its session service, records, tasks and slide
@@ -33,9 +34,11 @@ type tenantRuntime struct {
 	archiveRead *archive.ReadService
 	// archiveChanges tells the followers of the tenant which artifacts changed (dec-artifact-sync).
 	archiveChanges *archive.ChangesService
-	sessions       *session.Service
-	stop           context.CancelFunc
-	done           chan struct{}
+	// wiki is the derived view of the wiki of the tenant (concept-wiki); it only reads.
+	wiki     *wiki.Service
+	sessions *session.Service
+	stop     context.CancelFunc
+	done     chan struct{}
 }
 
 // runtimes holds the runtime of every tenant that has been used, and opens one on first use.
@@ -102,15 +105,24 @@ func (r *runtimes) get(ctx context.Context, tenant string) (*tenantRuntime, erro
 		rt.tasks.Close()
 		return nil, err
 	}
+	// The wiki part follows the artifact repository only, never the staging repository.
+	if rt.wiki, err = wiki.Open(ctx, wiki.Options{Archive: arch, Watcher: watcher, Logf: logf}); err != nil {
+		rt.records.Close()
+		rt.tasks.Close()
+		rt.slides.Close()
+		return nil, err
+	}
 	opened := false
 	defer func() {
 		if !opened {
 			rt.records.Close()
 			rt.tasks.Close()
 			rt.slides.Close()
+			rt.wiki.Close()
 		}
 	}()
-	logf("%d decisions, %d minutes, %d notes, %d local drafts, %d decks", nd, nm, nn, rt.tasks.Count(), rt.slides.Count())
+	logf("%d decisions, %d minutes, %d notes, %d local drafts, %d decks, %d artifacts in the wiki", nd, nm, nn,
+		rt.tasks.Count(), rt.slides.Count(), rt.wiki.Count())
 	rt.sessions = session.New(session.NewMemoryStore(), session.TokenCheck(), rt.records, r.signingKey)
 	// The records, the slides and the documents route a write that names a session by its release
 	// status (if-session-release).
@@ -171,5 +183,6 @@ func (r *runtimes) stopAll() {
 		rt.records.Close()
 		rt.tasks.Close()
 		rt.slides.Close()
+		rt.wiki.Close()
 	}
 }

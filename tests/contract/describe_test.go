@@ -223,14 +223,14 @@ func TestArtifactDescription(t *testing.T) {
 		want                artifactcheck.Description
 	}{
 		{"a decision", "decisions/000001.yaml", decisionFile, artifactcheck.Description{
-			Schema: "office.decision.v1", Title: "Use Go for every component."}},
+			Schema: "office.decision.v1", Title: "Use Go for every component.", Source: true}},
 		{"minutes", "minutes/000007.yaml", linkedMinutes, artifactcheck.Description{
 			Schema: "office.minutes.v1", Title: "Weekly sync",
 			Summary: "We agreed on the plan and checked a site. Ask the bank again. " +
 				"See the plan once more, the top, a page and outside.",
-			Links: []string{"documents/plan.md", "notes/000003.md"}}},
+			Links: []string{"documents/plan.md", "notes/000003.md"}, Source: true}},
 		{"a note", "notes/000003.md", noteFile, artifactcheck.Description{
-			Schema: "office.note.v1", Title: "Call the bank.", Tags: []string{"bank"}}},
+			Schema: "office.note.v1", Title: "Call the bank.", Tags: []string{"bank"}, Source: true}},
 		{"a task", "tasks/000002.yaml", taskFile, artifactcheck.Description{
 			Schema: "office.task.v1", Title: "Buy milk"}},
 		{"a deck", "slides/000004.yaml", deckFile, artifactcheck.Description{

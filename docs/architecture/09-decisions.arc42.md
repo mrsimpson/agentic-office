@@ -1355,7 +1355,6 @@ OPEN:
 
 - Who ingests a source that no session claimed, for example a note written outside a session.
 - Whether a citation of a document names its version.
-- The interfaces of the wiki part and the descriptions of the types enter chapter 5 with their code.
 - Content that only some members of a tenant may read: every member reads everything and holds a
   clone, so this needs encryption for several parties in a distributed storage (issue #190).
 - How much memory the derived view needs for a large tenant.

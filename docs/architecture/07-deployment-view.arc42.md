@@ -36,6 +36,7 @@ architecture-beta
     service bb-identity(server)[Identity] in dn-office-hub
     service bb-archive(disk)[Archive] in dn-office-hub
     service bb-tenants(database)[Tenants] in dn-office-hub
+    service bb-wiki(database)[Wiki] in dn-office-hub
     bb-ears:R --> L:bb-session-service
     bb-replicator:R --> L:bb-session-service
     bb-mcp:L --> R:bb-session-service
@@ -94,7 +95,8 @@ hosts: bb-mcp, bb-cli, bb-client-core, bb-replicator, bb-sync, bb-agent-runner
 ## Office hub
 
 One server or container that runs the hub: the meeting session, the records, the tasks, the
-slides, the stage, the portal and the archive. The archive stores sessions, decisions, minutes, notes, tasks
+slides, the wiki, the stage, the portal and the archive. The wiki keeps its view of each tenant in
+memory only and builds it again from the archive at every start (`dec-wiki`). The archive stores sessions, decisions, minutes, notes, tasks
 and slide decks in a local Git repository on this host (`dec-yaml-git-storage`); the push to a remote
 is mocked. The host needs the Git command line tool. The hub also serves the repository of every tenant over
 the Git protocol (`dec-artifact-sync`). It keeps the participants and their keys (identity)
@@ -109,7 +111,7 @@ id: dn-office-hub
 title: Office hub
 type: server
 parent: env-mvp
-hosts: bb-session-service, bb-records, bb-tasks, bb-slides, bb-documents, bb-stage, bb-portal, bb-identity, bb-tenants, bb-archive, bb-git-access, bb-artifacts
+hosts: bb-session-service, bb-records, bb-tasks, bb-slides, bb-documents, bb-stage, bb-portal, bb-identity, bb-tenants, bb-archive, bb-git-access, bb-artifacts, bb-wiki
 :::
 ```
 

@@ -60,7 +60,10 @@ type Description struct {
 	Tags    []string
 	Links   []string
 	Sources []string
-	Stub    bool
+	// Source is true for a source of the wiki: a record (decision, minutes or note) that a
+	// document may cite (dec-wiki).
+	Source bool
+	Stub   bool
 }
 
 // Describer describes the file at path with the given content as a file of the schema; schema is
@@ -97,7 +100,8 @@ var parts = []entry{
 
 func describeRecord(schema, p string, c []byte) (Description, bool) {
 	d, ok := recordsdescribe.Describe(schema, p, c)
-	return Description{Title: d.Title, Summary: d.Summary, Tags: d.Tags, Links: d.Links, Stub: d.Stub}, ok
+	// Every record that is not a stub is a source of the wiki (dec-wiki).
+	return Description{Title: d.Title, Summary: d.Summary, Tags: d.Tags, Links: d.Links, Source: ok && !d.Stub, Stub: d.Stub}, ok
 }
 
 func describeTask(schema, p string, c []byte) (Description, bool) {

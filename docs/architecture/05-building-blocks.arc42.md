@@ -7,7 +7,7 @@ has its own path; no two share one. Interfaces that only external actors use (CL
 view, audio input) are in chapter 3.
 
 At the top level the system has three parts. The **office hub** manages sessions, the records of
-the team (decisions, minutes and notes), the tasks, the slide decks and the stage. The **participant client** runs on the computer of every participant,
+the team (decisions, minutes and notes), the tasks, the slide decks, the wiki and the stage. The **participant client** runs on the computer of every participant,
 human or agent. The **skills** carry the conventions of the office to every agent.
 
 ## Overview
@@ -71,7 +71,7 @@ id: bb-office-hub-whitebox
 view: building-block
 notation: mermaid
 roots: bb-office-hub
-aliases: bb_office_hub=bb-office-hub, bb_portal=bb-portal, bb_archive=bb-archive, bb_artifacts=bb-artifacts, bb_documents=bb-documents, bb_git_access=bb-git-access, bb_identity=bb-identity, bb_records=bb-records, bb_session_service=bb-session-service, bb_slides=bb-slides, bb_stage=bb-stage, bb_tasks=bb-tasks, bb_tenants=bb-tenants
+aliases: bb_office_hub=bb-office-hub, bb_portal=bb-portal, bb_archive=bb-archive, bb_artifacts=bb-artifacts, bb_documents=bb-documents, bb_git_access=bb-git-access, bb_identity=bb-identity, bb_records=bb-records, bb_session_service=bb-session-service, bb_slides=bb-slides, bb_stage=bb-stage, bb_tasks=bb-tasks, bb_tenants=bb-tenants, bb_wiki=bb-wiki
 :::
 ```
 
@@ -90,6 +90,7 @@ flowchart LR
         bb_stage[Stage]
         bb_tasks[Tasks]
         bb_tenants[Tenants]
+        bb_wiki[Wiki]
     end
     bb_portal -->|if-auth-api| bb_identity
     bb_portal -->|if-tenant-api| bb_tenants
@@ -102,6 +103,7 @@ flowchart LR
     bb_portal -->|if-task-api| bb_tasks
     bb_portal -->|if-session-commands| bb_session_service
     bb_portal -->|if-archive-read| bb_archive
+    bb_portal -->|if-wiki-api| bb_wiki
     bb_documents -->|if-archive-storage| bb_archive
     bb_documents -->|if-session-notice| bb_session_service
     bb_documents -->|if-token-check| bb_identity
@@ -136,6 +138,10 @@ flowchart LR
     bb_artifacts -->|if-tasks-describe| bb_tasks
     bb_artifacts -->|if-documents-describe| bb_documents
     bb_git_access -->|if-token-check| bb_identity
+    bb_wiki -->|if-archive-storage| bb_archive
+    bb_wiki -->|if-archive-watch| bb_archive
+    bb_wiki -->|if-artifact-check| bb_artifacts
+    bb_wiki -->|if-token-check| bb_identity
 ```
 
 ### Session commands
@@ -509,6 +515,32 @@ path: hub/documents/api
 :::
 ```
 
+### Wiki
+
+The view of the wiki of a tenant (`concept-wiki`), for the portal (`dec-web-portal`). It reads
+only. It lists the index of the artifacts with their title, summary and tags, filtered by a tag;
+one artifact with its links, its backlinks, the sources it cites and the documents that cite it;
+the links and cited sources that lead nowhere; the ingest queue, which holds the released sources
+that no document cites yet; and a search by words, ranked without a model. The view holds released
+artifacts only: a stub is not in the index, the search or the queue, but a link to a stub leads
+somewhere. It follows every write and push, and it may show a change a moment after the write
+returned.
+
+Every member of the tenant reads the whole view, because every member may read every released
+artifact. A stage link cannot use it. Agents read their clone with their own tools, so the client,
+the CLI and the MCP server do not use this interface (`dec-wiki`).
+
+```arc42
+:::interface
+id: if-wiki-api
+title: Wiki
+provider: bb-office-hub
+x-realized-by: bb-wiki
+protocol: Connect RPC, unary (dec-connect-rpc)
+path: hub/wiki/api
+:::
+```
+
 ### Portal
 
 A browser view for every user of the hub (`dec-web-portal`), opened by a link that the user creates
@@ -549,7 +581,8 @@ the user and tenant APIs for the administration and the members, the session lis
 sessions of a tenant, the session stream for the events of one session, and the minutes, decisions,
 notes and tasks of that session. On the page of a session it asks the session commands for the
 release and the archive read API for the staged, released or not released artifacts, and its
-forms send release and objection to the session commands.
+forms send release and objection to the session commands. It reads the wiki of a tenant through the
+wiki interface (`concept-wiki`). OPEN: the pages of the wiki in the portal (issue #208).
 
 ```arc42
 :::building-block
@@ -557,7 +590,7 @@ id: bb-portal
 title: Portal
 technology: Go, rendered by the hub
 parent: bb-office-hub
-requires: if-auth-api, if-user-api, if-tenant-api, if-session-list, if-session-stream, if-session-commands, if-minutes-api, if-decision-api, if-note-api, if-task-api, if-archive-read
+requires: if-auth-api, if-user-api, if-tenant-api, if-session-list, if-session-stream, if-session-commands, if-minutes-api, if-decision-api, if-note-api, if-task-api, if-archive-read, if-wiki-api
 path: hub/portal
 :::
 ```
@@ -1068,7 +1101,7 @@ path: hub/archive/api
 #### Archive storage
 
 The in-process interface of the archive: write a set of files as one commit, and list and read
-files as they are in the current commit, and list every name that ever lay in a directory, so that
+files as they are in the current commit, from one directory or from the whole repository, and list every name that ever lay in a directory, so that
 a part never gives a number again that a removed file had. A change can also remove files. The
 archive keeps three git repositories for each tenant: one for its artifacts, one for its session
 logs and one for what sessions have not released (the staging repository). It keeps one more for
@@ -1155,7 +1188,7 @@ path: hub/archive/changes
 #### Archive watch
 
 The in-process interface for the parts of the hub that keep files of the archive in memory (the
-records, tasks and slides parts). A part asks for the changes of the artifact repository of its
+records, tasks and slides parts) or a view derived from them (the wiki part). A part asks for the changes of the artifact repository of its
 tenant and gets the same changes that a participant gets through the changes stream: the
 artifacts that were created, changed or removed, after a commit of the archive or after a push.
 A part follows the staging repository of its tenant the same way: it gets the staged artifacts
@@ -1271,8 +1304,9 @@ hold a file in the state that the file belongs to. A hint never makes a file inv
 A fourth call describes a file for the wiki (`dec-wiki`), so a reader needs one interface for all
 types. A file that names a schema goes to the description of the part that owns the schema, and a
 document without a schema to the documents part. The answer is the schema, the title, the
-summary, the tags, the outgoing links and the sources of the file, and whether it is the stub of a
-staged artifact; or that the file is invalid or of no type that a part describes. This part reads
+summary, the tags, the outgoing links and the sources of the file, whether it is a source of the
+wiki (a decision, minutes or a note), and whether it is the stub of a staged artifact; or that the
+file is invalid or of no type that a part describes. This part reads
 no field of a type itself (`dec-artifact-sync`).
 
 ```arc42
@@ -1282,6 +1316,37 @@ title: Artifact check
 provider: bb-artifacts
 protocol: In-process Go call
 path: hub/artifacts/check
+:::
+```
+
+### Wiki part
+
+Keeps the view of the wiki of each tenant (`concept-wiki`, `dec-wiki`) and offers it through the
+wiki interface. It is on no write path: it writes nothing and commits nothing. It follows the
+artifact repository of its tenant (`if-archive-watch`), never the staging repository, so it never
+sees what a session has not released. At start it reads every file of the repository and builds
+the view again; after each change it reads the files that changed.
+
+It reads no field of a type. The artifact check describes each file for it, by the part that owns
+the type: title, summary, tags, links, cited sources, whether the file is a source and whether it
+is a stub. From these descriptions it derives the backlinks, the links that lead nowhere, the
+sources that no document cites, and an index of words for the search. The search needs no model
+(`con-no-intelligence`): it ranks by how rare a word is in the tenant, how often it occurs, in
+which field (the title counts most, then the tags and the summary, then the text) and how long
+the artifact is.
+
+It checks the token of every call. The hub has checked that the caller is a member of the tenant.
+OPEN: how much memory the view needs for a large tenant.
+
+```arc42
+:::building-block
+id: bb-wiki
+title: Wiki
+technology: Go, a view in memory
+parent: bb-office-hub
+requires: if-token-check, if-archive-storage, if-archive-watch, if-artifact-check
+implements: concept-wiki
+path: hub/wiki
 :::
 ```
 

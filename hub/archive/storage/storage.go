@@ -34,14 +34,15 @@ type Archive interface {
 	// Commit may take a long time; callers that must not wait call it in the background.
 	Commit(ctx context.Context, c Change) (string, error)
 	// Read returns the files under the directory dir as they are in the current commit, ordered
-	// by path. dir is a valid path (see CheckPath); if it names a file, Read returns this file. A directory that is not in the current
+	// by path. dir is a valid path (see CheckPath), or Root for every file of the repository; if
+	// it names a file, Read returns this file. A directory that is not in the current
 	// commit, or a repository without commits, has no files. A change whose commit failed is
 	// not visible.
 	Read(ctx context.Context, dir string) ([]File, error)
 	// List returns the paths of the files under the directory dir as they are in the current
-	// commit, ordered, without reading their content. A directory that is not in the current
-	// commit has no files. A caller that wants the content of a few files from a large
-	// directory lists it first and reads them one by one.
+	// commit, ordered, without reading their content. dir is a valid path or Root, as for Read.
+	// A directory that is not in the current commit has no files. A caller that wants the content
+	// of a few files from a large directory lists it first and reads them one by one.
 	List(ctx context.Context, dir string) ([]string, error)
 	// Names returns every path under the directory dir that ever lay in it in the history of
 	// main, also the paths of files that were removed later. The paths are ordered and have no
@@ -134,6 +135,10 @@ type File struct {
 	// not exist changes nothing. Read never sets it.
 	Remove bool
 }
+
+// Root names the whole repository in Archive.Read and Archive.List, for a part that keeps a view
+// of every artifact of a tenant, such as the wiki part (concept-wiki).
+const Root = ""
 
 // NoFile is a Base that says the file must not exist yet.
 const NoFile = "none"

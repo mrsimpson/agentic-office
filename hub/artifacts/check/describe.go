@@ -14,6 +14,8 @@ package check
 //     not described.
 //   - The stub of a staged artifact (concept-session-release) is described as a stub only: Stub
 //     is true, and no other field is set apart from Schema.
+//   - Source is true for a source of the wiki: a decision, minutes or a note, not a stub. The
+//     records part owns these types, and they are what a document cites (dec-wiki).
 //   - Links and Sources are paths from the top of the repository. Links are the relative links in
 //     the text of the file. Sources are the records that a document cites in its front matter.
 //     Which types have which fields: see the description interface of each part
@@ -35,6 +37,9 @@ type Description struct {
 	// Sources are the paths, from the top of the repository, of the records that a document
 	// cites. Only documents have sources.
 	Sources []string
+	// Source is true for a source of the wiki that a document may cite: a decision, minutes or a
+	// note that is not a stub (dec-wiki).
+	Source bool
 	// Stub is true for the stub of a staged artifact.
 	Stub bool
 }
@@ -66,7 +71,7 @@ func Describe(filePath string, content []byte) (d Description, ok bool) {
 		}
 		return Description{
 			Schema: schema, Title: pd.Title, Summary: pd.Summary, Tags: pd.Tags,
-			Links: pd.Links, Sources: pd.Sources, Stub: pd.Stub,
+			Links: pd.Links, Sources: pd.Sources, Source: pd.Source, Stub: pd.Stub,
 		}, true
 	}
 	return Description{}, false

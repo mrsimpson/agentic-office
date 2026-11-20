@@ -33,6 +33,8 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/slides/api/slidesv1connect"
 	taskv1 "github.com/mrsimpson/agentic-office/hub/tasks/api"
 	"github.com/mrsimpson/agentic-office/hub/tasks/api/taskv1connect"
+	wikiv1 "github.com/mrsimpson/agentic-office/hub/wiki/api"
+	"github.com/mrsimpson/agentic-office/hub/wiki/api/wikiv1connect"
 )
 
 type commandsMux struct{ *runtimes }
@@ -493,4 +495,48 @@ func (m streamMux) GetEvents(ctx context.Context, req *streamapi.GetEventsReques
 		return nil, err
 	}
 	return rt.sessions.GetEvents(ctx, req)
+}
+
+type wikiMux struct{ *runtimes }
+
+var _ wikiv1connect.WikiServiceHandler = wikiMux{}
+
+func (m wikiMux) ListArtifacts(ctx context.Context, req *wikiv1.ListArtifactsRequest) (*wikiv1.ListArtifactsResponse, error) {
+	rt, err := m.forCall(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return rt.wiki.ListArtifacts(ctx, req)
+}
+
+func (m wikiMux) GetArtifact(ctx context.Context, req *wikiv1.GetArtifactRequest) (*wikiv1.GetArtifactResponse, error) {
+	rt, err := m.forCall(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return rt.wiki.GetArtifact(ctx, req)
+}
+
+func (m wikiMux) ListBrokenLinks(ctx context.Context, req *wikiv1.ListBrokenLinksRequest) (*wikiv1.ListBrokenLinksResponse, error) {
+	rt, err := m.forCall(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return rt.wiki.ListBrokenLinks(ctx, req)
+}
+
+func (m wikiMux) ListIngestQueue(ctx context.Context, req *wikiv1.ListIngestQueueRequest) (*wikiv1.ListIngestQueueResponse, error) {
+	rt, err := m.forCall(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return rt.wiki.ListIngestQueue(ctx, req)
+}
+
+func (m wikiMux) Search(ctx context.Context, req *wikiv1.SearchRequest) (*wikiv1.SearchResponse, error) {
+	rt, err := m.forCall(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return rt.wiki.Search(ctx, req)
 }
