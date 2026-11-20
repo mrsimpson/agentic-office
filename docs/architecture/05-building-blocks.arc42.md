@@ -131,6 +131,10 @@ flowchart LR
     bb_artifacts -->|if-slides-check| bb_slides
     bb_artifacts -->|if-tasks-check| bb_tasks
     bb_artifacts -->|if-documents-check| bb_documents
+    bb_artifacts -->|if-records-describe| bb_records
+    bb_artifacts -->|if-slides-describe| bb_slides
+    bb_artifacts -->|if-tasks-describe| bb_tasks
+    bb_artifacts -->|if-documents-describe| bb_documents
     bb_git_access -->|if-token-check| bb_identity
 ```
 
@@ -744,6 +748,26 @@ path: hub/records/check
 :::
 ```
 
+#### Records description
+
+Describes a file of a record type for the wiki (`dec-wiki`), the same way the part checks it. A
+call gives the path, the content and the name of the schema. The answer is the title, the
+summary, the tags and the outgoing links of the record, or that the file is not a record that the
+check accepts. A record has no title of its own: the first block of its text is the title, and the
+rest of the text is the summary, both cut to a short length. Only a note has tags. The links are
+the relative links in the text, as paths from the top of the repository. The stub of a type is
+described as a stub, with nothing of its content.
+
+```arc42
+:::interface
+id: if-records-describe
+title: Records description
+provider: bb-records
+protocol: In-process Go call
+path: hub/records/describe
+:::
+```
+
 ### Tasks part
 
 Keeps the tasks of the team behind the task interface (`dec-records-per-type`). Every change is
@@ -777,6 +801,23 @@ title: Tasks check
 provider: bb-tasks
 protocol: In-process Go call
 path: hub/tasks/check
+:::
+```
+
+#### Tasks description
+
+Describes a file of a task for the wiki (`dec-wiki`), the same way the part checks it. A call
+gives the path, the content and the name of the schema. The answer is the title of the task and
+its description as the summary, or that the file is not a task that the check accepts. A task has
+no tags and no links.
+
+```arc42
+:::interface
+id: if-tasks-describe
+title: Tasks description
+provider: bb-tasks
+protocol: In-process Go call
+path: hub/tasks/describe
 :::
 ```
 
@@ -849,6 +890,28 @@ path: hub/documents/check
 :::
 ```
 
+#### Documents description
+
+Describes a document for the wiki (`dec-wiki`), the same way the part checks it. A call gives the
+path, the content and the name of the schema that the document names, if any. The answer is the
+title, the summary, the tags, the outgoing links and the sources of the document, or that the file
+is not a document that the check accepts. The title comes from the front matter, else from the
+first heading, else from the name of the file. The summary, the tags and the sources come from
+the front matter of a document that names the schema of documents. The links are the relative
+links of the body, as paths from the top of the repository. The sources are the records that the
+document cites, so the wiki part can tell which sources no document cites yet. The stub of a
+document is described as a stub, with nothing of its content.
+
+```arc42
+:::interface
+id: if-documents-describe
+title: Documents description
+provider: bb-documents
+protocol: In-process Go call
+path: hub/documents/describe
+:::
+```
+
 ### Slides part
 
 Renders slide decks and keeps them behind the slides interface (`dec-records-per-type`).
@@ -901,6 +964,24 @@ title: Slides check
 provider: bb-slides
 protocol: In-process Go call
 path: hub/slides/check
+:::
+```
+
+#### Slides description
+
+Describes a file of a slide deck for the wiki (`dec-wiki`), the same way the part checks it. A
+call gives the path, the content and the name of the schema. The answer is the title of the deck
+and the titles of its slides as the summary, or that the file is not a deck that the check
+accepts. A deck has no tags and no links. The stub of a deck is described as a stub, with nothing
+of its content.
+
+```arc42
+:::interface
+id: if-slides-describe
+title: Slides description
+provider: bb-slides
+protocol: In-process Go call
+path: hub/slides/describe
 :::
 ```
 
@@ -1138,8 +1219,10 @@ name of the schema that the file names. A file that names no schema is plain tex
 that names a schema that no part owns is invalid. Each part also recognises the stub of its types
 (`concept-session-release`), so this part can tell a stub from any other file without knowing the
 stubs itself. A part may give hints for the files of its types, such as a link of a document that
-leads nowhere; each part decides which files are of its types. A new type needs a check in its
-own part and a line in this part.
+leads nowhere; each part decides which files are of its types. Each part also describes the
+files of its types for the wiki (`dec-wiki`), and this part passes a file on to the part that owns
+it. A new type needs a check and a description in
+its own part and a line in this part.
 
 ```arc42
 :::building-block
@@ -1147,7 +1230,7 @@ id: bb-artifacts
 title: Artifacts
 technology: Go
 parent: bb-office-hub
-requires: if-records-check, if-slides-check, if-tasks-check, if-documents-check
+requires: if-records-check, if-slides-check, if-tasks-check, if-documents-check, if-records-describe, if-slides-describe, if-tasks-describe, if-documents-describe
 implements: concept-module-boundaries
 path: hub/artifacts
 :::
@@ -1161,6 +1244,13 @@ whether a file is the stub of a staged artifact: the file names a schema, is val
 that owns the schema recognises it as the stub of its type. A third call gives the hints of the
 parts for a file, such as the links of a document that lead nowhere. The caller says which paths
 hold a file in the state that the file belongs to. A hint never makes a file invalid.
+
+A fourth call describes a file for the wiki (`dec-wiki`), so a reader needs one interface for all
+types. A file that names a schema goes to the description of the part that owns the schema, and a
+document without a schema to the documents part. The answer is the schema, the title, the
+summary, the tags, the outgoing links and the sources of the file, and whether it is the stub of a
+staged artifact; or that the file is invalid or of no type that a part describes. This part reads
+no field of a type itself (`dec-artifact-sync`).
 
 ```arc42
 :::interface
