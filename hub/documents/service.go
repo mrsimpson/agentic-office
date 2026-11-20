@@ -93,7 +93,7 @@ func Open(ctx context.Context, opts Options) (*Service, error) {
 			if len(art) > 0 {
 				continue
 			}
-			if err := s.writeStub(ctx, f.Path); err != nil {
+			if err := s.writeStub(ctx, a.Session, f.Path); err != nil {
 				opts.Logf("documents: write the missing stub of %s: %v", f.Path, err)
 			}
 		}
@@ -101,10 +101,10 @@ func Open(ctx context.Context, opts Options) (*Service, error) {
 	return s, nil
 }
 
-// writeStub writes the stub of a staged document into the artifact repository. The file must not
-// exist yet.
-func (s *Service) writeStub(ctx context.Context, p string) error {
-	_, err := s.opts.Archive.Commit(context.WithoutCancel(ctx), storage.Change{Message: StubMessage,
+// writeStub writes the stub of a staged document through the staging area of its session, so the
+// area records it (storage.Staging.Stub). The file must not exist yet.
+func (s *Service) writeStub(ctx context.Context, session, p string) error {
+	_, err := s.opts.Staging.Stub(context.WithoutCancel(ctx), session, storage.Change{Message: StubMessage,
 		Files: []storage.File{{Path: p, Data: check.Stub(), Base: storage.NoFile}}})
 	return err
 }
@@ -417,7 +417,7 @@ func (s *Service) stage(ctx context.Context, c tokencheck.Caller, p, content, se
 	if at.state == stateRemoved {
 		return nil // the stub is there
 	}
-	if err := s.writeStub(ctx, p); err != nil {
+	if err := s.writeStub(ctx, sessionID, p); err != nil {
 		// Take the staged file back, and the area forgets the path. A push that put a file at this
 		// path first keeps it, also at the release.
 		if rerr := s.opts.Staging.TakeBack(ctx, sessionID, p); rerr != nil {

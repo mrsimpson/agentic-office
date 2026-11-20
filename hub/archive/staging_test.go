@@ -82,10 +82,11 @@ func (f *stagingFixture) stage(t *testing.T, session, path, content string, auth
 	}
 }
 
-// stub writes the stub of a staged file into the artifact repository, as the part of a type does.
-func (f *stagingFixture) stub(t *testing.T, path string) {
+// stub writes the stub of a staged file into the artifact repository through the area of a
+// session, as the part of a type does.
+func (f *stagingFixture) stub(t *testing.T, session, path string) {
 	t.Helper()
-	if _, err := f.arch.Commit(stagingCtx(t), storage.Change{Message: "Reserve a name",
+	if _, err := f.staging.Stub(stagingCtx(t), session, storage.Change{Message: "Reserve a name",
 		Files: []storage.File{{Path: path, Data: []byte("waits for a release\n"), Base: storage.NoFile}}}); err != nil {
 		t.Fatalf("stub %s: %v", path, err)
 	}
@@ -241,18 +242,25 @@ func TestStagingReleaseCommit(t *testing.T) {
 		by            storage.Author
 	}{{"minutes/000001.md", "# Minutes\n", authorAda}, {"notes/000001.md", "A note.\n", authorBen}, {"notes/000002.md", "Gone.\n", authorBen}} {
 		f.stage(t, "weekly", s.path, s.content, s.by)
-		f.stub(t, s.path)
+		f.stub(t, "weekly", s.path)
 	}
 	if _, err := f.staging.Commit(ctx, "weekly", storage.Change{Message: "remove", Author: authorBen,
 		Files: []storage.File{{Path: "notes/000002.md", Remove: true}}}); err != nil {
 		t.Fatal(err)
 	}
-	f.stub(t, "notes/000009.md") // a stub of another session stays
+	if err := f.staging.OpenArea(ctx, "other", storage.AreaState{}); err != nil {
+		t.Fatal(err)
+	}
+	f.stub(t, "other", "notes/000009.md") // a stub of another session stays
 	before := stagingGit(t, f.dir, "rev-parse", "main")
 
-	id, err := f.staging.Release(ctx, "weekly", authorAda)
+	res, err := f.staging.Release(ctx, "weekly", authorAda)
 	if err != nil {
 		t.Fatal(err)
+	}
+	id := res.Commit
+	if len(res.Conflicts) != 0 {
+		t.Errorf("conflicts %v, want none", res.Conflicts)
 	}
 	if id == "" || strings.TrimSpace(stagingGit(t, f.dir, "rev-parse", "main")) != id {
 		t.Fatalf("release commit %q is not main", id)
@@ -293,8 +301,9 @@ func TestStagingReleaseCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.stage(t, "daily", "notes/000003.md", "Daily.\n", authorBen)
-	f.stub(t, "notes/000003.md")
-	id, err = f.staging.Release(ctx, "daily", storage.Author{})
+	f.stub(t, "daily", "notes/000003.md")
+	res, err = f.staging.Release(ctx, "daily", storage.Author{})
+	id = res.Commit
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -305,8 +314,8 @@ func TestStagingReleaseCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 	main := stagingGit(t, f.dir, "rev-parse", "main")
-	if id, err := f.staging.Release(ctx, "empty", authorAda); err != nil || id != "" {
-		t.Errorf("release of an empty area: %q, %v", id, err)
+	if res, err := f.staging.Release(ctx, "empty", authorAda); err != nil || res.Commit != "" || len(res.Conflicts) != 0 {
+		t.Errorf("release of an empty area: %+v, %v", res, err)
 	}
 	if stagingGit(t, f.dir, "rev-parse", "main") != main {
 		t.Error("the release of an empty area made a commit")
@@ -330,7 +339,7 @@ func TestStagingTakeBackKeepsAPushedFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The stub cannot be written now.
-	_, err := f.arch.Commit(ctx, storage.Change{Message: "Reserve a name",
+	_, err := f.staging.Stub(ctx, "weekly", storage.Change{Message: "Reserve a name",
 		Files: []storage.File{{Path: "notes/000031.md", Data: []byte("waits for a release\n"), Base: storage.NoFile}}})
 	if !storage.IsConflict(err) {
 		t.Fatalf("stub over a pushed file: %v, want a conflict", err)
@@ -339,9 +348,9 @@ func TestStagingTakeBackKeepsAPushedFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.stage(t, "weekly", "notes/000032.md", "The agent's note.\n", authorAda)
-	f.stub(t, "notes/000032.md")
+	f.stub(t, "weekly", "notes/000032.md")
 	f.stage(t, "weekly", "notes/000033.md", "Removed later.\n", authorAda)
-	f.stub(t, "notes/000033.md")
+	f.stub(t, "weekly", "notes/000033.md")
 	if _, err := f.staging.Commit(ctx, "weekly", storage.Change{Message: "remove", Author: authorAda,
 		Files: []storage.File{{Path: "notes/000033.md", Remove: true}}}); err != nil {
 		t.Fatal(err)
@@ -377,6 +386,203 @@ func TestStagingTakeBackKeepsAPushedFile(t *testing.T) {
 	}
 }
 
+// Issue #220: the hub stages a note and dies before it writes the stub. A participant pushes
+// their own file at that path, so the stub cannot be written at the next start. The release keeps
+// the pushed file, releases the rest of the session and reports the conflict. The area stays,
+// closed, with its readers and only the note that was not released, so its readers still see it.
+// A file that only looks like a stub, but was not written through the area, is not replaced
+// either. The order of staged file and stub does not matter.
+func TestStagingReleaseKeepsAPushedFile(t *testing.T) {
+	f := newStaging(t)
+	ctx := stagingCtx(t)
+	if err := f.staging.OpenArea(ctx, "weekly", storage.AreaState{Readers: []string{"p-ada", "p-ben"}}); err != nil {
+		t.Fatal(err)
+	}
+	// A normal note: staged file, then stub.
+	f.stage(t, "weekly", "notes/000030.md", "Released note.\n", authorAda)
+	f.stub(t, "weekly", "notes/000030.md")
+	// The other order: stub, then staged file.
+	f.stub(t, "weekly", "minutes/000001.md")
+	f.stage(t, "weekly", "minutes/000001.md", "# Minutes\n", authorAda)
+	// The crash: a staged file without a stub.
+	f.stage(t, "weekly", "notes/000031.md", "The agent's note.\n", authorAda)
+	// A stub that someone else wrote, not through the area.
+	f.stage(t, "weekly", "notes/000033.md", "Another agent note.\n", authorAda)
+	if _, err := f.arch.Commit(ctx, storage.Change{Message: "Reserve a name",
+		Files: []storage.File{{Path: "notes/000033.md", Data: []byte("waits for a release\n"), Base: storage.NoFile}}}); err != nil {
+		t.Fatal(err)
+	}
+	// A staged file without a stub at a free path: the release writes it, nothing is replaced.
+	f.stage(t, "weekly", "notes/000034.md", "No stub.\n", authorAda)
+
+	// While the hub is down, Ben pushes his own file at the path of the crashed note.
+	if _, err := f.arch.Commit(ctx, storage.Change{Message: "pushed", Author: authorBen,
+		Files: []storage.File{{Path: "notes/000031.md", Data: []byte("Ben's own note.\n"), Base: storage.NoFile}}}); err != nil {
+		t.Fatal(err)
+	}
+	g := openStaging(t, f.root, false)
+	// At the start, the part tries to write the missing stub and fails.
+	if _, err := g.staging.Stub(ctx, "weekly", storage.Change{Message: "Reserve a name",
+		Files: []storage.File{{Path: "notes/000031.md", Data: []byte("waits for a release\n"), Base: storage.NoFile}}}); !storage.IsConflict(err) {
+		t.Fatalf("stub over the pushed file: %v, want a conflict", err)
+	}
+
+	res, err := g.staging.Release(ctx, "weekly", authorAda)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantConflicts := []storage.Conflict{{Session: "weekly", Path: "notes/000031.md"}, {Session: "weekly", Path: "notes/000033.md"}}
+	if res.Commit == "" || !slices.Equal(res.Conflicts, wantConflicts) {
+		t.Fatalf("release %+v, want a commit and conflicts %v", res, wantConflicts)
+	}
+	want := map[string]string{
+		"notes/000030.md": "Released note.\n",
+		"notes/000031.md": "Ben's own note.\n",
+		"notes/000033.md": "waits for a release\n",
+		"notes/000034.md": "No stub.\n",
+	}
+	if got := g.artifacts(t, "notes"); !mapsEqual(got, want) {
+		t.Errorf("notes after the release %v, want %v", got, want)
+	}
+	if got := g.artifacts(t, "minutes"); got["minutes/000001.md"] != "# Minutes\n" {
+		t.Errorf("minutes after the release %v", got)
+	}
+	rc, err := g.staging.Released(ctx, "weekly")
+	if err != nil || rc.ID != res.Commit {
+		t.Fatalf("released %+v, %v", rc, err)
+	}
+	if wantPaths := []string{"minutes/000001.md", "notes/000030.md", "notes/000034.md"}; !slices.Equal(rc.Paths, wantPaths) {
+		t.Errorf("released paths %v, want %v", rc.Paths, wantPaths)
+	}
+
+	// The area keeps the notes that were not released, for its readers.
+	a, err := g.staging.Area(ctx, "weekly")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Release == nil || !a.Release.Done || a.Release.Commit != res.Commit || !slices.Equal(a.Readers, []string{"p-ada", "p-ben"}) {
+		t.Errorf("area after the release: %+v", a)
+	}
+	if wantNames := []string{"notes/000031.md", "notes/000033.md"}; !slices.Equal(a.Names, wantNames) {
+		t.Errorf("names %v, want %v", a.Names, wantNames)
+	}
+	if list, err := g.staging.List(ctx, "weekly"); err != nil || !slices.Equal(list, []string{"notes/000031.md", "notes/000033.md"}) {
+		t.Errorf("list %v, %v", list, err)
+	}
+	if files, err := g.staging.Read(ctx, "weekly", "notes/000031.md"); err != nil || len(files) != 1 || string(files[0].Data) != "The agent's note.\n" {
+		t.Errorf("read the kept note: %+v, %v", files, err)
+	}
+	// Nothing writes into the area any more.
+	if _, err := g.staging.Commit(ctx, "weekly", storage.Change{Message: "late", Files: []storage.File{{Path: "notes/000031.md", Data: []byte("x")}}}); !errors.Is(err, storage.ErrAreaClosed) {
+		t.Errorf("write after the release: %v, want ErrAreaClosed", err)
+	}
+	if _, err := g.staging.Stub(ctx, "weekly", storage.Change{Message: "late", Files: []storage.File{{Path: "notes/000040.md", Data: []byte("x")}}}); !errors.Is(err, storage.ErrAreaClosed) {
+		t.Errorf("stub after the release: %v, want ErrAreaClosed", err)
+	}
+	if err := g.staging.OpenArea(ctx, "weekly", storage.AreaState{}); !errors.Is(err, storage.ErrAreaClosed) {
+		t.Errorf("open after the release: %v, want ErrAreaClosed", err)
+	}
+	// Another area cannot take the kept path.
+	if err := g.staging.OpenArea(ctx, "daily", storage.AreaState{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := g.staging.Commit(ctx, "daily", storage.Change{Message: "take", Files: []storage.File{{Path: "notes/000031.md", Data: []byte("x")}}}); !storage.IsConflict(err) {
+		t.Errorf("another area wrote a kept path: %v, want a conflict", err)
+	}
+	// The release again, also after a restart, gives the same answer and makes no commit.
+	h := openStaging(t, f.root, false)
+	again, err := h.staging.Release(ctx, "weekly", authorBen)
+	if err != nil || again.Commit != res.Commit || !slices.Equal(again.Conflicts, wantConflicts) {
+		t.Errorf("release again %+v, %v", again, err)
+	}
+	if got := h.releaseCommits(t, "weekly"); !slices.Equal(got, []string{res.Commit}) {
+		t.Errorf("release commits %v, want [%s]", got, res.Commit)
+	}
+}
+
+// A stub that the area records is still a stub of a name whose staged file is gone: the release
+// removes it. A failed stub leaves no record, and a stub of a path of another area is refused.
+func TestStagingStubs(t *testing.T) {
+	f := newStaging(t)
+	ctx := stagingCtx(t)
+	for _, s := range []string{"weekly", "daily"} {
+		if err := f.staging.OpenArea(ctx, s, storage.AreaState{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := f.staging.Stub(ctx, "nobody", storage.Change{Message: "x", Files: []storage.File{{Path: "notes/000001.md", Data: []byte("x")}}}); !errors.Is(err, storage.ErrNoArea) {
+		t.Errorf("stub without an area: %v, want ErrNoArea", err)
+	}
+	if _, err := f.staging.Stub(ctx, "weekly", storage.Change{Message: "x", Files: []storage.File{{Path: "notes/000001.md", Remove: true}}}); err == nil {
+		t.Error("a stub removed a file")
+	}
+	f.stub(t, "weekly", "notes/000001.md") // a stub without a staged file
+	if _, err := f.staging.Stub(ctx, "daily", storage.Change{Message: "x", Files: []storage.File{{Path: "notes/000001.md", Data: []byte("x")}}}); !storage.IsConflict(err) {
+		t.Errorf("stub of a path of another area: %v, want a conflict", err)
+	}
+	// A pushed file makes the stub fail; the area forgets the name it had only for that stub.
+	if _, err := f.arch.Commit(ctx, storage.Change{Message: "pushed", Files: []storage.File{{Path: "notes/000002.md", Data: []byte("pushed\n")}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.staging.Stub(ctx, "daily", storage.Change{Message: "x", Files: []storage.File{{Path: "notes/000002.md", Data: []byte("x"), Base: storage.NoFile}}}); !storage.IsConflict(err) {
+		t.Errorf("stub over a pushed file: %v, want a conflict", err)
+	}
+	if a, err := f.staging.Area(ctx, "daily"); err != nil || len(a.Names) != 0 {
+		t.Errorf("area after a failed stub: %+v, %v", a, err)
+	}
+	if a, err := f.staging.Area(ctx, "weekly"); err != nil || !slices.Equal(a.Names, []string{"notes/000001.md"}) {
+		t.Errorf("area with a stub: %+v, %v", a, err)
+	}
+	res, err := f.staging.Release(ctx, "weekly", authorAda)
+	if err != nil || res.Commit == "" || len(res.Conflicts) != 0 {
+		t.Fatalf("release %+v, %v", res, err)
+	}
+	if got := f.artifacts(t, "notes"); !mapsEqual(got, map[string]string{"notes/000002.md": "pushed\n"}) {
+		t.Errorf("notes %v: the recorded stub must go, the pushed file stay", got)
+	}
+}
+
+// A restart cuts off a release with a conflict. The next start completes it, reports the same
+// conflict, and leaves the pushed file alone.
+func TestStagingCompletesReleaseWithAConflict(t *testing.T) {
+	f := newStaging(t)
+	ctx := stagingCtx(t)
+	if err := f.staging.OpenArea(ctx, "weekly", storage.AreaState{Readers: []string{"p-ada"}}); err != nil {
+		t.Fatal(err)
+	}
+	f.stage(t, "weekly", "notes/000001.md", "A note.\n", authorBen)
+	f.stub(t, "weekly", "notes/000001.md")
+	f.stage(t, "weekly", "notes/000002.md", "Taken.\n", authorBen)
+	if _, err := f.arch.Commit(ctx, storage.Change{Message: "pushed", Files: []storage.File{{Path: "notes/000002.md", Data: []byte("pushed\n")}}}); err != nil {
+		t.Fatal(err)
+	}
+	lock := filepath.Join(f.dir, "refs", "heads", "main.lock")
+	if err := os.WriteFile(lock, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.staging.Release(ctx, "weekly", authorAda); err == nil {
+		t.Fatal("the release worked although main was locked")
+	}
+	g := openStaging(t, f.root, false)
+	res, err := g.staging.Release(ctx, "weekly", storage.Author{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(res.Conflicts, []storage.Conflict{{Session: "weekly", Path: "notes/000002.md"}}) {
+		t.Errorf("conflicts %v", res.Conflicts)
+	}
+	if got := g.releaseCommits(t, "weekly"); !slices.Equal(got, []string{res.Commit}) {
+		t.Errorf("release commits %v, want [%s]", got, res.Commit)
+	}
+	want := map[string]string{"notes/000001.md": "A note.\n", "notes/000002.md": "pushed\n"}
+	if got := g.artifacts(t, "notes"); !mapsEqual(got, want) {
+		t.Errorf("notes %v, want %v", got, want)
+	}
+	if a, err := g.staging.Area(ctx, "weekly"); err != nil || a.Release == nil || !a.Release.Done || !slices.Equal(a.Names, []string{"notes/000002.md"}) {
+		t.Errorf("area %+v, %v", a, err)
+	}
+}
+
 func mapsEqual(a, b map[string]string) bool {
 	if len(a) != len(b) {
 		return false
@@ -398,7 +604,7 @@ func TestStagingCompletesReleaseCutOffBeforeTheCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.stage(t, "weekly", "notes/000001.md", "A note.\n", authorBen)
-	f.stub(t, "notes/000001.md")
+	f.stub(t, "weekly", "notes/000001.md")
 	// The hub dies while Git moves main of the artifact repository: its lock file stays.
 	lock := filepath.Join(f.dir, "refs", "heads", "main.lock")
 	if err := os.WriteFile(lock, nil, 0o600); err != nil {
@@ -423,10 +629,11 @@ func TestStagingCompletesReleaseCutOffBeforeTheCommit(t *testing.T) {
 	if err != nil || len(areas) != 1 || areas[0].Release == nil {
 		t.Fatalf("areas after the restart: %+v, %v", areas, err)
 	}
-	id, err := g.staging.Release(ctx, "weekly", storage.Author{})
+	res, err := g.staging.Release(ctx, "weekly", storage.Author{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	id := res.Commit
 	if got := g.releaseCommits(t, "weekly"); !slices.Equal(got, []string{id}) {
 		t.Errorf("release commits %v, want [%s]", got, id)
 	}
@@ -450,7 +657,7 @@ func TestStagingCompletesReleaseCutOffAfterTheCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.stage(t, "weekly", "notes/000001.md", "A note.\n", authorBen)
-	f.stub(t, "notes/000001.md")
+	f.stub(t, "weekly", "notes/000001.md")
 	lock := filepath.Join(f.dir, "refs", "heads", "main.lock")
 	if err := os.WriteFile(lock, nil, 0o600); err != nil {
 		t.Fatal(err)
@@ -469,10 +676,11 @@ func TestStagingCompletesReleaseCutOffAfterTheCommit(t *testing.T) {
 	stagingGit(t, f.dir, "update-ref", "refs/heads/main", a.Release.Commit)
 
 	g := openStaging(t, f.root, false)
-	id, err := g.staging.Release(ctx, "weekly", authorBen)
+	res, err := g.staging.Release(ctx, "weekly", authorBen)
 	if err != nil {
 		t.Fatal(err)
 	}
+	id := res.Commit
 	if id != a.Release.Commit {
 		t.Errorf("release returned %s, want the recorded commit %s", id, a.Release.Commit)
 	}
@@ -524,7 +732,7 @@ func TestStagingWatch(t *testing.T) {
 	if got := nextChanges(t, staged); len(got) != 1 || got[0].Kind != watch.Changed {
 		t.Fatalf("staged change %v, want changed", got)
 	}
-	f.stub(t, "notes/000001.md")
+	f.stub(t, "weekly", "notes/000001.md")
 	if got := nextChanges(t, released); len(got) != 1 || got[0].Kind != watch.Created {
 		t.Fatalf("stub %v", got)
 	}
@@ -551,7 +759,7 @@ func TestStagingIsNotTheRepositoryOfGitAccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.stage(t, "weekly", "notes/000001.md", "Staged secret.\n", authorAda)
-	f.stub(t, "notes/000001.md")
+	f.stub(t, "weekly", "notes/000001.md")
 	clone := filepath.Join(t.TempDir(), "c")
 	stagingGit(t, filepath.Dir(clone), "clone", "-q", f.dir, clone)
 	objects := stagingGit(t, clone, "cat-file", "--batch-all-objects", "--batch")

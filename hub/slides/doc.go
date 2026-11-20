@@ -37,7 +37,8 @@
 //   - Staging (concept-session-release): a render that names a session needs a participant of the
 //     session (if-session-release). While the session is not released, the deck goes into the
 //     staging area of the session, and then the stub of a deck (check.Stub) at the same path into
-//     the artifact repository, by the hub with StubMessage. If the stub cannot be written, the
+//     the artifact repository through the area (storage.Staging.Stub), by the hub with
+//     StubMessage. If the stub cannot be written, the
 //     staged file is taken back and the area forgets the path. A released session, or no session,
 //     writes into the artifact repository. The part asks the meeting session before it takes its lock.
 //   - ChangeDeck and RemoveDeck change or remove a staged deck for a participant of its session
@@ -49,7 +50,7 @@
 //     removed staged deck is not found for a reader. Load serves the stage of a session: the staged
 //     decks of that session, the stubs of the others.
 //   - Open reads all decks from the current commit of the archive and from every staging area and
-//     renders them, so decks survive a restart. A staged deck without a stub gets its stub. Reads use only the memory and do not wait for a commit. A YAML file that
+//     renders them, so decks survive a restart. A staged deck without a stub gets its stub; when a push took its path, the deck stays staged and the release keeps it back. Reads use only the memory and do not wait for a commit. A YAML file that
 //     is not valid stops the start with an error; other files are ignored.
 //   - Reload (if-archive-watch): the part watches the archive and the staging repository of its
 //     tenant and reloads the files of its directory that a push or a commit changed, created or

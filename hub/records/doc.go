@@ -62,14 +62,16 @@
 //     participant may name a session (else PermissionDenied, also for a session that does not
 //     exist). While the session is not released, a new record goes into the staging area of the
 //     session (storage.Staging), with the participant as the author of the commit, and then its
-//     stub into the artifact repository: the same content for every stub of a type
+//     stub into the artifact repository through the area (storage.Staging.Stub), so the area
+//     records the stub that the release may replace: the same content for every stub of a type
 //     (check.Stub), no session, no time, the hub as the author and StubMessage as the commit
 //     message. A record that names a released session, or none, goes into the artifact
 //     repository at once, with the title, the ID and the first 60 characters of its text as the
-//     message. The staging area keeps the name before the stub is written; a crash in between
-//     leaves a staged record without a stub, and Open writes the stub. A stub whose path a push
-//     took first takes the staged file back (storage.Staging.TakeBack), so the area forgets the
-//     name and the release leaves the pushed file alone, and the record gets the next ID.
+//     message. A crash between the two commits leaves a staged record without a stub, and Open
+//     writes the stub. A stub whose path a push took first takes the staged file back
+//     (storage.Staging.TakeBack), so the area forgets the name, and the record gets the next ID.
+//     When Open finds the path taken, the record stays staged; the release keeps it back and
+//     leaves the pushed file alone.
 //   - The meeting session stores the minutes while it holds the lock of the session. StoreMinutes
 //     therefore never asks the meeting session; it stages the minutes at once. All other calls
 //     ask the meeting session before they take a lock of the part, so the two never wait for

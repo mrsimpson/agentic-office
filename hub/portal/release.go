@@ -55,7 +55,9 @@ type commitView struct {
 type artifactView struct {
 	Path, Content string
 	Staged        bool
-	Cut           bool // the page shows only the start of the artifact
+	// NotReleased marks a staged artifact that the release kept back because its path is taken.
+	NotReleased bool
+	Cut         bool // the page shows only the start of the artifact
 }
 
 // pageExtra is what a form adds to the page of a session: a message, or the refusal of a release.
@@ -103,6 +105,11 @@ func release(ctx context.Context, cc *connect.Client, tenant, sid string) (*rele
 		paths = c.GetPaths()
 	}
 	read := archivev1connect.NewArchiveReadServiceClient(cc)
+	unreleased := map[string]bool{}
+	for _, p := range res.GetUnreleased() {
+		unreleased[p] = true
+		paths = append(paths, p)
+	}
 	for _, p := range paths {
 		f, err := read.ReadFile(ctx, &archivev1.ReadFileRequest{Path: p})
 		if connect.CodeOf(err) == connect.CodeNotFound || connect.CodeOf(err) == connect.CodeInvalidArgument {
@@ -113,7 +120,7 @@ func release(ctx context.Context, cc *connect.Client, tenant, sid string) (*rele
 		if err != nil {
 			return nil, err
 		}
-		a := artifactView{Path: p, Staged: f.GetFile().GetStaged()}
+		a := artifactView{Path: p, Staged: f.GetFile().GetStaged(), NotReleased: unreleased[p]}
 		content := f.GetFile().GetContent()
 		if len(content) > maxArtifactShown {
 			content, a.Cut = content[:maxArtifactShown], true

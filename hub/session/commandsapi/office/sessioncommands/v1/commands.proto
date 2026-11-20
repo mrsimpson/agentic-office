@@ -317,6 +317,11 @@ message GetReleaseResponse {
   // may_release is set when the caller may release or object now: a human who took part, while
   // the session waits for its release or is held.
   bool may_release = 4;
+  // unreleased are the paths of the staged files of a released session that the release did not
+  // release because their path in the artifact repository holds another file, ordered. They stay
+  // in the staging area, and only who may read the session gets them. A participant moves such a
+  // file to a new path by hand, through the interface of its type.
+  repeated string unreleased = 5;
 }
 
 // ReleaseCommit is the commit that moved the staged files of a session into the artifact

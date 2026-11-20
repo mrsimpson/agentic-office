@@ -6,11 +6,13 @@ package contract
 import (
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
 	"golang.org/x/net/html"
 
+	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
 	"github.com/mrsimpson/agentic-office/hub/session/streamapi/events"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
@@ -150,5 +152,76 @@ func TestPortalRelease(t *testing.T) {
 	if len(findAll(doc, withAttr("data-utterance", ""))) != 0 || strings.Contains(body, "We meet on Monday.\n</span>") ||
 		len(findAll(doc, withAttr("data-form", ""))) != 0 {
 		t.Errorf("a member who did not take part sees more than the release:\n%s", text(doc))
+	}
+}
+
+// Issue #220: the hub dies after it staged a document and before its stub lands, and a participant
+// pushes their own file at that path while the hub is down. The release keeps the pushed file and
+// releases the rest of the session. The staged document stays in the staging area: the readers of
+// the session see it on the page as not released, because the path is taken, and everyone else
+// reads the pushed file.
+func TestPortalShowsArtifactNotReleased(t *testing.T) {
+	args := []string{"-release-grace-period", "1h"}
+	m := newMeetingArgs(t, args...)
+	ada := m.join("Ada", kHuman)
+	dora := m.register("Dora", kHuman).ParticipantID // a member who never joined
+	m.say(ada, "We meet on Monday.")
+	m.stageDocument(ada, "documents/taken.md", "# Taken\n\nThe agent's version.\n")
+	m.stageDocument(ada, "documents/free.md", "# Free\n\nReleased as usual.\n")
+	m.end(ada)
+
+	// The crash: the stub of documents/taken.md is not in the artifact repository, and Ben's file
+	// lies at its path when the hub starts again.
+	m.srv.Kill()
+	contracttest.Edit(t, m.srv.ArchiveDir(), "Ben's own file", func(work string) {
+		contracttest.WriteFile(t, work, "documents/taken.md", "# Ben\n\nBen's own file.\n")
+	})
+	m.start(nil, args...)
+
+	if _, err := m.releaseBy(ada); err != nil {
+		t.Fatalf("release: %v", err)
+	}
+	if got := contracttest.Git(t, m.srv.ArchiveDir(), "show", "main:documents/taken.md"); got != "# Ben\n\nBen's own file.\n" {
+		t.Errorf("the release replaced the pushed file: %q", got)
+	}
+	if got := contracttest.Git(t, m.srv.ArchiveDir(), "show", "main:documents/free.md"); got != "# Free\n\nReleased as usual.\n" {
+		t.Errorf("released document: %q", got)
+	}
+	if got := contracttest.ReleaseCommits(t, m.srv.ArchiveDir(), m.sid); len(got) != 1 {
+		t.Errorf("release commits %v, want one", got)
+	}
+	rel, err := m.s(ada).GetRelease(m.ctx(), &sessioncommandsv1.GetReleaseRequest{SessionId: m.sid})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st := rel.GetStatus().GetState(); st != sessioncommandsv1.ReleaseState_RELEASE_STATE_RELEASED ||
+		!slices.Equal(rel.GetUnreleased(), []string{"documents/taken.md"}) || !slices.Equal(rel.GetCommit().GetPaths(), []string{"documents/free.md"}) {
+		t.Fatalf("release %v", rel)
+	}
+
+	page := m.srv.URL + "/portal/t/" + contracttest.DefaultTenant + "/s/" + url.PathEscape(m.sid)
+	b, _, _ := openPortal(t, m.srv, m.a(ada), contracttest.DefaultTenant)
+	res, doc, _ := portalPage(t, b, page)
+	if res.StatusCode != http.StatusOK || text(one(t, doc, "data-release-state", "")) != "released" {
+		t.Fatalf("page of the released session: %d\n%s", res.StatusCode, text(doc))
+	}
+	taken := one(t, doc, "data-artifact", "documents/taken.md")
+	if _, kept := attr(taken, "data-not-released"); !kept || !strings.Contains(text(taken), "not released: the path is taken") ||
+		!strings.Contains(text(taken), "The agent's version.") {
+		t.Errorf("the document that was not released: %q", text(taken))
+	}
+	free := one(t, doc, "data-artifact", "documents/free.md")
+	if _, kept := attr(free, "data-not-released"); kept || !strings.Contains(text(free), "Released as usual.") {
+		t.Errorf("the released document: %q", text(free))
+	}
+	// A member who did not take part sees the release, and no staged artifact.
+	db, _, _ := openPortal(t, m.srv, m.a(dora), contracttest.DefaultTenant)
+	res, doc, body := portalPage(t, db, page)
+	if res.StatusCode != http.StatusOK || len(findAll(doc, withAttr("data-artifact", "documents/taken.md"))) != 0 ||
+		strings.Contains(body, "The agent's version.") {
+		t.Errorf("page for a member who did not take part: %d\n%s", res.StatusCode, text(doc))
+	}
+	if f, err := readFile(t, m.a(dora), "documents/taken.md"); err != nil || f.GetStaged() || string(f.GetContent()) != "# Ben\n\nBen's own file.\n" {
+		t.Errorf("read of the pushed file by a member: %v, %v", f, err)
 	}
 }
