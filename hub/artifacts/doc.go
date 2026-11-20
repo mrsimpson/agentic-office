@@ -13,6 +13,9 @@
 //   - Owner finds the part of a schema by its name. The interface of the block (package check,
 //     if-artifact-check) reads the schema name that a file names, asks Owner and passes the file
 //     on.
+//   - A part may also give hints for the files of its types, such as links that lead nowhere
+//     (concept-wiki). A hint never makes a file invalid. Hinters returns the parts that give
+//     hints; each part decides by itself which files are of its types.
 package artifacts
 
 import (
@@ -33,11 +36,17 @@ type Check func(schema, path string, content []byte) []string
 // (concept-session-release).
 type StubCheck func(schema string, content []byte) bool
 
+// HintCheck returns hints in plain words for the file at path, or nothing when the file is not of
+// a type of the part. exists reports whether a clean path inside the repository is a file or a
+// directory with files.
+type HintCheck func(path string, content []byte, exists func(string) bool) []string
+
 // Part is what the artifacts part knows of a part of the hub that owns schemas.
 type Part struct {
 	Name     string
 	Validate Check
 	IsStub   StubCheck
+	Hints    HintCheck // nil: the part gives no hints
 }
 
 type entry struct {
@@ -50,10 +59,10 @@ func noStubs(string, []byte) bool { return false }
 
 // parts is the fixed list of the owners of schemas. A new type adds one line.
 var parts = []entry{
-	{Part{"records", recordscheck.Validate, recordscheck.IsStub}, recordscheck.Schemas},
-	{Part{"tasks", taskscheck.Validate, noStubs}, taskscheck.Schemas},
-	{Part{"slides", slidescheck.Validate, func(_ string, c []byte) bool { return slidescheck.IsStub(c) }}, slidescheck.Schemas},
-	{Part{"documents", documentscheck.Validate, func(_ string, c []byte) bool { return documentscheck.IsStub(c) }}, documentscheck.Schemas},
+	{Part{"records", recordscheck.Validate, recordscheck.IsStub, nil}, recordscheck.Schemas},
+	{Part{"tasks", taskscheck.Validate, noStubs, nil}, taskscheck.Schemas},
+	{Part{"slides", slidescheck.Validate, func(_ string, c []byte) bool { return slidescheck.IsStub(c) }, nil}, slidescheck.Schemas},
+	{Part{"documents", documentscheck.Validate, func(_ string, c []byte) bool { return documentscheck.IsStub(c) }, documentscheck.Hints}, documentscheck.Schemas},
 }
 
 // owners maps the name of a schema to the part that owns it.
@@ -74,6 +83,17 @@ var owners = func() map[string]Part {
 func Owner(schema string) (Part, bool) {
 	p, ok := owners[schema]
 	return p, ok
+}
+
+// Hinters returns the parts that give hints for their files, in the order of the list.
+func Hinters() []Part {
+	var out []Part
+	for _, p := range parts {
+		if p.Hints != nil {
+			out = append(out, p.Part)
+		}
+	}
+	return out
 }
 
 // Schemas returns the names of all schemas that a part owns, sorted.

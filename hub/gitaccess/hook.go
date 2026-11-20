@@ -57,7 +57,8 @@ func writeHook(dir string) error {
 // RunPreReceive is the pre-receive hook of the artifact repository. Git starts it before it
 // accepts a push, with the new objects in its quarantine area, and gives it one line per
 // reference on stdin: "<old> <new> <reference>". A refusal is written to stderr, which the
-// participant sees as "remote:" lines, and the exit code is 1. It returns 0 to accept.
+// participant sees as "remote:" lines, and the exit code is 1. It returns 0 to accept. Hints,
+// such as a link of a document that leads nowhere, go to stderr too; they never refuse a push.
 func RunPreReceive(stdin io.Reader, stderr io.Writer) int {
 	participant, name := os.Getenv(EnvParticipant), os.Getenv(EnvName)
 	if participant == "" || os.Getenv(EnvTenant) == "" {
@@ -74,14 +75,21 @@ func RunPreReceive(stdin io.Reader, stderr io.Writer) int {
 	}
 	h := &hook{wantName: signature(name), wantEmail: AuthorEmail(participant), maxFile: maxFile, maxFiles: maxFiles}
 
-	var problems []string
+	var problems, hints []string
 	sc := bufio.NewScanner(stdin)
 	for sc.Scan() {
 		f := strings.Fields(sc.Text())
 		if len(f) != 3 {
 			continue
 		}
-		problems = append(problems, h.checkRef(f[0], f[1], f[2])...)
+		p, hs := h.checkRef(f[0], f[1], f[2])
+		problems, hints = append(problems, p...), append(hints, hs...)
+	}
+	if len(hints) > 0 {
+		fmt.Fprintln(stderr, "hints, which do not refuse the push:")
+		for _, hint := range hints {
+			fmt.Fprintln(stderr, "  - "+hint)
+		}
 	}
 	if len(problems) == 0 {
 		return 0
@@ -111,26 +119,29 @@ func signature(s string) string {
 	}, s))
 }
 
-func (h *hook) checkRef(oldID, newID, ref string) []string {
+// checkRef checks the push of one reference. It returns the problems, which refuse the push, and
+// the hints, which do not.
+func (h *hook) checkRef(oldID, newID, ref string) (problems, hints []string) {
 	if ref != "refs/heads/main" {
-		return []string{fmt.Sprintf("only the branch main can be changed, not %s", ref)}
+		return []string{fmt.Sprintf("only the branch main can be changed, not %s", ref)}, nil
 	}
 	if isZero(newID) {
-		return []string{"the branch main cannot be deleted"}
+		return []string{"the branch main cannot be deleted"}, nil
 	}
 	rng := newID
 	if !isZero(oldID) {
 		if _, err := runGit(nil, "merge-base", "--is-ancestor", oldID, newID); err != nil {
 			var ee *exec.ExitError
 			if errors.As(err, &ee) && ee.ExitCode() == 1 {
-				return []string{"main has changed since your last fetch, or you rewrote its history; run \"git fetch\", merge or rebase your work onto origin/main, and push again. History cannot be rewritten"}
+				return []string{"main has changed since your last fetch, or you rewrote its history; run \"git fetch\", merge or rebase your work onto origin/main, and push again. History cannot be rewritten"}, nil
 			}
-			return []string{"the history could not be checked: " + err.Error()}
+			return []string{"the history could not be checked: " + err.Error()}, nil
 		}
 		rng = oldID + ".." + newID
 	}
-	problems := h.checkAuthors(rng)
-	return append(problems, h.checkFiles(oldID, newID)...)
+	problems = h.checkAuthors(rng)
+	files, hints := h.checkFiles(oldID, newID)
+	return append(problems, files...), hints
 }
 
 func (h *hook) checkAuthors(rng string) []string {
@@ -156,18 +167,20 @@ type change struct {
 	path, blob string
 }
 
-func (h *hook) checkFiles(oldID, newID string) []string {
+// checkFiles checks the files that the push changes. It returns the problems and the hints of
+// the files.
+func (h *hook) checkFiles(oldID, newID string) ([]string, []string) {
 	base := oldID
 	if isZero(oldID) {
 		empty, err := runGit(strings.NewReader(""), "hash-object", "-t", "tree", "--stdin")
 		if err != nil {
-			return []string{"the files could not be read: " + err.Error()}
+			return []string{"the files could not be read: " + err.Error()}, nil
 		}
 		base = strings.TrimSpace(string(empty))
 	}
 	out, err := runGit(nil, "diff-tree", "-r", "-z", "--raw", "--no-renames", "--no-abbrev", base, newID)
 	if err != nil {
-		return []string{"the files could not be read: " + err.Error()}
+		return []string{"the files could not be read: " + err.Error()}, nil
 	}
 	var (
 		problems []string
@@ -199,9 +212,10 @@ func (h *hook) checkFiles(oldID, newID string) []string {
 	}
 	problems = append(problems, h.checkStubs(olds)...)
 	if len(changes) > h.maxFiles {
-		return append(problems, fmt.Sprintf("the push changes %d files; at most %d files may change in one push", len(changes), h.maxFiles))
+		return append(problems, fmt.Sprintf("the push changes %d files; at most %d files may change in one push", len(changes), h.maxFiles)), nil
 	}
-	return append(problems, h.checkContents(changes)...)
+	contents, hints := h.checkContents(newID, changes)
+	return append(problems, contents...), hints
 }
 
 // checkStubs refuses every change or removal of a path whose old file is the stub of a staged
@@ -312,13 +326,15 @@ func pathProblem(p string) string {
 }
 
 // checkContents reads the new content of the files and checks each file with the artifact check.
-// A new file with the content of a stub is refused: only the hub writes stubs.
-func (h *hook) checkContents(changes []change) []string {
+// A new file with the content of a stub is refused: only the hub writes stubs. The hints of a
+// valid file come from the artifact check too; a link resolves in the new state of main (newID),
+// so links between the files of one push work.
+func (h *hook) checkContents(newID string, changes []change) (problems, hints []string) {
 	blobs, err := h.readBlobs(changes)
 	if err != nil {
-		return []string{"the files could not be read: " + err.Error()}
+		return []string{"the files could not be read: " + err.Error()}, nil
 	}
-	var problems []string
+	tree := newTreeIndex(newID)
 	for i, c := range changes {
 		switch b := blobs[i]; {
 		case b.size > h.maxFile:
@@ -331,9 +347,40 @@ func (h *hook) checkContents(changes []change) []string {
 			for _, reason := range check.Validate(c.path, b.content) {
 				problems = append(problems, fmt.Sprintf("%s: %s", c.path, reason))
 			}
+			for _, hint := range check.Hints(c.path, b.content, tree.exists) {
+				hints = append(hints, fmt.Sprintf("%s: %s", c.path, hint))
+			}
 		}
 	}
-	return problems
+	return problems, hints
+}
+
+// treeIndex knows the files and directories of one commit. It lists them on the first question.
+type treeIndex struct {
+	commit string
+	paths  map[string]bool // every file and every directory that holds a file
+	err    error
+}
+
+func newTreeIndex(commit string) *treeIndex { return &treeIndex{commit: commit} }
+
+// exists reports whether p is a file or a directory with files in the commit. When the commit
+// cannot be listed, every path exists, so no hint is wrong.
+func (t *treeIndex) exists(p string) bool {
+	if t.paths == nil && t.err == nil {
+		out, err := runGit(nil, "ls-tree", "-r", "-z", "--name-only", "--full-tree", t.commit)
+		if err != nil {
+			t.err = err
+		} else {
+			t.paths = map[string]bool{}
+			for _, f := range strings.Split(string(out), "\x00") {
+				for d := f; d != "" && d != "." && !t.paths[d]; d = path.Dir(d) {
+					t.paths[d] = true
+				}
+			}
+		}
+	}
+	return t.err != nil || t.paths[p]
 }
 
 // runGit runs the Git command line tool in the repository that Git started the hook in. The

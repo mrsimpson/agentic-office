@@ -1016,6 +1016,24 @@ func TestCLIDocuments(t *testing.T) {
 	if b, _ := os.ReadFile(outFile); string(b) != "Short." {
 		t.Fatalf("file written by get --out: %q", b)
 	}
+	// A link that leads nowhere is a hint: on stderr as text, in the field hints as JSON. The
+	// document is written all the same. Invalid front matter is refused.
+	if h := ada.ok("document", "create", "documents/links.md", "[plan](plan.md) [gone](gone.md)"); fmt.Sprint(h["hints"]) != `[the link "gone.md" leads nowhere: there is no documents/gone.md]` {
+		t.Fatalf("create --json: hints %v", h["hints"])
+	}
+	if h := ada.ok("document", "create", "documents/fine.md", "[plan](plan.md)"); fmt.Sprint(h["hints"]) != "[]" {
+		t.Fatalf("create --json without broken links: hints %v", h["hints"])
+	}
+	out, errOut, code := ada.run("document", "create", "documents/text.md", "[gone](gone.md)")
+	if code != 0 || strings.TrimSpace(out) == "" || strings.Contains(out, "hint") ||
+		errOut != "hint: the link \"gone.md\" leads nowhere: there is no documents/gone.md\n" {
+		t.Fatalf("create with a broken link: exit %d, stdout %q, stderr %q", code, out, errOut)
+	}
+	bad := filepath.Join(dir, "bad.md")
+	if err := os.WriteFile(bad, []byte("---\nschema: office.document.v1\nstatus: done\n---\n# Bad\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ada.fails(1, "invalid_argument", "document", "create", "documents/bad.md", "--file", bad)
 }
 
 // TestCLIPortalLink: office portal link gives every user a link: at the tenant it works in, or at

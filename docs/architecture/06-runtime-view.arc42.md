@@ -355,7 +355,9 @@ the token and the tenant before Git reads the upload. Then Git runs the rules of
 new commits. The artifacts part passes the check of a changed file to the part of the hub that owns its
 schema; the diagram shows the records part. For a file that the push changes or removes, Git
 access also asks the artifacts part whether the old file is the stub of a staged artifact, and
-refuses the push if it is. When all of them hold, Git moves main in one step, and Git access tells the archive,
+refuses the push if it is. Git access also asks the artifacts part for the hints of each changed
+file, such as a link of a document that leads nowhere in the state after the push, and shows them
+to the participant; a hint never refuses the push. When all of the rules hold, Git moves main in one step, and Git access tells the archive,
 which tells the clients that follow the tenant. A push that breaks a rule is refused as a whole and
 shows the reason. A push on an old base is refused by Git, and the participant fetches and merges
 by hand first.
@@ -397,11 +399,13 @@ sequenceDiagram
     bb_artifacts-->>bb_git_access: the answer of the owner
     bb_git_access->>bb_artifacts: is the old file of a changed or removed path a stub?
     bb_artifacts-->>bb_git_access: the owner of its schema recognises its stub, or not
+    bb_git_access->>bb_artifacts: hints for a changed file, links resolve in the new state
+    bb_artifacts-->>bb_git_access: hints of the parts, for example a link of a document that leads nowhere
     Note over bb_git_access: Git moves main in one step, or the push is refused with the reason
     bb_git_access->>bb_archive: main moved
     bb_archive-->>bb_records: changed artifacts, the part reloads its files
     bb_archive-->>bb_sync: changed artifacts, to the clients that follow
-    bb_git_access-->>actor_human: push accepted
+    bb_git_access-->>actor_human: push accepted, with the hints
 ```
 
 ## A user opens the portal

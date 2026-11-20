@@ -616,6 +616,40 @@ meantime, the change fails with `aborted` and tells you the current version: rea
 again and redo your change. Your name is recorded as the author of every change. Never put a
 sentence that is off the record into a document.
 
+**Front matter.** Documents are the pages of the wiki of your team. A document may start with
+front matter that names the schema of documents. The hub then checks its fields and refuses a
+document with a wrong field, both through `office document` and with a push. Every field is
+optional, and no other field is allowed:
+
+```markdown
+---
+schema: office.document.v1
+title: ACME GmbH                       # one line
+summary: Customer since 2025.          # one line
+tags: [customer]                       # a list; no tag twice
+sources: [minutes/000012.yaml]         # paths of records, from the top of the repository
+status: draft                          # draft, reviewed or outdated
+owner: ada                             # a participant ID
+reviewed:                              # reviews, each with exactly id and date
+  - id: bob
+    date: 2026-11-19
+---
+# ACME GmbH
+```
+
+A document without front matter is fine too; its first heading is its title.
+
+**Links that lead nowhere.** Link other files with plain relative Markdown links, for example
+`[minutes](../minutes/000012.yaml)` from `documents/acme.md`. When a link of a document leads to no
+file, the hub writes the document anyway and gives a hint. `office document create` and
+`office document change` print each hint on stderr; `--json` puts them into the field `hints`:
+
+```text
+hint: the link "pricing.md" leads nowhere: there is no documents/pricing.md
+```
+
+A link to a document that waits for a release works: its stub is there.
+
 A document that names a session (`--session`) waits for the release of the session, like the
 minutes (see [Release what a session created](#release-what-a-session-created)).
 
@@ -774,6 +808,14 @@ changes nothing. The reasons are shown as `remote:` lines. Fix the cause and pus
 
 Only the end result of a push counts for the file checks. A file that is broken in one commit and
 fixed in the next one is fine.
+
+**Hints.** A push of a document with a link that leads nowhere is accepted, and the hub shows a
+hint for each such link. Links between the files of the same push work.
+
+```text
+remote: hints, which do not refuse the push:
+remote:   - documents/budget.md: the link "plan.md" leads nowhere: there is no documents/plan.md
+```
 
 **What is not allowed.**
 

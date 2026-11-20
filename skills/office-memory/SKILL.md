@@ -68,10 +68,13 @@ Create a page with `document_create` and change it with `document_change`. A cha
 version that you read (`--base`). If the hub refuses it because someone changed the page
 meanwhile, read it again, merge your change, and try again. Never overwrite blindly.
 
-Start every page with front matter:
+A page is a document: its path is `documents/<name>.md`, with folders if you like. Start every
+page with front matter that names the schema of documents. In this example, `ada` owns the page
+and `bob` reviewed it (participant IDs):
 
 ```markdown
 ---
+schema: office.document.v1
 title: ACME GmbH
 summary: Customer since 2025; contract, contacts and open topics.
 tags: [customer]
@@ -79,9 +82,9 @@ sources:
   - minutes/000012.yaml
   - notes/000031.md
 status: draft
-owner: <participant ID of the human who owns the page>
+owner: ada
 reviewed:
-  - id: <participant ID of the reviewer>
+  - id: bob
     date: 2026-11-19
 ---
 
@@ -90,20 +93,34 @@ reviewed:
 The price is 40 EUR per seat ([minutes of 12 November](../../minutes/000012.yaml)).
 ```
 
-- **title** and **summary**: one line each. The portal lists pages by them.
-- **tags**: use the tags that similar pages already use.
-- **sources**: the path of every source the page draws on. Also link the source next to the
-  statement that comes from it. Cite records, never a meeting or its transcript.
+The hub checks the front matter of every page that names `schema: office.document.v1`, through
+`document_create`, `document_change` and a push. It refuses a page with a wrong field and says
+why. Every field is optional, and no other field is allowed:
+
+- **schema**: exactly `office.document.v1`.
+- **title** and **summary**: one line of text each. The portal lists pages by them. Without a
+  title, the first heading is the title.
+- **tags**: a list. Each tag is one line, not blank, without spaces around it, and not repeated.
+  Use the tags that similar pages already use.
+- **sources**: a list of the paths of the sources that the page draws on, from the top of the
+  repository (`minutes/000012.yaml`, `notes/000031.md`), each ending in `.md`, `.yaml` or `.yml`,
+  none repeated. Also link the source next to the statement that comes from it. Cite records,
+  never a meeting or its transcript.
 - **status**: `draft`, `reviewed` or `outdated`. You write `draft`. Set `outdated` when a newer
   page replaces it, and link the newer page at the top.
-- **owner** and **reviewed**: set by humans. Add a review only when a human asks you to record
-  their review. Never add yourself.
-- **Links**: plain relative Markdown links to other files of the tenant. Check that each target
-  exists.
+- **owner**: the participant ID of the owner. Set by humans.
+- **reviewed**: a list of reviews, each with exactly two fields: `id`, the participant ID of the
+  reviewer, and `date`, the day of the review as `YYYY-MM-DD`. Add a review only when a human
+  asks you to record their review. Never add yourself.
+- **Links**: plain relative Markdown links to other files of the tenant, relative to the page
+  (from `documents/customers/acme.md`, the minutes are `../../minutes/000012.yaml`). The hub
+  answers every write with `hints`: one for each relative link that leads to no file. A push
+  shows the same hints as `remote:` lines. The hub writes the page anyway, so fix every hint
+  that it gives, at once.
 
 Where pages live: follow the structure you find. If the tenant has none yet, use
-`wiki/<area>/<name>.md`, for example `wiki/customers/acme.md`, with one overview page per area,
-for example `wiki/customers/README.md`, that links every page of the area.
+`documents/<area>/<name>.md`, for example `documents/customers/acme.md`, with one overview page
+per area, for example `documents/customers/README.md`, that links every page of the area.
 
 Before you create a page, search for an existing page about the same thing. Extend it instead of
 creating a second one.
