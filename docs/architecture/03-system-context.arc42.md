@@ -38,6 +38,7 @@ flowchart LR
     actor_agent -->|if-acp-client| bb_participant_client
     actor_agent -->|if-git-access| bb_office_hub
     actor_agent -->|if-office-assistant-skill| bb_skills
+    actor_agent -->|if-office-memory-skill| bb_skills
     actor_container_platform -->|if-health| bb_office_hub
     actor_decision_model -->|if-decision-model| bb_participant_client
     actor_forwarding_judge -->|if-forwarding-judge| bb_participant_client
@@ -92,7 +93,7 @@ id: actor-agent
 title: Agent
 type: system
 description: Reads the session log as a file or gets it from the agent runner over ACP, writes through tools; keeps minutes, raises its hand, creates artifacts
-requires: if-mcp, if-cli, if-local-log, if-acp-client, if-git-access, if-office-assistant-skill
+requires: if-mcp, if-cli, if-local-log, if-acp-client, if-git-access, if-office-assistant-skill, if-office-memory-skill
 :::
 ```
 

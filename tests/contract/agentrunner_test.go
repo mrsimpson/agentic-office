@@ -16,15 +16,15 @@ import (
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
-// agentRun starts "office agent run" for u with the ACP test double as the harness. It returns
-// the process and the record file of the double. A prompt with "please hold" waits until the
-// file <record file>.release exists.
+// agentRun starts "office agent run" for u with the ACP test double as the harness, in a new
+// working directory. It returns the process and the record file of the double. A prompt with
+// "please hold" waits until the file <record file>.release exists.
 func (u *officeUser) agentRun(t *testing.T, sid string, flags ...string) (*contracttest.Process, string) {
 	t.Helper()
 	rec := filepath.Join(t.TempDir(), "acp-record.jsonl")
 	args := append([]string{"agent", "run", "--session", sid}, flags...)
 	args = append(args, "--", contracttest.ACPDouble(t))
-	p := contracttest.Start(t, "office", append(u.env, "ACP_DOUBLE_RECORD="+rec, "ACP_DOUBLE_RELEASE="+rec+".release"), args...)
+	p := contracttest.StartIn(t, t.TempDir(), "office", append(u.env, "ACP_DOUBLE_RECORD="+rec, "ACP_DOUBLE_RELEASE="+rec+".release"), args...)
 	return p, rec
 }
 
@@ -218,11 +218,11 @@ func TestAgentRunnerErrors(t *testing.T) {
 	}
 
 	// A harness that is not an ACP agent ends at once: the runner fails and says so.
-	_, errOut, code := bot.run("agent", "run", "--session", newSession(), "--", "true")
+	_, errOut, code := contracttest.RunIn(t, t.TempDir(), "office", bot.env, nil, "agent", "run", "--session", newSession(), "--", "true")
 	if code != 1 || !strings.Contains(errOut, "harness") {
 		t.Fatalf("harness that stops: exit %d, %q", code, errOut)
 	}
-	_, errOut, code = bot.run("agent", "run", "--session", newSession(), "--", filepath.Join(t.TempDir(), "missing"))
+	_, errOut, code = contracttest.RunIn(t, t.TempDir(), "office", bot.env, nil, "agent", "run", "--session", newSession(), "--", filepath.Join(t.TempDir(), "missing"))
 	if code != 1 || !strings.Contains(errOut, "start the harness") {
 		t.Fatalf("missing harness: exit %d, %q", code, errOut)
 	}
