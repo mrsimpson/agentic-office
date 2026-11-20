@@ -133,6 +133,8 @@ func (s *Service) logf(format string, args ...any) {
 // write (final) also records in ArchiveStateFile that the archive is complete, if it wrote every
 // changed session.
 func (s *Service) writeArchive(ctx context.Context, final bool) {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	s.archMu.Lock()
 	dirty := s.dirty
 	s.dirty = map[string]bool{}

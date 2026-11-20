@@ -533,7 +533,6 @@ OPEN:
 - Starting the agent that claimed the ingest when the release happens (#195).
 
 ```arc42
-:::ignore W001 the meeting session and the archive implement it when it is built :::
 :::concept
 id: concept-session-release
 title: Artifacts from a session and their release

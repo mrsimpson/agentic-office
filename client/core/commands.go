@@ -303,9 +303,29 @@ func (c *hubClient) FocusArtifact(ctx context.Context, sessionID, artifactID str
 }
 
 // EndSession ends the session for everyone.
-func (c *hubClient) EndSession(ctx context.Context, sessionID string) (*sessioncommandsv1.CommandResult, error) {
+func (c *hubClient) EndSession(ctx context.Context, sessionID string) (*sessioncommandsv1.EndSessionResponse, error) {
+	var res *sessioncommandsv1.EndSessionResponse
+	_, err := c.command(ctx, func(pid, id string) (r *sessioncommandsv1.CommandResult, err error) {
+		res, err = c.commands.EndSession(ctx, &sessioncommandsv1.EndSessionRequest{SessionId: sessionID, CommandId: id, ParticipantId: pid})
+		return res.GetResult(), err
+	})
+	return res, err
+}
+
+// ReleaseSession releases what an ended session staged (concept-session-release).
+func (c *hubClient) ReleaseSession(ctx context.Context, sessionID string) (*sessioncommandsv1.ReleaseSessionResponse, error) {
+	var res *sessioncommandsv1.ReleaseSessionResponse
+	_, err := c.command(ctx, func(pid, id string) (r *sessioncommandsv1.CommandResult, err error) {
+		res, err = c.commands.ReleaseSession(ctx, &sessioncommandsv1.ReleaseSessionRequest{SessionId: sessionID, CommandId: id, ParticipantId: pid})
+		return res.GetResult(), err
+	})
+	return res, err
+}
+
+// ObjectToRelease holds the release of an ended session until a human releases it.
+func (c *hubClient) ObjectToRelease(ctx context.Context, sessionID string) (*sessioncommandsv1.CommandResult, error) {
 	return c.command(ctx, func(pid, id string) (*sessioncommandsv1.CommandResult, error) {
-		r, err := c.commands.EndSession(ctx, &sessioncommandsv1.EndSessionRequest{SessionId: sessionID, CommandId: id, ParticipantId: pid})
+		r, err := c.commands.ObjectToRelease(ctx, &sessioncommandsv1.ObjectToReleaseRequest{SessionId: sessionID, CommandId: id, ParticipantId: pid})
 		return r.GetResult(), err
 	})
 }

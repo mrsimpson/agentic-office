@@ -55,6 +55,10 @@ message Event {
     ParticipantPaused participant_paused = 42; // "participant.paused"
     ParticipantResumed participant_resumed = 43; // "participant.resumed"
     SessionEnded session_ended = 44; // "session.ended"
+    // Release of what the session staged (concept-session-release). These events, notices about
+    // artifacts and marks off the record are the only events after session.ended.
+    ReleaseObjected release_objected = 45; // "release.objected"
+    SessionReleased session_released = 46; // "session.released"
     // Import of a conversation (dec-session-import, if-session-import)
     SessionImported session_imported = 50; // "session.imported"
     ImportCompleted import_completed = 51; // "import.completed"
@@ -176,7 +180,22 @@ message SessionImported {
   string source = 1;
   // title is the title of the conversation. It may be empty.
   string title = 2;
+  // importer_kind is the kind of the participant who imported the conversation. The importer
+  // counts as a participant of the session; an import that no human worked on is released when
+  // it ends (concept-session-release).
+  ParticipantKind importer_kind = 3;
 }
+
+// ReleaseObjected says that a human who took part in the session objects to its release
+// (concept-session-release). The actor is that human. The session stays held until a human
+// releases it.
+message ReleaseObjected {}
+
+// SessionReleased says that the session is released: what it staged moves into the artifact
+// repository of the tenant (concept-session-release). The actor is the human who released it;
+// an empty actor is the hub, at the end of the grace period or at the end of a session without
+// humans. The release commit in the artifact repository records the time and the author.
+message SessionReleased {}
 
 // ImportCompleted ends the import of a conversation. After it, the session takes session
 // commands like any other session.
@@ -192,7 +211,7 @@ message ImportCompleted {
 message SignedTreeHead {
   string session_id = 1;
   // schema is the schema of the session (dec-session-schema): the version of the session contract
-  // the session was started with, for example "office.sessionstream.v1/1". A session keeps its schema
+  // the session was started with, for example "office.sessionstream.v1/2". A session keeps its schema
   // for its whole life. A hub with another schema does not continue the session, and a verifier
   // checks the session only with its own schema. The Go constant is Schema in this package.
   string schema = 6;

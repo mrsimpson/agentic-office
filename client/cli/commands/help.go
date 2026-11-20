@@ -355,10 +355,20 @@ cannot follow a file. A sentence that is off the record comes as a placeholder: 
 	{Name: "meeting resume", Group: groupMeeting, Summary: "resume your transcription",
 		Usage: "meeting resume", Details: "The counterpart of \"meeting pause\".", Examples: []string{"office meeting resume"}},
 	{Name: "meeting end", Group: groupMeeting, Summary: "end the meeting for everyone",
-		Usage: "meeting end",
-		Details: `Stores the running minutes as the minutes of the session and writes session.ended. Every new
-command after that fails with failed_precondition. Use "meeting leave" to leave alone.`,
-		Examples: []string{"office meeting end"}},
+		Usage: "meeting end [--release]",
+		Details: `Stores the running minutes as the minutes of the session and writes session.ended. Use
+"meeting leave" to leave alone. After the end, the session takes no new command, except the
+release, an objection, a note about an artifact and, until the release, a mark off the record.
+
+What the session created waits in its staging area for the release. If no human took part, the
+hub releases it at once. Otherwise it releases it when the grace period ends (24 hours unless the
+hub sets another length); the command prints when. Until then every human who took part can
+release it ("office session release") or hold it ("office session hold").
+
+--release ends the session and then releases it, as two commands; only a human can release.
+--json prints {"event", "duplicate", "release": {"state", "deadline"}}, and with --release also
+"released" as "office session release" prints it.`,
+		Examples: []string{"office meeting end", "office meeting end --release"}},
 	{Name: "say", Group: groupMeeting, Summary: "submit a typed utterance",
 		Usage: "say <text>",
 		Details: `Typed text does not end your turn. Run "office signal turn-end" when you are done, so that
@@ -650,6 +660,27 @@ first; a tenant admin sees every session of the tenant. Each line: the session (
 imported), the start, the end or "running" (UTC), and the participants. --json prints
 {"sessions": [{"sessionId", "startedAt", "endedAt", "imported", "participants": [...]}]}.`,
 		Examples: []string{"office session list", "office session list --json"}},
+
+	{Name: "session release", Group: groupRecords, Summary: "release what an ended session created",
+		Usage: "session release [<session>]",
+		Details: `Moves what the session staged (minutes, notes, decisions, documents, slides) from its
+staging area into the artifact repository of the tenant, in one commit with you as the author.
+Every member sees it then. Only a human who took part in the session may release it, also after
+leaving; the session must have ended. A release lifts an objection. Without <session>, the session
+is --session or the only session you joined on this computer.
+
+Before the release, the hub searches the staged files for sentences that are off the record,
+word for word, and prints a warning for each place. It changes no content: if you see a warning,
+the release has happened, so ask the author to correct the file. --json prints {"event",
+"duplicate", "quotes": [{"path", "line", "utteranceEventId"}]}.`,
+		Examples: []string{"office session release weekly", "office session release --json"}},
+	{Name: "session hold", Group: groupRecords, Summary: "object to the release of an ended session",
+		Usage: "session hold [<session>]",
+		Details: `Holds the release: when the grace period ends, the hub does not release the session. A
+human who took part releases it later with "office session release". Use it when a staged file
+needs a correction first, for example because it repeats a sentence that is off the record. Only a
+human who took part may object, once, before the release.`,
+		Examples: []string{"office session hold weekly"}},
 
 	// Import.
 	{Name: "session import", Group: groupImport, Summary: "import a conversation as a new, marked session",

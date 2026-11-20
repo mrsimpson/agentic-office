@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -46,6 +47,74 @@ func MessageJSON(m proto.Message) json.RawMessage {
 // ResultJSON is the output of a session command: {"event": …, "duplicate": …}.
 func ResultJSON(res *sessioncommandsv1.CommandResult) map[string]any {
 	return map[string]any{"event": EventJSON(res.GetEvent()), "duplicate": res.GetDuplicate()}
+}
+
+// ReleaseStatusJSON is the release status of a session: {"state": "open"|"waiting"|"held"|"released",
+// "deadline": RFC 3339 time, only while waiting}.
+func ReleaseStatusJSON(rs *sessioncommandsv1.ReleaseStatus) map[string]any {
+	out := map[string]any{"state": releaseStateName(rs.GetState())}
+	if d := rs.GetDeadline(); d != nil {
+		out["deadline"] = d.AsTime().UTC().Format(time.RFC3339)
+	}
+	return out
+}
+
+func releaseStateName(s sessioncommandsv1.ReleaseState) string {
+	switch s {
+	case sessioncommandsv1.ReleaseState_RELEASE_STATE_OPEN:
+		return "open"
+	case sessioncommandsv1.ReleaseState_RELEASE_STATE_WAITING:
+		return "waiting"
+	case sessioncommandsv1.ReleaseState_RELEASE_STATE_HELD:
+		return "held"
+	case sessioncommandsv1.ReleaseState_RELEASE_STATE_RELEASED:
+		return "released"
+	}
+	return "unknown"
+}
+
+// EndJSON is the output of the end of a session: {"event", "duplicate", "release": the release
+// status (ReleaseStatusJSON)}.
+func EndJSON(res *sessioncommandsv1.EndSessionResponse) map[string]any {
+	out := ResultJSON(res.GetResult())
+	out["release"] = ReleaseStatusJSON(res.GetRelease())
+	return out
+}
+
+// ReleaseJSON is the output of a release: {"event", "duplicate", "quotes": [{"path", "line",
+// "utteranceEventId"}]}. A quote is a place where a staged file quotes a sentence off the record
+// word for word.
+func ReleaseJSON(res *sessioncommandsv1.ReleaseSessionResponse) map[string]any {
+	out := ResultJSON(res.GetResult())
+	quotes := []map[string]any{}
+	for _, q := range res.GetQuotes() {
+		quotes = append(quotes, map[string]any{"path": q.GetPath(), "line": q.GetLine(), "utteranceEventId": q.GetUtteranceEventId()})
+	}
+	out["quotes"] = quotes
+	return out
+}
+
+// ReleaseHint tells the humans of an ended session how its release goes on, in plain words.
+func ReleaseHint(sessionID string, rs *sessioncommandsv1.ReleaseStatus) string {
+	switch rs.GetState() {
+	case sessioncommandsv1.ReleaseState_RELEASE_STATE_RELEASED:
+		return "The session is released: what it staged is in the artifact repository of the tenant."
+	case sessioncommandsv1.ReleaseState_RELEASE_STATE_HELD:
+		return fmt.Sprintf("The session is held. A human who took part releases it with \"office session release %s\".", sessionID)
+	case sessioncommandsv1.ReleaseState_RELEASE_STATE_WAITING:
+		when := "the end of the grace period"
+		if d := rs.GetDeadline(); d != nil {
+			when = d.AsTime().UTC().Format("2006-01-02 15:04 UTC")
+		}
+		return fmt.Sprintf("What the session staged waits for its release until %s. Every human who took part can "+
+			"release it now with \"office session release %s\", or hold it with \"office session hold %s\".", when, sessionID, sessionID)
+	}
+	return ""
+}
+
+// QuoteLine describes a quote of a sentence off the record for a human.
+func QuoteLine(q *sessioncommandsv1.Quote) string {
+	return fmt.Sprintf("%s:%d quotes the sentence off the record of event %d word for word", q.GetPath(), q.GetLine(), q.GetUtteranceEventId())
 }
 
 // ErrBadInput marks input that a caller must fix (a usage error).

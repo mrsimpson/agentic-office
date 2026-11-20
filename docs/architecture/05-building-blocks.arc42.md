@@ -132,9 +132,17 @@ flowchart LR
 ### Session commands
 
 The synchronous way to act in a session: join and leave, say something or mark a sentence off the
-record, pause, raise a hand, update the minutes, focus an artifact. Each successful call creates
-exactly one event in the log, and each call carries an ID created by the client, so a repeated
-call has no extra effect and a client may always repeat after a drop.
+record, pause, raise a hand, update the minutes, focus an artifact, end the session. Each
+successful call creates exactly one event in the log, and each call carries an ID created by the
+client, so a repeated call has no extra effect and a client may always repeat after a drop.
+
+The same interface carries the release of an ended session (`concept-session-release`): release
+and object. Only a human who took part in the session may call them, also after leaving; an agent
+is refused. The answer to the end says when the hub releases the session, and the answer to a
+release names every place where a staged file quotes a sentence off the record word for word. An
+ended session takes only these commands, notices about artifacts and, until the release, a mark
+off the record (`dec-session-end-milestone`); the hub stores such an event before it answers.
+Ending and releasing in one step are two calls, one event each.
 
 The same interface lets everyone who may read a session check its log (`dec-merkle-log`): it hands
 out signed tree heads, proofs and the public key of the hub. It owns no log types. The events, the tree
@@ -523,15 +531,49 @@ the participants (`if-session-activity`), in memory only. Subscribers receive th
 It lists the sessions that a caller may see (`if-session-list`).
 Events are merged by time only: the participant model already says who spoke.
 
+It owns the release of each session (`concept-session-release`, `dec-staging-repository`):
+
+- When a session starts, it opens the staging area of the session and makes every participant who
+  joins a reader of it; the participant who imports a session is one too.
+- When the session ends, it writes the deadline into the staging area once: the end itself if no
+  human took part, otherwise the end plus the grace period of the tenant.
+- One worker per tenant keeps the deadlines in memory and rebuilds them from the staging
+  repository at start. A deadline that passed while the hub was down, and a release that a restart
+  cut off, are done at start. The worker loads an ended session that left memory when it needs it.
+- An objection holds the session, and the staging area records it. Only a human releases a held
+  session.
+- The release is an event in the log first, then the archive moves the area with the human who
+  released, or the hub, as the author. Before a human releases, it searches the staged files for
+  word-for-word quotes of sentences off the record. It knows no file type and changes no content.
+
 ```arc42
 :::building-block
 id: bb-session-service
 title: Meeting session
 technology: Go / connect-go
 parent: bb-office-hub
-implements: concept-event-log, concept-participant-model, concept-identity
+implements: concept-event-log, concept-participant-model, concept-identity, concept-session-release
 requires: if-minutes-api, if-token-check, if-archive-storage
 path: hub/session
+:::
+```
+
+#### Session release
+
+Tells the parts of the hub that write artifacts for a session whether the session is released,
+and whether a participant took part in it. The release status decides where a write goes: into the
+staging area of the session while it is not released, else into the artifact repository. Every
+session that exists has a status, also one that staged nothing: open while it runs, waiting until
+its deadline, held after an objection, or released. Only a participant who took part may name a
+session in a write.
+
+```arc42
+:::interface
+id: if-session-release
+title: Session release
+provider: bb-session-service
+protocol: In-process Go call
+path: hub/session/release
 :::
 ```
 

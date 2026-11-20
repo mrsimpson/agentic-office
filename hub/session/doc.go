@@ -1,7 +1,8 @@
 // Package session is the building block Meeting session (bb-session-service in docs/architecture/05-building-blocks.arc42.md).
 //
 // It manages sessions and participants and keeps one append-only event log per session
-// (concept-event-log). It provides if-session-commands and if-session-stream.
+// (concept-event-log). It provides if-session-commands and if-session-stream, and the release
+// status of sessions to the other parts of the hub (if-session-release, package release).
 //
 // How it works:
 //
@@ -26,7 +27,7 @@
 //   - Signals (turn.end, silence.long, addressed) come only from clients through SubmitSignal.
 //     The session checks them but does not create signals itself. See SubmitSignal and #14.
 //   - EndSession stores the confirmed minutes through the Minutes interface (if-minutes-api,
-//     rs-session-ends), then writes session.ended. The minutes are in the archive when
+//     rs-session-ends), writes the deadline of the release, then writes session.ended. The minutes are in the archive when
 //     EndSession returns. For now the confirmed minutes are the text of the last
 //     minutes.updated event (#22). See EndSession.
 //   - The events are the leaves of a Merkle tree (dec-merkle-log, package merkle of the
@@ -115,6 +116,28 @@
 //     crash until a peer offers a whole copy, and a new join before that starts a new log; a peer
 //     that comes back only after the wait has a copy that forks; the CLI and the MCP server do
 //     not repeat a command that fails with Unavailable by themselves.
+//   - Release (concept-session-release, dec-staging-repository, releases.go): UseRelease gives the
+//     service the staging repository of the tenant. A session opens its staging area with its
+//     first join or import page, and every participant who joins, and the importer, becomes a
+//     reader before its event is written. EndSession writes the deadline into the area once: the
+//     end plus ReleaseOptions.GracePeriod, or the end itself if no human took part (joined as a
+//     human, or imported as a human; imported speakers do not count); a session without humans is
+//     released before EndSession answers. ReleaseSession and ObjectToRelease take only a human who
+//     took part (state.tookPart, also one who left): an agent gets PermissionDenied, anyone else
+//     NotFound. The release is session.released in the log first (actor empty for the hub, command
+//     ID HubReleaseCommandID), then storage.Staging.Release moves the area with that author; an
+//     objection is release.objected, and the area records it. RunRelease is the one worker per
+//     tenant: it keeps the deadlines in memory, and UseRelease rebuilds them from
+//     storage.Staging.Areas and the logs, so a release that a restart cut off and a deadline that
+//     passed while the hub was down are due at start. A failed release is tried again after a
+//     few seconds. Before a human releases, findQuotes searches the staged files for the
+//     sentences off the record, as raw text (case and white space ignored, at least three words),
+//     and the answer names the places; nothing is changed.
+//   - After session.ended (dec-session-end-milestone), a command fails, except release, object,
+//     NoteArtifact and, until the release, MarkOffTheRecord. run writes such an event (and
+//     session.ended itself) to the archive before it answers (persistNow), because no peer follows
+//     an ended session. Subscribe stops at session.ended and sends the tree head over the log up
+//     to it; GetEvents returns the events after it too.
 //   - Subscribe closes the stream after it has sent session.ended. It ends the stream with
 //     Unauthenticated when the token of the caller expires or is revoked.
 package session

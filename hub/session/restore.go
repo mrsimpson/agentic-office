@@ -216,8 +216,9 @@ func (s *Service) restore(ctx context.Context) error {
 	return nil
 }
 
-// hasFinished reports whether a stored log holds session.ended or import.completed: nothing is
-// added to it any more. A log that cannot be read has not finished: restore treats it like any
+// hasFinished reports whether a stored log holds session.ended or import.completed: no peer
+// follows it any more, and only the hub adds to it (the release, artifact notices and marks off
+// the record after the end). A log that cannot be read has not finished: restore treats it like any
 // other log and reports it.
 func hasFinished(logData []byte) bool {
 	evs, err := logfile.UnmarshalLines(logData)
