@@ -451,9 +451,11 @@ it, read it and create it again at a new path with the command of its type, for 
 <code dir="auto">office document get documents/plan.md</code> and then <code dir="auto">office document create documents/plan-2.md --file plan.md</code>.</li>
 <li><strong>Quotes off the record.</strong> Before every release, the hub searches the staged files for
 sentences that are off the record, word for word (sentences of at least three words; case and
-spaces do not count). If it finds one, it refuses the release. <code dir="auto">office session release</code> then
-prints each place (file, line and the event of the sentence, never the sentence) and a token,
-and exits with 1. Correct the files and release again, or release anyway with
+spaces do not count). If it finds one, it refuses the release with an error, and nothing is
+released. <code dir="auto">office session release</code> then prints each place (file, line and the event of the
+sentence, never the sentence) and a token, and exits with 1. With <code dir="auto">--json</code> it prints an error
+object with the code <code dir="auto">failed_precondition</code>, the places (<code dir="auto">quotes</code>) and the token (<code dir="auto">quoteToken</code>);
+the MCP tool <code dir="auto">session_release</code> returns the same error. Correct the files and release again, or release anyway with
 <code dir="auto">--accept-quotes &lt;token&gt;</code>. The hub searches again and releases only if it finds exactly the same
 quotes; if a staged file changed in between, you get new places and a new token. The hub changes
 no content.</li>
