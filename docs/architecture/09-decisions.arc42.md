@@ -1369,10 +1369,13 @@ would share even more, and every sentence of it could have been off the record.
   There is no public transcript. What a session shares are its minutes, if it has any, and the
   other artifacts it creates.
 - **A staging area holds what a session creates until it is released.** Each tenant has a staging
-  repository next to its artifact repository, with the same layout. Only the readers of a session
-  see its staged artifacts, also the stage of that session; no participant can clone them. Until the
-  release, authors may correct what they wrote, so a sentence off the record can still be taken
-  out. New minutes replace the staged minutes.
+  repository next to its artifact repository, with the same layout. The area of a session holds
+  its readers: the participants, the importer and, by their role, the tenant admins
+  (`dec-web-portal`). Every part that reads a staged artifact checks this list, and the stage reads
+  the area of its own session; nobody can clone the staging repository. The list goes away with the
+  area at the release. Until the release, every participant may change or remove a staged artifact,
+  the minutes too, so a sentence off the record can still be taken out. Each change is a commit in
+  the staging repository, so the readers of the session see it and can undo it.
 - **The writer names the session.** A write that comes from a session names it. Only a participant
   of that session may name it; the part that owns the type checks this with the meeting session.
   The meeting session knows whether a session is released, and that status decides: a write goes
@@ -1397,8 +1400,9 @@ would share even more, and every sentence of it could have been off the record.
   the tenant sets another length. Any one human who took part may release, or object; an objection
   holds the session, and then only an explicit release publishes it. When the grace period ends
   without an objection, the hub releases. A session without a human participant releases when it
-  ends. An imported session is released by the human who imported it, and at once if an agent
-  imported it (`dec-session-import`). An agent never releases and never objects. The design
+  ends. For an imported session, the end is the end of the import (`dec-session-import`): an
+  import by a human waits for that human or for the grace period, and an import by an agent is
+  released at once. An agent never releases and never objects. The design
   trusts the humans of a session: one of them may release early or lift an objection.
 - **The release is offered at the end.** The human who ends a session can release it in the same
   step. Otherwise the end tells the humans how to release and where to review what is pending.
@@ -1406,9 +1410,10 @@ would share even more, and every sentence of it could have been off the record.
   who took part and whether each participant is a human, and it refuses them from anyone else. The
   CLI and the MCP server offer them like every command (`dec-cli-and-mcp`), and the portal offers
   them on the page of the session (`dec-web-portal`); all three only pass the command on.
-- **Possible quotes are shown, not removed.** Before a human releases, the hub shows where an
-  artifact quotes a sentence off the record word for word. The human decides; the hub changes no
-  content.
+- **Possible quotes are shown, not removed.** The meeting session, which provides the release and
+  holds the original of every sentence off the record, searches the staged files of the session for
+  word-for-word quotes and shows them before a human releases. The originals never leave it. The
+  human decides; the hub changes no content.
 - **The release is one commit.** The archive moves everything from the staging area of the session
   into the tenant repository in one commit, without reading the content: each artifact replaces its
   stub, and the stub of an artifact that was removed before the release goes away. The author of the commit
@@ -1420,12 +1425,15 @@ would share even more, and every sentence of it could have been off the record.
   release first closes the area for writes, then commits, then cleans up; each step is recorded, so
   a release that a restart cut off is completed, never done twice, and no write is acknowledged and
   then lost. A deadline that passed while the hub was down is released at start. Each change of the
-  release status is an event in the session log, which an ended session still takes without
-  starting again.
+  release status is an event in the session log. An ended session still takes three kinds of
+  events without starting again: changes of the release status, notices about artifacts, and, until
+  the release, a mark that puts a sentence off the record.
 - **A session is never opened again.** A later meeting on the same topic is a new session.
 
 **Consequences:** Every member sees what a session created from the release on, not from its end.
-The note and decision interfaces offer a change while a record is in the staging area. The parts
+The note, decision and minutes interfaces offer a change and a removal while a record is in the
+staging area. A reader who follows a list of records learns of a record that is released later
+than newer ones. The parts
 that keep artifacts in memory follow the staging repository like the artifact repository
 (`if-archive-watch`). The wiki ingests only released records (`dec-wiki`). An author who fears
 that a name says too much chooses a neutral one. A paraphrase of a sentence off the record can
@@ -1468,8 +1476,6 @@ OPEN:
 
 - Tasks: the real task lives in the task tool of the team, so holding its small artifact protects
   nothing.
-- Marking a sentence off the record after the end of a session: an ended session takes no
-  command, so a speaker can ask the authors for a correction but cannot set the mark.
 - A follow-up session that continues an ended one.
 - Tenant admins as a fallback when no human of a session can release any more, a quorum of the
   humans, and confidential sessions (#194).

@@ -413,7 +413,7 @@ The records are the sources of the wiki. Documents are its pages (`concept-wiki`
 | Place | What lies there | Who reads it |
 | --- | --- | --- |
 | Session logs | the log of every session, with the original of sentences off the record | the participants, the importer and the tenant admins |
-| Staging area | what a session created that is not released yet | the readers of that session, and its stage |
+| Staging area | what a session created that is not released yet, with the readers of the session | the readers of that session, and its stage |
 | Artifact repository | everything that is released, and a stub for every staged artifact | every member of the tenant, and every clone |
 
 The staging area has the same layout as the artifact repository. A write that comes from a session
@@ -435,11 +435,12 @@ which names.
 2. The session ends. If no human took part, the hub releases at once. Otherwise the human who ends
    it can release in the same step, or a grace period starts: 24 hours unless the tenant sets
    another length.
-3. During the grace period, a speaker can ask the authors to correct what quotes a sentence that
-   should be off the record, and authors correct it; new minutes replace the staged ones. Any human who took part may release, or object. An objection holds the session
+3. During the grace period, a speaker can still mark a sentence off the record. Every participant
+   may change or remove a staged artifact, the minutes too; each change is a commit that the readers
+   of the session see and can undo. Any human who took part may release, or object. An objection holds the session
    until a human releases it.
-4. Before a human releases, the hub shows where an artifact quotes a sentence off the record word
-   for word. The human decides.
+4. Before a human releases, the meeting session shows where an artifact quotes a sentence off the
+   record word for word. The human decides.
 5. At the release, everything in the staging area of the session moves into the artifact
    repository in one commit, and each artifact replaces its stub. Its author is the human who released, or the hub when the grace
    period ended, and it names the authors of the artifacts as co-authors. So the history says for
@@ -451,7 +452,8 @@ which names.
 
 **Who triggers the release.** Release and objection are commands of the meeting session. It accepts
 them only from a human who took part; an imported session is released by the human who imported
-it, and at once if an agent imported it. The humans of a session are trusted: one of them may
+it, or after the grace period, and at once if an agent imported it; for an import, the end is the
+end of the import. The humans of a session are trusted: one of them may
 release early or lift an objection. The CLI,
 the MCP server and the portal pass them on and add no logic. An agent never releases or objects.
 An assistant that works with the key of a human counts as that human, so it acts only when its
@@ -466,10 +468,14 @@ deadline passes, it releases. A release that a restart cut off is completed, nev
 | When the sentence is marked | What protects it |
 | --- | --- |
 | During the session | The interfaces show a placeholder; agents are told to keep it out of what they write |
-| After the end, before the release | The speaker asks the authors to correct the staged artifacts, or objects; any other human may still release; the release shows word-for-word quotes |
+| After the end, before the release | The speaker marks the sentence, corrects the staged artifacts, or objects; any other human may still release; the release shows word-for-word quotes |
 | After the release | Nothing removes it from clones and history (`risk-retraction-leak`) |
 
 A paraphrase can pass every step. The grace period gives the speaker time to read what is shared.
+
+**A release at the end is accepted as a gap.** If a human releases while ending the session, what
+agents write in their last turn afterwards is not held: it goes to the artifact repository at once.
+The team trusts the human who releases to know that.
 Five ways skip the staging area and rely on the people and agents who write: a change to an
 artifact that is already released, a push during a session, a record that does not name its
 session, a task, and what agents write after a release at the end of the session.
