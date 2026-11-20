@@ -45,7 +45,8 @@ still verifies. A placeholder can hide a text; it cannot change what the tree pr
 interface (`dec-session-import`). The meeting session writes it like live commands, so the log
 keeps one writer and gap-free IDs. The first event marks the session as imported and names its
 source. The speakers are imported participants, not registered ones. The tree heads protect an
-imported log from later changes, but do not prove what was said.
+imported log from later changes, but do not prove what was said. The importer can extend the
+session with a longer version of the same conversation until it ends; the log only grows.
 
 **Resuming after a network drop:**
 

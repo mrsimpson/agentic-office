@@ -119,7 +119,9 @@ type Client interface {
 	Events(ctx context.Context, sessionID string, after, limit uint32) ([]*sessionstreamv1.Event, bool, error)
 
 	// Import imports a conversation as a new session (dec-session-import). sessionID may be
-	// empty: then Import creates one.
+	// empty: then Import creates one. If sessionID names an imported session that exists,
+	// Import extends it with the end of the conversation, which must start with every utterance
+	// that the session holds.
 	Import(ctx context.Context, sessionID string, conv *Conversation) (*Imported, error)
 
 	StageLink(ctx context.Context, sessionID string) (*identityv1.CreateStageLinkResponse, error)

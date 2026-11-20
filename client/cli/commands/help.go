@@ -771,19 +771,27 @@ human who took part may object, once, before the release.`,
 		Examples: []string{"office session hold weekly"}},
 
 	// Import.
-	{Name: "session import", Group: groupImport, Summary: "import a conversation as a new, marked session",
+	{Name: "session import", Group: groupImport, Summary: "import a conversation as a marked session, or extend one",
 		Usage: "session import <conversation.json | -> [--session S]",
 		Details: `Imports a whole conversation from another tool (a chat export, a meeting transcript, an agent
 conversation) as a new session and prints its ID. Without --session it creates the ID
-(import-<uuid>); "-" reads stdin. The client sends the conversation in pages of 500 utterances;
-if it stops halfway, the session stays incomplete: import again into a new session. Every error
-in the file is a usage error (exit code 2) and nothing is imported. The log starts with
-session.imported, then participant.joined (imported: true) for each speaker, then one
+(import-<uuid>); "-" reads stdin. The client sends the conversation in pages of 500 utterances.
+Every error in the file is a usage error (exit code 2) and nothing is imported. The log starts
+with session.imported, then participant.joined (imported: true) for each speaker, then one
 utterance.final per message, and ends with import.completed. The signed tree heads prove
 which participant imported the log and that it has not changed since; they do not prove that the
 speakers said it. After the import the session is a normal session: join, write minutes, end it.
+
+With --session of an imported session that exists, the import extends it: the conversation went
+on, or an earlier import stopped halfway. The file must start with every utterance that the
+session holds, unchanged and in the same order; the import adds the new participants and the
+utterances after them, and import.completed with the new total. Only the participant who
+imported the session extends it, and only before the session ends. A file that adds nothing
+imports nothing. A file that does not start with the utterances of the session is a usage error.
+
 "office help import-format" describes the file. --json prints {"sessionId", "pages",
-"firstEventId", "lastEventId", "participants", "utterances", "treeHead"}.`,
+"firstEventId", "lastEventId", "participants", "utterances", "extended", "previousUtterances",
+"treeHead"}; participants and utterances count what the import added.`,
 		Examples: []string{"office session import design.json --session design-review"}},
 
 	// Agents.

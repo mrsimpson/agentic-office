@@ -422,3 +422,125 @@ func attrOf(n *html.Node, key string) string {
 	v, _ := attr(n, key)
 	return v
 }
+
+// baseOf returns the base of a page that builds on the utterances us.
+func baseOf(us ...*sessionimportv1.ImportedUtterance) *sessionimportv1.ImportBase {
+	var d []byte
+	for _, u := range us {
+		d = sessionimportv1.ImportDigest(d, u)
+	}
+	return &sessionimportv1.ImportBase{Utterances: uint32(len(us)), Digest: d}
+}
+
+// TestImportExtend: the importer extends a complete import with a page whose base names the
+// imported utterances. The hub takes it only if the count and the digest match; the new
+// participants and utterances follow the last event, and import.completed carries the new total.
+// A participant of the import may come again if it is the same. The base is refused for a
+// conversation that changed, for another participant, for a session that is not imported, and
+// after the session ended.
+func TestImportExtend(t *testing.T) {
+	srv := contracttest.StartHub(t, nil)
+	im := newImporter(t, srv, "importer")
+	other := srv.Participant(t, "other", "Other", human)
+	ctx := ctx10(t)
+	hello, reply := utt("ada", "Hello."), utt("claude", "Hi, Ada.")
+	hello.Time = timestamppb.New(time.Date(2026, 11, 20, 16, 0, 0, 0, time.UTC))
+	im.ok(&sessionimportv1.ImportConversationRequest{Conversation: conversation(), Participants: people(),
+		Utterances: []*sessionimportv1.ImportedUtterance{hello, reply}, Complete: true})
+	// The session goes on like any other: someone joins (event 7).
+	if _, err := other.Commands.Join(ctx, &sessioncommandsv1.JoinRequest{SessionId: im.sid, CommandId: coreapi.NewCommandID()}); err != nil {
+		t.Fatal(err)
+	}
+
+	// A page without a base is still refused after the import.
+	im.fails(connect.CodeFailedPrecondition, &sessionimportv1.ImportConversationRequest{Utterances: []*sessionimportv1.ImportedUtterance{utt("ada", "Late.")}})
+	// A base that does not match: another count, another text, another time.
+	changed := utt("ada", "Hello!")
+	changed.Time = hello.Time
+	moved := utt("ada", "Hello.")
+	for name, b := range map[string]*sessionimportv1.ImportBase{
+		"fewer utterances": baseOf(hello),
+		"changed text":     baseOf(changed, reply),
+		"changed time":     baseOf(moved, reply),
+		"no digest":        {Utterances: 2},
+	} {
+		if _, err := im.page(&sessionimportv1.ImportConversationRequest{Base: b, Utterances: []*sessionimportv1.ImportedUtterance{utt("ada", "Next.")}}); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+			t.Errorf("%s: want failed_precondition, got %v", name, err)
+		}
+	}
+	// A base with a conversation, an empty page, a known speaker with another name.
+	im.fails(connect.CodeInvalidArgument, &sessionimportv1.ImportConversationRequest{Base: baseOf(hello, reply), Conversation: conversation(),
+		Utterances: []*sessionimportv1.ImportedUtterance{utt("ada", "Next.")}})
+	im.fails(connect.CodeInvalidArgument, &sessionimportv1.ImportConversationRequest{Base: baseOf(hello, reply)})
+	im.fails(connect.CodeInvalidArgument, &sessionimportv1.ImportConversationRequest{Base: baseOf(hello, reply),
+		Participants: []*sessionimportv1.ImportedParticipant{{Key: "ada", DisplayName: "Ada Lovelace", Kind: pHuman}}})
+	// Only the importer extends the session.
+	if _, err := other.Import.ImportConversation(ctx, &sessionimportv1.ImportConversationRequest{SessionId: im.sid, CommandId: coreapi.NewCommandID(),
+		ParticipantId: "other", Base: baseOf(hello, reply), Utterances: []*sessionimportv1.ImportedUtterance{utt("ada", "Mine.")}}); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Errorf("base of another participant: want permission_denied, got %v", err)
+	}
+	if n := len(im.events()); n != 7 {
+		t.Fatalf("refused pages stored events: %d events", n)
+	}
+
+	// The matching base: ada again (the same), a new speaker, two utterances, complete.
+	bob := &sessionimportv1.ImportedParticipant{Key: "bob", DisplayName: "Bob", Kind: pHuman}
+	next := &sessionimportv1.ImportConversationRequest{CommandId: coreapi.NewCommandID(), Base: baseOf(hello, reply),
+		Participants: []*sessionimportv1.ImportedParticipant{people()[0], bob},
+		Utterances:   []*sessionimportv1.ImportedUtterance{utt("bob", "I am late."), utt("ada", "Welcome, Bob.")}, Complete: true}
+	res := im.ok(next)
+	if res.GetFirstEventId() != 8 || res.GetLastEventId() != 11 || !res.GetComplete() {
+		t.Fatalf("extension: %v", res)
+	}
+	evs := im.events()
+	if len(evs) != 11 || evs[7].GetParticipantJoined().GetParticipantId() != "imported:bob" ||
+		evs[8].GetUtteranceFinal().GetParticipantId() != "imported:bob" || evs[9].GetUtteranceFinal().GetText() != "Welcome, Bob." ||
+		evs[10].GetImportCompleted().GetUtterances() != 4 {
+		t.Fatalf("events of the extension: %v", evs[7:])
+	}
+	for _, ev := range evs[7:] {
+		if ev.GetCommandId() != next.GetCommandId() || ev.GetActorParticipantId() != "importer" {
+			t.Errorf("event %d: command %q, actor %q", ev.GetId(), ev.GetCommandId(), ev.GetActorParticipantId())
+		}
+	}
+	// The same page again stores nothing new; the old base no longer matches.
+	if again := im.ok(next); !again.GetDuplicate() || again.GetLastEventId() != 11 {
+		t.Errorf("repeated page: %v", again)
+	}
+	next.CommandId = coreapi.NewCommandID()
+	im.fails(connect.CodeFailedPrecondition, next)
+	// The new base covers all four utterances, in the order of the log.
+	all := []*sessionimportv1.ImportedUtterance{hello, reply, utt("bob", "I am late."), utt("ada", "Welcome, Bob.")}
+	im.ok(&sessionimportv1.ImportConversationRequest{Base: baseOf(all...), Utterances: []*sessionimportv1.ImportedUtterance{utt("bob", "Thanks.")}})
+
+	// After the end of the session, no base matches any more.
+	all = append(all, utt("bob", "Thanks."))
+	if _, err := other.Commands.EndSession(ctx, &sessioncommandsv1.EndSessionRequest{SessionId: im.sid, CommandId: coreapi.NewCommandID(), ParticipantId: "other"}); err != nil {
+		t.Fatal(err)
+	}
+	im.fails(connect.CodeFailedPrecondition, &sessionimportv1.ImportConversationRequest{Base: baseOf(all...),
+		Utterances: []*sessionimportv1.ImportedUtterance{utt("ada", "After the end.")}})
+
+	// A live session has no import to extend.
+	live := newImporter(t, srv, "live")
+	if _, err := live.a.Commands.Join(ctx, &sessioncommandsv1.JoinRequest{SessionId: live.sid, CommandId: coreapi.NewCommandID()}); err != nil {
+		t.Fatal(err)
+	}
+	live.fails(connect.CodeFailedPrecondition, &sessionimportv1.ImportConversationRequest{Base: baseOf(), Participants: people()})
+}
+
+// TestImportContinue: an import that stopped halfway continues with a page whose base names the
+// utterances that arrived, and completes (#51).
+func TestImportContinue(t *testing.T) {
+	srv := contracttest.StartHub(t, nil)
+	im := newImporter(t, srv, "importer")
+	hello := utt("ada", "Hello.")
+	im.ok(&sessionimportv1.ImportConversationRequest{Conversation: conversation(), Participants: people(),
+		Utterances: []*sessionimportv1.ImportedUtterance{hello}})
+	res := im.ok(&sessionimportv1.ImportConversationRequest{Base: baseOf(hello),
+		Utterances: []*sessionimportv1.ImportedUtterance{utt("claude", "Hi.")}, Complete: true})
+	evs := im.events()
+	if !res.GetComplete() || len(evs) != 6 || evs[5].GetImportCompleted().GetUtterances() != 2 {
+		t.Fatalf("continued import: %v, %v", res, evs)
+	}
+}

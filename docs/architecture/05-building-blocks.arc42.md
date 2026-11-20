@@ -243,6 +243,13 @@ so the log keeps one writer, and the other interfaces treat an imported session 
 once the import is complete. The first event marks the session as imported, so nobody mistakes it
 for a live one. Until the import is complete, only the participant who started it may add pages.
 
+The participant who imported a session can extend it with a longer version of the same
+conversation, until the session ends: the conversation went on, or the import stopped halfway.
+Such a page names the imported utterances it builds on, by their number and a digest. The hub takes
+it only if both match what the session holds, so the conversation of the caller starts with every
+imported utterance, unchanged and in the same order. The new participants and utterances follow
+the last event of the session.
+
 The speakers of an imported conversation are not registered participants: the hub cannot check who
 they are. So their IDs are marked as imported and never match a registered participant. The
 signature of the hub proves which participant imported the log and that it has not changed since;

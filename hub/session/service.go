@@ -16,6 +16,7 @@ import (
 	minutesv1 "github.com/mrsimpson/agentic-office/hub/records/minutes/api"
 	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
 	"github.com/mrsimpson/agentic-office/hub/session/commandsapi/sessioncommandsv1connect"
+	sessionimportv1 "github.com/mrsimpson/agentic-office/hub/session/importapi"
 	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
 	"github.com/mrsimpson/agentic-office/hub/session/streamapi/events"
 	"github.com/mrsimpson/agentic-office/hub/session/streamapi/merkle"
@@ -165,6 +166,7 @@ type state struct {
 	importerKind sessionstreamv1.ParticipantKind
 	importing    bool
 	imported     uint32 // number of imported utterances
+	importDigest []byte // digest of the imported utterances (sessionimportv1.ImportDigest)
 	// leaves are the leaf hashes of the Merkle tree: leaves[i] belongs to event i+1. The slice
 	// only grows; its elements never change.
 	leaves [][]byte
@@ -195,6 +197,11 @@ type participant struct {
 	joined *sessionstreamv1.Event // the participant.joined event of the current membership
 	left   bool
 	paused bool
+}
+
+// imported reports whether p is a speaker of an imported conversation. p may be nil.
+func (p *participant) imported() bool {
+	return p != nil && p.joined.GetParticipantJoined().GetImported()
 }
 
 type utterance struct {
@@ -254,8 +261,13 @@ func (st *state) apply(ev *sessionstreamv1.Event) error {
 	case *sessionstreamv1.Event_ImportCompleted:
 		st.importing = false
 	}
-	if ev.GetUtteranceFinal() != nil && st.importing {
+	// An utterance of an imported speaker is an imported utterance, also when an importer extends
+	// a complete import (if-session-import).
+	if u := ev.GetUtteranceFinal(); u != nil && st.participants[u.GetParticipantId()].imported() {
 		st.imported++
+		st.importDigest = sessionimportv1.ImportDigest(st.importDigest, &sessionimportv1.ImportedUtterance{
+			Speaker: strings.TrimPrefix(u.GetParticipantId(), sessionimportv1.ImportedPrefix), Text: u.GetText(),
+			Modality: u.GetModality(), Time: u.GetOriginalTime()})
 	}
 	return nil
 }

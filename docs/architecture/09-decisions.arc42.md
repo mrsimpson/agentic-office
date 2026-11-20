@@ -824,17 +824,23 @@ participants that never match a registered participant. Until the import is comp
 participant who started it may add to it. After that, it is a session like any other: participants
 join, write minutes and end it, and the stream, the archive, the restore and the release treat it
 like every other session (`concept-session-release`). The participant who imported it counts as a
-participant. The signed tree heads prove who imported the log and that it has not changed
+participant. Until the session ends, that participant can extend it with a longer version of the
+same conversation, also to continue an import that stopped halfway. The hub takes such an
+extension only if it starts with every imported utterance of the session, unchanged and in the same
+order; the new utterances follow the last event of the log. The signed tree heads prove who imported the log and that it has not changed
 since; they do not prove that the speakers said what it says. **Consequences:** Agents and humans
 derive records from an imported session through the existing interfaces, without a second path.
 Readers recognise an imported session by its first event. The new events are a new revision of
-the session schema (`dec-session-schema`). OPEN: nobody can mark an imported sentence off the
-record, because the speakers are not participants with a key. OPEN: an import that stops halfway
-leaves an incomplete session that a new call of the client cannot continue. **Rejected:** a
+the session schema (`dec-session-schema`). A conversation that goes on stays one session, and the
+log never loses or changes what it held. Imported utterances of an extension can follow live events
+of the session. OPEN: nobody can mark an imported sentence off the record, because the speakers
+are not participants with a key. **Rejected:** a
 separate part of the hub with its own log (two writers); a signature per imported message (it
 would claim an order the hub never saw); ending the session with the import (participants could
 not write minutes into it); matching imported speakers to registered participants by name (the
-hub cannot check it).
+hub cannot check it); a second session for the longer conversation (it repeats everything that the
+first one holds); replacing the log of the session with the longer conversation (the tree heads
+promise that a log only grows).
 
 ```arc42
 :::decision

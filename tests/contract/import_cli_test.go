@@ -95,8 +95,55 @@ func TestCLIImport(t *testing.T) {
 	}
 	checkImported(t, ada, sid)
 
-	// The same session again: the hub refuses, because the session has events.
-	ada.fails(1, "failed_precondition", "session", "import", file, "--session", "review-2026-11-06")
+	// The same file into the same session again: the session holds it all; nothing is imported.
+	v = ada.ok("session", "import", file, "--session", "review-2026-11-06")
+	if v["extended"] != true || v["previousUtterances"] != 3.0 || v["utterances"] != 0.0 || v["pages"] != 0.0 {
+		t.Fatalf("the same file again: %v", v)
+	}
+	checkImported(t, ada, "review-2026-11-06")
+	// The conversation went on: the longer file extends the session after its last event.
+	longer := strings.Replace(conversationJSON, `"modality": "voice"}`, `"modality": "voice"},
+    {"speaker": "bob", "text": "Late, but agreed."}`, 1)
+	longer = strings.Replace(longer, `{"id": "claude", "name": "Claude", "kind": "agent"}`,
+		`{"id": "claude", "name": "Claude", "kind": "agent"}, {"id": "bob", "name": "Bob", "kind": "human"}`, 1)
+	longerFile := filepath.Join(t.TempDir(), "longer.json")
+	if err := os.WriteFile(longerFile, []byte(longer), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ada.ok("meeting", "join", "review-2026-11-06") // the session takes live events in between
+	_, errOut, code = contracttest.Run(t, "office", ada.env, "session", "import", longerFile, "--session", "review-2026-11-06")
+	if code != 0 || !strings.Contains(errOut, "extended session review-2026-11-06 after its 3 imported utterances: added 1 utterances and 1 participants") {
+		t.Fatalf("longer file: exit %d, stderr %q", code, errOut)
+	}
+	types, evs := eventTypes(t, ada, "review-2026-11-06")
+	if n := len(types); n != 11 || types[8] != events.ParticipantJoined || types[9] != events.UtteranceFinal || types[10] != events.ImportCompleted {
+		t.Fatalf("events after the extension: %v", types)
+	}
+	if uf, _ := evs[9]["utteranceFinal"].(map[string]any); uf["participantId"] != "imported:bob" || uf["text"] != "Late, but agreed." {
+		t.Errorf("added utterance: %v", evs[9])
+	}
+	// A file that does not start with the utterances of the session is a usage error, and the
+	// session keeps its events.
+	for name, body := range map[string]string{
+		"changed text":  strings.Replace(longer, "Decided.", "Decided!", 1),
+		"shorter":       conversationJSON,
+		"renamed":       strings.Replace(longer, `"name": "Bob"`, `"name": "Robert"`, 1),
+		"earlier added": strings.Replace(longer, `"text": "Shall we import old chats?"`, `"text": "Hi."}, {"speaker": "ada", "text": "Shall we import old chats?"`, 1),
+	} {
+		f := filepath.Join(t.TempDir(), "changed.json")
+		if err := os.WriteFile(f, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if v, code := ada.call("session", "import", f, "--session", "review-2026-11-06"); code != 2 {
+			t.Errorf("%s: want a usage error, got exit %d: %v", name, code, v)
+		}
+	}
+	if types, _ := eventTypes(t, ada, "review-2026-11-06"); len(types) != 11 {
+		t.Errorf("refused files changed the session: %v", types)
+	}
+	// A live session is not an imported session.
+	ada.ok("meeting", "join", "live-2026-11-06")
+	ada.fails(1, "failed_precondition", "session", "import", file, "--session", "live-2026-11-06")
 	// Bad input is a usage error.
 	for name, body := range map[string]string{
 		"not JSON":        "source: x",
@@ -151,7 +198,11 @@ func TestMCPImport(t *testing.T) {
 	s.fails("usage", "session_import", map[string]any{})
 	s.fails("usage", "session_import", map[string]any{"file": file, "conversation": conv})
 	s.fails("usage", "session_import", map[string]any{"conversation": map[string]any{"source": "", "participants": []any{}, "utterances": []any{}}})
-	s.fails("failed_precondition", "session_import", map[string]any{"conversation": conv, "session": "mcp-import"})
+	// The same conversation into the same session: the session holds it all, nothing is added.
+	if v := s.ok("session_import", map[string]any{"conversation": conv, "session": "mcp-import"}); v["extended"] != true || v["utterances"] != 0.0 {
+		t.Errorf("the same conversation again: %v", v)
+	}
+	checkImported(t, bot, "mcp-import")
 }
 
 // TestCLISessionList: office session list shows the sessions that the participant may see, with
