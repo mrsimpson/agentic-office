@@ -48,10 +48,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yuin/goldmark"
-	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/text"
 	"go.yaml.in/yaml/v3"
+
+	"github.com/mrsimpson/agentic-office/hub/documents/markdown"
 )
 
 // Schema is the name of the schema of documents. A stub names it in its front matter.
@@ -332,7 +331,8 @@ func Hints(filePath string, content []byte, exists func(p string) bool) []string
 	}
 	var hints []string
 	seen := map[string]bool{}
-	for _, dest := range links(body) {
+	for _, d := range markdown.Links(body) {
+		dest := d.Target
 		if seen[dest] {
 			continue
 		}
@@ -357,43 +357,9 @@ func Hints(filePath string, content []byte, exists func(p string) bool) []string
 	return hints
 }
 
-// links returns the destinations of the links and images of a Markdown text, in order.
-func links(body []byte) []string {
-	doc := goldmark.DefaultParser().Parse(text.NewReader(body))
-	var out []string
-	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		switch l := n.(type) {
-		case *ast.Link:
-			out = append(out, strings.TrimSpace(string(l.Destination)))
-		case *ast.Image:
-			out = append(out, strings.TrimSpace(string(l.Destination)))
-		}
-		return ast.WalkContinue, nil
-	})
-	return out
-}
-
-// splitFrontMatter splits a Markdown file into its YAML front matter and its body. The front
-// matter is the text between a first line "---" and the next line "---". ok is false if the file
-// has no front matter.
+// splitFrontMatter splits a Markdown file into its YAML front matter and its body.
 func splitFrontMatter(content []byte) (front, body []byte, ok bool) {
-	rest, ok := bytes.CutPrefix(content, []byte("---\n"))
-	if !ok {
-		rest, ok = bytes.CutPrefix(content, []byte("---\r\n"))
-	}
-	if !ok {
-		return nil, nil, false
-	}
-	lines := bytes.SplitAfter(rest, []byte("\n"))
-	for i, line := range lines {
-		if string(bytes.TrimRight(line, "\r\n")) == "---" {
-			return bytes.Join(lines[:i], nil), bytes.Join(lines[i+1:], nil), true
-		}
-	}
-	return nil, nil, false
+	return markdown.SplitFrontMatter(content)
 }
 
 func firstLine(err error) string {

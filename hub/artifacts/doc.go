@@ -16,6 +16,13 @@
 //   - A part may also give hints for the files of its types, such as links that lead nowhere
 //     (concept-wiki). A hint never makes a file invalid. Hinters returns the parts that give
 //     hints; each part decides by itself which files are of its types.
+//   - Each part describes the files of its types for the wiki (dec-wiki): title, summary, tags,
+//     outgoing links, sources and whether a file is a stub, through its own description
+//     interface (if-records-describe, if-tasks-describe, if-slides-describe,
+//     if-documents-describe). The interface if-artifact-check (Describe of package check) asks the
+//     owner of the schema that a file names. A file that names no schema goes to the parts in
+//     the order of the list, and the first part that describes it wins; only the documents part
+//     describes files without a schema.
 package artifacts
 
 import (
@@ -23,9 +30,13 @@ import (
 	"slices"
 
 	documentscheck "github.com/mrsimpson/agentic-office/hub/documents/check"
+	documentsdescribe "github.com/mrsimpson/agentic-office/hub/documents/describe"
 	recordscheck "github.com/mrsimpson/agentic-office/hub/records/check"
+	recordsdescribe "github.com/mrsimpson/agentic-office/hub/records/describe"
 	slidescheck "github.com/mrsimpson/agentic-office/hub/slides/check"
+	slidesdescribe "github.com/mrsimpson/agentic-office/hub/slides/describe"
 	taskscheck "github.com/mrsimpson/agentic-office/hub/tasks/check"
+	tasksdescribe "github.com/mrsimpson/agentic-office/hub/tasks/describe"
 )
 
 // Check checks the content of the file at path against the schema. It returns the reasons in
@@ -41,12 +52,29 @@ type StubCheck func(schema string, content []byte) bool
 // directory with files.
 type HintCheck func(path string, content []byte, exists func(string) bool) []string
 
+// Description is what a part tells about one file of its types. The fields are those of the
+// description of the interface if-artifact-check.
+type Description struct {
+	Title   string
+	Summary string
+	Tags    []string
+	Links   []string
+	Sources []string
+	Stub    bool
+}
+
+// Describer describes the file at path with the given content as a file of the schema; schema is
+// "" when the file names none. ok is false when the file is not of a type of the part, or the
+// part refuses it.
+type Describer func(schema, path string, content []byte) (d Description, ok bool)
+
 // Part is what the artifacts part knows of a part of the hub that owns schemas.
 type Part struct {
 	Name     string
 	Validate Check
 	IsStub   StubCheck
 	Hints    HintCheck // nil: the part gives no hints
+	Describe Describer
 }
 
 type entry struct {
@@ -59,10 +87,41 @@ func noStubs(string, []byte) bool { return false }
 
 // parts is the fixed list of the owners of schemas. A new type adds one line.
 var parts = []entry{
-	{Part{"records", recordscheck.Validate, recordscheck.IsStub, nil}, recordscheck.Schemas},
-	{Part{"tasks", taskscheck.Validate, noStubs, nil}, taskscheck.Schemas},
-	{Part{"slides", slidescheck.Validate, func(_ string, c []byte) bool { return slidescheck.IsStub(c) }, nil}, slidescheck.Schemas},
-	{Part{"documents", documentscheck.Validate, func(_ string, c []byte) bool { return documentscheck.IsStub(c) }, documentscheck.Hints}, documentscheck.Schemas},
+	{Part{"records", recordscheck.Validate, recordscheck.IsStub, nil, describeRecord}, recordscheck.Schemas},
+	{Part{"tasks", taskscheck.Validate, noStubs, nil, describeTask}, taskscheck.Schemas},
+	{Part{"slides", slidescheck.Validate, func(_ string, c []byte) bool { return slidescheck.IsStub(c) }, nil, describeDeck}, slidescheck.Schemas},
+	{Part{"documents", documentscheck.Validate, func(_ string, c []byte) bool { return documentscheck.IsStub(c) }, documentscheck.Hints, describeDocument}, documentscheck.Schemas},
+}
+
+// The describers take the description of each part into the form of this part.
+
+func describeRecord(schema, p string, c []byte) (Description, bool) {
+	d, ok := recordsdescribe.Describe(schema, p, c)
+	return Description{Title: d.Title, Summary: d.Summary, Tags: d.Tags, Links: d.Links, Stub: d.Stub}, ok
+}
+
+func describeTask(schema, p string, c []byte) (Description, bool) {
+	d, ok := tasksdescribe.Describe(schema, p, c)
+	return Description{Title: d.Title, Summary: d.Summary}, ok
+}
+
+func describeDeck(schema, p string, c []byte) (Description, bool) {
+	d, ok := slidesdescribe.Describe(schema, p, c)
+	return Description{Title: d.Title, Summary: d.Summary, Stub: d.Stub}, ok
+}
+
+func describeDocument(schema, p string, c []byte) (Description, bool) {
+	d, ok := documentsdescribe.Describe(schema, p, c)
+	return Description{Title: d.Title, Summary: d.Summary, Tags: d.Tags, Links: d.Links, Sources: d.Sources, Stub: d.Stub}, ok
+}
+
+// Describers returns the parts in the order of the list.
+func Describers() []Part {
+	out := make([]Part, 0, len(parts))
+	for _, p := range parts {
+		out = append(out, p.Part)
+	}
+	return out
 }
 
 // owners maps the name of a schema to the part that owns it.
