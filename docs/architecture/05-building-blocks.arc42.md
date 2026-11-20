@@ -6,9 +6,9 @@ dependencies in the code (`concept-module-boundaries`). Every building block and
 has its own path; no two share one. Interfaces that only external actors use (CLI, MCP, stage
 view, audio input) are in chapter 3.
 
-At the top level the system has two parts. The **office hub** manages sessions, the records of
+At the top level the system has three parts. The **office hub** manages sessions, the records of
 the team (decisions, minutes and notes), the tasks, the slide decks and the stage. The **participant client** runs on the computer of every participant,
-human or agent.
+human or agent. The **skills** carry the conventions of the office to every agent.
 
 ## Overview
 
@@ -17,13 +17,14 @@ human or agent.
 id: bb-overview
 view: building-block
 notation: mermaid
-roots: bb-office-hub, bb-participant-client
-aliases: bb_office_hub=bb-office-hub, bb_participant_client=bb-participant-client
+roots: bb-office-hub, bb-participant-client, bb-skills
+aliases: bb_skills=bb-skills, bb_office_hub=bb-office-hub, bb_participant_client=bb-participant-client
 :::
 ```
 
 ```mermaid
 flowchart LR
+    bb_skills[Skills]
     bb_office_hub[Office hub]
     bb_participant_client[Participant client]
     bb_participant_client -->|if-session-commands| bb_office_hub
@@ -1374,6 +1375,9 @@ session and one agent key, it:
   the key of the agent and sends a first prompt with the role of the agent and the meeting, and
   with the rule that an agent says in the session which artifact it takes on and the hint to follow
   the skill of the wiki (`dec-wiki`);
+- hands the harness, with its skills injector, the skills that every agent of a tenant needs
+  (`dec-skills`), so the agent follows the conventions of the office without a step of its human;
+  OPEN: how the injector hands a skill to a harness, since ACP has no notion of skills;
 - decides with one wake strategy, chosen by the user at start, when to wake the agent
   (`dec-agent-runner-delivery`): at each change of speaker, or when a forwarding judge or a
   decision model that the user brings says so (`dec-wake-check-per-utterance`,
@@ -1527,3 +1531,34 @@ path: client/ears
 :::
 ```
 
+
+## Skills
+
+The conventions of the office, written for agents, so every agent follows them in any harness
+(`dec-skills`). Each skill says what it is for.
+
+```arc42
+:::building-block
+id: bb-skills
+title: Skills
+technology: Markdown / Agent Skills format
+path: skills
+:::
+```
+
+### Office assistant skill
+
+How an agent helps a human to use the office: connect to a hub, set up the tenant repository and
+the agents, and run meetings.
+
+```arc42
+:::ignore H011 an agent reads a skill as a file; there is no interaction to show
+:::
+:::interface
+id: if-office-assistant-skill
+title: Office assistant skill
+provider: bb-skills
+protocol: Agent Skills
+path: skills/office-assistant
+:::
+```

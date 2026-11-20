@@ -67,7 +67,7 @@ id: dn-participant-laptop
 title: Participant computer
 type: device
 parent: env-mvp
-hosts: bb-cli, bb-client-core, bb-replicator, bb-sync, bb-ears
+hosts: bb-cli, bb-client-core, bb-replicator, bb-sync, bb-ears, bb-skills
 :::
 ```
 

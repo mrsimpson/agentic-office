@@ -26,5 +26,3 @@ scripts
 # Agent tooling: the installed skills and their lock file.
 .claude
 skills-lock.json
-# Skills that the office ships for agent harnesses; the skill tooling installs them.
-skills
