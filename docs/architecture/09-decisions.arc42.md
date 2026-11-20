@@ -777,18 +777,24 @@ addresses: risk-forged-copy, qg-resumability
 
 ## The end of a session is a milestone, not a stop
 
-**Context:** People keep working after a meeting: artifacts arrive later, and a meeting can go on
-another day. **Decision:** `session.ended` is a milestone that triggers other work, for example
-the write to the archive. It never blocks anything new; the triggered work runs in the
-background, and its result appears as an event in the session log. A later session command (join,
-speak, raise a hand, show on the stage, pause or resume) opens the session again; the log shows
-this as its own event. Artifacts through their own interfaces (decisions, minutes, notes, tasks,
-slides) may refer to an ended session and never open it again. Minutes are such an artifact: they
-are written only through the minutes interface and stored at once like every other artifact. While a session is open, the hub adds a notice to its log when its
-minutes change, so the stage and agents see them live. **Consequences:** Streams, replicators and
-agents keep following a session after its end until the participant leaves. The session itself
-no longer has a command to update minutes. **Rejected:** an end that rejects all later commands;
-minutes as a session command.
+**Context:** People keep working after a meeting: artifacts arrive later, and the minutes and
+notes of a session wait for their release (`concept-session-release`). **Decision:**
+`session.ended` is a milestone that triggers other work, for example the write to the archive and
+the start of the grace period before the release. It never blocks other work; the triggered work
+runs in the background, and its result appears as an event in the session log. A session is never
+opened again: after the end, it takes no command of a participant, and a later meeting is a new
+session. It still takes three kinds of events: changes of the release status, notices about
+artifacts, and, until the release, a mark that puts a sentence off the record. While a session
+runs, participants write its running minutes through the session commands, and the hub adds each
+change to the log, so the stage and agents see them live. When the session ends, the hub stores
+the last version as the minutes of the session; until the release, participants change them
+through the minutes interface. Artifacts through their own interfaces (decisions, minutes, notes,
+tasks, slides) may refer to an ended session. **Consequences:** Streams, replicators and agents
+stop following a session at its end. A later meeting on the same topic starts a new session; a
+follow-up session that continues an ended one is OPEN. **Rejected:** an end that rejects all later
+work; opening an ended session again with a later command (its release would never be final);
+minutes written only through the minutes interface (the stage and agents would not see them
+change during the meeting).
 
 ```arc42
 :::decision
@@ -1396,7 +1402,7 @@ their content.
   state.
 
 OPEN: the changes to `dec-artifacts`, `dec-artifact-sync`, `dec-web-portal`, `dec-off-the-record`,
-`dec-session-end-milestone` (#193), `dec-session-import`, `concept-multi-tenancy` and to the
+`dec-session-import`, `concept-multi-tenancy` and to the
 archive, Git access and the artifacts check in chapter 5.
 
 ```arc42
