@@ -213,7 +213,7 @@ var Page = template.Must(template.New("page").Funcs(template.FuncMap{
 	},
 }).Parse(`<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="referrer" content="no-referrer">
+<meta name="referrer" content="same-origin">
 <title>{{.Title}} · Agentic office</title><style>` + css + `</style></head>
 <body>
 <nav><a class="brand" href="/portal/"><div class="logo"></div>Agentic office</a>
