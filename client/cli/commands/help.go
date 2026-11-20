@@ -499,7 +499,9 @@ author. A released deck never changes: render a new one. --json prints {"id", "m
 	{Name: "slides remove", Group: groupStage, Summary: "remove a staged slide deck before the release",
 		Usage: "slides remove <id> --session S",
 		Details: `Removes a deck that waits for the release of its session, with the rules of "slides
-change". Its ID is not used again. --json prints {"id", "duplicate"}.`,
+change". Its ID is not used again. It also discards a deck that the release kept back because
+its path was taken; from then on everyone reads the file at that path. --json prints {"id",
+"duplicate"}.`,
 		Examples: []string{"office slides remove slides/42 --session weekly"}},
 	{Name: "slides get", Group: groupStage, Summary: "fetch a rendered deck",
 		Usage:    "slides get <id> [--out FILE]",
@@ -533,8 +535,10 @@ matter is checked and the hints are printed as with "document create".
 	{Name: "document remove", Group: groupStage, Summary: "remove a staged text document before the release",
 		Usage: "document remove <path> --base VERSION --session S",
 		Details: `Removes a document that waits for the release of its session. --session must name that
-session, and only a participant of it may remove it. --base is the version that you read. A
-released document is removed with Git, not here. --json prints {"path", "duplicate"}.`,
+session, and only a participant of it may remove it. --base is the version that you read. It also
+discards a document that the release kept back because its path was taken; from then on everyone
+reads the file at that path. A released document is removed with Git, not here. --json prints
+{"path", "duplicate"}.`,
 		Examples: []string{`office document remove documents/plan.md --base "$V" --session weekly`}},
 	{Name: "document get", Group: groupStage, Summary: "read a text document",
 		Usage: "document get <path> [--out FILE]",
@@ -681,7 +685,9 @@ decision never changes: record a new one that refers to it. --json prints {"deci
 	{Name: "decision remove", Group: groupRecords, Summary: "remove a staged decision before the release",
 		Usage: "decision remove <id> --session S",
 		Details: `Removes a decision that waits for the release of its session, with the rules of "decision
-change". Its ID is not used again. --json prints {"id": ..., "duplicate": ...}.`,
+change". Its ID is not used again. It also discards a decision that the release kept back because
+its path was taken; from then on everyone reads the file at that path. --json prints {"id": ...,
+"duplicate": ...}.`,
 		Examples: []string{"office decision remove 4 --session weekly"}},
 	{Name: "note change", Group: groupRecords, Summary: "change a staged note before the release",
 		Usage: "note change <id> <text> | --file F [--tag T]... --session S",

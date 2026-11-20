@@ -563,6 +563,10 @@ func TestStagingCompletesReleaseWithAConflict(t *testing.T) {
 	if _, err := f.staging.Release(ctx, "weekly", authorAda); err == nil {
 		t.Fatal("the release worked although main was locked")
 	}
+	// A git killed with the hub also leaves the lock of the temporary index of a commit.
+	if err := os.WriteFile(filepath.Join(f.dir, "office-index.lock"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	g := openStaging(t, f.root, false)
 	res, err := g.staging.Release(ctx, "weekly", storage.Author{})
 	if err != nil {

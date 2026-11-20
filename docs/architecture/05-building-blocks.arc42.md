@@ -171,7 +171,7 @@ with a new token.
 The interface also tells who may read a session its release: the status and deadline, the staged
 files, whether the caller may release or object now, and, once released, the release commit with
 the human who released and the authors of the artifacts, and the staged files that the release
-did not release because their path is taken. Every other member of the tenant gets only the
+did not release because their path is taken, until a participant discards them. Every other member of the tenant gets only the
 release commit of a released session.
 
 The same interface lets everyone who may read a session check its log (`dec-merkle-log`): it hands
@@ -368,7 +368,8 @@ into a decision (`dec-off-the-record`).
 
 A decision that names a session waits for the release of that session (`concept-session-release`).
 Until then, every participant of the session may change or remove it, and only the readers of the
-session see its content; everyone else sees its stub. A released decision never changes.
+session see its content; everyone else sees its stub. A released decision never changes. The
+removal also discards a staged decision that the release kept back.
 
 ```arc42
 :::interface
@@ -387,8 +388,9 @@ The minutes of a session. While the session runs, participants write the running
 the session commands. When the session ends, the meeting session stores the last version through
 this interface (`rs-session-ends`). The stored minutes wait for the release of the session
 (`concept-session-release`). Until then, every participant of the session may change or remove
-them here, and only the readers of the session see them; everyone else sees their stub. Clients
-never create minutes here. A sentence that is off the record must not go into the minutes.
+them here, and only the readers of the session see them; everyone else sees their stub. The
+removal also discards staged minutes that the release kept back. Clients never create minutes
+here. A sentence that is off the record must not go into the minutes.
 
 The meeting session stores the minutes while it ends the session. This one write does not ask the
 meeting session back: the meeting session states that the session is not released and that the
@@ -412,7 +414,8 @@ Markdown text with optional tags. It keeps its author, whether the author is a h
 the time and the session, if any. A note is a
 memory: once it is released, it never changes; a correction is a new note that refers to the old
 one. A note that names a session waits for the release of that session, like a decision, and
-until then every participant of the session may change or remove it. Notes are sources of the wiki (`dec-wiki`, `concept-wiki`). A sentence that is off the record must not go into a
+until then every participant of the session may change or remove it. The removal also discards a
+staged note that the release kept back. Notes are sources of the wiki (`dec-wiki`, `concept-wiki`). A sentence that is off the record must not go into a
 note. Ingest copies notes into documents, so the hub cannot remove a sentence that is marked off
 the record later from those copies.
 
@@ -467,7 +470,8 @@ decks are the first type (`term-artifact`).
 A render may name a session, and the deck keeps it. A deck that names a session waits for the
 release of that session (`concept-session-release`). Until then, every participant of the session
 may change or remove it, and only the readers of the session see its content; everyone else sees
-its stub. The stage sees the decks of its own session.
+its stub. The removal also discards a staged deck that the release kept back. The stage sees the
+decks of its own session.
 
 ```arc42
 :::interface
@@ -491,7 +495,8 @@ document; the hub cannot check this, so the author takes care of it.
 
 A new document that names a session waits for the release of that session
 (`concept-session-release`). Until then, every participant of the session may change or remove it,
-and each change must name that session. A change of a released document is not held. A staged
+and each change must name that session. The removal also discards a staged document that the
+release kept back. A change of a released document is not held. A staged
 document is read through the archive read interface, which shows its content only to the readers
 of the session.
 
@@ -562,8 +567,8 @@ page lists the places from the error and a button "release anyway" whose form se
 command again with the token. A member who did
 not take part sees a session only once it is released, and then only the released artifacts, who
 released them and their original authors. After the release, the readers of the session also see
-each staged artifact that the release did not release, marked "not released: the path is taken".
-A participant moves such an artifact to a new path by hand, through the interface of its type.
+each staged artifact that the release did not release, marked "not released: the path is taken",
+with a form that discards it (`concept-session-release`).
 
 Every member of a tenant reads its wiki (`concept-wiki`) in the portal: the index of the artifacts,
 filtered by a tag, with every tag and the number of its artifacts; one artifact with its text, its
@@ -594,8 +599,9 @@ portal has exactly the rights of the key (`dec-web-portal`). It asks the auth AP
 the user and tenant APIs for the administration and the members, the session list for the
 sessions of a tenant, the session stream for the events of one session, and the minutes, decisions,
 notes and tasks of that session. On the page of a session it asks the session commands for the
-release and the archive read API for the staged, released or not released artifacts, and its
-forms send release and objection to the session commands. The pages of the wiki of a tenant ask the
+release and the archive read API for the staged, released or not released artifacts. Its forms
+send release and objection to the session commands, and the discard of an artifact that was not
+released to the removal of the interface of its type. The pages of the wiki of a tenant ask the
 wiki interface for the index, the references of an artifact, the search, the broken links and the
 ingest queue, and the archive read API for the text of an artifact (`concept-wiki`). The wiki
 interface decides what is in the wiki and where a link leads; the portal only turns the links
@@ -607,7 +613,7 @@ id: bb-portal
 title: Portal
 technology: Go, rendered by the hub
 parent: bb-office-hub
-requires: if-auth-api, if-user-api, if-tenant-api, if-session-list, if-session-stream, if-session-commands, if-minutes-api, if-decision-api, if-note-api, if-task-api, if-archive-read, if-wiki-api
+requires: if-auth-api, if-user-api, if-tenant-api, if-session-list, if-session-stream, if-session-commands, if-minutes-api, if-decision-api, if-note-api, if-task-api, if-slides-api, if-document-api, if-archive-read, if-wiki-api
 path: hub/portal
 :::
 ```
@@ -1073,7 +1079,8 @@ repository in one commit. A file replaces its path only if the artifact reposito
 exactly the recorded stub there, or no file at all. A path that holds anything else, for example a
 file that a participant pushed after a crash, keeps that file: the staged artifact is not
 released, and the release reports the conflict with the path and the session. The rest of the
-session is released. The author of the commit is the human who released, or the hub, and the
+session is released. Such an artifact stays in the area until a participant discards it
+(`concept-session-release`). The author of the commit is the human who released, or the hub, and the
 authors of the files are its co-authors. The commit names the session, and each step of a release
 is recorded, so a release that a restart cut off is completed and never done twice. The archive
 moves the files and compares versions without reading their content, so the order in which a part
@@ -1085,6 +1092,7 @@ id: bb-archive
 title: Archive
 technology: Go / local Git repository
 parent: bb-office-hub
+implements: concept-session-release
 requires: if-token-check
 path: hub/archive
 :::
@@ -1148,6 +1156,8 @@ For the staging repository, a caller works on the area of a session:
   the area stays closed for writes, and its release counts as done. An area without such files is
   removed. A release that a restart cut off is completed by the next call, and a done release
   gives the same answer again;
+- discard a file that a done release kept back: the area forgets the path, and goes with its last
+  such file. The caller decides who may discard;
 - find the release commit of a session in the artifact repository, with its author, its
   co-authors and the files it wrote.
 

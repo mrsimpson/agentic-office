@@ -72,6 +72,11 @@
 //     their files and its readers, and its release is marked done: it stays closed, a reader
 //     still reads its files, and Release returns the same result again.
 //
+// Discard removes one kept file of an area whose release is done, in one commit of the staging
+// repository: the file, the name, its recorded stub and its conflict go. With the last kept file,
+// the state of the area goes too. The archive does not check who discards; the part of the type
+// does.
+//
 // Released finds the release commit of a session in the history of main by its trailer, with its
 // author (empty for the hub), its co-authors and the paths it wrote.
 //

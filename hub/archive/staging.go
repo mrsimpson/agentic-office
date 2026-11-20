@@ -493,6 +493,57 @@ func (s *Staging) TakeBack(ctx context.Context, session, p string) error {
 	return err
 }
 
+// Discard implements storage.Staging.
+func (s *Staging) Discard(ctx context.Context, session, p string, author storage.Author) error {
+	if err := checkSession(session); err != nil {
+		return err
+	}
+	if err := storage.CheckPath(p); err != nil {
+		return err
+	}
+	if err := checkAuthor(author); err != nil {
+		return err
+	}
+	s.repo.turn.Lock()
+	defer s.repo.turn.Unlock()
+	head, err := s.repo.head(ctx)
+	if err != nil {
+		return err
+	}
+	a, err := s.load(ctx, head, session)
+	if err != nil {
+		return err
+	}
+	if a == nil {
+		return storage.ErrNoArea
+	}
+	i, named := slices.BinarySearch(a.Names, p)
+	if a.Release == nil || !a.Release.Done || !named {
+		return storage.ErrNotKept
+	}
+	a.Names = slices.Delete(a.Names, i, i+1)
+	delete(a.Stubs, p)
+	if len(a.Stubs) == 0 {
+		a.Stubs = nil
+	}
+	a.Release.Kept = slices.DeleteFunc(a.Release.Kept, func(k string) bool { return k == p })
+	files := []storage.File{{Path: p, Remove: true}}
+	message := "Discard " + p + " from the staging area of session " + areaName(session)
+	if len(a.Names) == 0 {
+		// The last kept file goes, and the area with it.
+		files = append(files, storage.File{Path: areaStatePath(session), Remove: true})
+		message += "; the area goes with it"
+	} else {
+		state, err := stateFile(a)
+		if err != nil {
+			return err
+		}
+		files = append(files, state)
+	}
+	_, err = s.repo.commitLocked(ctx, storage.Change{Message: message, Author: author, Files: files}, nil)
+	return err
+}
+
 // Read implements storage.Staging.
 func (s *Staging) Read(ctx context.Context, session, dir string) ([]storage.File, error) {
 	if err := checkSession(session); err != nil {

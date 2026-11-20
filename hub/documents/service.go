@@ -233,11 +233,12 @@ func (s *Service) tookPart(ctx context.Context, sessionID, pid string) error {
 	return nil
 }
 
-// errReleased tells a caller of releasing that the session is released and its area is gone.
+// errReleased tells a caller of releasing that the session is released: its area is gone, or its
+// release is done and the area keeps only what the release kept back.
 var errReleased = errors.New("released")
 
-// releasing returns errReleased when the session is released and its staging area is gone, and an
-// error when the session is released but its area still exists: the move of the area runs, so a
+// releasing returns errReleased when the session is released and its staging area is gone or its
+// release is done, and an error when the session is released but its area is still moving, so a
 // write waits.
 func (s *Service) releasing(ctx context.Context, sessionID string) error {
 	st, err := s.opts.Sessions.State(ctx, sessionID)
@@ -250,7 +251,10 @@ func (s *Service) releasing(ctx context.Context, sessionID string) error {
 	if st.Status != release.Released {
 		return nil
 	}
-	if _, err := s.opts.Staging.Area(ctx, sessionID); err == nil {
+	if a, err := s.opts.Staging.Area(ctx, sessionID); err == nil {
+		if a.Release != nil && a.Release.Done {
+			return errReleased // the area keeps only what the release kept back
+		}
 		return connect.NewError(connect.CodeUnavailable, "the session is being released; repeat the command")
 	} else if !errors.Is(err, storage.ErrNoArea) {
 		return connect.NewError(connect.CodeInternal, "read the staging area: "+err.Error())
@@ -443,6 +447,12 @@ func (s *Service) edit(ctx context.Context, c tokencheck.Caller, op, p, content,
 		}
 		return v, dup, s.tell(ctx, err, sessionID, c, commandID, false, v)
 	}
+	if op == "remove" {
+		// A staged document that the release kept back because its path is taken goes on removal.
+		if v, done, err := s.discardKept(ctx, c, key, p, sessionID, base); done || err != nil {
+			return v, false, err
+		}
+	}
 	at, err := s.locateLocked(ctx, p)
 	if err != nil {
 		return nil, false, err
@@ -500,6 +510,53 @@ func (s *Service) edit(ctx context.Context, c tokencheck.Caller, op, p, content,
 		return v, dup, err
 	}
 	return v, dup, s.tell(ctx, err, sessionID, c, commandID, false, v)
+}
+
+// discardKept removes the staged document at p from the staging area of its session when the
+// release of the session kept it back because the path is taken (storage.Staging.Discard), for a
+// participant of the session who names it and read the staged version base. It reports false when
+// p is not such a document.
+func (s *Service) discardKept(ctx context.Context, c tokencheck.Caller, key, p, sessionID, base string) (*documentv1.DocumentVersion, bool, error) {
+	areas, err := s.opts.Staging.Areas(ctx)
+	if err != nil {
+		return nil, false, connect.NewError(connect.CodeInternal, "read the staging areas: "+err.Error())
+	}
+	i := slices.IndexFunc(areas, func(a storage.Area) bool { return slices.Contains(a.Names, p) })
+	if i < 0 || areas[i].Release == nil || !areas[i].Release.Done {
+		return nil, false, nil
+	}
+	session := areas[i].Session
+	if err := s.tookPart(ctx, session, c.ParticipantID); err != nil {
+		return nil, false, connect.NewError(connect.CodePermissionDenied,
+			"only a participant of the session of the document "+p+" may remove it")
+	}
+	if sessionID != session {
+		return nil, false, connect.NewError(connect.CodeFailedPrecondition,
+			fmt.Sprintf("the document %s was not released with session %s; a removal must name that session", p, session))
+	}
+	wctx := context.WithoutCancel(ctx)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	files, err := s.opts.Staging.Read(wctx, session, p)
+	switch {
+	case errors.Is(err, storage.ErrNoArea) || err == nil && len(files) == 0:
+		return nil, false, connect.NewError(connect.CodeAborted, "the document "+p+" changed meanwhile; repeat the command")
+	case err != nil:
+		return nil, false, connect.NewError(connect.CodeInternal, "read the staging area: "+err.Error())
+	case files[0].Version != base:
+		return nil, false, connect.NewError(connect.CodeAborted,
+			fmt.Sprintf("the document has changed since you read it; its current version is %s", files[0].Version))
+	}
+	err = s.opts.Staging.Discard(wctx, session, p, author(c))
+	switch {
+	case errors.Is(err, storage.ErrNotKept), errors.Is(err, storage.ErrNoArea):
+		return nil, false, connect.NewError(connect.CodeAborted, "the document "+p+" changed meanwhile; repeat the command")
+	case err != nil:
+		return nil, false, connect.NewError(connect.CodeInternal, "the document could not be discarded")
+	}
+	v := &documentv1.DocumentVersion{Path: p, Staged: true}
+	s.done[key] = result{op: "remove", v: v}
+	return v, true, nil
 }
 
 func (s *Service) locateLocked(ctx context.Context, p string) (place, error) {

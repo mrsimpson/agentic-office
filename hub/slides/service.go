@@ -743,11 +743,12 @@ func (s *Service) tookPart(ctx context.Context, sessionID, pid string) error {
 	return nil
 }
 
-// errReleased tells a caller of releasing that the session is released and its area is gone.
+// errReleased tells a caller of releasing that the session is released: its area is gone, or its
+// release is done and the area keeps only what the release kept back.
 var errReleased = errors.New("released")
 
-// releasing returns errReleased when the session is released and its staging area is gone, and an
-// error when the session is released but its area still exists: the move of the area runs, so a
+// releasing returns errReleased when the session is released and its staging area is gone or its
+// release is done, and an error when the session is released but its area is still moving, so a
 // write waits.
 func (s *Service) releasing(ctx context.Context, sessionID string) error {
 	st, err := s.sessions.State(ctx, sessionID)
@@ -760,7 +761,10 @@ func (s *Service) releasing(ctx context.Context, sessionID string) error {
 	if st.Status != release.Released {
 		return nil
 	}
-	if _, err := s.opts.Staging.Area(ctx, sessionID); err == nil {
+	if a, err := s.opts.Staging.Area(ctx, sessionID); err == nil {
+		if a.Release != nil && a.Release.Done {
+			return errReleased // the area keeps only what the release kept back
+		}
 		return connect.NewError(connect.CodeUnavailable, "the session is being released; repeat the command")
 	} else if !errors.Is(err, storage.ErrNoArea) {
 		return connect.NewError(connect.CodeInternal, "read the staging area: "+err.Error())
@@ -1181,6 +1185,12 @@ func (s *Service) edit(ctx context.Context, who tokencheck.Caller, id, sessionID
 	if !ok {
 		return nil, false, connect.NewError(connect.CodeNotFound, "there is no deck "+id)
 	}
+	if mutate == nil {
+		// A staged deck that the release kept back because its path is taken goes on removal.
+		if done, err := s.discardKept(ctx, who, n, id, sessionID, cid, dg); done || err != nil {
+			return nil, false, err
+		}
+	}
 	state, _, session := s.locate(n)
 	switch state {
 	case entryNone:
@@ -1214,6 +1224,52 @@ func (s *Service) edit(ctx context.Context, who tokencheck.Caller, id, sessionID
 	}
 	d, err := s.change(ctx, n, session, cid, dg, storageAuthor(who), mutate)
 	return d, false, err
+}
+
+// discardKept removes deck n from the staging area of its session when the release of the session
+// kept it back because its path is taken (storage.Staging.Discard), for a participant of the
+// session who names it. It reports false when the deck is not such a deck.
+func (s *Service) discardKept(ctx context.Context, who tokencheck.Caller, n uint64, id, sessionID, cid, dg string) (bool, error) {
+	p := check.FilePath(n, ".yaml")
+	s.rmu.RLock()
+	session := s.names[n]
+	s.rmu.RUnlock()
+	if session == "" {
+		return false, nil
+	}
+	a, err := s.opts.Staging.Area(ctx, session)
+	if errors.Is(err, storage.ErrNoArea) {
+		return false, nil
+	}
+	if err != nil {
+		return false, connect.NewError(connect.CodeInternal, "read the staging area: "+err.Error())
+	}
+	if a.Release == nil || !a.Release.Done || !slices.Contains(a.Names, p) {
+		return false, nil
+	}
+	if err := s.tookPart(ctx, session, who.ParticipantID); err != nil {
+		return false, connect.NewError(connect.CodePermissionDenied,
+			fmt.Sprintf("only a participant of the session of the deck %s may remove it", id))
+	}
+	if sessionID != session {
+		return false, connect.NewError(connect.CodeFailedPrecondition,
+			fmt.Sprintf("the deck %s was not released with session %s; a removal must name that session", id, session))
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	err = s.opts.Staging.Discard(context.WithoutCancel(ctx), session, p, storageAuthor(who))
+	switch {
+	case errors.Is(err, storage.ErrNotKept), errors.Is(err, storage.ErrNoArea):
+		return false, connect.NewError(connect.CodeAborted, "the deck changed meanwhile; repeat the command")
+	case err != nil:
+		return false, storeErr(err)
+	}
+	s.rmu.Lock()
+	s.changes[cid] = changeCmd{n: n, digest: dg}
+	s.rmu.Unlock()
+	s.setName(n, "")
+	s.dropStaged(n)
+	return true, nil
 }
 
 // change writes a new version of a staged deck of a session, or removes it when mutate is nil. The

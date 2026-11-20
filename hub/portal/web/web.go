@@ -71,6 +71,10 @@ func ReleasePath(tenant, session string) string { return SessionPath(tenant, ses
 // ObjectPath takes the form that objects to the release of a session.
 func ObjectPath(tenant, session string) string { return SessionPath(tenant, session) + "/object" }
 
+// DiscardPath takes the form that discards a staged artifact that the release of a session kept
+// back.
+func DiscardPath(tenant, session string) string { return SessionPath(tenant, session) + "/discard" }
+
 // MembersPath is the page with the members of a tenant.
 func MembersPath(tenant string) string { return TenantPrefix + url.PathEscape(tenant) + "/members" }
 
@@ -320,7 +324,7 @@ var _ = template.Must(Page.New("release").Parse(`<h2>Release</h2>
 <dt>Release commit</dt><dd><code title="{{.ID}}" data-commit="{{.ID}}">{{.Short}}</code> <small>{{.Time}} UTC</small></dd>{{end}}
 </dl>
 <h2>{{if eq .State "released"}}Released artifacts{{else}}Staged artifacts{{end}}</h2>
-{{if .Artifacts}}<ol class="records">{{range .Artifacts}}<li data-artifact="{{.Path}}"{{if .Staged}} data-staged{{end}}{{if .NotReleased}} data-not-released{{end}}><details><summary><code>{{.Path}}</code>{{if .NotReleased}} <span class="badge revoked">not released: the path is taken</span> <small>Move it to a new path by hand, through the interface of its type.</small>{{else if .Staged}} <span class="badge imported">staged</span>{{end}}</summary><pre class="artifact">{{.Content}}</pre>{{if .Cut}}<small>The page shows the start of the file only.</small>{{end}}</details></li>{{end}}</ol>{{else}}<p class="empty" data-empty="artifacts">{{if eq .State "released"}}The session released no artifact.{{else}}The session has staged no artifact.{{end}}</p>{{end}}`))
+{{if .Artifacts}}<ol class="records">{{range .Artifacts}}<li data-artifact="{{.Path}}"{{if .Staged}} data-staged{{end}}{{if .NotReleased}} data-not-released{{end}}><details><summary><code>{{.Path}}</code>{{if .NotReleased}} <span class="badge revoked">not released: the path is taken</span> <small>To keep it, create it again at a new path through the interface of its type, then discard it here.</small>{{else if .Staged}} <span class="badge imported">staged</span>{{end}}</summary><pre class="artifact">{{.Content}}</pre>{{if .Cut}}<small>The page shows the start of the file only.</small>{{end}}</details>{{if .NotReleased}}<form class="buttons" method="post" action="{{$.DiscardPath}}" data-form="discard" data-discard="{{.Path}}"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="command_id" value="{{.Command}}"><input type="hidden" name="path" value="{{.Path}}"><input type="hidden" name="version" value="{{.Version}}"><button class="danger" type="submit">Discard</button></form>{{end}}</li>{{end}}</ol>{{else}}<p class="empty" data-empty="artifacts">{{if eq .State "released"}}The session released no artifact.{{else}}The session has staged no artifact.{{end}}</p>{{end}}`))
 
 // wiki is the wiki of a tenant: a bar with the views and the search, then the index, one
 // artifact, the search results, the broken links or the ingest queue.

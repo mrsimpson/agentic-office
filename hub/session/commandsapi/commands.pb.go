@@ -1911,8 +1911,8 @@ type GetReleaseResponse struct {
 	MayRelease bool `protobuf:"varint,4,opt,name=may_release,json=mayRelease,proto3" json:"may_release,omitempty"`
 	// unreleased are the paths of the staged files of a released session that the release did not
 	// release because their path in the artifact repository holds another file, ordered. They stay
-	// in the staging area, and only who may read the session gets them. A participant moves such a
-	// file to a new path by hand, through the interface of its type.
+	// in the staging area, and only who may read the session gets them, until a participant discards
+	// them through the removal of the interface of their type.
 	Unreleased    []string `protobuf:"bytes,5,rep,name=unreleased,proto3" json:"unreleased,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

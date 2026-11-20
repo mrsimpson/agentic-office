@@ -86,7 +86,8 @@ func (h *Handler) session(w http.ResponseWriter, r *http.Request, c *backend, te
 		return
 	}
 	notice := map[string]string{"released": "The session is released. Every member of the tenant sees its artifacts now.",
-		"held": "The session is held. The hub does not release it; a human who took part releases it later."}[r.URL.Query().Get("done")]
+		"held":      "The session is held. The hub does not release it; a human who took part releases it later.",
+		"discarded": "The artifact is discarded. Everyone reads the file that holds its path now."}[r.URL.Query().Get("done")]
 	h.sessionPage(w, r, c, tenant, sid, pageExtra{notice: notice})
 }
 
@@ -186,6 +187,7 @@ func (h *Handler) sessionPage(w http.ResponseWriter, r *http.Request, c *backend
 		h.denied(w, err)
 		return
 	}
+	v.Release.CSRF = csrf(ck.Value)
 	if q := extra.refusal; q != nil {
 		v.Release.Quotes, v.Release.QuoteToken, v.Release.AnywayCommand = q.GetQuotes(), q.GetQuoteToken(), extra.refusedCmd
 	}

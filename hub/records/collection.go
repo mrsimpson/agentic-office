@@ -835,6 +835,32 @@ func (c *collection[T]) change(ctx context.Context, id uint32, session, cid, dig
 	return shown(r, true), nil
 }
 
+// namedBy returns the session of the area that names the file of record id, or "".
+func (c *collection[T]) namedBy(id uint32) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.names[c.path(id)]
+}
+
+// discard removes a staged record that the release of its session kept back from the staging area
+// (storage.Staging.Discard). The caller has checked the session and the caller.
+func (c *collection[T]) discard(ctx context.Context, id uint32, session, cid, digest string, author storage.Author) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	p := c.path(id)
+	err := c.staging.Discard(context.WithoutCancel(ctx), session, p, author)
+	switch {
+	case errors.Is(err, storage.ErrNotKept), errors.Is(err, storage.ErrNoArea):
+		return connect.NewError(connect.CodeAborted, "the "+c.kind+" changed meanwhile; repeat the command")
+	case err != nil:
+		return c.storeErr(err)
+	}
+	c.changes[cid] = changeCmd{id: id, digest: digest}
+	delete(c.names, p)
+	c.dropStaged(p)
+	return nil
+}
+
 // reader tells whether the caller may read the staged records of a session.
 type reader func(session string) bool
 
