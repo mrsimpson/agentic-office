@@ -35,6 +35,9 @@
 //     names its type. The stage loads a deck ("slides/<n>") in-process from the slides interface
 //     and embeds the HTML document in a sandboxed iframe (srcdoc, no scripts). An unknown deck, an
 //     ID of another type or another media type gives a note instead.
+//   - Staged artifacts (concept-session-release): the stage reads as the stage of its session. A
+//     staged file or deck of its own session shows its content, read from the staging area; a
+//     staged file of another session shows its stub, and a staged deck of another session a note.
 //   - Minutes: the text of the last minutes.updated. Utterances: the last eight that are not
 //     off the record, with corrections applied. An imported utterance shows its original time
 //     (UTC). A off the record utterance disappears.

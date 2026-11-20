@@ -18,8 +18,13 @@ import (
 // not stored.
 var outputFields = map[string]bool{"media_type": true, "content": true}
 
+// responseFields are the fields of the contract that only a response sets. A deck file never
+// stores them.
+var responseFields = map[string]bool{check.StagedKey: true, check.StubKey: true}
+
 // encode returns the YAML file of a deck: the name of its schema, the fields of the contract in
-// their order, in block style, without the output. Strings keep their quotes, so a title such as "2027" stays a string;
+// their order, in block style, without the output and without the fields that only a response
+// sets. Strings keep their quotes, so a title such as "2027" stays a string;
 // a text with line breaks is a literal block if it reads back the same.
 func encode(d *slidesv1.Deck) ([]byte, error) {
 	input := proto.Clone(d).(*slidesv1.Deck)
@@ -40,7 +45,7 @@ func encode(d *slidesv1.Deck) ([]byte, error) {
 		m := doc.Content[0]
 		var kept []*yaml.Node
 		for i := 0; i+1 < len(m.Content); i += 2 {
-			if !outputFields[m.Content[i].Value] {
+			if k := m.Content[i].Value; !outputFields[k] && !responseFields[k] {
 				kept = append(kept, m.Content[i], m.Content[i+1])
 			}
 		}

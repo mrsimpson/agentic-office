@@ -142,27 +142,39 @@ var StageLink = &sdk.Tool{Name: "stage_link", Title: "Create a stage link", Anno
 
 // SlidesRender is the tool slides_render.
 var SlidesRender = &sdk.Tool{Name: "slides_render", Title: "Render slides", Annotations: Additive,
-	Description: `Render a slide deck. The hub stores its input and the rendered deck. Give the deck as title and slides, as markdown, or as a local file. Returns {"id", "mediaType", "duplicate"}; show it with stage_focus (artifactId = id).`}
+	Description: `Render a slide deck. The hub stores its input and the rendered deck. Give the deck as title and slides, as markdown, or as a local file. Never put a sentence that is off the record into a deck. Give session to link it to a meeting; only a participant may. A deck of a meeting waits for the release of the session: until then the participants can change or remove it (slides_change, slides_remove). Returns {"id", "mediaType", "staged", "duplicate"}; show it with stage_focus (artifactId = id).`}
+
+// SlidesChange is the tool slides_change.
+var SlidesChange = &sdk.Tool{Name: "slides_change", Title: "Change a staged slide deck", Annotations: Additive,
+	Description: `Replace the title and the slides of a deck that waits for the release of its session. Give the deck as for slides_render. session must be the session of the deck, and you must have taken part in it; you become the author. A released deck never changes: render a new one. Returns {"id", "mediaType", "staged", "duplicate"}.`}
+
+// SlidesRemove is the tool slides_remove.
+var SlidesRemove = &sdk.Tool{Name: "slides_remove", Title: "Remove a staged slide deck", Annotations: Destructive,
+	Description: `Remove a deck that waits for the release of its session, with the rules of slides_change. Returns {"id", "duplicate"}.`}
 
 // DocumentCreate is the tool document_create.
 var DocumentCreate = &sdk.Tool{Name: "document_create", Title: "Create a document", Annotations: Additive,
-	Description: `Create a text document (Markdown) "documents/<name>.md" in the archive. The path must not exist. Returns {"path", "version", "duplicate"}. Pass session to put artifact.created into the log of a session you joined.`}
+	Description: `Create a text document (Markdown) "documents/<name>.md" in the archive. The path must not exist. Pass session to link it to a meeting you took part in: the log gets artifact.created, and the document waits for the release of the session; until then the participants can change or remove it (document_change, document_remove) and everyone else reads its stub. Never put a sentence that is off the record into it. Returns {"path", "version", "staged", "duplicate"}.`}
 
 // DocumentChange is the tool document_change.
 var DocumentChange = &sdk.Tool{Name: "document_change", Title: "Change a document", Annotations: Additive,
-	Description: `Replace the content of a document. Give the baseVersion you read with document_get. If someone changed the document first, the call fails with aborted and gives the current version: read again and redo your change. Returns {"path", "version", "duplicate"}.`}
+	Description: `Replace the content of a document. Give the baseVersion you read with document_get. If someone changed the document first, the call fails with aborted and gives the current version: read again and redo your change. A document that waits for the release of its session ("staged": true) changes only with session set to that session, and only for a participant of it. Returns {"path", "version", "staged", "duplicate"}.`}
+
+// DocumentRemove is the tool document_remove.
+var DocumentRemove = &sdk.Tool{Name: "document_remove", Title: "Remove a staged document", Annotations: Destructive,
+	Description: `Remove a document that waits for the release of its session, with the rules of document_change: give the baseVersion you read and the session of the document. A released document is not removed here. Returns {"path", "duplicate"}.`}
 
 // DocumentGet is the tool document_get.
 var DocumentGet = &sdk.Tool{Name: "document_get", Title: "Read a document", Annotations: ReadOnly,
-	Description: `Read a Markdown or YAML file of the archive by its path. Returns {"path", "version", "content"}.`}
+	Description: `Read a Markdown or YAML file of the archive by its path. A file that waits for the release of its session has "staged": true and shows its content only to the participants of that session; everyone else reads its stub. Returns {"path", "version", "staged", "content"}.`}
 
 // DocumentList is the tool document_list.
 var DocumentList = &sdk.Tool{Name: "document_list", Title: "List documents", Annotations: ReadOnly,
-	Description: `List the Markdown and YAML files of a directory of the archive (default "documents"). Returns {"files": [{"path", "version"}]}.`}
+	Description: `List the Markdown and YAML files of a directory of the archive (default "documents"). Returns {"files": [{"path", "version", "staged"}]}.`}
 
 // SlidesGet is the tool slides_get.
 var SlidesGet = &sdk.Tool{Name: "slides_get", Title: "Get a slide deck", Annotations: ReadOnly,
-	Description: `Load a slide deck by its ID, with its input and the rendered deck. Returns {"deck": {"id", "title", "slides", "authorParticipantId", "createTime", "mediaType", "content" (base64), …}}, or with out {"id", "mediaType", "file"}.`}
+	Description: `Load a slide deck by its ID, with its input and the rendered deck. A deck that waits for the release of its session has "staged": true; if you did not take part in that session you see only its id and "stub": true. Returns {"deck": {"id", "title", "slides", "authorParticipantId", "sessionId", "createTime", "mediaType", "content" (base64), …}}, or with out {"id", "mediaType", "file"}.`}
 
 // DecisionRecord is the tool decision_record.
 var DecisionRecord = &sdk.Tool{Name: "decision_record", Title: "Record a decision", Annotations: Additive,
@@ -328,6 +340,14 @@ type SlidesIn struct {
 	Slides   []SlideIn `json:"slides,omitempty" jsonschema:"The slides. Use slides, markdown or file."`
 	Markdown string    `json:"markdown,omitempty" jsonschema:"The deck in Markdown: \"# \" deck title, \"## \" starts a slide, \"- \" bullet, other text is the notes."`
 	File     string    `json:"file,omitempty" jsonschema:"A local deck file: .md (Markdown as above) or .json ({\"title\", \"slides\"})."`
+	Session  string    `json:"session,omitempty" jsonschema:"slides_render: link the deck to this session (default: no session). slides_change: the session of the deck (required)."`
+	ID       string    `json:"id,omitempty" jsonschema:"Only slides_change: the deck ID, for example \"slides/42\"."`
+}
+
+// DeckRemoveIn is the input of slides_remove.
+type DeckRemoveIn struct {
+	ID      string `json:"id" jsonschema:"Deck ID, for example \"slides/42\"."`
+	Session string `json:"session" jsonschema:"The session of the deck."`
 }
 
 // DeckIn is the input of a tool.
@@ -341,7 +361,14 @@ type DocumentIn struct {
 	Path        string `json:"path" jsonschema:"Path of the document, \"documents/<name>.md\"."`
 	Content     string `json:"content" jsonschema:"The Markdown text. Never put a sentence that is off the record into it."`
 	BaseVersion string `json:"baseVersion,omitempty" jsonschema:"Only for document_change: the version you read. A stale version fails with aborted; read the document again."`
-	Session     string `json:"session,omitempty" jsonschema:"Session whose log gets the event (optional); you must have joined it."`
+	Session     string `json:"session,omitempty" jsonschema:"Session whose log gets the event (optional); you must have taken part in it. A new document then waits for the release of the session; a change of such a document must name it."`
+}
+
+// DocumentRemoveIn is the input of document_remove.
+type DocumentRemoveIn struct {
+	Path        string `json:"path" jsonschema:"Path of the document, \"documents/<name>.md\"."`
+	BaseVersion string `json:"baseVersion" jsonschema:"The version you read."`
+	Session     string `json:"session" jsonschema:"The session of the document."`
 }
 
 // FileIn is the input of document_get and document_list.

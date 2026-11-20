@@ -1,10 +1,10 @@
 package contract
 
 // Contract tests of the release of a session (concept-session-release) through
-// if-session-commands and if-session-stream, against the real office-hub. The documents part does
-// not write the staging area yet (#202), so the tests stage documents with
-// contracttest.StageFile, as a part of the hub would. The records stage themselves
-// (staged_records_test.go).
+// if-session-commands and if-session-stream, against the real office-hub. The tests stage
+// documents through the documents interface (if-document-api) with the session; the staged
+// records have their own tests (staged_records_test.go), and so have the staged documents and
+// decks (staged_artifacts_test.go).
 
 import (
 	"context"
@@ -80,6 +80,37 @@ func (m *meeting) released(pid string) *sessionstreamv1.Event {
 	return nil
 }
 
+// stageDocument creates a document of the session as pid. It waits for the release of the
+// session; the artifact repository holds its stub.
+func (m *meeting) stageDocument(pid, path, content string) {
+	m.t.Helper()
+	stageDocumentAs(m.t, m.a(pid), m.sid, path, content)
+}
+
+// stageDocumentAs creates a document of a session as a.
+func stageDocumentAs(t *testing.T, a *contracttest.Actor, sid, path, content string) {
+	t.Helper()
+	res, err := a.Document.CreateDocument(ctx10(t), &documentv1.CreateDocumentRequest{Path: path, Content: content,
+		CommandId: coreapi.NewCommandID(), SessionId: sid})
+	if err != nil || !res.GetDocument().GetStaged() {
+		t.Fatalf("stage %s in session %s: %v, %v", path, sid, res, err)
+	}
+}
+
+// isDocumentStub reports whether content is the stub of a document: Markdown whose front matter
+// names the schema of documents and stub: true (if-document-api).
+func isDocumentStub(content string) bool {
+	return strings.HasPrefix(content, "---\nschema: office.document.v1\nstub: true\n---\n")
+}
+
+// releasedDoc reports whether the artifact repository holds the document at path itself, not
+// its stub.
+func (m *meeting) releasedDoc(path string) bool {
+	m.t.Helper()
+	got := m.artifact(path)
+	return got != "" && !isDocumentStub(got)
+}
+
 // artifact returns the content of a file in the artifact repository of the tenant, or "".
 func (m *meeting) artifact(path string) string {
 	m.t.Helper()
@@ -150,8 +181,8 @@ func TestReleaseByAHuman(t *testing.T) {
 		t.Fatal(err)
 	}
 	notes := "# Notes\n\nPlan:\nben will leave the\n  company in March\n"
-	contracttest.StageFile(t, m.staging(), m.sid, "documents/notes.md", notes)
-	contracttest.StageFile(t, m.staging(), m.sid, "documents/plan.md", "# Plan\n\nWe meet on Monday.\n")
+	m.stageDocument(ada, "documents/notes.md", notes)
+	m.stageDocument(ada, "documents/plan.md", "# Plan\n\nWe meet on Monday.\n")
 
 	end := m.endWithStatus(ada)
 	if st := end.GetRelease().GetState(); st != sessioncommandsv1.ReleaseState_RELEASE_STATE_WAITING {
@@ -172,7 +203,7 @@ func TestReleaseByAHuman(t *testing.T) {
 	wantCode(t, "release by a human who did not take part", err, connect.CodeNotFound)
 	_, err = m.objectBy(carl)
 	wantCode(t, "objection by a human who did not take part", err, connect.CodeNotFound)
-	if m.released(ada) != nil || m.artifact("documents/notes.md") != "" {
+	if m.released(ada) != nil || m.releasedDoc("documents/notes.md") {
 		t.Fatal("a refused release released the session")
 	}
 
@@ -192,7 +223,7 @@ func TestReleaseByAHuman(t *testing.T) {
 	if got := m.artifact("documents/notes.md"); got != notes {
 		t.Errorf("released note %q, want it unchanged %q", got, notes)
 	}
-	if m.artifact("documents/plan.md") == "" {
+	if !m.releasedDoc("documents/plan.md") {
 		t.Error("the document was not released")
 	}
 	if got := contracttest.ReleaseCommits(t, m.srv.ArchiveDir(), m.sid); len(got) != 1 || got[0] != "Ada <"+ada+"@office.invalid>" {
@@ -220,7 +251,7 @@ func TestReleaseObjectionHolds(t *testing.T) {
 	m := newMeetingArgs(t, "-release-grace-period", "1s")
 	ada := m.join("Ada", kHuman)
 	ben := m.join("Ben", kHuman)
-	contracttest.StageFile(t, m.staging(), m.sid, "documents/draft.md", "# Draft\n")
+	m.stageDocument(ada, "documents/draft.md", "# Draft\n")
 	if _, err := m.s(ben).Leave(m.ctx(), &sessioncommandsv1.LeaveRequest{SessionId: m.sid, CommandId: coreapi.NewCommandID(), ParticipantId: ben}); err != nil {
 		t.Fatal(err)
 	}
@@ -239,13 +270,13 @@ func TestReleaseObjectionHolds(t *testing.T) {
 	wantCode(t, "second objection", err, connect.CodeFailedPrecondition)
 	// The deadline passes; the session stays held.
 	time.Sleep(2500 * time.Millisecond)
-	if m.released(ada) != nil || m.artifact("documents/draft.md") != "" {
+	if m.released(ada) != nil || m.releasedDoc("documents/draft.md") {
 		t.Fatal("a held session was released at its deadline")
 	}
 	if _, err := m.releaseBy(ben); err != nil {
 		t.Fatal(err)
 	}
-	if m.artifact("documents/draft.md") == "" {
+	if !m.releasedDoc("documents/draft.md") {
 		t.Error("the release did not move the staged file")
 	}
 }
@@ -254,12 +285,12 @@ func TestReleaseObjectionHolds(t *testing.T) {
 func TestReleaseAfterTheGracePeriod(t *testing.T) {
 	m := newMeetingArgs(t, "-release-grace-period", "2s")
 	ada := m.join("Ada", kHuman)
-	contracttest.StageFile(t, m.staging(), m.sid, "documents/later.md", "# Later\n")
+	m.stageDocument(ada, "documents/later.md", "# Later\n")
 	m.end(ada)
 	if m.released(ada) != nil {
 		t.Fatal("released before the deadline")
 	}
-	waitUntil(t, 15*time.Second, "the release at the deadline", func() bool { return m.artifact("documents/later.md") != "" })
+	waitUntil(t, 15*time.Second, "the release at the deadline", func() bool { return m.releasedDoc("documents/later.md") })
 	ev := m.released(ada)
 	if ev == nil || ev.GetActorParticipantId() != "" {
 		t.Fatalf("release event %v, want one by the hub", ev)
@@ -274,11 +305,11 @@ func TestReleaseAfterTheGracePeriod(t *testing.T) {
 func TestReleaseWithoutHumans(t *testing.T) {
 	m := newMeetingArgs(t, "-release-grace-period", "1h")
 	bot := m.join("Bot", kAgent)
-	contracttest.StageFile(t, m.staging(), m.sid, "documents/bots.md", "# Bots\n")
+	m.stageDocument(bot, "documents/bots.md", "# Bots\n")
 	if st := m.endWithStatus(bot).GetRelease().GetState(); st != sessioncommandsv1.ReleaseState_RELEASE_STATE_RELEASED {
 		t.Fatalf("release state at the end of a session of agents: %v", st)
 	}
-	if m.artifact("documents/bots.md") == "" {
+	if !m.releasedDoc("documents/bots.md") {
 		t.Error("the staged file was not released")
 	}
 	if ev := m.released(bot); ev == nil || ev.GetActorParticipantId() != "" {
@@ -293,10 +324,10 @@ func TestReleaseWithoutHumans(t *testing.T) {
 	} else if r, _ := area["readers"].([]any); len(r) != 1 || r[0] != "porter" {
 		t.Errorf("readers of the import %v, want the importer", r)
 	}
-	contracttest.StageFile(t, m.staging(), im.sid, "documents/imported.md", "# Imported\n")
 	if _, err := im.a.Commands.Join(ctx10(t), &sessioncommandsv1.JoinRequest{SessionId: im.sid, CommandId: coreapi.NewCommandID()}); err != nil {
 		t.Fatal(err)
 	}
+	stageDocumentAs(t, im.a, im.sid, "documents/imported.md", "# Imported\n")
 	res, err := im.a.Commands.EndSession(ctx10(t), &sessioncommandsv1.EndSessionRequest{SessionId: im.sid,
 		CommandId: coreapi.NewCommandID(), ParticipantId: "porter"})
 	if err != nil {
@@ -305,7 +336,7 @@ func TestReleaseWithoutHumans(t *testing.T) {
 	if st := res.GetRelease().GetState(); st != sessioncommandsv1.ReleaseState_RELEASE_STATE_RELEASED {
 		t.Fatalf("release state at the end of an import by an agent: %v", st)
 	}
-	if m.artifact("documents/imported.md") == "" {
+	if !m.releasedDoc("documents/imported.md") {
 		t.Error("the staged file of the import was not released")
 	}
 }
@@ -317,13 +348,13 @@ func TestReleaseDeadlinesSurviveARestart(t *testing.T) {
 	args := []string{"-release-grace-period", "3s"}
 	m := newMeetingArgs(t, args...)
 	ada := m.join("Ada", kHuman)
-	contracttest.StageFile(t, m.staging(), m.sid, "documents/during.md", "# During\n")
+	m.stageDocument(ada, "documents/during.md", "# During\n")
 	m.end(ada)
 	m.restart(false, nil, args...)
-	if m.artifact("documents/during.md") != "" {
+	if m.releasedDoc("documents/during.md") {
 		t.Fatal("released before the deadline")
 	}
-	waitUntil(t, 15*time.Second, "the release after the restart", func() bool { return m.artifact("documents/during.md") != "" })
+	waitUntil(t, 15*time.Second, "the release after the restart", func() bool { return m.releasedDoc("documents/during.md") })
 	if ev := m.released(ada); ev == nil || ev.GetActorParticipantId() != "" {
 		t.Fatalf("release event %v, want one by the hub", ev)
 	}
@@ -334,14 +365,14 @@ func TestReleaseDeadlinesSurviveARestart(t *testing.T) {
 	if _, err := m.s(ada).Join(m.ctx(), &sessioncommandsv1.JoinRequest{SessionId: m.sid, CommandId: coreapi.NewCommandID()}); err != nil {
 		t.Fatal(err)
 	}
-	contracttest.StageFile(t, m.staging(), m.sid, "documents/down.md", "# Down\n")
+	m.stageDocument(ada, "documents/down.md", "# Down\n")
 	m.end(ada)
 	if _, err := m.srv.Stop(10 * time.Second); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(4 * time.Second)
 	m.start(nil, args...)
-	waitUntil(t, 5*time.Second, "the release at start", func() bool { return m.artifact("documents/down.md") != "" })
+	waitUntil(t, 5*time.Second, "the release at start", func() bool { return m.releasedDoc("documents/down.md") })
 	if got := contracttest.ReleaseCommits(t, m.srv.ArchiveDir(), first); len(got) != 1 {
 		t.Errorf("the first session has %d release commits, want 1", len(got))
 	}
@@ -356,7 +387,7 @@ func TestReleaseCutOffByARestartCompletes(t *testing.T) {
 	m := &meeting{t: t, srv: contracttest.StartHub(t, gate.Env, args...), sid: "s-" + coreapi.NewCommandID(), actors: map[string]*contracttest.Actor{}}
 	m.reader = m.srv.Participant(t, "reader", "Reader", agent)
 	ada := m.join("Ada", kHuman)
-	contracttest.StageFile(t, m.staging(), m.sid, "documents/cut.md", "# Cut\n")
+	m.stageDocument(ada, "documents/cut.md", "# Cut\n")
 	m.end(ada)
 
 	gate.Close(t)
@@ -367,7 +398,7 @@ func TestReleaseCutOffByARestartCompletes(t *testing.T) {
 	if area == nil || area["release"] == nil {
 		t.Fatalf("the staging area is not closed for its release: %v", area)
 	}
-	if m.artifact("documents/cut.md") != "" {
+	if m.releasedDoc("documents/cut.md") {
 		t.Fatal("the gate did not stop the release")
 	}
 
@@ -375,7 +406,7 @@ func TestReleaseCutOffByARestartCompletes(t *testing.T) {
 	gate.Open(t)
 	// The worker tries again a few seconds after a failure; the restart started one at once, so
 	// wait for either.
-	waitUntil(t, 15*time.Second, "the release after the restart", func() bool { return m.artifact("documents/cut.md") != "" })
+	waitUntil(t, 15*time.Second, "the release after the restart", func() bool { return m.releasedDoc("documents/cut.md") })
 	if got := contracttest.ReleaseCommits(t, m.srv.ArchiveDir(), m.sid); len(got) != 1 || got[0] != "Ada <"+ada+"@office.invalid>" {
 		t.Errorf("release commits %v, want one by Ada", got)
 	}

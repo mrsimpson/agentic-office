@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -30,55 +29,6 @@ func AreaState(t testing.TB, staging, sessionID string) map[string]any {
 		t.Fatalf("state of the staging area of %s: %v", sessionID, err)
 	}
 	return m
-}
-
-// StageFile puts a file into the staging area of a session like a part of the hub would: it
-// writes the file and records its name in the area. The area must exist (the meeting session
-// opens it when the session starts). The documents part does not write the staging area yet
-// (#202), so tests stage documents this way.
-func StageFile(t testing.TB, staging, sessionID, path, content string) {
-	t.Helper()
-	Edit(t, staging, "stage "+path, func(work string) {
-		state := filepath.Join(work, filepath.FromSlash(AreaStateFile(sessionID)))
-		b, err := os.ReadFile(state)
-		if err != nil {
-			t.Fatalf("the session %s has no staging area: %v", sessionID, err)
-		}
-		// Edit the YAML tree, so the other fields stay as the hub wrote them.
-		var doc yaml.Node
-		if err := yaml.Unmarshal(b, &doc); err != nil || len(doc.Content) == 0 {
-			t.Fatalf("state of the staging area of %s: %v", sessionID, err)
-		}
-		root := doc.Content[0]
-		var names *yaml.Node
-		for i := 0; i+1 < len(root.Content); i += 2 {
-			if root.Content[i].Value == "names" {
-				names = root.Content[i+1]
-			}
-		}
-		if names == nil {
-			names = &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
-			root.Content = append(root.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "names"}, names)
-		}
-		var list []string
-		for _, n := range names.Content {
-			list = append(list, n.Value)
-		}
-		if !slices.Contains(list, path) {
-			list = append(list, path)
-			slices.Sort(list)
-		}
-		names.Content = nil
-		for _, n := range list {
-			names.Content = append(names.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: n})
-		}
-		out, err := yaml.Marshal(&doc)
-		if err != nil {
-			t.Fatal(err)
-		}
-		WriteFile(t, work, AreaStateFile(sessionID), string(out))
-		WriteFile(t, work, path, content)
-	})
 }
 
 // NewArtifactGate is a GitGate that closes only the commits in the artifact repository of a

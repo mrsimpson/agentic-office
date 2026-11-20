@@ -391,6 +391,22 @@ func (m slidesMux) GetDeck(ctx context.Context, req *slidesv1.GetDeckRequest) (*
 	return rt.slides.GetDeck(ctx, req)
 }
 
+func (m slidesMux) ChangeDeck(ctx context.Context, req *slidesv1.ChangeDeckRequest) (*slidesv1.ChangeDeckResponse, error) {
+	rt, err := m.forCall(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return rt.slides.ChangeDeck(ctx, req)
+}
+
+func (m slidesMux) RemoveDeck(ctx context.Context, req *slidesv1.RemoveDeckRequest) (*slidesv1.RemoveDeckResponse, error) {
+	rt, err := m.forCall(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return rt.slides.RemoveDeck(ctx, req)
+}
+
 type documentMux struct{ *runtimes }
 
 var _ documentv1connect.DocumentServiceHandler = documentMux{}
@@ -409,6 +425,14 @@ func (m documentMux) ChangeDocument(ctx context.Context, req *documentv1.ChangeD
 		return nil, err
 	}
 	return rt.documents.ChangeDocument(ctx, req)
+}
+
+func (m documentMux) RemoveDocument(ctx context.Context, req *documentv1.RemoveDocumentRequest) (*documentv1.RemoveDocumentResponse, error) {
+	rt, err := m.forCall(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return rt.documents.RemoveDocument(ctx, req)
 }
 
 type archiveReadMux struct{ *runtimes }

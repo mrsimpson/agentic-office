@@ -616,6 +616,9 @@ meantime, the change fails with `aborted` and tells you the current version: rea
 again and redo your change. Your name is recorded as the author of every change. Never put a
 sentence that is off the record into a document.
 
+A document that names a session (`--session`) waits for the release of the session, like the
+minutes (see [Release what a session created](#release-what-a-session-created)).
+
 To work on the files with your own tools, or to let an agent with a shell do it, see
 [Work on files in a local directory](#work-on-files-in-a-local-directory).
 
@@ -850,14 +853,19 @@ office meeting end --release           # end and release in one go
 - After the end, a session takes only the release, the objection, notes about artifacts and,
   until the release, marks off the record.
 
-**Staged minutes, decisions and notes.** Until the release, every participant of the session may
-correct or remove them. Name the session of the record with `--session`:
+**Staged minutes, decisions, notes, documents and slides.** Until the release, every participant
+of the session may correct or remove them. Name the session of the artifact with `--session`:
 
 ```sh
 office minutes show weekly --json              # the ID of the minutes, and "staged": true
 office minutes change 3 --session weekly --file minutes.md
 office decision change 4 --session weekly "We ship on Monday."
 office note remove 7 --session weekly
+office document get documents/plan.md --json   # the version, and "staged": true
+office document change documents/plan.md --base <version> --session weekly --file plan.md
+office document remove documents/plan.md --base <version> --session weekly
+office slides change slides/42 deck.md --session weekly
+office slides remove slides/42 --session weekly
 ```
 
 - Only the participants of the session and the tenant admins read a staged record. Every other
@@ -865,8 +873,13 @@ office note remove 7 --session weekly
   clone hold the same stub instead of the record.
 - A removed record is gone for good: its number is not used again, and only a new record brings
   its content back.
-- After the release a record never changes. Record a new one that refers to it.
-- A record that names a session that is already released is shared with the tenant at once.
+- After the release a record never changes. Record a new one that refers to it. A released
+  document changes with `document change` like any other document, and the change is shared at
+  once, whatever session it names. A released deck does not change; render a new one.
+- A record, a document or a deck that names a session that is already released is shared with the
+  tenant at once.
+- The stage of a session shows the staged artifacts of that session. A staged artifact of another
+  session shows as its stub.
 
 ### Show slides
 
@@ -881,10 +894,13 @@ cat > deck.md <<'EOF'
 Say the numbers slowly.
 ## Questions
 EOF
-ID=$(office slides render deck.md)     # prints the deck ID, for example slides/42
+ID=$(office slides render deck.md --session weekly)   # prints the deck ID, for example slides/42
 office stage focus "$ID"
 office slides get "$ID" --out deck.html
 ```
+
+With `--session`, the deck waits for the release of the session; without it, every member sees
+it at once.
 
 `# ` is the deck title, `## ` starts a slide, `- ` is a bullet, and other text is the notes of the
 slide, which are hidden. The result is one HTML page with large black text on white, for a screen
@@ -1391,7 +1407,8 @@ again. If it stops in between, tell it to keep listening.
 | `signal_turn_end`, `signal_silence_long`, `signal_addressed` | `signal …` |
 | `hand_raise`, `minutes_update` | `hand raise`, `minutes update` |
 | `stage_focus`, `stage_link` | `stage focus`, `stage link` |
-| `slides_render`, `slides_get` | `slides render`, `slides get` |
+| `slides_render`, `slides_get`, `slides_change`, `slides_remove` | `slides …` |
+| `document_create`, `document_change`, `document_remove`, `document_get`, `document_list` | `document …` |
 | `decision_record`, `decision_list`, `decision_change`, `decision_remove` | `decision …` |
 | `note_add`, `note_list`, `note_change`, `note_remove` | `note …` |
 | `minutes_get`, `minutes_list`, `minutes_change`, `minutes_remove` | `minutes show`, `minutes list`, `minutes change`, `minutes remove` |

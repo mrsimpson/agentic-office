@@ -27,8 +27,10 @@
 // so they have a repository of their own: only the meeting session uses it (Archives.SessionLogs),
 // Git access never serves it, and no interface for participants reads it. Git access never
 // serves the staging repository either: if-archive-repository gives it only the artifact
-// repository. if-archive-read,
-// if-archive-repository and if-artifact-changes concern the artifact repository only.
+// repository. if-archive-repository and if-artifact-changes concern the artifact repository only.
+// if-archive-read reads the artifact repository, and a staged file from the staging area for a
+// reader of its session or a tenant admin (ReadService); the stage reads the staged files of its
+// own session.
 //
 // The staging repository (dec-staging-repository, type Staging, storage.Staging) has the layout
 // of the artifact repository: a staged file lies at the path that it gets on its release. The

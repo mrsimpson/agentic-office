@@ -484,9 +484,22 @@ meeting tool. The stage belongs to the tenant of the user who creates the link.`
 		Usage: "slides render <deck.json | deck.md>",
 		Details: `The hub renders the deck into one self-contained HTML document for a screen share and prints
 its ID, for example slides/42, which "stage focus" takes. The same deck always gives the same
-output. "office help deck-format" describes the files. --json prints {"id", "mediaType",
-"duplicate"}.`,
-		Examples: []string{`ID=$(office slides render deck.md)`, `office stage focus "$ID"`}},
+output. "office help deck-format" describes the files. --session links the deck to a session
+that you took part in: the deck then waits for the release of the session, and until then only
+its participants see it. --json prints {"id", "mediaType", "staged", "duplicate"}.`,
+		Examples: []string{`ID=$(office slides render deck.md --session weekly)`, `office stage focus "$ID"`}},
+	{Name: "slides change", Group: groupStage, Summary: "replace a staged slide deck before the release",
+		Usage: "slides change <id> <deck.json | deck.md> --session S",
+		Details: `Replaces the title and the slides of a deck that waits for the release of its session.
+--session must name that session, and only a participant of it may change it; you become the
+author. A released deck never changes: render a new one. --json prints {"id", "mediaType",
+"staged", "duplicate"}.`,
+		Examples: []string{"office slides change slides/42 deck.md --session weekly"}},
+	{Name: "slides remove", Group: groupStage, Summary: "remove a staged slide deck before the release",
+		Usage: "slides remove <id> --session S",
+		Details: `Removes a deck that waits for the release of its session, with the rules of "slides
+change". Its ID is not used again. --json prints {"id", "duplicate"}.`,
+		Examples: []string{"office slides remove slides/42 --session weekly"}},
 	{Name: "slides get", Group: groupStage, Summary: "fetch a rendered deck",
 		Usage:    "slides get <id> [--out FILE]",
 		Details:  "Prints the rendered HTML, or writes it to FILE. --json prints {\"deck\": ...} with the input and the output (the content in base64).",
@@ -495,20 +508,32 @@ output. "office help deck-format" describes the files. --json prints {"id", "med
 		Usage: "document create <path> <text> | --file F",
 		Details: `A document is a Markdown file "documents/<name>.md" in the archive; its path is its identity.
 The hub refuses other paths and content over 1 MiB, and it fails with already_exists when the
-path is taken. --session links the change to a session: the log then gets artifact.created, and
-you must have joined it. Prints the version of the document. Never put a sentence that is off
-the record into a document; the hub does not check this.`,
+path is taken. --session links the document to a session that you took part in: the log then
+gets artifact.created, and the document waits for the release of the session. Until then only
+its participants read it; everyone else reads its stub. Prints the version of the document.
+Never put a sentence that is off the record into a document; the hub does not check this.
+--json prints {"path", "version", "staged", "duplicate"}.`,
 		Examples: []string{"V=$(office document create documents/plan.md --file plan.md --session weekly)"}},
 	{Name: "document change", Group: groupStage, Summary: "replace a text document",
 		Usage: "document change <path> --base VERSION <text> | --file F",
 		Details: `--base is the version that you read. If someone changed the document in the meantime, the
 change fails with "aborted" and names the current version: read the document again and redo
 your change. Of two changes with the same base, the first one wins. Your name is recorded as
-the author of the change. --session links the change to a session (artifact.changed).`,
+the author of the change. --session links the change to a session (artifact.changed). A
+document that waits for the release of its session changes only with --session of that
+session, and only for a participant of it. A released document changes at once.`,
 		Examples: []string{`office document change documents/plan.md --base "$V" --file plan.md`}},
+	{Name: "document remove", Group: groupStage, Summary: "remove a staged text document before the release",
+		Usage: "document remove <path> --base VERSION --session S",
+		Details: `Removes a document that waits for the release of its session. --session must name that
+session, and only a participant of it may remove it. --base is the version that you read. A
+released document is removed with Git, not here. --json prints {"path", "duplicate"}.`,
+		Examples: []string{`office document remove documents/plan.md --base "$V" --session weekly`}},
 	{Name: "document get", Group: groupStage, Summary: "read a text document",
-		Usage:    "document get <path> [--out FILE]",
-		Details:  "Prints the content, or writes it to FILE. --json prints the path, the version and the content.",
+		Usage: "document get <path> [--out FILE]",
+		Details: `Prints the content, or writes it to FILE. A document that waits for the release of its
+session shows its content to its participants and the tenant admins; everyone else reads its
+stub. --json prints the path, the version, whether it is staged, and the content.`,
 		Examples: []string{"office document get documents/plan.md"}},
 	{Name: "document list", Group: groupStage, Summary: "list the files of a directory of the archive",
 		Usage: "document list [<dir>]",

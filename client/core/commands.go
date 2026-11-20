@@ -483,6 +483,37 @@ func (c *hubClient) GetDeck(ctx context.Context, id string) (*slidesv1.Deck, err
 	return res.GetDeck(), err
 }
 
+// ChangeDeck changes a staged deck before the release of its session. The author is the caller.
+func (c *hubClient) ChangeDeck(ctx context.Context, id, sessionID, title string, slides []*slidesv1.Slide) (*slidesv1.ChangeDeckResponse, error) {
+	pid, err := c.ParticipantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	req := &slidesv1.ChangeDeckRequest{CommandId: coreapi.NewCommandID(), Id: id, SessionId: sessionID, Title: title, Slides: slides,
+		AuthorParticipantId: pid}
+	var res *slidesv1.ChangeDeckResponse
+	err = retry(ctx, func() (err error) {
+		res, err = c.slides.ChangeDeck(ctx, req)
+		return err
+	})
+	return res, err
+}
+
+// RemoveDeck removes a staged deck before the release of its session.
+func (c *hubClient) RemoveDeck(ctx context.Context, id, sessionID string) (*slidesv1.RemoveDeckResponse, error) {
+	pid, err := c.ParticipantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	req := &slidesv1.RemoveDeckRequest{CommandId: coreapi.NewCommandID(), Id: id, SessionId: sessionID, AuthorParticipantId: pid}
+	var res *slidesv1.RemoveDeckResponse
+	err = retry(ctx, func() (err error) {
+		res, err = c.slides.RemoveDeck(ctx, req)
+		return err
+	})
+	return res, err
+}
+
 // CreatePortalLink creates a link to the portal that opens the pages of tenant, or the start page.
 func (c *hubClient) CreatePortalLink(ctx context.Context, tenant string) (*identityv1.CreatePortalLinkResponse, error) {
 	req := &identityv1.CreatePortalLinkRequest{CommandId: coreapi.NewCommandID(), TenantId: tenant}
@@ -512,6 +543,17 @@ func (c *hubClient) ChangeDocument(ctx context.Context, path, content, baseVersi
 	var res *documentv1.ChangeDocumentResponse
 	err := retry(ctx, func() (err error) {
 		res, err = c.document.ChangeDocument(ctx, req)
+		return err
+	})
+	return res, err
+}
+
+// RemoveDocument removes a staged document, based on the version that the caller read.
+func (c *hubClient) RemoveDocument(ctx context.Context, path, baseVersion, sessionID string) (*documentv1.RemoveDocumentResponse, error) {
+	req := &documentv1.RemoveDocumentRequest{Path: path, BaseVersion: baseVersion, SessionId: sessionID, CommandId: coreapi.NewCommandID()}
+	var res *documentv1.RemoveDocumentResponse
+	err := retry(ctx, func() (err error) {
+		res, err = c.document.RemoveDocument(ctx, req)
 		return err
 	})
 	return res, err

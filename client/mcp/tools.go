@@ -251,50 +251,87 @@ func (s *Server) addTools(srv *sdk.Server) {
 			return map[string]any{"url": res.GetUrl(), "expiresAt": res.GetExpiresAt().AsTime().Format(time.RFC3339)}, nil
 		})
 
+	// deckOf reads the deck of slides_render and slides_change.
+	deckOf := func(in tools.SlidesIn) (*slidesv1.RenderDeckRequest, error) {
+		n := 0
+		for _, set := range []bool{len(in.Slides) > 0, in.Markdown != "", in.File != ""} {
+			if set {
+				n++
+			}
+		}
+		if n != 1 {
+			return nil, usagef("give exactly one of slides, markdown or file")
+		}
+		var req *slidesv1.RenderDeckRequest
+		var err error
+		switch {
+		case in.File != "":
+			var b []byte
+			if b, err = os.ReadFile(in.File); err != nil {
+				return nil, err
+			}
+			req, err = coreapi.ParseDeck(in.File, b)
+		case in.Markdown != "":
+			req, err = coreapi.ParseDeckMarkdown([]byte(in.Markdown))
+		default:
+			req = &slidesv1.RenderDeckRequest{Title: in.Title}
+			for _, sl := range in.Slides {
+				req.Slides = append(req.Slides, &slidesv1.Slide{Title: sl.Title, Bullets: sl.Bullets, Notes: sl.Notes})
+			}
+		}
+		if err != nil {
+			return nil, err
+		}
+		if len(req.GetSlides()) == 0 {
+			return nil, usagef("the deck has no slides")
+		}
+		return req, nil
+	}
+	deckResult := func(d *slidesv1.Deck, dup bool) any {
+		return map[string]any{"id": d.GetId(), "mediaType": d.GetMediaType(), "staged": d.GetStaged(), "duplicate": dup}
+	}
 	tool(srv, s, tools.SlidesRender,
 		func(ctx context.Context, c coreapi.Client, in tools.SlidesIn) (any, error) {
-			n := 0
-			for _, set := range []bool{len(in.Slides) > 0, in.Markdown != "", in.File != ""} {
-				if set {
-					n++
-				}
-			}
-			if n != 1 {
-				return nil, usagef("give exactly one of slides, markdown or file")
-			}
-			var req *slidesv1.RenderDeckRequest
-			var err error
-			switch {
-			case in.File != "":
-				var b []byte
-				if b, err = os.ReadFile(in.File); err != nil {
-					return nil, err
-				}
-				req, err = coreapi.ParseDeck(in.File, b)
-			case in.Markdown != "":
-				req, err = coreapi.ParseDeckMarkdown([]byte(in.Markdown))
-			default:
-				req = &slidesv1.RenderDeckRequest{Title: in.Title}
-				for _, sl := range in.Slides {
-					req.Slides = append(req.Slides, &slidesv1.Slide{Title: sl.Title, Bullets: sl.Bullets, Notes: sl.Notes})
-				}
-			}
+			req, err := deckOf(in)
 			if err != nil {
 				return nil, err
 			}
-			if len(req.GetSlides()) == 0 {
-				return nil, usagef("the deck has no slides")
-			}
+			req.SessionId = in.Session
 			res, err := c.RenderDeck(ctx, req)
 			if err != nil {
 				return nil, err
 			}
-			return map[string]any{"id": res.GetDeck().GetId(), "mediaType": res.GetDeck().GetMediaType(),
-				"duplicate": res.GetDuplicate()}, nil
+			return deckResult(res.GetDeck(), res.GetDuplicate()), nil
+		})
+	tool(srv, s, tools.SlidesChange,
+		func(ctx context.Context, c coreapi.Client, in tools.SlidesIn) (any, error) {
+			if blank(in.ID) || blank(in.Session) {
+				return nil, usagef("id and session are required")
+			}
+			req, err := deckOf(in)
+			if err != nil {
+				return nil, err
+			}
+			res, err := c.ChangeDeck(ctx, in.ID, in.Session, req.GetTitle(), req.GetSlides())
+			if err != nil {
+				return nil, err
+			}
+			return deckResult(res.GetDeck(), res.GetDuplicate()), nil
+		})
+	tool(srv, s, tools.SlidesRemove,
+		func(ctx context.Context, c coreapi.Client, in tools.DeckRemoveIn) (any, error) {
+			if blank(in.ID) || blank(in.Session) {
+				return nil, usagef("id and session are required")
+			}
+			res, err := c.RemoveDeck(ctx, in.ID, in.Session)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"id": in.ID, "duplicate": res.GetDuplicate()}, nil
 		})
 
-	documentResult := func(path, version string, dup bool) any {
-		return map[string]any{"path": path, "version": version, "duplicate": dup}
+	documentResult := func(path, version string, staged, dup bool) any {
+		return map[string]any{"path": path, "version": version, "staged": staged, "duplicate": dup}
 	}
 	tool(srv, s, tools.DocumentCreate,
 		func(ctx context.Context, c coreapi.Client, in tools.DocumentIn) (any, error) {
@@ -305,7 +342,7 @@ func (s *Server) addTools(srv *sdk.Server) {
 			if err != nil {
 				return nil, err
 			}
-			return documentResult(res.GetDocument().GetPath(), res.GetDocument().GetVersion(), res.GetDuplicate()), nil
+			return documentResult(res.GetDocument().GetPath(), res.GetDocument().GetVersion(), res.GetDocument().GetStaged(), res.GetDuplicate()), nil
 		})
 	tool(srv, s, tools.DocumentChange,
 		func(ctx context.Context, c coreapi.Client, in tools.DocumentIn) (any, error) {
@@ -316,7 +353,18 @@ func (s *Server) addTools(srv *sdk.Server) {
 			if err != nil {
 				return nil, err
 			}
-			return documentResult(res.GetDocument().GetPath(), res.GetDocument().GetVersion(), res.GetDuplicate()), nil
+			return documentResult(res.GetDocument().GetPath(), res.GetDocument().GetVersion(), res.GetDocument().GetStaged(), res.GetDuplicate()), nil
+		})
+	tool(srv, s, tools.DocumentRemove,
+		func(ctx context.Context, c coreapi.Client, in tools.DocumentRemoveIn) (any, error) {
+			if blank(in.Path) || blank(in.BaseVersion) || blank(in.Session) {
+				return nil, usagef("path, baseVersion and session are required")
+			}
+			res, err := c.RemoveDocument(ctx, in.Path, in.BaseVersion, in.Session)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"path": in.Path, "duplicate": res.GetDuplicate()}, nil
 		})
 	tool(srv, s, tools.DocumentGet,
 		func(ctx context.Context, c coreapi.Client, in tools.FileIn) (any, error) {
@@ -327,7 +375,7 @@ func (s *Server) addTools(srv *sdk.Server) {
 			if err != nil {
 				return nil, err
 			}
-			return map[string]any{"path": f.GetPath(), "version": f.GetVersion(), "content": string(f.GetContent())}, nil
+			return map[string]any{"path": f.GetPath(), "version": f.GetVersion(), "staged": f.GetStaged(), "content": string(f.GetContent())}, nil
 		})
 	tool(srv, s, tools.DocumentList,
 		func(ctx context.Context, c coreapi.Client, in tools.FileIn) (any, error) {
@@ -341,7 +389,7 @@ func (s *Server) addTools(srv *sdk.Server) {
 			}
 			list := make([]map[string]any, 0, len(files))
 			for _, f := range files {
-				list = append(list, map[string]any{"path": f.GetPath(), "version": f.GetVersion()})
+				list = append(list, map[string]any{"path": f.GetPath(), "version": f.GetVersion(), "staged": f.GetStaged()})
 			}
 			return map[string]any{"files": list}, nil
 		})

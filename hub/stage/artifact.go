@@ -14,10 +14,12 @@ import (
 	archivev1 "github.com/mrsimpson/agentic-office/hub/archive/api"
 )
 
-// Artifacts reads artifacts from the archive in-process (if-archive-read). archive.ReadService
+// Artifacts reads artifacts from the archive in-process (if-archive-read), as the stage of a
+// session sees them: a staged file of that session from the staging area, everything else from the
+// artifact repository, where a staged file of another session is its stub. archive.ReadService
 // implements it. The stage reads only paths that the log of its own session names.
 type Artifacts interface {
-	Load(ctx context.Context, req *archivev1.ReadFileRequest) (*archivev1.ReadFileResponse, error)
+	Load(ctx context.Context, session string, req *archivev1.ReadFileRequest) (*archivev1.ReadFileResponse, error)
 }
 
 // paperCSS styles the document inside its sandboxed frame.
@@ -33,13 +35,13 @@ var markdown = goldmark.New(goldmark.WithExtensions(extension.GFM))
 // loadFile loads a Markdown or YAML file of the archive and renders it as an HTML document for a
 // sandboxed frame. A schema decides the rendering later (dec-artifacts); a Markdown file, such as
 // a note, is shown as text with formatting without its front matter, and a YAML file as it is.
-func loadFile(ctx context.Context, p string, files Artifacts) artifactView {
+func loadFile(ctx context.Context, session, p string, files Artifacts) artifactView {
 	av := artifactView{ID: p, Kind: "file"}
 	if files == nil {
 		av.Note = "The stage cannot read the archive."
 		return av
 	}
-	res, err := files.Load(ctx, &archivev1.ReadFileRequest{Path: p})
+	res, err := files.Load(ctx, session, &archivev1.ReadFileRequest{Path: p})
 	switch {
 	case connect.CodeOf(err) == connect.CodeNotFound:
 		av.Note = "There is no artifact " + p + "."

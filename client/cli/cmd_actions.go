@@ -208,15 +208,73 @@ func cmdSlidesRender(e *env, fs *flag.FlagSet) func([]string) error {
 		if err != nil {
 			return err
 		}
+		req.SessionId = e.session
 		res, err := c.RenderDeck(e.ctx, req)
 		if err != nil {
 			return err
 		}
 		if e.json {
 			e.printJSON(map[string]any{"id": res.GetDeck().GetId(), "mediaType": res.GetDeck().GetMediaType(),
-				"duplicate": res.GetDuplicate()})
+				"staged": res.GetDeck().GetStaged(), "duplicate": res.GetDuplicate()})
 		} else {
 			fmt.Fprintln(e.stdout, res.GetDeck().GetId())
+		}
+		return nil
+	}
+}
+
+// cmdSlidesChange is "slides change": it replaces a staged deck of the session --session before
+// its release.
+func cmdSlidesChange(e *env, fs *flag.FlagSet) func([]string) error {
+	return func(args []string) error {
+		if len(args) != 2 {
+			return usagef("usage: office slides change <id> <deck.json | deck.md> --session S")
+		}
+		b, err := os.ReadFile(args[1])
+		if err != nil {
+			return err
+		}
+		req, err := parseDeck(args[1], b)
+		if err != nil {
+			return err
+		}
+		c, err := e.client()
+		if err != nil {
+			return err
+		}
+		res, err := c.ChangeDeck(e.ctx, args[0], e.session, req.GetTitle(), req.GetSlides())
+		if err != nil {
+			return err
+		}
+		if e.json {
+			e.printJSON(map[string]any{"id": res.GetDeck().GetId(), "mediaType": res.GetDeck().GetMediaType(),
+				"staged": res.GetDeck().GetStaged(), "duplicate": res.GetDuplicate()})
+		} else {
+			fmt.Fprintf(e.stdout, "%s changed\n", res.GetDeck().GetId())
+		}
+		return nil
+	}
+}
+
+// cmdSlidesRemove is "slides remove": it removes a staged deck of the session --session before
+// its release.
+func cmdSlidesRemove(e *env, fs *flag.FlagSet) func([]string) error {
+	return func(args []string) error {
+		if len(args) != 1 {
+			return usagef("usage: office slides remove <id> --session S")
+		}
+		c, err := e.client()
+		if err != nil {
+			return err
+		}
+		res, err := c.RemoveDeck(e.ctx, args[0], e.session)
+		if err != nil {
+			return err
+		}
+		if e.json {
+			e.printJSON(map[string]any{"id": args[0], "duplicate": res.GetDuplicate()})
+		} else {
+			fmt.Fprintf(e.stdout, "%s removed\n", args[0])
 		}
 		return nil
 	}
@@ -526,7 +584,7 @@ func cmdDocumentCreate(e *env, fs *flag.FlagSet) func([]string) error {
 		if err != nil {
 			return err
 		}
-		return e.printDocument(res.GetDocument().GetPath(), res.GetDocument().GetVersion(), res.GetDuplicate())
+		return e.printDocument(res.GetDocument().GetPath(), res.GetDocument().GetVersion(), res.GetDocument().GetStaged(), res.GetDuplicate())
 	}
 }
 
@@ -552,14 +610,37 @@ func cmdDocumentChange(e *env, fs *flag.FlagSet) func([]string) error {
 		if err != nil {
 			return err
 		}
-		return e.printDocument(res.GetDocument().GetPath(), res.GetDocument().GetVersion(), res.GetDuplicate())
+		return e.printDocument(res.GetDocument().GetPath(), res.GetDocument().GetVersion(), res.GetDocument().GetStaged(), res.GetDuplicate())
+	}
+}
+
+func cmdDocumentRemove(e *env, fs *flag.FlagSet) func([]string) error {
+	base := fs.String("base", "", "the version of the document that you read (required)")
+	return func(args []string) error {
+		if len(args) != 1 || *base == "" {
+			return usagef("usage: office document remove <path> --base VERSION --session S")
+		}
+		c, err := e.client()
+		if err != nil {
+			return err
+		}
+		res, err := c.RemoveDocument(e.ctx, args[0], *base, e.session)
+		if err != nil {
+			return err
+		}
+		if e.json {
+			e.printJSON(map[string]any{"path": args[0], "duplicate": res.GetDuplicate()})
+		} else {
+			fmt.Fprintf(e.stdout, "%s removed\n", args[0])
+		}
+		return nil
 	}
 }
 
 // printDocument prints the result of a create or a change: the version, or JSON.
-func (e *env) printDocument(path, version string, duplicate bool) error {
+func (e *env) printDocument(path, version string, staged, duplicate bool) error {
 	if e.json {
-		e.printJSON(map[string]any{"path": path, "version": version, "duplicate": duplicate})
+		e.printJSON(map[string]any{"path": path, "version": version, "staged": staged, "duplicate": duplicate})
 	} else {
 		fmt.Fprintln(e.stdout, version)
 	}
@@ -589,7 +670,7 @@ func cmdDocumentGet(e *env, fs *flag.FlagSet) func([]string) error {
 				e.printJSON(map[string]any{"path": f.GetPath(), "version": f.GetVersion(), "file": *out})
 			}
 		case e.json:
-			e.printJSON(map[string]any{"path": f.GetPath(), "version": f.GetVersion(), "content": string(f.GetContent())})
+			e.printJSON(map[string]any{"path": f.GetPath(), "version": f.GetVersion(), "staged": f.GetStaged(), "content": string(f.GetContent())})
 		default:
 			_, err = e.stdout.Write(f.GetContent())
 			return err
@@ -619,7 +700,7 @@ func cmdDocumentList(e *env, fs *flag.FlagSet) func([]string) error {
 		if e.json {
 			list := make([]map[string]any, 0, len(files))
 			for _, f := range files {
-				list = append(list, map[string]any{"path": f.GetPath(), "version": f.GetVersion()})
+				list = append(list, map[string]any{"path": f.GetPath(), "version": f.GetVersion(), "staged": f.GetStaged()})
 			}
 			e.printJSON(map[string]any{"files": list})
 			return nil

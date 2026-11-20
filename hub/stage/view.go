@@ -331,7 +331,7 @@ func (v *view) Artifacts() []*artifactEntry {
 // refresh loads the artifact in focus when it is another one or has changed since it was loaded.
 // Loading happens here, once per batch of events, and not for every event: a reconnect replays
 // the whole log.
-func (v *view) refresh(ctx context.Context, decks Slides, files Artifacts) {
+func (v *view) refresh(ctx context.Context, session string, decks Slides, files Artifacts) {
 	if v.focus == "" {
 		return
 	}
@@ -340,19 +340,20 @@ func (v *view) refresh(ctx context.Context, decks Slides, files Artifacts) {
 		return
 	}
 	v.loaded = key
-	v.artifact = loadArtifact(ctx, v.focus, decks, files)
+	v.artifact = loadArtifact(ctx, session, v.focus, decks, files)
 }
 
 // slidesPrefix starts the artifact ID of a deck, for example "slides/42".
 const slidesPrefix = "slides/"
 
-// loadArtifact loads a shown artifact. The part of its ID before the first slash names its type;
-// the stage shows decks of the slides interface and gives a note for every other ID.
-func loadArtifact(ctx context.Context, id string, decks Slides, files Artifacts) artifactView {
+// loadArtifact loads a shown artifact for the stage of a session. The part of its ID before the
+// first slash names its type; the stage shows decks of the slides interface and gives a note for
+// every other ID. A staged artifact of another session shows as its stub.
+func loadArtifact(ctx context.Context, session, id string, decks Slides, files Artifacts) artifactView {
 	av := artifactView{ID: id, Kind: "slides"}
 	if !strings.HasPrefix(id, slidesPrefix) {
 		if p := path.Ext(id); p == ".md" || p == ".yaml" || p == ".yml" {
-			return loadFile(ctx, id, files)
+			return loadFile(ctx, session, id, files)
 		}
 		av.Kind = ""
 		av.Note = "The stage cannot show the artifact " + id + "."
@@ -362,12 +363,14 @@ func loadArtifact(ctx context.Context, id string, decks Slides, files Artifacts)
 		av.Note = "The stage cannot load slides."
 		return av
 	}
-	d, err := decks.Load(ctx, id)
+	d, err := decks.Load(ctx, session, id)
 	switch {
 	case connect.CodeOf(err) == connect.CodeNotFound:
 		av.Note = "There is no artifact " + id + "."
 	case err != nil:
 		av.Note = "The artifact " + id + " could not be loaded."
+	case d.GetStub():
+		av.Note = "The artifact " + id + " waits for the release of another session."
 	case !strings.HasPrefix(d.GetMediaType(), "text/html"):
 		av.MediaType = d.GetMediaType()
 		av.Note = "The stage cannot show artifacts of type " + d.GetMediaType() + "."

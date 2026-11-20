@@ -56,6 +56,12 @@ from the meeting out of them.
   the minutes at once.
 - Never put a sentence that is off the record into any artifact, and never repeat it.
 
+A page or a slide deck that you make for a meeting names the meeting too (`document_create` or
+`slides_render` with `session`). It waits for the release like a source, and only the participants
+see it until then. Until the release, correct or remove it with the same `session`
+(`document_change`, `document_remove`, `slides_change`, `slides_remove`). A change of a page that
+is already released is shared at once, whatever session it names.
+
 ## Write a page
 
 Create a page with `document_create` and change it with `document_change`. A change needs the

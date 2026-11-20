@@ -5,8 +5,14 @@
 // identifies its content: a change names the version that its author read, and the hub refuses
 // the change when the file has another version by then.
 //
+// A path that the staging area of a session names is staged (concept-session-release): the
+// artifact waits for the release of the session, and the repository holds its stub. A reader of
+// the session (a participant) and a tenant admin read the staged file there, with staged set and
+// its version in the staging area; everyone else reads the stub.
+//
 // Every call needs an access token of a participant (see identity.proto). A stage link cannot
-// use this interface: the stage reads inside the hub. The session logs lie in a
+// use this interface: the stage reads inside the hub, and only the staged files of its own
+// session. The session logs lie in a
 // repository of their own that no interface for participants reads (dec-off-the-record).
 syntax = "proto3";
 
@@ -46,9 +52,14 @@ message File {
   bytes content = 2;
   // version identifies the content. Two reads of an unchanged file give the same version.
   string version = 3;
+  // staged is set for a file that waits for the release of its session and that the caller
+  // reads from the staging area.
+  bool staged = 4;
 }
 
 message FileInfo {
   string path = 1;
   string version = 2;
+  // staged is set as in File.
+  bool staged = 3;
 }

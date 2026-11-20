@@ -13,6 +13,13 @@
 // Every call needs an access token of a participant (see identity.proto). A stage link cannot
 // use this interface: the stage loads decks inside the hub. A sentence that is off the record
 // must not go into a deck (dec-off-the-record).
+//
+// A deck that names a meeting session waits for the release of that session
+// (concept-session-release): it is staged. Only a participant of the session may name it. Until
+// the release, every participant of the session may change or remove a staged deck, and only the
+// readers of the session (its participants and the tenant admins) and the stage of the session see
+// its content. Everyone else sees its stub: a deck with only its id and stub set. A released deck,
+// or a deck without a session, never changes through this interface.
 syntax = "proto3";
 
 package office.slides.v1;
@@ -30,6 +37,15 @@ service SlidesService {
   // GetDeck returns a deck with its input and its rendered output. An unknown ID fails with
   // not_found.
   rpc GetDeck(GetDeckRequest) returns (GetDeckResponse);
+  // ChangeDeck replaces the title and the slides of a staged deck. The caller becomes its author.
+  // It fails with failed_precondition for a released deck, or when session_id is not the session
+  // of the deck, with permission_denied for a caller who did not take part in that session, and
+  // with not_found for a deck that does not exist or was removed. It is idempotent by command_id
+  // while the hub runs.
+  rpc ChangeDeck(ChangeDeckRequest) returns (ChangeDeckResponse);
+  // RemoveDeck removes a staged deck, with the same rules as ChangeDeck. Its ID is not used
+  // again; the stub goes away with the release of the session.
+  rpc RemoveDeck(RemoveDeckRequest) returns (RemoveDeckResponse);
 }
 
 message Slide {
@@ -59,6 +75,14 @@ message Deck {
   string media_type = 8;
   // content is the rendered deck: one self-contained document without scripts.
   bytes content = 9;
+  // session_id is set if the deck belongs to a meeting session.
+  string session_id = 10;
+  // staged is set in a response for a deck that waits for the release of its session. It is
+  // never stored.
+  bool staged = 11;
+  // stub is set in a response for a staged deck that the caller may not read: only the id is
+  // set then. It is never stored.
+  bool stub = 12;
 }
 
 message RenderDeckRequest {
@@ -70,6 +94,9 @@ message RenderDeckRequest {
   repeated Slide slides = 3;
   // author_participant_id must be the participant of the access token.
   string author_participant_id = 4;
+  // session_id links the deck to a meeting session. Optional. Only a participant of the
+  // session may name it; the deck is staged until the release of the session.
+  string session_id = 5;
 }
 
 message RenderDeckResponse {
@@ -83,6 +110,38 @@ message GetDeckRequest {
 
 message GetDeckResponse {
   Deck deck = 1;
+}
+
+message ChangeDeckRequest {
+  // command_id is created by the client.
+  string command_id = 1;
+  // id is the deck to change, for example "slides/42".
+  string id = 2;
+  // session_id must be the session of the deck.
+  string session_id = 3;
+  // title and slides replace those of the deck, with the rules of RenderDeckRequest.
+  string title = 4;
+  repeated Slide slides = 5;
+  // author_participant_id must be the participant of the access token.
+  string author_participant_id = 6;
+}
+
+message ChangeDeckResponse {
+  Deck deck = 1;
+  bool duplicate = 2;
+}
+
+message RemoveDeckRequest {
+  string command_id = 1;
+  string id = 2;
+  // session_id must be the session of the deck.
+  string session_id = 3;
+  // author_participant_id must be the participant of the access token.
+  string author_participant_id = 4;
+}
+
+message RemoveDeckResponse {
+  bool duplicate = 1;
 }
 
 // AuthorKind tells whether the author of a deck is a human or an agent.
