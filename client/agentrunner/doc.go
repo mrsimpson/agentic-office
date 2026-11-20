@@ -14,10 +14,18 @@
 //     (if-replication) in its own process, so it follows the local log of the agent. If
 //     another process already writes that log (for example "office meeting join"), it follows the
 //     file that this process writes.
+//   - Before it starts the harness, its skills injector (skills.go, dec-skills) writes the skills
+//     that every agent needs (today office-memory, if-office-memory-skill) into .agent/skills/
+//     of the working directory, where Kiro and opencode read them, and links
+//     .claude/skills/<skill> to the same folder for Claude Code. It replaces only a folder with
+//     its marker file; a folder of the same name from elsewhere stays, with a warning. In a Git
+//     work tree, it adds what it wrote to the exclude file of the repository.
 //   - It starts the harness and is its ACP client (package acpclient). It opens one ACP session
 //     with one MCP server, "office": this office binary
 //     with "mcp --session S" and the OFFICE_* variables of the agent as absolute values.
-//   - It sends a first prompt with the role, the meeting and the path of the local log.
+//   - It sends a first prompt with the role, the meeting, the session that everything from the
+//     meeting must name, and the path of the local log. It does not mention the skills: the
+//     harness offers them to the agent.
 //   - A wake strategy decides when to wake the agent (wake.go, dec-agent-runner-delivery). The
 //     runner knows only the interface wakeStrategy and its own types checkRequest and verdict
 //     (check.go); each strategy maps them to the contract of its model. The user chooses the

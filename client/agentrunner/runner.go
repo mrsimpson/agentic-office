@@ -100,6 +100,8 @@ func Run(ctx context.Context, o Options) error {
 	}
 	logf("joined %s as %s; local log %s", o.Session, m.joined.ParticipantID, m.joined.Paths.Log)
 
+	// The skills injector (dec-skills): the harness finds the skills when it starts.
+	injectSkills(o.Cwd, logf)
 	h, err := acpclient.Start(o.Harness, o.Stderr, logf, acpclient.Rule{Globs: o.Allow})
 	if err != nil {
 		return err

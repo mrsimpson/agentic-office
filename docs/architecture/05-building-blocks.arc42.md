@@ -44,6 +44,7 @@ flowchart LR
     bb_participant_client -->|if-user-api| bb_office_hub
     bb_participant_client -->|if-tenant-api| bb_office_hub
     bb_participant_client -->|if-session-stream| bb_office_hub
+    bb_participant_client -->|if-office-memory-skill| bb_skills
 ```
 
 ## Office hub
@@ -1491,13 +1492,20 @@ session and one agent key, it:
 
 - joins the session as the agent and runs the log replicator in its own process, so it follows
   the local log of the agent;
-- starts the agent harness, opens one ACP session, hands it the office tools as an MCP server with
-  the key of the agent and sends a first prompt with the role of the agent and the meeting, and
-  with the rule that an agent says in the session which artifact it takes on and the hint to follow
-  the skill of the wiki (`dec-wiki`);
 - hands the harness, with its skills injector, the skills that every agent of a tenant needs
-  (`dec-skills`), so the agent follows the conventions of the office without a step of its human;
-  OPEN: how the injector hands a skill to a harness, since ACP has no notion of skills;
+  (`dec-skills`), so the agent follows the conventions of the office without a step of its human.
+  ACP has no notion of skills, so the injector writes each skill, before the harness starts, into
+  the folder of skills in the working directory of the agent that Kiro and opencode read, and
+  links it into the folder that Claude Code reads: one copy for all harnesses. It replaces only a
+  copy that the office wrote; a skill of the same name from elsewhere stays, and the runner warns.
+  It keeps what it wrote out of the commits of a Git work tree. Today every agent gets the
+  office memory skill;
+- starts the agent harness, opens one ACP session, hands it the office tools as an MCP server with
+  the key of the agent and sends a first prompt with the role of the agent and the meeting, with
+  the rule that an agent says in the session which artifact it takes on (`dec-wiki`), and with
+  what only the runner knows: the session that everything from the meeting must name, and that
+  tasks are not held. The first prompt does not mention the skills, because the harness offers
+  them to the agent itself;
 - decides with one wake strategy, chosen by the user at start, when to wake the agent
   (`dec-agent-runner-delivery`): at each change of speaker, or when a forwarding judge or a
   decision model that the user brings says so (`dec-wake-check-per-utterance`,
@@ -1526,7 +1534,7 @@ id: bb-agent-runner
 title: Agent runner
 technology: Go / Agent Client Protocol
 parent: bb-participant-client
-requires: if-client-core, if-replication, if-local-log, if-session-stream, if-session-activity
+requires: if-client-core, if-replication, if-local-log, if-session-stream, if-session-activity, if-office-memory-skill
 implements: concept-read-file-write-tools, concept-participant-model
 path: client/agentrunner
 :::
@@ -1680,5 +1688,26 @@ title: Office assistant skill
 provider: bb-skills
 protocol: Agent Skills
 path: skills/office-assistant
+:::
+```
+
+### Office memory skill
+
+How an agent reads and writes the memory of the team, its wiki (`dec-wiki`, `concept-wiki`):
+which artifacts never change once released, how to find what the team knows, how to write a page
+with its front matter, and how to ingest, answer and lint. Agents read it but never change it. The
+agent runner hands it to every harness that it starts; an agent without a runner gets it from its
+human with the usual skill tooling (`dec-skills`). The skill also offers its files to the agent
+runner inside the office, so the runner hands out exactly the skill of its own release.
+
+```arc42
+:::ignore H011 an agent reads a skill as a file and the runner only copies it; there is no interaction to show
+:::
+:::interface
+id: if-office-memory-skill
+title: Office memory skill
+provider: bb-skills
+protocol: Agent Skills
+path: skills/office-memory
 :::
 ```

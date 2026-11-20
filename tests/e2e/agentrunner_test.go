@@ -60,7 +60,7 @@ func TestAgentThroughRunner(t *testing.T) {
 	t.Cleanup(func() { _ = syscall.Kill(adaRep, syscall.SIGKILL) })
 
 	rec := filepath.Join(t.TempDir(), "acp.jsonl")
-	runner := contracttest.Start(t, "office", append(bot, "ACP_DOUBLE_RECORD="+rec), "agent", "run", "--session", sid,
+	runner := contracttest.Start(t, "office", append(bot, "ACP_DOUBLE_RECORD="+rec), "agent", "run", "--session", sid, "--cwd", t.TempDir(),
 		"--role", "You keep the minutes and answer questions.", "--wake", "llm", "--decide-cmd", contracttest.ForwardingJudgeDouble(t),
 		"--", contracttest.ACPDouble(t))
 	contracttest.WaitACPRecord(t, rec, 20*time.Second, func(r contracttest.ACPRecord) bool { return r.Kind() == "prompt_end" })

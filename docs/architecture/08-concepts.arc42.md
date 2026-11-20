@@ -345,6 +345,7 @@ from page to page.
   sources.
 - **The skill** tells agents how to work with the wiki: the layers, the front matter, and each
   operation. It ships with the office and is the same for every tenant; agents never change it.
+  It reaches agents like every skill of the office (`dec-skills`).
   Rules of a team come from the role of an agent and from the overview pages of the wiki.
 
 **Three operations.** All of them are work of an agent, because the hub has no model
@@ -509,7 +510,8 @@ unless a human releases early.
 **Gaps.** Five ways skip the staging area and rely on the people and agents who write: a change to
 an artifact that is already released, a push during a session, a record that does not name its
 session, a task, and what agents write after a release at the end of the session. The memory skill
-and the agent runner tell agents to avoid the first three and that tasks are not held. A release at
+tells agents to avoid the first three. The agent runner names the session that everything from
+the meeting must name, and says that tasks are not held. A release at
 the end is accepted as a gap: the team trusts the human who releases to know that agents may still
 write in their last turn.
 
