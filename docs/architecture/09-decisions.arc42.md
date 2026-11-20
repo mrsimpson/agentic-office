@@ -1381,10 +1381,16 @@ the session logs is for the meeting session only, and no other part reads it.
 layout as its artifact repository. It holds one area for each session that is not released, with
 the staged artifacts, the readers of the session and the state of its release. Git access never
 serves it. In the artifact repository, a stub reserves the name of every staged artifact. The
-release moves the area of a session into the artifact repository in one commit, in which each
-artifact replaces its stub; the author of that commit and its time record by whom and when the
-artifacts were released. The meeting session provides the release, and the archive moves the files
-without reading their content.
+archive knows stubs as a concept, but not their type or their content: a part writes a stub
+through the archive, and the archive records the path in the area of the session together with the
+exact version of the stub that it wrote. The release is a transition that the archive owns. It
+moves the area of a session into the artifact repository in one commit; the author of that commit
+and its time record by whom and when the artifacts were released. An artifact replaces its path
+only if the artifact repository still holds exactly the recorded stub there, or no file. A path
+that holds anything else keeps its file: the artifact stays in the staging area, and the release
+reports the conflict with the path and the session and releases the rest. The meeting session
+decides when a session is released, and the archive moves the files and compares versions without
+reading their content.
 
 **Consequences:** The archive keeps three repositories per tenant. The parts that keep artifacts in
 memory follow the staging repository like the artifact repository (`if-archive-watch`), and a part
@@ -1394,7 +1400,9 @@ staged. The part that owns a type also owns the stub of the type and its check, 
 check for the push rules too. The push rules refuse every change or removal of a stub. The state of
 every release lies in the staging repository, so the timers survive a restart without a scheduler
 of their own. Every member sees the names of staged artifacts and when a session writes, but not
-their content.
+their content. The release never replaces a file that is not the recorded stub, whatever the order
+of the writes and wherever a crash cut them; the price is a staged artifact that a participant
+moves to a new path by hand when its path was taken.
 
 **Rejected:**
 
@@ -1408,6 +1416,10 @@ their content.
   both, and history is never rewritten.
 - No stub, and a check of each push against the staging area: a link to a staged artifact would
   lead nowhere, and a name could still be taken between the check and the release.
+- A part that finds a staged file whose path holds another file at start moves the staged file to
+  a new path: a document has no ID to take the next one from, and every part would need its own
+  answer to the same race.
+- An archive that knows the content of a stub: it would have to know every type.
 - A message broker or a scheduler for the deadlines: the staging repository already keeps the
   state.
 

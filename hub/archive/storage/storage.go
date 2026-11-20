@@ -183,9 +183,12 @@ func CheckPath(p string) error {
 // and the state of its release. The archive reads no content of a staged file: it stores and moves
 // the files as they are. Git access never serves this repository.
 //
-// A path belongs to at most one area. The stub of a staged file in the artifact repository is
-// the business of the part that owns the type: it writes the file into the area first, so that the
-// area knows the name, and then the stub. The release replaces the stubs.
+// A path belongs to at most one area. A stub keeps the path of a staged file free in the artifact
+// repository. The part that owns the type decides what a stub contains, and writes it through
+// Stub: the archive records the path in the area together with the version of the stub that it
+// wrote, and knows nothing else about stubs. The part may write the staged file and the stub in
+// either order. The release replaces a path only where the artifact repository still holds that
+// recorded version, or holds no file at all; it never replaces another file.
 //
 // Staging is safe for use by many goroutines. Every method that changes the repository makes
 // one commit, so a reader sees a change completely or not at all. Session IDs can be any
@@ -207,12 +210,20 @@ type Staging interface {
 	// ErrNoArea if the session has no area, with ErrAreaClosed when a release of the area runs,
 	// and with a *ConflictError when a path holds a file of another area.
 	Commit(ctx context.Context, session string, c Change) (string, error)
+	// Stub writes the stubs of c into the artifact repository as one commit, as Archive.Commit
+	// does, including the checks of Base and of the paths, and records each path in the area of
+	// the session (Area.Names) together with the version of the stub that it wrote. The caller
+	// decides the content; c must not remove a file. When the commit fails, the area forgets what
+	// this call recorded. It fails with ErrNoArea if the session has no area, with ErrAreaClosed
+	// when a release of the area runs or ran, and with a *ConflictError when a path belongs to
+	// another area or the artifact repository holds another version than Base.
+	Stub(ctx context.Context, session string, c Change) (string, error)
 	// TakeBack removes the file at path from the area of a session in one commit, and the area
-	// forgets the path (Area.Names), so the release leaves that path in the artifact repository
-	// as it is. A part calls it when it could not write the stub of a file that it has just
-	// staged: the path may hold a file that someone else wrote, never a stub of this area. A path
-	// that the area does not name changes nothing. It fails with ErrNoArea if the session has no
-	// area, and with ErrAreaClosed when a release of the area runs.
+	// forgets the path (Area.Names) and its stub, so the release leaves that path in the artifact
+	// repository as it is. A part calls it when it could not write the stub of a file that it has
+	// just staged: the path may hold a file that someone else wrote. A path that the area does
+	// not name changes nothing. It fails with ErrNoArea if the session has no area, and with
+	// ErrAreaClosed when a release of the area runs or ran.
 	TakeBack(ctx context.Context, session, path string) error
 	// Read returns the files of the area of a session under the directory dir, as
 	// Archive.Read does. A file of another area is not returned. It fails with ErrNoArea if the
@@ -222,27 +233,50 @@ type Staging interface {
 	// content. Removed files are not in the list. It fails with ErrNoArea if the session has no
 	// area.
 	List(ctx context.Context, session string) ([]string, error)
-	// Release moves the area of a session into the artifact repository and returns the ID of
-	// the release commit, or "" when the area has nothing to move. The steps:
+	// Release moves the area of a session into the artifact repository. It is a transition that
+	// the archive owns. The steps:
 	//
 	//  1. It closes the area for writes and records who releases.
-	//  2. It writes every file of the area into the artifact repository in one commit. Each
-	//     file replaces the stub at its path; the stub of a name whose file was removed from
-	//     the area goes away. The author of the commit is author, or the hub when author is
-	//     empty. The authors of the area (Area.Authors) are named as co-authors, except the
-	//     author of the commit. The message names the session (trailer "Office-Release").
-	//  3. It removes the area from the staging repository.
+	//  2. It writes the files of the area into the artifact repository in one commit. A file
+	//     replaces its path only where the artifact repository holds the recorded stub of the
+	//     path (see Stub) or no file. A path that holds anything else, for example a file that a
+	//     participant pushed after a crash, keeps that file: the staged file is not released and
+	//     is a conflict of the result. The recorded stub of a name whose file was removed from the
+	//     area goes away; any other file at such a path stays. The author of the commit is author,
+	//     or the hub when author is empty. The authors of the area (Area.Authors) are named as
+	//     co-authors, except the author of the commit. The message names the session (trailer
+	//     "Office-Release").
+	//  3. It removes the released files from the staging repository. An area without conflicts
+	//     goes away. An area with conflicts stays, closed for writes, with its readers and with
+	//     only the files that were not released (Area.Names); its release is done
+	//     (ReleaseState.Done).
 	//
 	// Every step is recorded in the staging repository. When a restart cut a release off,
 	// Release completes it: a step that was done is never done again, and the author recorded
-	// in step 1 stays, whatever author is given now. It fails with ErrNoArea if the session has
-	// no area, also after a complete release.
-	Release(ctx context.Context, session string, author Author) (string, error)
+	// in step 1 stays, whatever author is given now. Release of an area whose release is done
+	// returns the same result again. It fails with ErrNoArea if the session has no area, also
+	// after a complete release without conflicts.
+	Release(ctx context.Context, session string, author Author) (ReleaseResult, error)
 	// Released returns the release commit of a session from the history of main in the artifact
 	// repository: the commit that names the session in its trailer "Office-Release". It fails
 	// with ErrNotReleased if there is no such commit: the session is not released, its release
 	// has not moved the area yet, or the area had nothing to move.
 	Released(ctx context.Context, session string) (ReleaseCommit, error)
+}
+
+// ReleaseResult is the answer of a release.
+type ReleaseResult struct {
+	// Commit is the ID of the release commit, or "" when the release had nothing to write.
+	Commit string
+	// Conflicts are the staged files that the release did not release because their path in the
+	// artifact repository holds another file than the recorded stub, ordered by path.
+	Conflicts []Conflict
+}
+
+// Conflict is a staged file that a release kept back: its path is taken.
+type Conflict struct {
+	Session string
+	Path    string
 }
 
 // ReleaseCommit is the commit that moved the area of a session into the artifact repository.
@@ -275,28 +309,32 @@ type Area struct {
 	// Session is the ID of the session.
 	Session string
 	AreaState
-	// Names are the paths that ever lay in the area, also those of removed files, ordered, except
-	// the paths that were taken back (TakeBack). The release removes the stub of a name whose file
-	// is gone.
+	// Names are the paths that ever lay in the area or got a stub through it, also those of
+	// removed files, ordered, except the paths that were taken back (TakeBack). The release
+	// removes the recorded stub of a name whose file is gone. After a release with conflicts, only
+	// the paths of the files that were not released are left.
 	Names []string
 	// Authors are the authors of the changes in the area, without duplicates, in the order of
 	// their first change. Changes by the hub add no author.
 	Authors []Author
-	// Release is the state of a running release, or nil while no release runs.
+	// Release is the state of the release, or nil while no release runs or ran.
 	Release *ReleaseState
 }
 
-// ReleaseState is the state of a running release.
+// ReleaseState is the state of the release of an area.
 type ReleaseState struct {
 	// Author is the author of the release commit; empty means the hub.
 	Author Author
 	// Commit is the ID of the release commit once it was built, before it lands in the
-	// artifact repository; "" before.
+	// artifact repository; "" before, and when the release had nothing to write.
 	Commit string
+	// Done is set when the release is complete and the area stays only for the files that it
+	// could not release (Area.Names). Nothing changes such an area.
+	Done bool
 }
 
 // ErrNoArea is the error for a session without an area in the staging repository.
 var ErrNoArea = errors.New("archive: the session has no staging area")
 
-// ErrAreaClosed is the error for a write to an area whose release runs.
+// ErrAreaClosed is the error for a write to an area whose release runs or ran.
 var ErrAreaClosed = errors.New("archive: the staging area is closed for its release")

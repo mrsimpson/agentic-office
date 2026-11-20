@@ -167,8 +167,9 @@ in between leads to a new refusal with a new token.
 
 The interface also tells who may read a session its release: the status and deadline, the staged
 files, whether the caller may release or object now, and, once released, the release commit with
-the human who released and the authors of the artifacts. Every other member of the tenant gets
-only the release of a released session.
+the human who released and the authors of the artifacts, and the staged files that the release
+did not release because their path is taken. Every other member of the tenant gets only the
+release commit of a released session.
 
 The same interface lets everyone who may read a session check its log (`dec-merkle-log`): it hands
 out signed tree heads, proofs and the public key of the hub. It owns no log types. The events, the tree
@@ -556,7 +557,9 @@ staged artifacts. A human who took part gets two forms: release, and, while the 
 object. When the hub refuses a release because staged files quote sentences off the record, the
 page lists the places and a button "release anyway" whose form carries the token. A member who did
 not take part sees a session only once it is released, and then only the released artifacts, who
-released them and their original authors.
+released them and their original authors. After the release, the readers of the session also see
+each staged artifact that the release did not release, marked "not released: the path is taken".
+A participant moves such an artifact to a new path by hand, through the interface of its type.
 
 ```arc42
 :::interface
@@ -577,9 +580,9 @@ portal has exactly the rights of the key (`dec-web-portal`). It asks the auth AP
 the user and tenant APIs for the administration and the members, the session list for the
 sessions of a tenant, the session stream for the events of one session, and the minutes, decisions,
 notes and tasks of that session. On the page of a session it asks the session commands for the
-release and the archive read API for the staged or released artifacts, and its forms send release
-and objection to the session commands. It reads the wiki of a tenant through the wiki interface
-(`concept-wiki`). OPEN: the pages of the wiki in the portal (issue #208).
+release and the archive read API for the staged, released or not released artifacts, and its
+forms send release and objection to the session commands. It reads the wiki of a tenant through the
+wiki interface (`concept-wiki`). OPEN: the pages of the wiki in the portal (issue #208).
 
 ```arc42
 :::building-block
@@ -735,8 +738,9 @@ It routes every write that names a session (`concept-session-release`):
   (`if-session-release`).
 - A new record goes into the staging area of the session while the session is not released.
   Otherwise, and without a session, it goes into the artifact repository.
-- For each staged record, the block writes a stub of its type into the artifact repository. Every
-  stub of a type has the same content, names no session and no time, and its commit is by the hub
+- For each staged record, the block writes a stub of its type into the artifact repository,
+  through the archive, which records the stub in the staging area. Every stub of a type has the
+  same content, names no session and no time, and its commit is by the hub
   with a message that says nothing about the record. No interface changes a stub.
 - Until the release, every participant may change or remove a staged record. A change that names
   another session, or no session, is refused, and so is a write when the release status and the
@@ -866,8 +870,9 @@ It routes every write that names a session like the records part (`concept-sessi
   (`if-session-release`).
 - A new document goes into the staging area of the session while the session is not released.
   Otherwise, and without a session, it goes into the artifact repository.
-- For each staged document, the part writes the stub of a document into the artifact repository.
-  Every stub of a document has the same content: Markdown whose front matter names the schema of
+- For each staged document, the part writes the stub of a document into the artifact repository,
+  through the archive, which records the stub in the staging area. Every stub of a document has the
+  same content: Markdown whose front matter names the schema of
   documents and marks it as a stub. It names no session and no time, and its commit is by the hub
   with a message that says nothing about the document. No interface changes a stub.
 - Until the release, every participant may change or remove a staged document. A change that names
@@ -957,8 +962,9 @@ records part, it writes synchronously, and it reloads a deck file that a push ch
 
 It routes a render that names a session like the records part (`concept-session-release`): only a
 participant may name the session (`if-session-release`); a new deck goes into the staging area of
-the session while the session is not released, and its stub into the artifact repository. Every
-stub of a deck has the same content, names no session and no time, and its commit is by the hub
+the session while the session is not released, and its stub into the artifact repository,
+through the archive, which records the stub in the staging area. Every stub of a deck has the same
+content, names no session and no time, and its commit is by the hub
 with a message that says nothing about the deck. Until the release, every participant may change
 or remove a staged deck; a change that names another session, or none, is refused. A staged deck
 shows its content only to the readers of its session, to the tenant admins and to the stage of its
@@ -1040,13 +1046,21 @@ not serve it, and the archive does not read from it for them.
 What a session has not released lies in a third repository of the tenant, the staging repository
 (`dec-staging-repository`). It has the layout of the artifact repository and one area for each
 session that is not released: the staged files, the readers of the session and the state of its
-release. Git access does not serve it either. The release moves an area into the artifact
-repository in one commit, in which each file replaces its stub. The author of that commit is the
-human who released, or the hub, and the authors of the files are its co-authors. The commit names
-the session, and each step of a release is recorded, so a release that a restart cut off is
-completed and never done twice. The archive moves the files without reading their content. A part
-that staged a file and could not write its stub takes the file back, and the area forgets the path;
-so the release never removes a file at a path where the area never had a stub.
+release. Git access does not serve it either.
+
+The archive knows stubs as a concept, but not their type or their content. A part writes the stub
+of a staged artifact through the archive, and the archive records the path in the area of the
+session together with the exact version of the stub that it wrote. The part decides what the stub
+contains. The release is a transition that the archive owns. It moves an area into the artifact
+repository in one commit. A file replaces its path only if the artifact repository still holds
+exactly the recorded stub there, or no file at all. A path that holds anything else, for example a
+file that a participant pushed after a crash, keeps that file: the staged artifact is not
+released, and the release reports the conflict with the path and the session. The rest of the
+session is released. The author of the commit is the human who released, or the hub, and the
+authors of the files are its co-authors. The commit names the session, and each step of a release
+is recorded, so a release that a restart cut off is completed and never done twice. The archive
+moves the files and compares versions without reading their content, so the order in which a part
+writes a staged file and its stub does not matter.
 
 ```arc42
 :::building-block
@@ -1103,16 +1117,25 @@ For the staging repository, a caller works on the area of a session:
   objection holds it);
 - write, change and remove files in the area, each change in one commit; a path belongs to one
   area only;
+- write the stub of a staged file into the artifact repository through the area: the area
+  records the path with the exact version of the stub. The part decides the content; the
+  archive never reads it;
 - take a file back whose stub could not be written: the file goes away, and the area forgets the
-  path, so the release leaves that path alone;
+  path and its stub, so the release leaves that path alone;
 - read and list the files of an area, and list every area with its state;
 - release the area: close it for writes, move its files into the artifact repository in one
-  commit, then remove the area. A file replaces the stub at its path, and the stub of a removed
-  file goes away. A release that a restart cut off is completed by the next call;
+  commit, then remove what was released. A file replaces its path only where the artifact
+  repository holds the recorded stub or no file, and the recorded stub of a removed file goes
+  away. A file whose path holds anything else is not released: the answer of the release names
+  it as a conflict, with the path and the session. Such files stay in the area, with its readers;
+  the area stays closed for writes, and its release counts as done. An area without such files is
+  removed. A release that a restart cut off is completed by the next call, and a done release
+  gives the same answer again;
 - find the release commit of a session in the artifact repository, with its author, its
   co-authors and the files it wrote.
 
-The stubs themselves belong to the parts of the types, not to the archive.
+The content and the check of a stub belong to the parts of the types. The archive only records
+which version of a stub it wrote, and compares it at the release.
 
 ```arc42
 :::interface

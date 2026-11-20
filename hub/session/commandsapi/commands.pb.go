@@ -1862,7 +1862,12 @@ type GetReleaseResponse struct {
 	Commit *ReleaseCommit `protobuf:"bytes,3,opt,name=commit,proto3" json:"commit,omitempty"`
 	// may_release is set when the caller may release or object now: a human who took part, while
 	// the session waits for its release or is held.
-	MayRelease    bool `protobuf:"varint,4,opt,name=may_release,json=mayRelease,proto3" json:"may_release,omitempty"`
+	MayRelease bool `protobuf:"varint,4,opt,name=may_release,json=mayRelease,proto3" json:"may_release,omitempty"`
+	// unreleased are the paths of the staged files of a released session that the release did not
+	// release because their path in the artifact repository holds another file, ordered. They stay
+	// in the staging area, and only who may read the session gets them. A participant moves such a
+	// file to a new path by hand, through the interface of its type.
+	Unreleased    []string `protobuf:"bytes,5,rep,name=unreleased,proto3" json:"unreleased,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1923,6 +1928,13 @@ func (x *GetReleaseResponse) GetMayRelease() bool {
 		return x.MayRelease
 	}
 	return false
+}
+
+func (x *GetReleaseResponse) GetUnreleased() []string {
+	if x != nil {
+		return x.Unreleased
+	}
+	return nil
 }
 
 // ReleaseCommit is the commit that moved the staged files of a session into the artifact
@@ -2757,13 +2769,16 @@ const file_office_sessioncommands_v1_commands_proto_rawDesc = "" +
 	"\x06result\x18\x01 \x01(\v2(.office.sessioncommands.v1.CommandResultR\x06result\"2\n" +
 	"\x11GetReleaseRequest\x12\x1d\n" +
 	"\n" +
-	"session_id\x18\x01 \x01(\tR\tsessionId\"\xd1\x01\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\"\xf1\x01\n" +
 	"\x12GetReleaseResponse\x12@\n" +
 	"\x06status\x18\x01 \x01(\v2(.office.sessioncommands.v1.ReleaseStatusR\x06status\x12\x16\n" +
 	"\x06staged\x18\x02 \x03(\tR\x06staged\x12@\n" +
 	"\x06commit\x18\x03 \x01(\v2(.office.sessioncommands.v1.ReleaseCommitR\x06commit\x12\x1f\n" +
 	"\vmay_release\x18\x04 \x01(\bR\n" +
-	"mayRelease\"\xff\x01\n" +
+	"mayRelease\x12\x1e\n" +
+	"\n" +
+	"unreleased\x18\x05 \x03(\tR\n" +
+	"unreleased\"\xff\x01\n" +
 	"\rReleaseCommit\x12\x1b\n" +
 	"\tcommit_id\x18\x01 \x01(\tR\bcommitId\x12.\n" +
 	"\x04time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\x12H\n" +
