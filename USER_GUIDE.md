@@ -1020,8 +1020,18 @@ office meeting join design-review       # then write minutes, record decisions a
 The session is marked as imported: its log starts with the source and the importer, the stage says
 so and shows "Imported" instead of "Live", and the imported speakers are marked. The office did not
 see the conversation happen, and the signatures of the log only prove who imported it, not that
-the speakers said it. If the import stops halfway, the session stays incomplete: import again into
-a new session.
+the speakers said it.
+
+If the conversation goes on, or the import stopped halfway, import the longer file into the same
+session:
+
+```sh
+office session import design.json --session design-review
+```
+
+The file must start with every message that the session holds, unchanged and in the same order.
+The office then adds only the new speakers and the messages after them. The same file again adds
+nothing. Only you, if you imported the session, can extend it, and only before the session ends.
 
 ### Find out more
 

@@ -77,10 +77,13 @@
 //   - Import (dec-session-import, import.go): the Service also realizes the session import
 //     (if-session-import). A page is checked as a whole, then written as ordinary events with the
 //     command ID of the page: session.imported first, participant.joined with imported set and the
-//     ID ImportedPrefix + key, utterance.final with original_time, and import.completed on the last
-//     page. The state knows the importer and whether the import runs; while it runs, every session
-//     command fails with FailedPrecondition. import.completed wakes the archive writer like
-//     session.ended. After the import the session is like any other.
+//     ID sessionimportv1.ImportedPrefix + key, utterance.final with original_time, and
+//     import.completed on the last page. The state knows the importer and whether the import runs;
+//     while it runs, every session command fails with FailedPrecondition. import.completed wakes
+//     the archive writer like session.ended. After the import the session is like any other. The
+//     state counts the utterances of imported speakers and keeps their running digest
+//     (sessionimportv1.ImportDigest), rebuilt from the log on a restore. A page with a base whose
+//     count and digest match extends the session after its last event, until it ends.
 //   - Activity (dec-agent-activity, activity.go): the Service also realizes the session activity
 //     (if-session-activity). It keeps the latest activity of each participant in memory only,
 //     never in the Store, the archive or a stream of the log. A report lives ActivityTTL. The

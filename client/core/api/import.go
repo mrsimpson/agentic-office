@@ -79,8 +79,20 @@ func badInput(format string, a ...any) error {
 // Pages checks the conversation and splits it into the pages of the import interface. The
 // session ID and the command IDs are not set.
 func (c *Conversation) Pages() ([]*sessionimportv1.ImportConversationRequest, error) {
+	ps, us, err := c.Parts()
+	if err != nil {
+		return nil, err
+	}
+	pages := ImportPages(ps, us)
+	pages[0].Conversation = &sessionimportv1.Conversation{Source: c.Source, Title: c.Title}
+	return pages, nil
+}
+
+// Parts checks the conversation and returns its participants and utterances in the types of the
+// import interface.
+func (c *Conversation) Parts() ([]*sessionimportv1.ImportedParticipant, []*sessionimportv1.ImportedUtterance, error) {
 	if strings.TrimSpace(c.Source) == "" {
-		return nil, badInput("source is required: where the conversation comes from")
+		return nil, nil, badInput("source is required: where the conversation comes from")
 	}
 	known := map[string]bool{}
 	var ps []*sessionimportv1.ImportedParticipant
@@ -92,15 +104,15 @@ func (c *Conversation) Pages() ([]*sessionimportv1.ImportConversationRequest, er
 		case "agent":
 			kind = sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_AGENT
 		default:
-			return nil, badInput("participants[%d].kind must be \"human\" or \"agent\"", i)
+			return nil, nil, badInput("participants[%d].kind must be \"human\" or \"agent\"", i)
 		}
 		switch {
 		case p.ID == "":
-			return nil, badInput("participants[%d].id is required", i)
+			return nil, nil, badInput("participants[%d].id is required", i)
 		case known[p.ID]:
-			return nil, badInput("participants[%d].id %q is repeated", i, p.ID)
+			return nil, nil, badInput("participants[%d].id %q is repeated", i, p.ID)
 		case strings.TrimSpace(p.Name) == "":
-			return nil, badInput("participants[%d].name is required", i)
+			return nil, nil, badInput("participants[%d].name is required", i)
 		}
 		known[p.ID] = true
 		ps = append(ps, &sessionimportv1.ImportedParticipant{Key: p.ID, DisplayName: p.Name, Kind: kind})
@@ -108,10 +120,10 @@ func (c *Conversation) Pages() ([]*sessionimportv1.ImportConversationRequest, er
 	var us []*sessionimportv1.ImportedUtterance
 	for i, u := range c.Utterances {
 		if !known[u.Speaker] {
-			return nil, badInput("utterances[%d].speaker %q is not the id of a participant", i, u.Speaker)
+			return nil, nil, badInput("utterances[%d].speaker %q is not the id of a participant", i, u.Speaker)
 		}
 		if strings.TrimSpace(u.Text) == "" {
-			return nil, badInput("utterances[%d].text is required", i)
+			return nil, nil, badInput("utterances[%d].text is required", i)
 		}
 		m := sessionstreamv1.Modality_MODALITY_TEXT
 		switch u.Modality {
@@ -119,18 +131,25 @@ func (c *Conversation) Pages() ([]*sessionimportv1.ImportConversationRequest, er
 		case "voice":
 			m = sessionstreamv1.Modality_MODALITY_VOICE
 		default:
-			return nil, badInput("utterances[%d].modality must be \"text\" or \"voice\"", i)
+			return nil, nil, badInput("utterances[%d].modality must be \"text\" or \"voice\"", i)
 		}
 		iu := &sessionimportv1.ImportedUtterance{Speaker: u.Speaker, Text: u.Text, Modality: m}
 		if u.Time != "" {
 			t, err := time.Parse(time.RFC3339Nano, u.Time)
 			if err != nil {
-				return nil, badInput("utterances[%d].time must be RFC 3339, for example 2026-11-06T10:00:00Z", i)
+				return nil, nil, badInput("utterances[%d].time must be RFC 3339, for example 2026-11-06T10:00:00Z", i)
 			}
 			iu.Time = timestamppb.New(t)
 		}
 		us = append(us, iu)
 	}
+	return ps, us, nil
+}
+
+// ImportPages splits participants and utterances into pages of the import interface; the last
+// page completes the import. There is at least one page. Conversation, base, the session ID and
+// the command IDs are not set.
+func ImportPages(ps []*sessionimportv1.ImportedParticipant, us []*sessionimportv1.ImportedUtterance) []*sessionimportv1.ImportConversationRequest {
 	// Participants go first, so every utterance names a participant of the same or an earlier page.
 	var pages []*sessionimportv1.ImportConversationRequest
 	for len(pages) == 0 || len(ps) > 0 || len(us) > 0 {
@@ -143,9 +162,8 @@ func (c *Conversation) Pages() ([]*sessionimportv1.ImportConversationRequest, er
 		}
 		pages = append(pages, p)
 	}
-	pages[0].Conversation = &sessionimportv1.Conversation{Source: c.Source, Title: c.Title}
 	pages[len(pages)-1].Complete = true
-	return pages, nil
+	return pages
 }
 
 // Imported is the result of Import.
@@ -154,8 +172,13 @@ type Imported struct {
 	Pages        int
 	FirstEventID uint32
 	LastEventID  uint32
+	// Participants and Utterances are the participants and utterances that the import added.
 	Participants int
 	Utterances   int
+	// Extended is true when the import added to an imported session that existed already;
+	// Previous is the number of imported utterances it held before.
+	Extended bool
+	Previous int
 	// TreeHead is the tree head signed by the hub over the whole imported log.
 	TreeHead *sessionstreamv1.SignedTreeHead
 }
@@ -164,5 +187,5 @@ type Imported struct {
 func ImportedJSON(im *Imported) map[string]any {
 	return map[string]any{"sessionId": im.SessionID, "pages": im.Pages, "firstEventId": im.FirstEventID,
 		"lastEventId": im.LastEventID, "participants": im.Participants, "utterances": im.Utterances,
-		"treeHead": MessageJSON(im.TreeHead)}
+		"extended": im.Extended, "previousUtterances": im.Previous, "treeHead": MessageJSON(im.TreeHead)}
 }
