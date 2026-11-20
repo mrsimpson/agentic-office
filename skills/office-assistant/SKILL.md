@@ -5,6 +5,9 @@ description: How an assistant helps a human with the agentic office. Use it to c
 
 # Office assistant
 
+This skill is for an assistant that works for one human, for example a coding agent on the
+human's computer.
+
 Do not guess commands or flags. Read `office help` and `office help <command>`.
 For the first setup, follow https://mrsimpson.github.io/agentic-office/llms.txt.
 

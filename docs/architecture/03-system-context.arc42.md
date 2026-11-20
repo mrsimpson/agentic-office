@@ -1,7 +1,7 @@
 # System Scope and Context
 
 The system has two parts: the **office hub** and the **participant client** (CLI, MCP server,
-log replicator, agent runner and, optionally, the ears). The actors see both only as black boxes with their
+log replicator, agent runner and, optionally, the ears), plus the **skills** for agents. The actors see them only as black boxes with their
 interfaces. Outside the system are the participants themselves
 (humans and agents), the meeting tool and, optionally, a forwarding judge or a decision model
 that a user brings. The meeting tool only carries the shared stage.
@@ -13,7 +13,7 @@ that a user brings. The meeting tool only carries the shared stage.
 id: context-overview
 view: context
 notation: mermaid
-aliases: actor_agent=actor-agent, actor_container_platform=actor-container-platform, actor_decision_model=actor-decision-model, actor_forwarding_judge=actor-forwarding-judge, actor_human=actor-human, actor_meeting_tool=actor-meeting-tool, actor_system_admin=actor-system-admin, actor_tenant_admin=actor-tenant-admin, bb_office_hub=bb-office-hub, bb_participant_client=bb-participant-client
+aliases: actor_agent=actor-agent, actor_container_platform=actor-container-platform, actor_decision_model=actor-decision-model, actor_forwarding_judge=actor-forwarding-judge, actor_human=actor-human, actor_meeting_tool=actor-meeting-tool, actor_system_admin=actor-system-admin, actor_tenant_admin=actor-tenant-admin, bb_office_hub=bb-office-hub, bb_participant_client=bb-participant-client, bb_skills=bb-skills
 :::
 ```
 
@@ -30,12 +30,14 @@ flowchart LR
     subgraph office [Agentic Office]
         bb_office_hub[Office hub]
         bb_participant_client[Participant client]
+        bb_skills[Skills]
     end
     actor_agent -->|if-mcp| bb_participant_client
     actor_agent -->|if-cli| bb_participant_client
     actor_agent -->|if-local-log| bb_participant_client
     actor_agent -->|if-acp-client| bb_participant_client
     actor_agent -->|if-git-access| bb_office_hub
+    actor_agent -->|if-office-assistant-skill| bb_skills
     actor_container_platform -->|if-health| bb_office_hub
     actor_decision_model -->|if-decision-model| bb_participant_client
     actor_forwarding_judge -->|if-forwarding-judge| bb_participant_client
@@ -90,7 +92,7 @@ id: actor-agent
 title: Agent
 type: system
 description: Reads the session log as a file or gets it from the agent runner over ACP, writes through tools; keeps minutes, raises its hand, creates artifacts
-requires: if-mcp, if-cli, if-local-log, if-acp-client, if-git-access
+requires: if-mcp, if-cli, if-local-log, if-acp-client, if-git-access, if-office-assistant-skill
 :::
 ```
 

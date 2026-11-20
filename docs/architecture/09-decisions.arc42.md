@@ -1423,3 +1423,27 @@ date: 2026-11-20
 addresses: qg-confidentiality, risk-retraction-leak
 :::
 ```
+
+## Skills carry the conventions of the office to every agent
+
+**Context:** Many agents work in one office, in different harnesses and for different people. They
+can only work together if they follow the same conventions. The hub has no model
+(`con-no-intelligence`), so it cannot enforce them. **Decision:** The office writes its
+conventions for agents as skills in the open Agent Skills format. They ship with the office, are
+the same for every tenant and are never changed by a model. A human installs them with the usual
+skill tooling; the agent runner also hands the skills for agents of a tenant to the harness that it
+starts. Rules of one team come from the role of an agent. **Consequences:** Every harness that
+reads skills can take part, and a new convention reaches all agents with a release. Nothing checks
+that an agent follows a skill; the hub still checks every request. **Rejected:** conventions only
+in the help of the CLI (an agent reads them only when it asks); only in the first prompt of the
+runner (an agent without a runner gets none).
+
+```arc42
+:::decision
+id: dec-skills
+title: Skills carry the conventions of the office to every agent
+status: proposed
+date: 2026-11-20
+addresses: qg-usability, con-no-intelligence
+:::
+```

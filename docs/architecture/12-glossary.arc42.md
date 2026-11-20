@@ -255,6 +255,19 @@ definition: The part of the client that follows the local log for an agent and s
 :::
 ```
 
+## Skill
+
+A text in the open Agent Skills format that tells an agent a convention of the office
+(`dec-skills`).
+
+```arc42
+:::glossary-term
+id: term-skill
+title: Skill
+definition: A text in the Agent Skills format that tells an agent a convention of the office
+:::
+```
+
 ## Agent Client Protocol (ACP)
 
 An open protocol between a client and a coding agent, published at agentclientprotocol.com. The
