@@ -1048,7 +1048,7 @@ title: Git access
 technology: Go / Git (smart HTTP)
 parent: bb-office-hub
 requires: if-token-check, if-archive-repository, if-artifact-check
-implements: concept-multi-tenancy
+implements: concept-multi-tenancy, concept-session-release
 path: hub/gitaccess
 :::
 ```
