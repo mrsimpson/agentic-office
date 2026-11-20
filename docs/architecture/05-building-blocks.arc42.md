@@ -1246,9 +1246,9 @@ path: client/cli/commands
 ### MCP tools
 
 The office as tools for an agent, with the same features as the CLI: join and leave a meeting,
-raise a hand, update the minutes, focus an artifact, render slides, record decisions, add notes,
-change or remove the records of a session before its release, create and update tasks, import a
-session. The names say what an agent does, not how the hub works.
+raise a hand, update the minutes, focus an artifact, render slides, write documents, record
+decisions, add notes, change or remove the records, documents and slide decks of a session before
+its release, create and update tasks, import a session. The names say what an agent does, not how the hub works.
 
 ```arc42
 :::interface
