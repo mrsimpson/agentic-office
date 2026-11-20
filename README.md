@@ -61,9 +61,9 @@ the background. It installs the Protobuf tools in the versions of the CI to `~/p
 builds whisper.cpp (only when the `Makefile` or the hook changed) and the programs in `bin/`. If
 the environment sets `CLAUDE_WEB_OFFICE_ADMIN_KEY` (a private key in PEM), the hook writes it to a
 file and installs the wrapper `office-web`. The wrapper runs `bin/office` against the shared hub
-`https://office.no-panic.org`, tenant `test` by default (override with `OFFICE_WEB_HUB` and
-`OFFICE_WEB_TENANT`). The hook exports no `OFFICE_*` variable for the session, because the tests
-take their environment from it.
+`https://office.no-panic.org`, tenant `claude-web-office` by default (override with `OFFICE_WEB_HUB`
+and `OFFICE_WEB_TENANT`). The hook unsets every `OFFICE_*` variable for the session, also those
+that the environment sets, because the tests take their environment from it.
 
 ## Build and test
 

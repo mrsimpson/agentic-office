@@ -54,6 +54,11 @@ Guidance for agents working in this repository.
   have, do not wait: mock the external API or service, open an issue with the label `mocked`
   that says what is mocked and what the real thing needs, and continue.
 - Install tools only in user space, never with root.
+- To try a change on the shared hub `https://office.no-panic.org` in a cloud session, use
+  `office-web` (installed by the start hook, see the README). It is `bin/office` with the key of
+  the user `claude-web` and the tenant `claude-web-office`, where that user is a tenant admin.
+  Write only there; read other tenants with `--tenant`. Plain `office` and the tests never reach
+  the shared hub.
 - We are before go-live: no backward compatibility. Do not keep old names, files, flags, formats,
   forwarding packages or migration notes. When you change something, change every user of it and
   remove the old form.
