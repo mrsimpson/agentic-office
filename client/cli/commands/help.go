@@ -322,7 +322,11 @@ If you run join in a directory that "office sync init" set up, or in a worktree 
 replicator also keeps that clone up to date while it runs, like "office sync follow". Nothing
 is printed for it; a problem (hub away, commits of your own in main, no access) never stops the
 meeting and is written once to the output of the replicator. In any other directory join does
-nothing extra.`,
+nothing extra.
+
+Join also creates a read-only stage link (see "office help stage link") and prints it to stderr
+as "stage: <url>", so stdout stays the path of the log. With --json the join object has it as
+"stageUrl". If the link cannot be created, join still succeeds and says so on stderr.`,
 		Examples: []string{`LOG=$(office meeting join weekly)   # prints the path of the local log`,
 			"office meeting join weekly --mic --language english", "office meeting join weekly --foreground &"}},
 	{Name: "meeting log", Group: groupMeeting, Summary: "print the path of the local log",

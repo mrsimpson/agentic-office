@@ -155,11 +155,26 @@ func cmdJoin(e *env, fs *flag.FlagSet) func([]string) error {
 		if err != nil {
 			return err
 		}
-		if e.json {
-			e.printJSON(map[string]any{"sessionId": j.SessionID, "participantId": j.ParticipantID, "logPath": j.Paths.Log,
-				"replicatorPid": rep.pid, "event": eventJSON(j.Result.GetEvent()), "duplicate": j.Result.GetDuplicate()})
+		// The stage link is a convenience: a failure to create it never stops the join.
+		stageURL := ""
+		if sl, err := c.StageLink(e.ctx, j.SessionID); err != nil {
+			e.progress(fmt.Sprintf("no stage link: %v", err))
 		} else {
+			stageURL = sl.GetUrl()
+		}
+		if e.json {
+			out := map[string]any{"sessionId": j.SessionID, "participantId": j.ParticipantID, "logPath": j.Paths.Log,
+				"replicatorPid": rep.pid, "event": eventJSON(j.Result.GetEvent()), "duplicate": j.Result.GetDuplicate()}
+			if stageURL != "" {
+				out["stageUrl"] = stageURL
+			}
+			e.printJSON(out)
+		} else {
+			// Stdout stays the path of the log, so that LOG=$(office meeting join ...) works.
 			fmt.Fprintln(e.stdout, j.Paths.Log)
+			if stageURL != "" {
+				fmt.Fprintf(e.stderr, "stage: %s\n", stageURL)
+			}
 		}
 		if !*fg && !ears {
 			return nil

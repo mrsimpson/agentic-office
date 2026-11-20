@@ -115,6 +115,7 @@ type joined struct {
 	ReplicatorPID int             `json:"replicatorPid"`
 	Duplicate     bool            `json:"duplicate"`
 	Event         json.RawMessage `json:"event"`
+	StageURL      string          `json:"stageUrl"`
 }
 
 // join joins with --json. The replicator is killed when the test ends.
@@ -281,6 +282,26 @@ func TestCLIKeysAndAdmin(t *testing.T) {
 	// A client without a key file says so.
 	nokey := m.userWithKey(filepath.Join(t.TempDir(), "missing.pem"))
 	nokey.fails(1, "no_key", "whoami")
+}
+
+func TestCLIJoinPrintsStageLink(t *testing.T) {
+	m := newMachine(t)
+	ada := m.user("ada", "Ada", "human")
+	sid := newSession()
+
+	out, errOut, code := ada.run("meeting", "join", sid)
+	if code != 0 {
+		t.Fatalf("join: exit %d: %s", code, errOut)
+	}
+	if strings.Count(out, "\n") != 1 || strings.Contains(out, "/stage/") {
+		t.Fatalf("stdout must stay the path of the log, got %q", out)
+	}
+	if !strings.Contains(errOut, "stage: ") || !strings.Contains(errOut, "/stage/") || !strings.Contains(errOut, "token=") {
+		t.Fatalf("join must print the stage link on stderr, got %q", errOut)
+	}
+	if j := ada.join(sid); !strings.Contains(j.StageURL, "/stage/") {
+		t.Fatalf("join --json must have the stage link as stageUrl, got %q", j.StageURL)
+	}
 }
 
 func TestCLIJoinPrintsPath(t *testing.T) {
