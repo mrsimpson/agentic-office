@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -119,7 +120,42 @@ func (s *Server) addTools(srv *sdk.Server) {
 	}
 	simple(tools.MeetingPause, coreapi.Client.Pause)
 	simple(tools.MeetingResume, coreapi.Client.Resume)
-	simple(tools.MeetingEnd, coreapi.Client.EndSession)
+
+	tool(srv, s, tools.MeetingEnd,
+		func(ctx context.Context, c coreapi.Client, in tools.EndIn) (any, error) {
+			sid, err := s.sessionID(ctx, c, in.Session)
+			if err != nil {
+				return nil, err
+			}
+			end, err := c.EndSession(ctx, sid)
+			if err != nil {
+				return nil, err
+			}
+			out := coreapi.EndJSON(end)
+			if in.Release {
+				rel, err := c.ReleaseSession(ctx, sid)
+				if err != nil {
+					return nil, fmt.Errorf("the session has ended, but the release failed: %w", err)
+				}
+				out["released"] = coreapi.ReleaseJSON(rel)
+			}
+			return out, nil
+		})
+
+	tool(srv, s, tools.SessionRelease,
+		func(ctx context.Context, c coreapi.Client, in tools.SessionIn) (any, error) {
+			sid, err := s.sessionID(ctx, c, in.Session)
+			if err != nil {
+				return nil, err
+			}
+			rel, err := c.ReleaseSession(ctx, sid)
+			if err != nil {
+				return nil, err
+			}
+			return coreapi.ReleaseJSON(rel), nil
+		})
+
+	simple(tools.SessionHold, coreapi.Client.ObjectToRelease)
 
 	sessionTool(srv, s, tools.UtteranceSay,
 		func(in tools.SayIn) string { return in.Session },

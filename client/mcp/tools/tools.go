@@ -78,7 +78,15 @@ var MeetingResume = &sdk.Tool{Name: "meeting_resume", Title: "Resume", Annotatio
 
 // MeetingEnd is the tool meeting_end.
 var MeetingEnd = &sdk.Tool{Name: "meeting_end", Title: "End the meeting for everyone", Annotations: Additive,
-	Description: `End the session for all participants. session.ended becomes the last line of every log. Only do this when asked to. Returns {"event", "duplicate"}.`}
+	Description: `End the session for all participants. session.ended becomes the last line of every log. Only do this when asked to. Returns {"event", "duplicate", "release": {"state", "deadline"}}: what the session created waits in its staging area until a human who took part releases it (session_release), or until the deadline; a session without humans is released at once ("state": "released"). With release=true (humans only) the session is released right after the end, and the result also has "released" as session_release returns it.`}
+
+// SessionRelease is the tool session_release.
+var SessionRelease = &sdk.Tool{Name: "session_release", Title: "Release an ended session", Annotations: Additive,
+	Description: `Release what an ended session created: its staged minutes, notes, decisions, documents and slides move into the artifact repository of the tenant, which every member reads. Only a human who took part may release; an agent is refused. Only do this when your human tells you to. Returns {"event", "duplicate", "quotes": [{"path", "line", "utteranceEventId"}]}: each quote is a place where a staged file repeats a sentence off the record word for word; tell your human about every one.`}
+
+// SessionHold is the tool session_hold.
+var SessionHold = &sdk.Tool{Name: "session_hold", Title: "Hold the release of an ended session", Annotations: Additive,
+	Description: `Object to the release of an ended session: the hub then does not release it when the grace period ends, and a human releases it later with session_release. Only a human who took part may object; an agent is refused. Only do this when your human tells you to. Returns {"event", "duplicate"}.`}
 
 // MeetingJoin is the tool meeting_join.
 var MeetingJoin = &sdk.Tool{Name: "meeting_join", Title: "Join a meeting", Annotations: Additive,
@@ -200,7 +208,7 @@ var SessionImport = &sdk.Tool{Name: "session_import", Title: "Import a conversat
 
 // MeetingEvents is the tool meeting_events.
 var MeetingEvents = &sdk.Tool{Name: "meeting_events", Title: "Read events after a cursor", Annotations: ReadOnly,
-	Description: `Read the events of a session after a cursor from the server: {"events": […], "more": bool}. Event IDs grow by one without gaps. Use this when you see a gap in the IDs of your log (for example 43 after 41: read with after 41), or poll it with your last ID if you cannot follow a file. An utterance with "offTheRecord": true is a placeholder: its speaker marked it off the record. Do not use or repeat such a sentence anywhere, not in minutes, decisions or notes.`}
+	Description: `Read the events of a session after a cursor from the server: {"events": […], "more": bool}. Event IDs grow by one without gaps. Use this when you see a gap in the IDs of your log (for example 43 after 41: read with after 41), or poll it with your last ID if you cannot follow a file. An utterance with "offTheRecord": true is a placeholder: its speaker marked it off the record. Do not use or repeat such a sentence anywhere, not in minutes, decisions or notes. After session.ended, which is the last line of your file, the hub can still add a few events that only meeting_events returns: release.objected and session.released (a human held or released what the session created; an empty actor is the hub), notices about artifacts, and, until the release, utterance.off_the_record.`}
 
 // Whoami is the tool whoami.
 var Whoami = &sdk.Tool{Name: "whoami", Title: "Who am I", Annotations: ReadOnly,
@@ -215,6 +223,12 @@ type JoinIn struct {
 // SessionIn is the input of a tool.
 type SessionIn struct {
 	Session string `json:"session,omitempty" jsonschema:"Session ID. Default: the session given when the server was started, else the only session you joined from this machine."`
+}
+
+// EndIn is the input of meeting_end.
+type EndIn struct {
+	Session string `json:"session,omitempty" jsonschema:"Session ID. Default: the session given when the server was started, else the only session you joined from this machine."`
+	Release bool   `json:"release,omitempty" jsonschema:"Release the session right after the end. Only a human may release."`
 }
 
 // SayIn is the input of a tool.

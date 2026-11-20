@@ -170,6 +170,8 @@ type Event struct {
 	//	*Event_ParticipantPaused
 	//	*Event_ParticipantResumed
 	//	*Event_SessionEnded
+	//	*Event_ReleaseObjected
+	//	*Event_SessionReleased
 	//	*Event_SessionImported
 	//	*Event_ImportCompleted
 	Payload       isEvent_Payload `protobuf_oneof:"payload"`
@@ -407,6 +409,24 @@ func (x *Event) GetSessionEnded() *SessionEnded {
 	return nil
 }
 
+func (x *Event) GetReleaseObjected() *ReleaseObjected {
+	if x != nil {
+		if x, ok := x.Payload.(*Event_ReleaseObjected); ok {
+			return x.ReleaseObjected
+		}
+	}
+	return nil
+}
+
+func (x *Event) GetSessionReleased() *SessionReleased {
+	if x != nil {
+		if x, ok := x.Payload.(*Event_SessionReleased); ok {
+			return x.SessionReleased
+		}
+	}
+	return nil
+}
+
 func (x *Event) GetSessionImported() *SessionImported {
 	if x != nil {
 		if x, ok := x.Payload.(*Event_SessionImported); ok {
@@ -497,6 +517,16 @@ type Event_SessionEnded struct {
 	SessionEnded *SessionEnded `protobuf:"bytes,44,opt,name=session_ended,json=sessionEnded,proto3,oneof"` // "session.ended"
 }
 
+type Event_ReleaseObjected struct {
+	// Release of what the session staged (concept-session-release). These events, notices about
+	// artifacts and marks off the record are the only events after session.ended.
+	ReleaseObjected *ReleaseObjected `protobuf:"bytes,45,opt,name=release_objected,json=releaseObjected,proto3,oneof"` // "release.objected"
+}
+
+type Event_SessionReleased struct {
+	SessionReleased *SessionReleased `protobuf:"bytes,46,opt,name=session_released,json=sessionReleased,proto3,oneof"` // "session.released"
+}
+
 type Event_SessionImported struct {
 	// Import of a conversation (dec-session-import, if-session-import)
 	SessionImported *SessionImported `protobuf:"bytes,50,opt,name=session_imported,json=sessionImported,proto3,oneof"` // "session.imported"
@@ -537,6 +567,10 @@ func (*Event_ParticipantPaused) isEvent_Payload() {}
 func (*Event_ParticipantResumed) isEvent_Payload() {}
 
 func (*Event_SessionEnded) isEvent_Payload() {}
+
+func (*Event_ReleaseObjected) isEvent_Payload() {}
+
+func (*Event_SessionReleased) isEvent_Payload() {}
 
 func (*Event_SessionImported) isEvent_Payload() {}
 
@@ -1395,7 +1429,11 @@ type SessionImported struct {
 	// source says where the conversation comes from, for example "Zoom meeting 2026-11-06" or a URL.
 	Source string `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
 	// title is the title of the conversation. It may be empty.
-	Title         string `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	Title string `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	// importer_kind is the kind of the participant who imported the conversation. The importer
+	// counts as a participant of the session; an import that no human worked on is released when
+	// it ends (concept-session-release).
+	ImporterKind  ParticipantKind `protobuf:"varint,3,opt,name=importer_kind,json=importerKind,proto3,enum=office.sessionstream.v1.ParticipantKind" json:"importer_kind,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1444,6 +1482,92 @@ func (x *SessionImported) GetTitle() string {
 	return ""
 }
 
+func (x *SessionImported) GetImporterKind() ParticipantKind {
+	if x != nil {
+		return x.ImporterKind
+	}
+	return ParticipantKind_PARTICIPANT_KIND_UNSPECIFIED
+}
+
+// ReleaseObjected says that a human who took part in the session objects to its release
+// (concept-session-release). The actor is that human. The session stays held until a human
+// releases it.
+type ReleaseObjected struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReleaseObjected) Reset() {
+	*x = ReleaseObjected{}
+	mi := &file_office_sessionstream_v1_events_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReleaseObjected) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReleaseObjected) ProtoMessage() {}
+
+func (x *ReleaseObjected) ProtoReflect() protoreflect.Message {
+	mi := &file_office_sessionstream_v1_events_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReleaseObjected.ProtoReflect.Descriptor instead.
+func (*ReleaseObjected) Descriptor() ([]byte, []int) {
+	return file_office_sessionstream_v1_events_proto_rawDescGZIP(), []int{18}
+}
+
+// SessionReleased says that the session is released: what it staged moves into the artifact
+// repository of the tenant (concept-session-release). The actor is the human who released it;
+// an empty actor is the hub, at the end of the grace period or at the end of a session without
+// humans. The release commit in the artifact repository records the time and the author.
+type SessionReleased struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SessionReleased) Reset() {
+	*x = SessionReleased{}
+	mi := &file_office_sessionstream_v1_events_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SessionReleased) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SessionReleased) ProtoMessage() {}
+
+func (x *SessionReleased) ProtoReflect() protoreflect.Message {
+	mi := &file_office_sessionstream_v1_events_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SessionReleased.ProtoReflect.Descriptor instead.
+func (*SessionReleased) Descriptor() ([]byte, []int) {
+	return file_office_sessionstream_v1_events_proto_rawDescGZIP(), []int{19}
+}
+
 // ImportCompleted ends the import of a conversation. After it, the session takes session
 // commands like any other session.
 type ImportCompleted struct {
@@ -1456,7 +1580,7 @@ type ImportCompleted struct {
 
 func (x *ImportCompleted) Reset() {
 	*x = ImportCompleted{}
-	mi := &file_office_sessionstream_v1_events_proto_msgTypes[18]
+	mi := &file_office_sessionstream_v1_events_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1468,7 +1592,7 @@ func (x *ImportCompleted) String() string {
 func (*ImportCompleted) ProtoMessage() {}
 
 func (x *ImportCompleted) ProtoReflect() protoreflect.Message {
-	mi := &file_office_sessionstream_v1_events_proto_msgTypes[18]
+	mi := &file_office_sessionstream_v1_events_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1481,7 +1605,7 @@ func (x *ImportCompleted) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImportCompleted.ProtoReflect.Descriptor instead.
 func (*ImportCompleted) Descriptor() ([]byte, []int) {
-	return file_office_sessionstream_v1_events_proto_rawDescGZIP(), []int{18}
+	return file_office_sessionstream_v1_events_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ImportCompleted) GetUtterances() uint32 {
@@ -1499,7 +1623,7 @@ type SignedTreeHead struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	SessionId string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
 	// schema is the schema of the session (dec-session-schema): the version of the session contract
-	// the session was started with, for example "office.sessionstream.v1/1". A session keeps its schema
+	// the session was started with, for example "office.sessionstream.v1/2". A session keeps its schema
 	// for its whole life. A hub with another schema does not continue the session, and a verifier
 	// checks the session only with its own schema. The Go constant is Schema in this package.
 	Schema string `protobuf:"bytes,6,opt,name=schema,proto3" json:"schema,omitempty"`
@@ -1519,7 +1643,7 @@ type SignedTreeHead struct {
 
 func (x *SignedTreeHead) Reset() {
 	*x = SignedTreeHead{}
-	mi := &file_office_sessionstream_v1_events_proto_msgTypes[19]
+	mi := &file_office_sessionstream_v1_events_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1531,7 +1655,7 @@ func (x *SignedTreeHead) String() string {
 func (*SignedTreeHead) ProtoMessage() {}
 
 func (x *SignedTreeHead) ProtoReflect() protoreflect.Message {
-	mi := &file_office_sessionstream_v1_events_proto_msgTypes[19]
+	mi := &file_office_sessionstream_v1_events_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1544,7 +1668,7 @@ func (x *SignedTreeHead) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SignedTreeHead.ProtoReflect.Descriptor instead.
 func (*SignedTreeHead) Descriptor() ([]byte, []int) {
-	return file_office_sessionstream_v1_events_proto_rawDescGZIP(), []int{19}
+	return file_office_sessionstream_v1_events_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *SignedTreeHead) GetSessionId() string {
@@ -1593,7 +1717,7 @@ var File_office_sessionstream_v1_events_proto protoreflect.FileDescriptor
 
 const file_office_sessionstream_v1_events_proto_rawDesc = "" +
 	"\n" +
-	"$office/sessionstream/v1/events.proto\x12\x17office.sessionstream.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xee\r\n" +
+	"$office/sessionstream/v1/events.proto\x12\x17office.sessionstream.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x9c\x0f\n" +
 	"\x05Event\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x12\x1d\n" +
 	"\n" +
@@ -1622,6 +1746,8 @@ const file_office_sessionstream_v1_events_proto_rawDesc = "" +
 	"\x12participant_paused\x18* \x01(\v2*.office.sessionstream.v1.ParticipantPausedH\x00R\x11participantPaused\x12^\n" +
 	"\x13participant_resumed\x18+ \x01(\v2+.office.sessionstream.v1.ParticipantResumedH\x00R\x12participantResumed\x12L\n" +
 	"\rsession_ended\x18, \x01(\v2%.office.sessionstream.v1.SessionEndedH\x00R\fsessionEnded\x12U\n" +
+	"\x10release_objected\x18- \x01(\v2(.office.sessionstream.v1.ReleaseObjectedH\x00R\x0freleaseObjected\x12U\n" +
+	"\x10session_released\x18. \x01(\v2(.office.sessionstream.v1.SessionReleasedH\x00R\x0fsessionReleased\x12U\n" +
 	"\x10session_imported\x182 \x01(\v2(.office.sessionstream.v1.SessionImportedH\x00R\x0fsessionImported\x12U\n" +
 	"\x10import_completed\x183 \x01(\v2(.office.sessionstream.v1.ImportCompletedH\x00R\x0fimportCompletedB\t\n" +
 	"\apayload\"\xb4\x02\n" +
@@ -1672,10 +1798,13 @@ const file_office_sessionstream_v1_events_proto_rawDesc = "" +
 	"\x12ParticipantResumed\x12%\n" +
 	"\x0eparticipant_id\x18\x01 \x01(\tR\rparticipantId\"T\n" +
 	"\fSessionEnded\x12D\n" +
-	"\ttree_head\x18\x01 \x01(\v2'.office.sessionstream.v1.SignedTreeHeadR\btreeHead\"?\n" +
+	"\ttree_head\x18\x01 \x01(\v2'.office.sessionstream.v1.SignedTreeHeadR\btreeHead\"\x8e\x01\n" +
 	"\x0fSessionImported\x12\x16\n" +
 	"\x06source\x18\x01 \x01(\tR\x06source\x12\x14\n" +
-	"\x05title\x18\x02 \x01(\tR\x05title\"1\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\x12M\n" +
+	"\rimporter_kind\x18\x03 \x01(\x0e2(.office.sessionstream.v1.ParticipantKindR\fimporterKind\"\x11\n" +
+	"\x0fReleaseObjected\"\x11\n" +
+	"\x0fSessionReleased\"1\n" +
 	"\x0fImportCompleted\x12\x1e\n" +
 	"\n" +
 	"utterances\x18\x01 \x01(\rR\n" +
@@ -1711,7 +1840,7 @@ func file_office_sessionstream_v1_events_proto_rawDescGZIP() []byte {
 }
 
 var file_office_sessionstream_v1_events_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_office_sessionstream_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_office_sessionstream_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
 var file_office_sessionstream_v1_events_proto_goTypes = []any{
 	(ParticipantKind)(0),          // 0: office.sessionstream.v1.ParticipantKind
 	(Modality)(0),                 // 1: office.sessionstream.v1.Modality
@@ -1733,13 +1862,15 @@ var file_office_sessionstream_v1_events_proto_goTypes = []any{
 	(*ParticipantResumed)(nil),    // 17: office.sessionstream.v1.ParticipantResumed
 	(*SessionEnded)(nil),          // 18: office.sessionstream.v1.SessionEnded
 	(*SessionImported)(nil),       // 19: office.sessionstream.v1.SessionImported
-	(*ImportCompleted)(nil),       // 20: office.sessionstream.v1.ImportCompleted
-	(*SignedTreeHead)(nil),        // 21: office.sessionstream.v1.SignedTreeHead
-	(*timestamppb.Timestamp)(nil), // 22: google.protobuf.Timestamp
-	(*durationpb.Duration)(nil),   // 23: google.protobuf.Duration
+	(*ReleaseObjected)(nil),       // 20: office.sessionstream.v1.ReleaseObjected
+	(*SessionReleased)(nil),       // 21: office.sessionstream.v1.SessionReleased
+	(*ImportCompleted)(nil),       // 22: office.sessionstream.v1.ImportCompleted
+	(*SignedTreeHead)(nil),        // 23: office.sessionstream.v1.SignedTreeHead
+	(*timestamppb.Timestamp)(nil), // 24: google.protobuf.Timestamp
+	(*durationpb.Duration)(nil),   // 25: google.protobuf.Duration
 }
 var file_office_sessionstream_v1_events_proto_depIdxs = []int32{
-	22, // 0: office.sessionstream.v1.Event.time:type_name -> google.protobuf.Timestamp
+	24, // 0: office.sessionstream.v1.Event.time:type_name -> google.protobuf.Timestamp
 	3,  // 1: office.sessionstream.v1.Event.utterance_final:type_name -> office.sessionstream.v1.UtteranceFinal
 	4,  // 2: office.sessionstream.v1.Event.utterance_off_the_record:type_name -> office.sessionstream.v1.UtteranceOffTheRecord
 	5,  // 3: office.sessionstream.v1.Event.utterance_corrected:type_name -> office.sessionstream.v1.UtteranceCorrected
@@ -1756,19 +1887,22 @@ var file_office_sessionstream_v1_events_proto_depIdxs = []int32{
 	16, // 14: office.sessionstream.v1.Event.participant_paused:type_name -> office.sessionstream.v1.ParticipantPaused
 	17, // 15: office.sessionstream.v1.Event.participant_resumed:type_name -> office.sessionstream.v1.ParticipantResumed
 	18, // 16: office.sessionstream.v1.Event.session_ended:type_name -> office.sessionstream.v1.SessionEnded
-	19, // 17: office.sessionstream.v1.Event.session_imported:type_name -> office.sessionstream.v1.SessionImported
-	20, // 18: office.sessionstream.v1.Event.import_completed:type_name -> office.sessionstream.v1.ImportCompleted
-	1,  // 19: office.sessionstream.v1.UtteranceFinal.modality:type_name -> office.sessionstream.v1.Modality
-	22, // 20: office.sessionstream.v1.UtteranceFinal.transcribed_at:type_name -> google.protobuf.Timestamp
-	22, // 21: office.sessionstream.v1.UtteranceFinal.original_time:type_name -> google.protobuf.Timestamp
-	23, // 22: office.sessionstream.v1.SilenceLong.duration:type_name -> google.protobuf.Duration
-	0,  // 23: office.sessionstream.v1.ParticipantJoined.kind:type_name -> office.sessionstream.v1.ParticipantKind
-	21, // 24: office.sessionstream.v1.SessionEnded.tree_head:type_name -> office.sessionstream.v1.SignedTreeHead
-	25, // [25:25] is the sub-list for method output_type
-	25, // [25:25] is the sub-list for method input_type
-	25, // [25:25] is the sub-list for extension type_name
-	25, // [25:25] is the sub-list for extension extendee
-	0,  // [0:25] is the sub-list for field type_name
+	20, // 17: office.sessionstream.v1.Event.release_objected:type_name -> office.sessionstream.v1.ReleaseObjected
+	21, // 18: office.sessionstream.v1.Event.session_released:type_name -> office.sessionstream.v1.SessionReleased
+	19, // 19: office.sessionstream.v1.Event.session_imported:type_name -> office.sessionstream.v1.SessionImported
+	22, // 20: office.sessionstream.v1.Event.import_completed:type_name -> office.sessionstream.v1.ImportCompleted
+	1,  // 21: office.sessionstream.v1.UtteranceFinal.modality:type_name -> office.sessionstream.v1.Modality
+	24, // 22: office.sessionstream.v1.UtteranceFinal.transcribed_at:type_name -> google.protobuf.Timestamp
+	24, // 23: office.sessionstream.v1.UtteranceFinal.original_time:type_name -> google.protobuf.Timestamp
+	25, // 24: office.sessionstream.v1.SilenceLong.duration:type_name -> google.protobuf.Duration
+	0,  // 25: office.sessionstream.v1.ParticipantJoined.kind:type_name -> office.sessionstream.v1.ParticipantKind
+	23, // 26: office.sessionstream.v1.SessionEnded.tree_head:type_name -> office.sessionstream.v1.SignedTreeHead
+	0,  // 27: office.sessionstream.v1.SessionImported.importer_kind:type_name -> office.sessionstream.v1.ParticipantKind
+	28, // [28:28] is the sub-list for method output_type
+	28, // [28:28] is the sub-list for method input_type
+	28, // [28:28] is the sub-list for extension type_name
+	28, // [28:28] is the sub-list for extension extendee
+	0,  // [0:28] is the sub-list for field type_name
 }
 
 func init() { file_office_sessionstream_v1_events_proto_init() }
@@ -1793,6 +1927,8 @@ func file_office_sessionstream_v1_events_proto_init() {
 		(*Event_ParticipantPaused)(nil),
 		(*Event_ParticipantResumed)(nil),
 		(*Event_SessionEnded)(nil),
+		(*Event_ReleaseObjected)(nil),
+		(*Event_SessionReleased)(nil),
 		(*Event_SessionImported)(nil),
 		(*Event_ImportCompleted)(nil),
 	}
@@ -1802,7 +1938,7 @@ func file_office_sessionstream_v1_events_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_office_sessionstream_v1_events_proto_rawDesc), len(file_office_sessionstream_v1_events_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   20,
+			NumMessages:   22,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

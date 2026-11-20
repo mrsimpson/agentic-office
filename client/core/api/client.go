@@ -105,7 +105,14 @@ type Client interface {
 	RaiseHand(ctx context.Context, sessionID, topic string) (*sessioncommandsv1.CommandResult, error)
 	UpdateMinutes(ctx context.Context, sessionID, text string) (*sessioncommandsv1.CommandResult, error)
 	FocusArtifact(ctx context.Context, sessionID, artifactID string) (*sessioncommandsv1.CommandResult, error)
-	EndSession(ctx context.Context, sessionID string) (*sessioncommandsv1.CommandResult, error)
+	// EndSession ends the session for everyone. The answer carries the release status of the
+	// session (concept-session-release).
+	EndSession(ctx context.Context, sessionID string) (*sessioncommandsv1.EndSessionResponse, error)
+	// ReleaseSession releases what an ended session staged. Only a human who took part may. The
+	// answer lists where a staged file quotes a sentence off the record word for word.
+	ReleaseSession(ctx context.Context, sessionID string) (*sessioncommandsv1.ReleaseSessionResponse, error)
+	// ObjectToRelease holds the release of an ended session until a human releases it.
+	ObjectToRelease(ctx context.Context, sessionID string) (*sessioncommandsv1.CommandResult, error)
 	// Events returns the events after a cursor from the hub, and whether there are more.
 	Events(ctx context.Context, sessionID string, after, limit uint32) ([]*sessionstreamv1.Event, bool, error)
 

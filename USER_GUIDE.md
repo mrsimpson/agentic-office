@@ -258,6 +258,9 @@ seconds while they run (`-archive-interval`), and at once when a session ends.
   `unavailable`. Repeat the command; nothing is lost or stored twice.
 - Users, keys, tenants and memberships are files in the hub repository and survive. Access
   tokens do not: clients sign in again.
+- Releases survive too (see [Release what a session created](#release-what-a-session-created)):
+  a session whose grace period ended while the hub was down is released at start, and a release
+  that the stop cut off is completed, once.
 - A known gap (issue #47): a session that the hub never wrote to the archive is unknown after a
   crash until a participant offers a whole copy of its log.
 
@@ -800,6 +803,7 @@ office meeting end
 - The running minutes belong to the session. `office meeting end` stores the text of the last
   update as the minutes of the session. Read them later with `office minutes show weekly` or
   `office minutes list`.
+- After `office meeting end`, what the session created waits for its release; see the next section.
 - `office session list` lists the sessions in which you took part or that you imported, the newest
   first, with start, end and participants; a tenant admin sees every session of the tenant. The
   portal shows the same list on the page of the tenant (`office portal link`). Open a session there
@@ -815,6 +819,34 @@ office meeting end
   the session or the assignee.
 - The list commands show the oldest first, at most 100 at a time (`--limit`, at most 1000). `task
   list` prints the token of the next page on stderr; pass it as `--page-token`.
+
+### Release what a session created
+
+Every member of the tenant reads the artifact repository, and nothing can be taken out of it
+again. So what a session creates waits in a staging area of the session until it is released.
+Only the people and agents who took part read it there.
+
+```sh
+office meeting end                     # prints when the hub releases the session
+office session release weekly          # release it now
+office session hold weekly             # or object: the hub then does not release it
+office meeting end --release           # end and release in one go
+```
+
+- **Who releases.** Every human who took part may release or object, also after leaving. An agent
+  never does; the hub refuses it. If no human took part, for example a meeting of agents or an
+  import that only agents worked on, the hub releases the session at its end.
+- **The grace period.** Otherwise the hub releases the session 24 hours after its end. The operator
+  sets another length for the whole hub with `office-hub -release-grace-period 2h`.
+- **During the grace period** you can still mark your own sentence off the record. That mark reaches
+  no local log and no agent any more: correct the staged files yourself, ask their authors, or
+  object with `office session hold`. An objection holds the session until a human releases it.
+- **The release** moves everything the session staged into the artifact repository in one commit,
+  with you (or the hub) as the author. Before it, the hub searches the staged files for sentences
+  that are off the record, word for word, and `office session release` prints a warning with the
+  file and the line for each one. The hub changes no content.
+- After the end, a session takes only the release, the objection, notes about artifacts and,
+  until the release, marks off the record.
 
 ### Show slides
 
@@ -1344,6 +1376,7 @@ again. If it stops in between, tell it to keep listening.
 | `minutes_get`, `minutes_list` | `minutes show`, `minutes list` |
 | `task_create`, `task_get`, `task_list`, `task_update` | `task …` |
 | `session_import`, `whoami` | `session import`, `whoami` |
+| `session_release`, `session_hold` | `session release`, `session hold` (an agent is refused; its human releases) |
 
 Session tools take an optional `session`; the default is `--session`, `OFFICE_SESSION`, or the
 only session this participant joined from this machine. Each tool returns one JSON object, as

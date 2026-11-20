@@ -148,6 +148,7 @@ var (
 	gitMaxPushMiB   = flag.Int64("git-max-push-mib", gitaccess.DefaultMaxPushBytes>>20, "largest push to the artifact repository, in MiB; a larger push is refused")
 	gitMaxFileKiB   = flag.Int64("git-max-file-kib", gitaccess.DefaultMaxFileBytes>>10, "largest artifact file in a push, in KiB; a larger file refuses the push")
 	gitMaxFiles     = flag.Int("git-max-files", gitaccess.DefaultMaxFiles, "most files that one push may change; a push that changes more is refused")
+	gracePeriod     = flag.Duration("release-grace-period", 24*time.Hour, "time between the end of a session with humans and its release by the hub, for every tenant; a human who took part can release earlier or object")
 	restoreWait     = flag.Duration("restore-wait", 10*time.Second, "after a restart, how long a restored session that has not ended waits for a peer to fill in the events after the last write to the archive")
 )
 
@@ -349,7 +350,10 @@ func main() {
 	// The content of each tenant (dec-multi-tenancy): sessions, decisions, minutes, notes, tasks and
 	// slide decks, in the repository of the tenant. A tenant is opened on its first call; the
 	// tenants that exist are opened now, so their sessions are restored.
-	rts := newRuntimes(repos, signingKey, *archiveInterval, *restoreWait)
+	if *gracePeriod <= 0 {
+		log.Fatal("-release-grace-period must be positive")
+	}
+	rts := newRuntimes(repos, signingKey, *archiveInterval, *restoreWait, *gracePeriod)
 	tenants, err := ids.Tenants(context.Background())
 	if err != nil {
 		log.Fatal(err)

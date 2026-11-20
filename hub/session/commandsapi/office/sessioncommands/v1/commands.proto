@@ -37,7 +37,25 @@ service SessionCommandsService {
   rpc RaiseHand(RaiseHandRequest) returns (RaiseHandResponse);
   rpc UpdateMinutes(UpdateMinutesRequest) returns (UpdateMinutesResponse);
   rpc FocusArtifact(FocusArtifactRequest) returns (FocusArtifactResponse);
+  // EndSession stores the minutes and appends session.ended. The answer carries the release
+  // status of the session: released at once by the hub when no human took part, else waiting
+  // until the deadline (the end plus the grace period of the tenant).
   rpc EndSession(EndSessionRequest) returns (EndSessionResponse);
+
+  // ReleaseSession releases what the session staged (concept-session-release): it appends
+  // session.released, and the hub moves the staging area of the session into the artifact
+  // repository with the caller as the author. Only a human who took part in the session may
+  // release it (also one who left, and the participant who imported it); an agent gets
+  // permission_denied, everyone else not_found. The session must have ended and must not be
+  // released (failed_precondition). A release lifts an objection. The answer lists the places
+  // where a staged file quotes a sentence off the record word for word; the hub changes no
+  // content. The hub stores the event before it answers and completes the move after a restart.
+  rpc ReleaseSession(ReleaseSessionRequest) returns (ReleaseSessionResponse);
+  // ObjectToRelease holds the release of an ended session (concept-session-release): it appends
+  // release.objected, and the hub does not release the session when its grace period ends. Only a
+  // human releases it then. Who may object: as for ReleaseSession. A session that is held or
+  // released fails with failed_precondition.
+  rpc ObjectToRelease(ObjectToReleaseRequest) returns (ObjectToReleaseResponse);
 
   // GetTreeHead, GetConsistencyProof and GetInclusionProof answer only who may read the
   // session, as the session stream decides (stream.proto); everybody else gets not_found.
@@ -199,6 +217,61 @@ message EndSessionRequest {
 }
 
 message EndSessionResponse {
+  CommandResult result = 1;
+  // release is the release status of the session after its end.
+  ReleaseStatus release = 2;
+}
+
+// ReleaseStatus is the release status of a session (concept-session-release).
+message ReleaseStatus {
+  ReleaseState state = 1;
+  // deadline is when the hub releases the session; set while the state is waiting.
+  google.protobuf.Timestamp deadline = 2;
+}
+
+enum ReleaseState {
+  RELEASE_STATE_UNSPECIFIED = 0;
+  // The session runs; what it creates waits in its staging area.
+  RELEASE_STATE_OPEN = 1;
+  // The session has ended and waits for its release until the deadline.
+  RELEASE_STATE_WAITING = 2;
+  // A human objected; only a human releases the session now.
+  RELEASE_STATE_HELD = 3;
+  // The session is released.
+  RELEASE_STATE_RELEASED = 4;
+}
+
+message ReleaseSessionRequest {
+  string session_id = 1;
+  string command_id = 2;
+  string participant_id = 3;
+}
+
+message ReleaseSessionResponse {
+  CommandResult result = 1;
+  // quotes are the places where a staged file of the session quotes a sentence off the record
+  // word for word, found just before the release. They name the place, not the sentence. A
+  // repeated command_id returns none.
+  repeated Quote quotes = 2;
+}
+
+// Quote is a place in a staged file that quotes a sentence off the record word for word.
+message Quote {
+  // path is the path of the file in the artifact repository.
+  string path = 1;
+  // line is the line of the file where the quote starts, from 1.
+  uint32 line = 2;
+  // utterance_event_id is the utterance.final event that is off the record.
+  uint32 utterance_event_id = 3;
+}
+
+message ObjectToReleaseRequest {
+  string session_id = 1;
+  string command_id = 2;
+  string participant_id = 3;
+}
+
+message ObjectToReleaseResponse {
   CommandResult result = 1;
 }
 

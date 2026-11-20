@@ -141,8 +141,13 @@ func (s *Service) ImportConversation(ctx context.Context, req *sessionimportv1.I
 
 	var payloads []*sessionstreamv1.Event
 	if first {
+		// The importer counts as a participant: it reads the staging area of the session
+		// (concept-session-release).
+		if err := s.openArea(ctx, sid, st, caller.ParticipantID); err != nil {
+			return nil, err
+		}
 		payloads = append(payloads, &sessionstreamv1.Event{Payload: &sessionstreamv1.Event_SessionImported{SessionImported: &sessionstreamv1.SessionImported{
-			Source: req.GetConversation().GetSource(), Title: req.GetConversation().GetTitle()}}})
+			Source: req.GetConversation().GetSource(), Title: req.GetConversation().GetTitle(), ImporterKind: caller.Kind}}})
 	}
 	for _, p := range req.GetParticipants() {
 		payloads = append(payloads, &sessionstreamv1.Event{Payload: &sessionstreamv1.Event_ParticipantJoined{ParticipantJoined: &sessionstreamv1.ParticipantJoined{

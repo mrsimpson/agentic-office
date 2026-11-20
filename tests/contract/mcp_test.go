@@ -161,7 +161,7 @@ func mcpJoined(t *testing.T, v map[string]any) (logPath, pid string, replicatorP
 var mcpTools = []string{"meeting_join", "meeting_log", "meeting_leave", "meeting_pause", "meeting_resume", "meeting_end",
 	"utterance_say", "utterance_off_the_record", "signal_turn_end", "signal_silence_long", "signal_addressed", "hand_raise",
 	"minutes_update", "stage_focus", "stage_link", "slides_render", "slides_get", "document_create", "document_change", "document_get", "document_list", "decision_record", "decision_list", "minutes_get", "minutes_list", "note_add", "note_list",
-	"task_create", "task_get", "task_list", "task_update", "session_import", "whoami"}
+	"task_create", "task_get", "task_list", "task_update", "session_import", "session_release", "session_hold", "whoami"}
 
 // TestMCPToolsDescribeTheLog: the server offers every tool, and tells an agent how to follow
 // the log file and which event types to filter for.

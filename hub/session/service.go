@@ -88,6 +88,12 @@ type Service struct {
 	archMu sync.Mutex
 	dirty  map[string]bool // sessions with events that are not in the archive yet
 	wake   chan struct{}   // wakes the writer when a session ends
+	// writeMu serialises the writes to the archive: the background writer and the write of an
+	// event after the end of a session, which the hub stores before it answers (persistNow).
+	writeMu sync.Mutex
+
+	// rel is the release of sessions (concept-session-release), set by UseRelease.
+	rel *releaser
 }
 
 var (
@@ -136,17 +142,27 @@ type state struct {
 	// schema is the schema of the session (dec-session-schema): sessionstreamv1.Schema for a session
 	// this hub started, the schema of the stored tree head for a restored one. The hub continues
 	// only sessions of its own schema; see checkSchema.
-	schema       string
-	lastID       uint32
-	ended        bool
+	schema  string
+	lastID  uint32
+	ended   bool
+	endedID uint32 // the ID of session.ended
+	// The release (concept-session-release): released is set by session.released, releasedBy is
+	// its actor (empty: the hub); held is set by release.objected.
+	released   bool
+	releasedBy string
+	held       bool
+	// readers are the participants who may read the staging area of the session: everyone who
+	// ever joined, and the importer, in the order of their first event.
+	readers      []string
 	participants map[string]*participant
 	utterances   map[uint32]*utterance  // utterance.final event ID -> utterance
 	minutes      *sessionstreamv1.Event // the last minutes.updated event
 	// An imported session (dec-session-import, import.go): importer is the participant who sent
 	// the first page; importing is true until import.completed.
-	importer  string
-	importing bool
-	imported  uint32 // number of imported utterances
+	importer     string
+	importerKind sessionstreamv1.ParticipantKind
+	importing    bool
+	imported     uint32 // number of imported utterances
 	// leaves are the leaf hashes of the Merkle tree: leaves[i] belongs to event i+1. The slice
 	// only grows; its elements never change.
 	leaves [][]byte
@@ -198,7 +214,11 @@ func (st *state) apply(ev *sessionstreamv1.Event) error {
 	st.lastID = ev.GetId()
 	switch p := ev.GetPayload().(type) {
 	case *sessionstreamv1.Event_ParticipantJoined:
-		st.participants[p.ParticipantJoined.GetParticipantId()] = &participant{joined: ev}
+		pid := p.ParticipantJoined.GetParticipantId()
+		st.participants[pid] = &participant{joined: ev}
+		if !p.ParticipantJoined.GetImported() {
+			st.addReader(pid)
+		}
 	case *sessionstreamv1.Event_ParticipantLeft:
 		if pt := st.participants[p.ParticipantLeft.GetParticipantId()]; pt != nil {
 			pt.left = true
@@ -220,9 +240,15 @@ func (st *state) apply(ev *sessionstreamv1.Event) error {
 	case *sessionstreamv1.Event_MinutesUpdated:
 		st.minutes = ev
 	case *sessionstreamv1.Event_SessionEnded:
-		st.ended = true
+		st.ended, st.endedID = true, ev.GetId()
+	case *sessionstreamv1.Event_SessionReleased:
+		st.released, st.releasedBy, st.held = true, ev.GetActorParticipantId(), false
+	case *sessionstreamv1.Event_ReleaseObjected:
+		st.held = true
 	case *sessionstreamv1.Event_SessionImported:
 		st.importer, st.importing = ev.GetActorParticipantId(), true
+		st.importerKind = p.SessionImported.GetImporterKind()
+		st.addReader(st.importer)
 	case *sessionstreamv1.Event_ImportCompleted:
 		st.importing = false
 	}
@@ -230,6 +256,34 @@ func (st *state) apply(ev *sessionstreamv1.Event) error {
 		st.imported++
 	}
 	return nil
+}
+
+// addReader adds a participant to the readers of the staging area, once.
+func (st *state) addReader(pid string) {
+	if !slices.Contains(st.readers, pid) {
+		st.readers = append(st.readers, pid)
+	}
+}
+
+// tookPart reports whether a participant took part in the session: it joined at any time (not
+// as an imported speaker), or it imported the session. The caller holds st.mu.
+func (st *state) tookPart(pid string) bool {
+	return pid != "" && slices.Contains(st.readers, pid)
+}
+
+// hasHumans reports whether a human took part in the session: a participant who joined as a
+// human, or a human who imported it. Imported speakers do not count. The caller holds st.mu.
+func (st *state) hasHumans() bool {
+	if st.importer != "" && st.importerKind == sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_HUMAN {
+		return true
+	}
+	for _, pt := range st.participants {
+		j := pt.joined.GetParticipantJoined()
+		if !j.GetImported() && j.GetKind() == sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_HUMAN {
+			return true
+		}
+	}
+	return false
 }
 
 // finished reports whether the session is over: it has ended, or it is an imported conversation
@@ -323,104 +377,153 @@ type command struct {
 	types []string
 	// check, if set, checks the command against the caller before anything else.
 	check func(Caller) error
-	build func(st *state, c Caller) (*sessionstreamv1.Event, error)
+	// afterEnd, if set, lets the command run after session.ended (dec-session-end-milestone):
+	// it returns nil when the command fits the ended session. Such a command also accepts a
+	// participant who left. Without it, every command after the end fails.
+	afterEnd func(st *state) error
+	// tookPart makes the command accept every participant who took part in the session (see
+	// state.tookPart), also one who left, instead of a participant who is in the session now.
+	tookPart bool
+	build    func(st *state, c Caller) (*sessionstreamv1.Event, error)
 }
 
 // run carries out a command once (dec-idempotent-commands).
 //
 // Order of checks: required fields, caller (token, participant_id), repeated command_id, end of
 // session, participant, then the checks of the command itself.
+//
+// A command on an ended session, its repetition included, is in the archive before run returns:
+// no peer follows an ended session any more, so the hub is the only holder of the event
+// (concept-session-release). session.ended itself is stored the same way.
 func (s *Service) run(ctx context.Context, c command, isJoin bool) (*sessioncommandsv1.CommandResult, error) {
-	if c.sessionID == "" {
-		return nil, invalid("session_id is required")
-	}
-	if c.commandID == "" {
-		return nil, invalid("command_id is required")
-	}
-	if !isJoin && c.participantID == "" {
-		return nil, invalid("participant_id is required")
-	}
-	caller, err := s.auth.Caller(ctx)
+	res, ended, err := s.runLocked(ctx, c, isJoin)
 	if err != nil {
 		return nil, err
 	}
+	if ended {
+		if err := s.persistNow(ctx, c.sessionID); err != nil {
+			return nil, connect.NewError(connect.CodeUnavailable, "store the event in the archive: "+err.Error()+"; repeat the command")
+		}
+	}
+	return res, nil
+}
+
+// runLocked is run without the write to the archive. It also returns whether the session has
+// ended after the command.
+func (s *Service) runLocked(ctx context.Context, c command, isJoin bool) (*sessioncommandsv1.CommandResult, bool, error) {
+	if c.sessionID == "" {
+		return nil, false, invalid("session_id is required")
+	}
+	if c.commandID == "" {
+		return nil, false, invalid("command_id is required")
+	}
+	if !isJoin && c.participantID == "" {
+		return nil, false, invalid("participant_id is required")
+	}
+	caller, err := s.auth.Caller(ctx)
+	if err != nil {
+		return nil, false, err
+	}
 	if caller.ParticipantID == "" {
-		return nil, connect.NewError(connect.CodePermissionDenied, "a stage link cannot send commands")
+		return nil, false, connect.NewError(connect.CodePermissionDenied, "a stage link cannot send commands")
 	}
 	if isJoin {
 		c.participantID = caller.ParticipantID
 	} else if c.participantID != caller.ParticipantID {
-		return nil, connect.NewError(connect.CodePermissionDenied,
+		return nil, false, connect.NewError(connect.CodePermissionDenied,
 			"participant_id must be the participant of the access token")
 	}
 	if c.check != nil {
 		if err := c.check(caller); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 	}
 	st, err := s.lock(c.sessionID)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer st.mu.Unlock()
 
 	prev, err := s.store.ByCommand(c.sessionID, c.commandID)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, "read session log: "+err.Error())
+		return nil, false, connect.NewError(connect.CodeInternal, "read session log: "+err.Error())
 	}
 	if prev != nil {
 		if !slices.Contains(c.types, prev.GetType()) || prev.GetActorParticipantId() != c.participantID {
-			return nil, connect.NewError(connect.CodeAlreadyExists,
+			return nil, false, connect.NewError(connect.CodeAlreadyExists,
 				"command_id was already used for another command")
 		}
-		return &sessioncommandsv1.CommandResult{Event: prev, Duplicate: true}, nil
+		return &sessioncommandsv1.CommandResult{Event: prev, Duplicate: true}, st.ended, nil
 	}
 	if err := st.checkSchema(); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if err := st.checkRestored(); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if st.importing {
-		return nil, precondition("the session is being imported; it takes session commands after the import is complete")
+		return nil, false, precondition("the session is being imported; it takes session commands after the import is complete")
 	}
 	if st.ended {
-		return nil, precondition("the session has ended")
+		if c.afterEnd == nil {
+			return nil, false, precondition("the session has ended")
+		}
+		if err := c.afterEnd(st); err != nil {
+			return nil, false, err
+		}
 	}
 	pt := st.participants[c.participantID]
-	if isJoin {
+	switch {
+	case isJoin:
 		// A participant joins once. Another join while it is in the session (for example from a
 		// second client of the same participant) returns the first join.
 		if pt != nil && !pt.left {
-			return &sessioncommandsv1.CommandResult{Event: pt.joined, Duplicate: true}, nil
+			return &sessioncommandsv1.CommandResult{Event: pt.joined, Duplicate: true}, false, nil
 		}
-	} else {
+		// The participant becomes a reader of the staging area before it joins
+		// (concept-session-release).
+		if err := s.openArea(ctx, c.sessionID, st, c.participantID); err != nil {
+			return nil, false, err
+		}
+	case c.tookPart:
+		if !st.tookPart(c.participantID) {
+			return nil, false, notFound("participant_id did not take part in this session")
+		}
+	default:
 		if pt == nil {
-			return nil, notFound("participant_id is not a participant of this session")
+			return nil, false, notFound("participant_id is not a participant of this session")
 		}
-		if pt.left {
-			return nil, precondition("the participant has left the session")
+		if pt.left && !st.ended {
+			return nil, false, precondition("the participant has left the session")
 		}
 	}
 	ev, err := c.build(st, caller)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	ev.SessionId = c.sessionID
 	ev.CommandId = c.commandID
 	ev.ActorParticipantId = c.participantID
+	if err := s.appendEvent(c.sessionID, st, ev); err != nil {
+		return nil, false, err
+	}
+	return &sessioncommandsv1.CommandResult{Event: ev}, st.ended, nil
+}
+
+// appendEvent fills in the type and the time of an event, appends it to the log and applies it
+// to the state. The caller holds st.mu.
+func (s *Service) appendEvent(sid string, st *state, ev *sessionstreamv1.Event) error {
 	ev.Type = events.TypeOf(ev)
 	ev.Time = timestamppb.Now()
-	ev, err = s.store.Append(c.sessionID, ev)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, "append to session log: "+err.Error())
+	if _, err := s.store.Append(sid, ev); err != nil {
+		return connect.NewError(connect.CodeInternal, "append to session log: "+err.Error())
 	}
 	if err := st.apply(ev); err != nil {
-		return nil, err
+		return err
 	}
-	s.markDirty(c.sessionID, ev.GetType())
-	s.endActivities(c.sessionID, ev)
-	return &sessioncommandsv1.CommandResult{Event: ev}, nil
+	s.markDirty(sid, ev.GetType())
+	s.endActivities(sid, ev)
+	return nil
 }
 
 // knownParticipant checks a participant ID that a command names in its payload.
@@ -519,10 +622,18 @@ func (s *Service) SubmitUtterance(ctx context.Context, req *sessioncommandsv1.Su
 
 // MarkOffTheRecord appends utterance.off_the_record (dec-off-the-record). Only the speaker can mark
 // an utterance off the record, and each one only once. A moderator role is out of scope (#31).
+// After the end of the session the speaker can still mark, also after leaving, until the session
+// is released (concept-session-release).
 func (s *Service) MarkOffTheRecord(ctx context.Context, req *sessioncommandsv1.MarkOffTheRecordRequest) (*sessioncommandsv1.MarkOffTheRecordResponse, error) {
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.UtteranceOffTheRecord},
+		afterEnd: func(st *state) error {
+			if st.released {
+				return precondition("the session is released; a sentence can no longer go off the record")
+			}
+			return nil
+		},
 		build: func(st *state, _ Caller) (*sessionstreamv1.Event, error) {
 			u, err := knownUtterance(st, req.GetUtteranceEventId())
 			if err != nil {
@@ -678,7 +789,8 @@ func (s *Service) FocusArtifact(ctx context.Context, req *sessioncommandsv1.Focu
 // NoteArtifact appends artifact.created or artifact.changed for the participant of the access token
 // in ctx (dec-artifacts). The parts of the hub that write artifacts call it in-process after the
 // write, with the context of the caller. The participant must have joined the session. It is
-// idempotent by command_id like every command.
+// idempotent by command_id like every command. It also works after the end of the session, for a
+// participant who left too (dec-session-end-milestone).
 func (s *Service) NoteArtifact(ctx context.Context, sessionID, participantID, commandID string, created bool, path, version string) error {
 	typ := events.ArtifactChanged
 	if created {
@@ -686,6 +798,7 @@ func (s *Service) NoteArtifact(ctx context.Context, sessionID, participantID, co
 	}
 	_, err := s.run(ctx, command{
 		sessionID: sessionID, commandID: commandID, participantID: participantID, types: []string{typ},
+		afterEnd: func(*state) error { return nil },
 		build: func(*state, Caller) (*sessionstreamv1.Event, error) {
 			if created {
 				return &sessionstreamv1.Event{Payload: &sessionstreamv1.Event_ArtifactCreated{
@@ -699,8 +812,11 @@ func (s *Service) NoteArtifact(ctx context.Context, sessionID, participantID, co
 }
 
 // EndSession stores the confirmed minutes (if-minutes-api) and then appends session.ended
-// (rs-session-ends). session.ended carries the signed tree head of the log before it. After it, every new command fails with FailedPrecondition; a repeated
-// command_id still returns its stored event. Any participant can end the session for now: roles
+// (rs-session-ends). session.ended carries the signed tree head of the log before it. After it,
+// every new command fails with FailedPrecondition, except the release commands, notices about
+// artifacts and marks off the record (dec-session-end-milestone); a repeated command_id still
+// returns its stored event. EndSession also writes the deadline of the release into the staging
+// area (setDeadline) and answers with the release status. Any participant can end the session for now: roles
 // are open (#14).
 //
 // The confirmed minutes are the text of the last minutes.updated event: ending the session
@@ -718,6 +834,11 @@ func (s *Service) EndSession(ctx context.Context, req *sessioncommandsv1.EndSess
 			if err := s.storeMinutes(ctx, st, req); err != nil {
 				return nil, err
 			}
+			// The deadline of the release goes into the staging area once, now
+			// (concept-session-release).
+			if err := s.setDeadline(ctx, req.GetSessionId(), st); err != nil {
+				return nil, err
+			}
 			// The head of the log before session.ended (dec-merkle-log).
 			head := s.signedHead(req.GetSessionId(), st)
 			return &sessionstreamv1.Event{Payload: &sessionstreamv1.Event_SessionEnded{SessionEnded: &sessionstreamv1.SessionEnded{
@@ -727,7 +848,13 @@ func (s *Service) EndSession(ctx context.Context, req *sessioncommandsv1.EndSess
 	if err != nil {
 		return nil, err
 	}
-	return &sessioncommandsv1.EndSessionResponse{Result: res}, nil
+	// A session without humans is released at its end (concept-session-release).
+	s.releaseAtEnd(ctx, req.GetSessionId())
+	rs, err := s.releaseStatus(req.GetSessionId())
+	if err != nil {
+		return nil, err
+	}
+	return &sessioncommandsv1.EndSessionResponse{Result: res, Release: rs}, nil
 }
 
 // storeMinutes stores the last minutes of the session. The caller holds st.mu.
@@ -778,7 +905,7 @@ func (s *Service) Subscribe(ctx context.Context, req *sessionstreamv1.SubscribeR
 		st.mu.Unlock()
 		return err
 	}
-	last, ended := st.lastID, st.ended
+	last, ended, endedID := st.lastID, st.ended, st.endedID
 	// An open stream reads the log: the session stays in memory until the stream ends.
 	st.refs++
 	st.mu.Unlock()
@@ -786,7 +913,8 @@ func (s *Service) Subscribe(ctx context.Context, req *sessionstreamv1.SubscribeR
 	if cursor > last {
 		return connect.NewError(connect.CodeOutOfRange, "after_event_id is beyond the last event of the session")
 	}
-	if ended && cursor >= last {
+	if ended && cursor >= endedID {
+		// The stream ends with session.ended; the events after it reach no peer.
 		return nil
 	}
 	if err := stream.SendHeaders(); err != nil {
@@ -801,6 +929,13 @@ func (s *Service) Subscribe(ctx context.Context, req *sessionstreamv1.SubscribeR
 		evs, wait, err := s.store.Read(sid, cursor)
 		if err != nil {
 			return connect.NewError(connect.CodeInternal, "read session log: "+err.Error())
+		}
+		// The stream ends with session.ended; the events after it reach no peer.
+		for i, ev := range evs {
+			if ev.GetType() == events.SessionEnded {
+				evs = evs[:i+1]
+				break
+			}
 		}
 		evs, head, err := s.prepare(sid, evs)
 		if err != nil {
@@ -900,7 +1035,8 @@ func (s *Service) GetEvents(ctx context.Context, req *sessionstreamv1.GetEventsR
 // prepare replaces every utterance that is off the record by a placeholder with the same ID
 // and without its text (dec-off-the-record). The placeholder carries the leaf hash of the
 // original. The log itself keeps the original. prepare also returns the signed tree head over
-// the events up to the last one in evs if that is the last event of the session, else nil.
+// the events up to the last one in evs if that is the last event of the session or session.ended,
+// else nil.
 func (s *Service) prepare(sid string, evs []*sessionstreamv1.Event) ([]*sessionstreamv1.Event, *sessionstreamv1.SignedTreeHead, error) {
 	st, err := s.lock(sid)
 	if err != nil {
@@ -910,8 +1046,14 @@ func (s *Service) prepare(sid string, evs []*sessionstreamv1.Event) ([]*sessions
 	var head *sessionstreamv1.SignedTreeHead
 	// Commands append to the store and apply to the state under st.mu, so the state is at least
 	// as far as the events that were read before.
-	if n := len(evs); n > 0 && evs[n-1].GetId() == st.lastID {
-		head = s.signedHead(sid, st)
+	if n := len(evs); n > 0 {
+		switch last := evs[n-1].GetId(); {
+		case last == st.lastID:
+			head = s.signedHead(sid, st)
+		case st.ended && last == st.endedID:
+			// The last event of a stream, with events after it that reach no peer.
+			head = s.signedHeadAt(sid, st, int(last))
+		}
 	}
 	out := make([]*sessionstreamv1.Event, 0, len(evs))
 	for _, ev := range evs {

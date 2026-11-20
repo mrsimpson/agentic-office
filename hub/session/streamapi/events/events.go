@@ -21,6 +21,8 @@ const (
 	ParticipantPaused     = "participant.paused"
 	ParticipantResumed    = "participant.resumed"
 	SessionEnded          = "session.ended"
+	ReleaseObjected       = "release.objected"
+	SessionReleased       = "session.released"
 	SessionImported       = "session.imported"
 	ImportCompleted       = "import.completed"
 )
@@ -60,6 +62,10 @@ func TypeOf(ev *sessionstreamv1.Event) string {
 		return ParticipantResumed
 	case *sessionstreamv1.Event_SessionEnded:
 		return SessionEnded
+	case *sessionstreamv1.Event_ReleaseObjected:
+		return ReleaseObjected
+	case *sessionstreamv1.Event_SessionReleased:
+		return SessionReleased
 	case *sessionstreamv1.Event_SessionImported:
 		return SessionImported
 	case *sessionstreamv1.Event_ImportCompleted:
