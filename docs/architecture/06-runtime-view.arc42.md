@@ -412,7 +412,7 @@ sequenceDiagram
 
 A user asks for a link with the CLI. The identity part creates a code that works once and returns
 the link. The user opens it in a browser. The portal swaps the code for an access token of the
-key, keeps it in a cookie and shows the start page of the tenant that the link names. Every page
+key, keeps the token and shows the start page of the tenant that the link names. Every page
 then asks the interfaces of the hub with this token: for example the meeting session for the
 sessions that the user may see. A used, expired or unknown code gives an error page.
 
@@ -564,14 +564,14 @@ involves: bb-cli, bb-session-service, bb-replicator, bb-stage, bb-participant-cl
 
 ## Session ends, the minutes are stored
 
-The moderator ends the session. The agent that keeps the minutes writes the final version with
-`minutes.update`. The meeting session stores the confirmed minutes through the minutes interface.
-The records part writes them as one YAML file into the staging area of the session, and their stub
-into the artifact repository, and commits both before it answers (`dec-yaml-git-storage`,
-`concept-session-release`). It does not ask the meeting session back. Only then does the meeting
-session write `session.ended` to the log. If storing fails, the session does not end, and the
-moderator can repeat the command. The replicators stop. Afterwards every participant reads the
-stored minutes through the minutes interface and may change them until the release.
+The moderator ends the session. The agent that keeps the minutes writes their final version
+through the session commands. The meeting session stores the last version through the minutes
+interface. The records part writes the minutes into the staging area of the session and their stub
+into the artifact repository, and commits both before it answers (`concept-session-release`). Only
+then does the meeting session write the deadline of the release and log the end. If storing fails,
+the session does not end, and the moderator can repeat the command. The replicators stop.
+Afterwards every participant reads the stored minutes through the minutes interface and may change
+them until the release.
 
 ```arc42
 :::runtime-scenario
@@ -580,6 +580,152 @@ title: Session ends, the minutes are stored
 trigger: The moderator ends the session
 involves: bb-mcp, bb-cli, bb-session-service, bb-records, bb-archive, bb-replicator, bb-participant-client, bb-office-hub
 :::
+```
+
+## A participant writes an artifact during a session
+
+An agent records a decision in a running session and names the session. The records part asks the
+meeting session whether the agent took part and whether the session is released. The session is
+open, so the decision goes into the staging area of the session, and its stub into the artifact
+repository; the archive records the stub with its version (`concept-session-release`). The
+meeting session logs the new artifact. The readers of the session read the decision; every other
+member, and every clone, sees only the stub. A participant who did not take part is refused.
+
+```arc42
+:::runtime-scenario
+id: rs-write-in-session
+title: A participant writes an artifact during a session
+trigger: A participant writes a record that names a running session
+involves: bb-mcp, bb-records, bb-session-service, bb-archive, bb-participant-client, bb-office-hub
+:::
+```
+
+```arc42
+:::diagram
+id: seq-write-in-session
+notation: mermaid-sequence
+scenario: rs-write-in-session
+aliases: actor_agent=actor-agent, bb_mcp=bb-mcp, bb_records=bb-records, bb_session=bb-session-service, bb_archive=bb-archive
+:::
+```
+
+```mermaid
+sequenceDiagram
+    participant actor_agent as Agent
+    participant bb_mcp as MCP server
+    participant bb_records as Records
+    participant bb_session as Meeting session
+    participant bb_archive as Archive
+    actor_agent->>bb_mcp: record a decision for the session
+    bb_mcp->>bb_records: record decision (session, command ID)
+    bb_records->>bb_session: took part? released?
+    bb_session-->>bb_records: took part, open
+    bb_records->>bb_archive: write the decision into the area of the session
+    bb_records->>bb_archive: write the stub into the artifact repository
+    Note over bb_archive: the area records the stub with its version
+    bb_records->>bb_session: notice: new artifact
+    bb_records-->>bb_mcp: decision
+```
+
+## A human releases a session
+
+A session with humans has ended and waits for its release. A human who took part reads the staged
+artifacts in the portal and releases. The meeting session searches the staged files for
+word-for-word quotes of sentences off the record and finds one. It refuses the release without an
+event and names the places and a token (`if-session-commands`). The human reads the places and
+either corrects the file or confirms the quotes with the token. The meeting session searches again;
+with the same quotes, it logs the release, and the archive moves the area into the artifact
+repository in one commit with the human as its author (`concept-session-release`). An agent that
+tries to release is refused.
+
+```arc42
+:::runtime-scenario
+id: rs-human-releases
+title: A human releases a session
+trigger: A human who took part releases an ended session
+involves: bb-portal, bb-session-service, bb-archive, bb-office-hub
+:::
+```
+
+```arc42
+:::diagram
+id: seq-human-releases
+notation: mermaid-sequence
+scenario: rs-human-releases
+aliases: actor_human=actor-human, bb_portal=bb-portal, bb_session=bb-session-service, bb_archive=bb-archive
+:::
+```
+
+```mermaid
+sequenceDiagram
+    participant actor_human as Human participant
+    participant bb_portal as Portal
+    participant bb_session as Meeting session
+    participant bb_archive as Archive
+    actor_human->>bb_portal: release the session
+    bb_portal->>bb_session: release (command ID)
+    bb_session->>bb_archive: read the staged files
+    Note over bb_session: a staged file quotes a sentence off the record
+    bb_session-->>bb_portal: refused: the places and a token, no event
+    bb_portal-->>actor_human: the places of the quotes
+    actor_human->>bb_portal: release anyway
+    bb_portal->>bb_session: release with the token
+    bb_session->>bb_archive: read the staged files
+    Note over bb_session: the same quotes, so the token holds
+    bb_session->>bb_session: log the release
+    bb_session->>bb_archive: release the area, with the human as author
+    bb_archive-->>bb_session: release commit
+    bb_session-->>bb_portal: released
+```
+
+## The deadline passes, also after a restart
+
+The grace period of a session ends, or it ended while the hub was down; then the meeting session
+finds the deadline in the staging area at start. It searches the staged files for quotes off the
+record. With a quote, it holds the session, and only a human can release it. Without one, it logs
+the release and asks the archive to release the area, with the hub as the author. One path no
+longer holds its stub: after a crash, a participant pushed another file there. The archive keeps
+that file, releases the rest and reports the conflict. A release that a restart cut off is
+completed by the next call and never done twice (`if-archive-storage`). The readers of the session
+see the kept artifact as not released. A participant creates it again at a new path through the
+interface of its type and then discards the kept one; with the last kept artifact, the area goes
+(`concept-session-release`).
+
+```arc42
+:::runtime-scenario
+id: rs-release-at-deadline
+title: The deadline passes, also after a restart
+trigger: The grace period of a session ends, or the hub starts after it ended
+involves: bb-session-service, bb-archive, bb-documents, bb-office-hub
+:::
+```
+
+```arc42
+:::diagram
+id: seq-release-at-deadline
+notation: mermaid-sequence
+scenario: rs-release-at-deadline
+aliases: actor_human=actor-human, bb_session=bb-session-service, bb_archive=bb-archive, bb_documents=bb-documents
+:::
+```
+
+```mermaid
+sequenceDiagram
+    participant bb_session as Meeting session
+    participant bb_archive as Archive
+    participant bb_documents as Documents
+    participant actor_human as Human participant
+    Note over bb_session: at start, read the deadlines from the staging areas
+    bb_session->>bb_archive: read the staged files
+    Note over bb_session: no quote off the record
+    bb_session->>bb_session: log the release, without an actor
+    bb_session->>bb_archive: release the area, with the hub as author
+    Note over bb_archive: one path holds another file, not the recorded stub
+    bb_archive-->>bb_session: released, one conflict with its path
+    actor_human->>bb_documents: create the document again at a new path
+    actor_human->>bb_documents: discard the kept document
+    bb_documents->>bb_archive: discard the kept file
+    Note over bb_archive: the last kept file goes, and the area with it
 ```
 
 ## Agent creates a task, a human finishes it

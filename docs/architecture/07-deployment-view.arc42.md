@@ -77,7 +77,8 @@ hosts: bb-cli, bb-client-core, bb-replicator, bb-sync, bb-ears, bb-skills
 The computer or container in which the agent runs, for example Claude Code on a laptop or in a
 cloud session. It runs the MCP server, the CLI and the log replicator in the same file system as
 the agent. With the agent runner, the runner starts the agent harness as its child process on this
-node, and the harness starts the MCP server. A forwarding judge or a decision model that the
+node, and the harness starts the MCP server. The runner hands the harness the skills of the office
+on this node. A forwarding judge or a decision model that the
 user
 brings runs wherever the user puts it: as a command on this node, or behind an endpoint that the
 node can reach.
@@ -88,15 +89,14 @@ id: dn-agent-runtime
 title: Agent runtime
 type: container
 parent: env-mvp
-hosts: bb-mcp, bb-cli, bb-client-core, bb-replicator, bb-sync, bb-agent-runner
+hosts: bb-mcp, bb-cli, bb-client-core, bb-replicator, bb-sync, bb-agent-runner, bb-skills
 :::
 ```
 
 ## Office hub
 
 One server or container that runs the hub: the meeting session, the records, the tasks, the
-slides, the wiki, the stage, the portal and the archive. The wiki keeps its view of each tenant in
-memory only and builds it again from the archive at every start (`dec-wiki`). The archive stores sessions, decisions, minutes, notes, tasks
+slides, the wiki, the stage, the portal and the archive. The archive stores sessions, decisions, minutes, notes, tasks
 and slide decks in a local Git repository on this host (`dec-yaml-git-storage`); the push to a remote
 is mocked. The host needs the Git command line tool. The hub also serves the repository of every tenant over
 the Git protocol (`dec-artifact-sync`). It keeps the participants and their keys (identity)
