@@ -48,6 +48,11 @@
 //     stage shows the session without them.
 //   - After session.ended the status shows that the session has ended, and the stream sends "end"
 //     and closes. When the link expires, an open stream shows that and also sends "end".
+//   - The stage link may carry an address in the parameter "portal", chosen by the client that
+//     created it. If it is a path on this server (one slash at the start, no backslash, no
+//     control character), the header shows it as the plain link "Open in portal". Any other value
+//     shows no link. The link carries no token and sends no referrer. The stage knows nothing of
+//     the portal; the portal asks for its own sign-in.
 //   - No external assets, no frontend build. A Content-Security-Policy allows only the inline
 //     styles, the one inline script (by hash) and the event stream of the same origin.
 package stage

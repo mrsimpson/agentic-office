@@ -322,7 +322,11 @@ If you run join in a directory that "office sync init" set up, or in a worktree 
 replicator also keeps that clone up to date while it runs, like "office sync follow". Nothing
 is printed for it; a problem (hub away, commits of your own in main, no access) never stops the
 meeting and is written once to the output of the replicator. In any other directory join does
-nothing extra.`,
+nothing extra.
+
+Join also creates a read-only stage link (see "office help stage link") and prints it to stderr
+as "stage: <url>", so stdout stays the path of the log. With --json the join object has it as
+"stageUrl". If the link cannot be created, join still succeeds and says so on stderr.`,
 		Examples: []string{`LOG=$(office meeting join weekly)   # prints the path of the local log`,
 			"office meeting join weekly --mic --language english", "office meeting join weekly --foreground &"}},
 	{Name: "meeting log", Group: groupMeeting, Summary: "print the path of the local log",
@@ -478,7 +482,10 @@ and revoke keys there. Every page asks the hub with your rights.`,
 	{Name: "stage link", Group: groupStage, Summary: "create a read-only link to the stage of a session",
 		Usage: "stage link",
 		Details: `Prints https://<hub>/stage/<session>?token=... for one session. The link is read only and
-lives 24 hours (hub flag -stage-link-ttl). Open it in a browser and share that window in your
+lives 24 hours (hub flag -stage-link-ttl).
+The link also carries the address of the portal page of the session in your tenant (parameter
+"portal"); the stage shows it as "Open in portal". It has no credential: the portal asks you
+to sign in with "office portal link". Open it in a browser and share that window in your
 meeting tool. The stage belongs to the tenant of the user who creates the link.`,
 		Examples: []string{"office stage link --session weekly"}},
 	{Name: "slides render", Group: groupStage, Summary: "render a slide deck and print its ID",

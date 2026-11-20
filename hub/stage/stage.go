@@ -145,7 +145,7 @@ func (h *Handler) page(w http.ResponseWriter, r *http.Request, sid, token string
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	events := web.PathPrefix + url.PathEscape(sid) + "/events?" + url.Values{"token": {token}}.Encode()
 	_ = web.Page.Execute(w, map[string]any{"Session": sid, "Events": events,
-		"Regions": newView().renderAll(), "Script": template.JS(web.Script)})
+		"Portal": portalLink(r.URL.Query().Get("portal")), "Regions": newView().renderAll(), "Script": template.JS(web.Script)})
 }
 
 // coalesce is how long the stream waits for more events before it sends the changed regions.
@@ -309,4 +309,20 @@ func writeEvent(w io.Writer, name, data string) {
 	}
 	b.WriteString("\n")
 	_, _ = io.WriteString(w, b.String())
+}
+
+// portalLink returns the optional address of the portal that the stage link carries (parameter
+// portal), or "" if there is none or it is not safe to show. Only a path on this server is
+// shown: it starts with one slash and has no backslash and no control character. The stage
+// knows nothing else about it; the client that created the link chose it.
+func portalLink(p string) string {
+	if len(p) < 1 || len(p) > 512 || p[0] != '/' || strings.HasPrefix(p, "//") {
+		return ""
+	}
+	for _, r := range p {
+		if r == '\\' || r < 0x20 || r == 0x7f {
+			return ""
+		}
+	}
+	return p
 }

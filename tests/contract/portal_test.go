@@ -75,6 +75,11 @@ func TestPortalAdministration(t *testing.T) {
 	if res, body := fetch(t, anon, srv.URL+"/portal/admin/keys"); res.StatusCode != http.StatusUnauthorized || strings.Contains(body, "Ada") {
 		t.Fatalf("without a session: status %d, %q", res.StatusCode, body)
 	}
+	// The page of a tenant says which command signs in, with the tenant.
+	if res, body := fetch(t, anon, srv.URL+"/portal/t/acme/s/weekly"); res.StatusCode != http.StatusUnauthorized ||
+		!strings.Contains(body, "office portal link --tenant acme") {
+		t.Errorf("signed out on a tenant page: status %d, %q", res.StatusCode, body)
+	}
 	if res, _ := fetch(t, anon, srv.URL+"/portal/login?code=opl_unknown"); res.StatusCode != http.StatusUnauthorized {
 		t.Errorf("unknown code: status %d", res.StatusCode)
 	}

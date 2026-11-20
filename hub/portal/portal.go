@@ -7,6 +7,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"net/http"
+	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -158,6 +160,23 @@ func (h *Handler) fail(w http.ResponseWriter, status int, title, msg string) {
 
 const askForLink = "Ask for a new link with: office portal link"
 
+var plainName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+
+// askForLinkFor is askForLink for a page of a tenant: the command names the tenant, so that the
+// link opens the tenant.
+func askForLinkFor(path string) string {
+	rest, ok := strings.CutPrefix(path, web.TenantPrefix)
+	if !ok {
+		return askForLink
+	}
+	escaped, _, _ := strings.Cut(rest, "/")
+	// Only a plain name goes into the command, so that the hint is safe to paste into a shell.
+	if tenant, err := url.PathUnescape(escaped); err == nil && plainName.MatchString(tenant) {
+		return askForLink + " --tenant " + tenant
+	}
+	return askForLink
+}
+
 // login swaps the code of a portal link for a session. A code works once. It opens the tenant that
 // the link names, else the start page.
 func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
@@ -193,7 +212,7 @@ type backend struct {
 func (h *Handler) client(w http.ResponseWriter, r *http.Request) (*backend, bool) {
 	ck, err := r.Cookie(web.CookieName)
 	if err != nil || ck.Value == "" {
-		h.fail(w, http.StatusUnauthorized, "Not signed in", "Open a portal link to sign in. "+askForLink)
+		h.fail(w, http.StatusUnauthorized, "Not signed in", "Open a portal link to sign in. "+askForLinkFor(r.URL.Path))
 		return nil, false
 	}
 	cc := connect.NewClient(h.opts.Hub, auth.StaticToken(ck.Value))

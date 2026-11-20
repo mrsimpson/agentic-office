@@ -154,7 +154,7 @@ also when it fails. Agents can pipe it to jq.
 - An event has the same form as its line in the local log.
 - A session command prints {"event": {...}, "duplicate": false}.
 - "meeting join" prints {"sessionId", "participantId", "logPath", "replicatorPid", "event",
-  "duplicate"}.
+  "duplicate", "stageUrl"}.
 - On failure it prints {"error": {"code": "permission_denied", "message": "..."}}. The code is the
   Connect code of the hub (invalid_argument, not_found, failed_precondition, unimplemented, ...)
   or a code of the CLI: usage, no_key, no_session, error.
