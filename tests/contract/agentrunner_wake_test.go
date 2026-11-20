@@ -209,6 +209,8 @@ func TestAgentRunnerOffTheRecord(t *testing.T) {
 	mt := newMeetingWithRunner(t, nil)
 
 	mt.say(mt.ada, "The salary of Bob is 5000.")
+	// --last reads the local log of Ada, so wait until her replicator has written the sentence.
+	waitUtterance(t, mt.adaLog, "ada", "The salary of Bob is 5000.")
 	mt.ada.ok("utterance", "off-the-record", "--last", "--session", mt.sid)
 	mt.say(mt.ada, "Public sentence.")
 	mt.turnEnd(mt.ada)

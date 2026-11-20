@@ -4,3 +4,5 @@ third_party
 docs
 **/*.md
 !README.md
+# The skills that the office binary embeds.
+!skills/*/SKILL.md
