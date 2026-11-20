@@ -1413,7 +1413,9 @@ would share even more, and every sentence of it could have been off the record.
 The note and decision interfaces offer a change while a record is in the staging area. The parts
 that keep artifacts in memory follow the staging repository like the artifact repository
 (`if-archive-watch`), and the archive decides from the session of a write where it goes. The
-wiki ingests only released records (`dec-wiki`). A paraphrase of a sentence off the record can
+wiki ingests only released records (`dec-wiki`). Every member sees the name of a staged artifact
+and when its release is due, but not its content and not its session; an author who fears that a
+name says too much chooses a neutral one. A paraphrase of a sentence off the record can
 still pass the release; the grace period gives the speaker time to see it. The portal shows the
 release status of a session and offers the release and the objection, besides the administration
 of keys (`dec-web-portal`). An assistant that works with the key of a human counts as that human;

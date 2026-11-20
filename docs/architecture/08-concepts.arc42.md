@@ -415,11 +415,14 @@ The records are the sources of the wiki. Documents are its pages (`concept-wiki`
 | --- | --- | --- |
 | Session logs | the log of every session, with the original of sentences off the record | the participants, the importer and the tenant admins |
 | Staging area | what a session created that is not released yet | the readers of that session, and its stage |
-| Artifact repository | everything that is released | every member of the tenant, and every clone |
+| Artifact repository | everything that is released, and a stub for every staged artifact | every member of the tenant, and every clone |
 
 The staging area has the same layout as the artifact repository. A write through an interface that
 names a session that is not released goes to the staging area; every other write goes to the
-artifact repository. An artifact that is created outside a session is therefore released at once.
+artifact repository. For each staged artifact, the hub writes a stub with the same name into the
+artifact repository: it says only that the artifact waits for a release and when the release is
+due. The stub keeps the name free for the release and lets links to the artifact work. Only the hub
+changes a stub. An artifact that is created outside a session is therefore released at once.
 
 **The life of the artifacts of a session.**
 
@@ -434,7 +437,7 @@ artifact repository. An artifact that is created outside a session is therefore 
 4. Before a human releases, the hub shows where an artifact quotes a sentence off the record word
    for word. The human decides.
 5. At the release, everything in the staging area of the session moves into the artifact
-   repository in one commit. Its author is the human who released, or the hub when the grace
+   repository in one commit, and each artifact replaces its stub. Its author is the human who released, or the hub when the grace
    period ended. So the history says for good when and by whom each artifact was released. The
    release is also an event in the session log.
 6. Every member sees the artifacts, and the wiki can ingest them. A record no longer changes; other
