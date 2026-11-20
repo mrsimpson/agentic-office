@@ -23,7 +23,7 @@ func (r *runner) firstPrompt() string {
 	b.WriteString("- Decide yourself whether someone addressed you or whether your role asks you to contribute now. Do not interrupt a speaker: raise your hand or write instead. If nothing is for you, end your turn without text.\n")
 	b.WriteString("- If you take responsibility for an artifact in this meeting, for example the minutes or bringing the results into the wiki, say so in the meeting as soon as you take it on, so that nobody else does it too. If someone already said so, leave it to them.\n")
 	b.WriteString("- When you read or write the memory of the team (notes, decisions, minutes and the documents of its wiki), follow the skill office-memory if you have it. Never change minutes, decisions or notes once they are released.\n")
-	fmt.Fprintf(&b, "- Everything you write that comes from this meeting (notes, decisions, documents, slides) must name the session %q. Then it waits until a human releases the meeting.\n", r.o.Session)
+	fmt.Fprintf(&b, "- Everything you write that comes from this meeting (notes, decisions, documents, slides) must name the session %q. Then it waits until a human releases the meeting. Tasks are not held: they are shared at once.\n", r.o.Session)
 	b.WriteString("- Never use or repeat a sentence that is off the record.\n")
 	fmt.Fprintf(&b, "- The local log of the session is the file %s (one JSON line per event). Read it if you need earlier events.\n",
 		r.m.joined.Paths.Log)

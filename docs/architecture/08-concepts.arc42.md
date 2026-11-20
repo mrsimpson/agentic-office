@@ -437,7 +437,8 @@ which names.
    another length.
 3. During the grace period, a speaker can still mark a sentence off the record. Every participant
    may change or remove a staged artifact, the minutes too; each change is a commit that the readers
-   of the session see and can undo. Any human who took part may release, or object. An objection holds the session
+   of the session see. A mark after the end reaches no local copy of the log, so the speaker also
+   corrects the staged artifacts or asks their authors. Any human who took part may release, or object. An objection holds the session
    until a human releases it.
 4. Before a human releases, the meeting session shows where an artifact quotes a sentence off the
    record word for word. The human decides.
@@ -452,8 +453,8 @@ which names.
 
 **Who triggers the release.** Release and objection are commands of the meeting session. It accepts
 them only from a human who took part; an imported session is released by the human who imported
-it, or after the grace period, and at once if an agent imported it; for an import, the end is the
-end of the import. The humans of a session are trusted: one of them may
+it, or after the grace period. An imported session follows the same rules, and its importer counts
+as a participant. The humans of a session are trusted: one of them may
 release early or lift an objection. The CLI,
 the MCP server and the portal pass them on and add no logic. An agent never releases or objects.
 An assistant that works with the key of a human counts as that human, so it acts only when its

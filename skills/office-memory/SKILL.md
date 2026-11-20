@@ -14,8 +14,8 @@ run meetings, use the skill office-assistant.
 
 ## Three kinds of artifacts
 
-- **Sources** are memories of what happened: minutes, decisions and notes. They are written once
-  and **never change**. To correct one, write a new note that names the old one.
+- **Sources** are memories of what happened: minutes, decisions and notes. Once released, they
+  **never change**. To correct one, write a new note that names the old one.
 - **Pages** are documents in Markdown. Humans and agents write and change them. They hold what
   the team knows now, for example everything about one customer, project or topic.
 - **This skill** holds the rules. Team-specific rules come from your role and from the pages you
@@ -38,7 +38,10 @@ run meetings, use the skill office-assistant.
 ## Record a source
 
 When something comes from a meeting, always name the meeting (`session`). Then it waits until a
-human releases the meeting, and only its participants see it until then.
+human releases the meeting, and only its participants see it until then. Until the release, you may
+correct or remove what you wrote; do so at once when a sentence goes off the record. Do not push
+files from a meeting with Git: a push skips the release. Tasks are never held, so keep sentences
+from the meeting out of them.
 
 - **Note** (`note_add`): one observation or fact, complete on its own, so that a reader
   understands it without the meeting. Add a note when something is worth remembering and no
