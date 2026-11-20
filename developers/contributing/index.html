@@ -112,6 +112,11 @@ Link it to the issue you were working on. Then continue with other work if you c
 have, do not wait: mock the external API or service, open an issue with the label <code dir="auto">mocked</code>
 that says what is mocked and what the real thing needs, and continue.</li>
 <li>Install tools only in user space, never with root.</li>
+<li>To try a change on the shared hub <code dir="auto">https://office.no-panic.org</code> in a cloud session, use
+<code dir="auto">office-web</code> (installed by the start hook, see the README). It is <code dir="auto">bin/office</code> with the key of
+the user <code dir="auto">claude-web</code> and the tenant <code dir="auto">claude-web-office</code>, where that user is a tenant admin.
+Write only there; read other tenants with <code dir="auto">--tenant</code>. Plain <code dir="auto">office</code> and the tests never reach
+the shared hub.</li>
 <li>We are before go-live: no backward compatibility. Do not keep old names, files, flags, formats,
 forwarding packages or migration notes. When you change something, change every user of it and
 remove the old form.</li>
