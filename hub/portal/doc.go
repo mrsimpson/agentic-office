@@ -37,8 +37,9 @@
 //     has a form that releases and, while the session waits, one that objects. They post to
 //     .../s/<session>/release and .../object and call ReleaseSession and ObjectToRelease; each
 //     form carries a command ID, so a form sent twice has one effect. When the hub refuses a
-//     release because staged files quote sentences off the record, the page lists the places and
-//     a form "Release anyway" that carries the quote token. A member who may not read the session
+//     release because staged files quote sentences off the record, the page reads the places from
+//     the error detail and shows a form "Release anyway" that sends the refused command again
+//     with the quote token. A member who may not read the session
 //     gets 404 from the session stream; for a released session the page then shows only the
 //     release: who released, the co-authors of the release commit and the released artifacts.
 //   - The start page lists the tenants of the user. A user with one tenant and no administration

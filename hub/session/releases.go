@@ -437,17 +437,10 @@ func humanOnly(c Caller) error {
 	return nil
 }
 
-// quotesRefused is the refusal of a release because staged files quote sentences off the record.
-type quotesRefused struct {
-	quotes []*sessioncommandsv1.Quote
-	token  string
-}
-
-func (e *quotesRefused) Error() string { return "staged files quote sentences off the record" }
-
 // ReleaseSession releases a session for a human who took part (see commands.proto). While a
-// staged file quotes a sentence off the record, it refuses with the places and a quote token,
-// unless the request accepts exactly that token.
+// staged file quotes a sentence off the record, it refuses with failed_precondition and the
+// places and a quote token as the error detail, unless the request accepts exactly that token.
+// A refusal appends no event, so the same command with the token releases.
 func (s *Service) ReleaseSession(ctx context.Context, req *sessioncommandsv1.ReleaseSessionRequest) (*sessioncommandsv1.ReleaseSessionResponse, error) {
 	var quotes []*sessioncommandsv1.Quote
 	res, err := s.run(ctx, command{
@@ -468,16 +461,12 @@ func (s *Service) ReleaseSession(ctx context.Context, req *sessioncommandsv1.Rel
 				return nil, connect.NewError(connect.CodeUnavailable, "search the staged files for quotes: "+err.Error())
 			}
 			if len(q) > 0 && !hmac.Equal([]byte(req.GetAcceptQuotes()), []byte(token)) {
-				return nil, &quotesRefused{quotes: q, token: token}
+				return nil, sessioncommandsv1.RefusalError(&sessioncommandsv1.QuoteRefusal{Quotes: q, QuoteToken: token})
 			}
 			quotes = q
 			return &sessionstreamv1.Event{Payload: &sessionstreamv1.Event_SessionReleased{SessionReleased: &sessionstreamv1.SessionReleased{}}}, nil
 		},
 	}, false)
-	var refused *quotesRefused
-	if errors.As(err, &refused) {
-		return &sessioncommandsv1.ReleaseSessionResponse{Quotes: refused.quotes, QuoteToken: refused.token}, nil
-	}
 	if err != nil {
 		return nil, err
 	}

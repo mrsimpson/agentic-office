@@ -745,8 +745,9 @@ sentence, never the sentence), a token, and exits with 1. Correct the files and 
 release anyway with --accept-quotes TOKEN. The hub searches again and releases only if it finds
 exactly the same quotes; otherwise it refuses with a new token. The hub changes no content.
 
---json prints {"event", "duplicate", "quotes": [{"path", "line", "utteranceEventId"}]}, or for a
-refusal {"refused": true, "quotes", "quoteToken"}.`,
+--json prints {"event", "duplicate", "quotes": [{"path", "line", "utteranceEventId"}]}, with the
+quotes that the token accepted. A refusal because of quotes is an error: {"error": {"code":
+"failed_precondition", "message", "quotes", "quoteToken"}}.`,
 		Examples: []string{"office session release weekly", "office session release weekly --accept-quotes 3f9c…", "office session release --json"}},
 	{Name: "session hold", Group: groupRecords, Summary: "object to the release of an ended session",
 		Usage: "session hold [<session>]",

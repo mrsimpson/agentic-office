@@ -50,21 +50,30 @@ func (m *meeting) releaseBy(pid string) (*sessioncommandsv1.ReleaseSessionRespon
 
 // releaseWith releases the session as pid and accepts the quotes of token.
 func (m *meeting) releaseWith(pid, token string) (*sessioncommandsv1.ReleaseSessionResponse, error) {
-	return m.s(pid).ReleaseSession(m.ctx(), &sessioncommandsv1.ReleaseSessionRequest{SessionId: m.sid,
-		CommandId: coreapi.NewCommandID(), ParticipantId: pid, AcceptQuotes: token})
+	return m.releaseCmd(pid, coreapi.NewCommandID(), token)
 }
 
-// refusedFor checks that a release was refused because of quotes, at the places want, and returns
-// its quote token.
+// releaseCmd releases the session as pid with the command ID cmd and accepts the quotes of token.
+func (m *meeting) releaseCmd(pid, cmd, token string) (*sessioncommandsv1.ReleaseSessionResponse, error) {
+	return m.s(pid).ReleaseSession(m.ctx(), &sessioncommandsv1.ReleaseSessionRequest{SessionId: m.sid,
+		CommandId: cmd, ParticipantId: pid, AcceptQuotes: token})
+}
+
+// refusedFor checks that a release was refused because of quotes: an error with the code
+// failed_precondition and a QuoteRefusal detail with the places want. It returns the quote token.
 func refusedFor(t *testing.T, rel *sessioncommandsv1.ReleaseSessionResponse, err error, want ...*sessioncommandsv1.Quote) string {
 	t.Helper()
-	if err != nil {
-		t.Fatalf("release: %v", err)
+	if err == nil {
+		t.Fatalf("release %v, want a refusal because of quotes", rel)
 	}
-	if rel.GetResult() != nil || rel.GetQuoteToken() == "" {
-		t.Fatalf("release %v, want a refusal with a quote token", rel)
+	if connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("release: %v, want the code failed_precondition", err)
 	}
-	got := rel.GetQuotes()
+	r := sessioncommandsv1.RefusalOf(err)
+	if r.GetQuoteToken() == "" {
+		t.Fatalf("release: %v, want a QuoteRefusal detail with a quote token", err)
+	}
+	got := r.GetQuotes()
 	if len(got) != len(want) {
 		t.Fatalf("quotes %v, want %v", got, want)
 	}
@@ -73,7 +82,7 @@ func refusedFor(t *testing.T, rel *sessioncommandsv1.ReleaseSessionResponse, err
 			t.Fatalf("quotes %v, want %v", got, want)
 		}
 	}
-	return rel.GetQuoteToken()
+	return r.GetQuoteToken()
 }
 
 func (m *meeting) objectBy(pid string) (*sessioncommandsv1.ObjectToReleaseResponse, error) {
@@ -237,21 +246,25 @@ func TestReleaseByAHuman(t *testing.T) {
 	}
 
 	want := &sessioncommandsv1.Quote{Path: "documents/notes.md", Line: 4, UtteranceEventId: secret.GetId()}
-	rel, err := m.releaseBy(ada)
+	cmd := coreapi.NewCommandID()
+	rel, err := m.releaseCmd(ada, cmd, "")
 	token := refusedFor(t, rel, err, want)
 	if m.released(ada) != nil || m.releasedDoc("documents/notes.md") {
 		t.Fatal("a release refused because of quotes released the session")
 	}
-	if b, _ := protojson.Marshal(rel); strings.Contains(strings.ToLower(string(b)), "leave the company") {
-		t.Fatalf("the refusal names the sentence: %s", b)
+	b, _ := protojson.Marshal(sessioncommandsv1.RefusalOf(err))
+	if strings.Contains(strings.ToLower(err.Error()+string(b)), "leave the company") {
+		t.Fatalf("the refusal names the sentence: %v %s", err, b)
 	}
-	// Another token does not release.
-	rel, err = m.releaseWith(ada, "not-the-token")
+	// Another token does not release, also with the same command ID: the hub did not remember
+	// the refused command.
+	rel, err = m.releaseCmd(ada, cmd, "not-the-token")
 	if again := refusedFor(t, rel, err, want); again != token {
 		t.Errorf("a second search gave the token %q, want %q", again, token)
 	}
 
-	rel, err = m.releaseWith(ada, token)
+	// The same command with the token releases (dec-idempotent-commands).
+	rel, err = m.releaseCmd(ada, cmd, token)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,6 +274,11 @@ func TestReleaseByAHuman(t *testing.T) {
 	}
 	if got := rel.GetQuotes(); len(got) != 1 || got[0].GetPath() != want.Path || got[0].GetLine() != want.Line {
 		t.Fatalf("accepted quotes %v, want %v", got, want)
+	}
+	// Now the command is done: sent again, it returns the stored event.
+	if again, err := m.releaseCmd(ada, cmd, token); err != nil || !again.GetResult().GetDuplicate() ||
+		again.GetResult().GetEvent().GetId() != ev.GetId() {
+		t.Fatalf("the release sent again: %v, %v; want the stored event", again, err)
 	}
 	var released int
 	for _, e := range m.logOf(ada) {
@@ -551,7 +569,8 @@ func TestReleaseQuoteTokenGoesStale(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.end(ada)
-	rel, err := m.releaseBy(ada)
+	cmd := coreapi.NewCommandID()
+	rel, err := m.releaseCmd(ada, cmd, "")
 	first := refusedFor(t, rel, err, &sessioncommandsv1.Quote{Path: "documents/plan.md", Line: 3, UtteranceEventId: secret.GetId()})
 
 	// The author moves the sentence one line down.
@@ -560,7 +579,7 @@ func TestReleaseQuoteTokenGoesStale(t *testing.T) {
 		BaseVersion: res.GetDocument().GetVersion()}); err != nil {
 		t.Fatal(err)
 	}
-	rel, err = m.releaseWith(ada, first)
+	rel, err = m.releaseCmd(ada, cmd, first)
 	second := refusedFor(t, rel, err, &sessioncommandsv1.Quote{Path: "documents/plan.md", Line: 4, UtteranceEventId: secret.GetId()})
 	if second == first {
 		t.Fatal("the token did not change with the quotes")
@@ -568,7 +587,7 @@ func TestReleaseQuoteTokenGoesStale(t *testing.T) {
 	if m.released(ada) != nil {
 		t.Fatal("an old token released the session")
 	}
-	if rel, err := m.releaseWith(ada, second); err != nil || rel.GetResult().GetEvent().GetType() != events.SessionReleased {
+	if rel, err := m.releaseCmd(ada, cmd, second); err != nil || rel.GetResult().GetEvent().GetType() != events.SessionReleased {
 		t.Fatalf("release with the new token: %v, %v", rel, err)
 	}
 	if !m.releasedDoc("documents/plan.md") {

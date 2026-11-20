@@ -4,6 +4,7 @@ package contract
 // concept-session-release). They pass the commands on to the hub and add no logic.
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -61,8 +62,9 @@ func TestReleaseWithTheCLI(t *testing.T) {
 }
 
 // "session release" prints the places where staged files quote a sentence off the record and a
-// token, and exits with 1; with --accept-quotes and that token it releases. The MCP tool
-// session_release takes the token as acceptQuotes.
+// token, and exits with 1; with --accept-quotes and that token it releases. With --json, the
+// refusal is an error object with the code failed_precondition, the places and the token. The MCP
+// tool session_release returns the same error object and takes the token as acceptQuotes.
 func TestReleaseQuotesWithTheCLI(t *testing.T) {
 	m := newMachine(t)
 	ada := m.user("ada", "Ada", "human")
@@ -79,13 +81,36 @@ func TestReleaseQuotesWithTheCLI(t *testing.T) {
 	if code != 1 || !strings.Contains(out, "documents/news.md:3") || !strings.Contains(out, "--accept-quotes ") || strings.Contains(out, sentence) {
 		t.Fatalf("session release with quotes: exit %d, stdout %q, stderr %q", code, out, errOut)
 	}
+	refusal := func(what string, v map[string]any) string {
+		t.Helper()
+		e, _ := v["error"].(map[string]any)
+		token, _ := e["quoteToken"].(string)
+		if e["code"] != "failed_precondition" || token == "" || !strings.Contains(out, token) {
+			t.Fatalf("%s: %v, want the error failed_precondition with the token of %q", what, v, out)
+		}
+		if q, _ := e["quotes"].([]any); len(q) != 1 || q[0].(map[string]any)["utteranceEventId"] != float64(ev.GetId()) ||
+			q[0].(map[string]any)["path"] != "documents/news.md" {
+			t.Errorf("%s: quotes %v, want the sentence of event %d", what, e["quotes"], ev.GetId())
+		}
+		if b, _ := json.Marshal(v); strings.Contains(string(b), sentence) {
+			t.Errorf("%s names the sentence: %s", what, b)
+		}
+		return token
+	}
 	v, code := ada.call("session", "release", sid)
-	token, _ := v["quoteToken"].(string)
-	if code != 1 || v["refused"] != true || token == "" || !strings.Contains(out, token) {
+	if code != 1 || v["event"] != nil {
 		t.Fatalf("session release --json with quotes: exit %d, %v", code, v)
 	}
-	if q, _ := v["quotes"].([]any); len(q) != 1 || q[0].(map[string]any)["utteranceEventId"] != float64(ev.GetId()) {
-		t.Errorf("quotes %v, want the sentence of event %d", v["quotes"], ev.GetId())
+	token := refusal("session release --json", v)
+
+	// The MCP tool returns an error with the places and the token.
+	h := startMCP(t, ada)
+	r, isErr := h.call("session_release", map[string]any{"session": sid})
+	if !isErr {
+		t.Fatalf("session_release with quotes: %v, want an error", r)
+	}
+	if got := refusal("session_release", r); got != token {
+		t.Errorf("session_release gave the token %q, want %q", got, token)
 	}
 
 	// An agent cannot release, with or without the token.
@@ -96,5 +121,8 @@ func TestReleaseQuotesWithTheCLI(t *testing.T) {
 	rel := ada.ok("session", "release", sid, "--accept-quotes", token)
 	if _, ev := eventOf(t, rel); ev.GetType() != "session.released" {
 		t.Fatalf("session release --accept-quotes: %v", rel)
+	}
+	if q, _ := rel["quotes"].([]any); len(q) != 1 {
+		t.Errorf("accepted quotes %v, want one", rel["quotes"])
 	}
 }

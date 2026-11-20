@@ -38,7 +38,8 @@ type releaseView struct {
 	ReleaseCommand, ObjectCommand string
 	Commit                        *commitView
 	Artifacts                     []artifactView
-	// Quotes and QuoteToken are set when the hub refused a release because of quotes.
+	// Quotes and QuoteToken are set when the hub refused a release because of quotes. The form
+	// "Release anyway" sends the refused command again, AnywayCommand, with the token.
 	Quotes        []*sessioncommandsv1.Quote
 	QuoteToken    string
 	AnywayCommand string
@@ -61,7 +62,8 @@ type artifactView struct {
 type pageExtra struct {
 	status        int
 	notice, error string
-	refusal       *sessioncommandsv1.ReleaseSessionResponse
+	refusal       *sessioncommandsv1.QuoteRefusal
+	refusedCmd    string // the command ID of the refused release
 }
 
 // release reads the release of a session and its artifacts with the client of the page.
@@ -149,14 +151,14 @@ func (h *Handler) sessionAction(w http.ResponseWriter, r *http.Request, escapedT
 	done := ""
 	switch action {
 	case "release":
-		res, err := cmds.ReleaseSession(ctx, &sessioncommandsv1.ReleaseSessionRequest{SessionId: sid, CommandId: cmd,
+		_, err := cmds.ReleaseSession(ctx, &sessioncommandsv1.ReleaseSessionRequest{SessionId: sid, CommandId: cmd,
 			ParticipantId: c.me.ParticipantID, AcceptQuotes: r.PostForm.Get("accept_quotes")})
-		if err != nil {
-			h.actionFailed(w, r, c, tenant, sid, err)
+		if q := sessioncommandsv1.RefusalOf(err); q != nil {
+			h.sessionPage(w, r, c, tenant, sid, pageExtra{status: http.StatusConflict, refusal: q, refusedCmd: cmd})
 			return
 		}
-		if res.GetResult() == nil {
-			h.sessionPage(w, r, c, tenant, sid, pageExtra{status: http.StatusConflict, refusal: res})
+		if err != nil {
+			h.actionFailed(w, r, c, tenant, sid, err)
 			return
 		}
 		done = "released"

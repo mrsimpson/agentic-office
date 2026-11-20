@@ -32,7 +32,7 @@ func tool[In any](srv *sdk.Server, s *Server, t *sdk.Tool, f func(ctx context.Co
 				return okResult(v), nil, nil
 			}
 		}
-		return errorResult(errorCode(err), err.Error()), nil, nil
+		return errorResult(errorCode(err), err.Error(), coreapi.ErrorDetailJSON(err)), nil, nil
 	})
 }
 
