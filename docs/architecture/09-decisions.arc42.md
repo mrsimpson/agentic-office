@@ -1374,6 +1374,11 @@ would share even more, and every sentence of it could have been off the record.
   session see it there, also the stage of that session; no participant can clone it. Until the
   release, authors may correct what they wrote, so a sentence off the record can still be taken
   out.
+- **A stub reserves the name.** When a session creates an artifact in the staging area, the hub
+  writes a stub under the same name into the artifact repository. The stub holds only that the
+  artifact waits for a release and when the release is due. So no push and no other writer can take
+  the name, a link to the artifact leads somewhere, and the wiki can list it as not yet released.
+  Only the hub writes, changes and removes a stub; a push that changes one is refused.
 - **What is held.** The minutes, notes and decisions of a session, and the slides and documents
   that it creates. A change that a session makes to an artifact that is already released is not
   held.
@@ -1393,7 +1398,8 @@ would share even more, and every sentence of it could have been off the record.
   artifact quotes a sentence off the record word for word. The human decides; the hub changes no
   content.
 - **The release is one commit.** The archive moves everything from the staging area of the session
-  into the tenant repository in one commit, without reading the content. The author of the commit
+  into the tenant repository in one commit, without reading the content: each artifact replaces its
+  stub, and the stub of an artifact that was removed before the release goes away. The author of the commit
   is the human who released, or the hub when the grace period ended; its time is the time of the
   release. Because history is never rewritten, when and by whom an artifact was released never
   changes. Afterwards a record stays as it is, and other artifacts change like any other.
@@ -1428,6 +1434,8 @@ be written without naming its session. The memory skill tells agents to avoid al
   the stage could not show a pending artifact.
 - The time and the person of the release written into each file: the release commit already holds
   both, and history is never rewritten.
+- No stub, and a check of each push against the staging area: a link to a staged artifact would
+  lead nowhere, and a name could still be taken between the check and the release.
 - Replacing quotes off the record without asking: a short sentence such as "Yes." would change
   every artifact that contains it.
 - A release by agents: the release is the moment a human checks what is shared.
@@ -1444,7 +1452,6 @@ OPEN:
 - Tenant admins as a fallback when no human of a session can release any more, a quorum of the
   humans, and confidential sessions (#194).
 - Starting the agent that claimed the ingest when the release happens (#195).
-- A push that creates a file under a name that the staging area already uses.
 - Changes to the accepted decisions `dec-artifacts`, `dec-artifact-sync`, `dec-web-portal`,
   `dec-off-the-record`, `dec-session-end-milestone` and to `concept-multi-tenancy` once this
   decision is accepted.
