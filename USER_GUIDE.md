@@ -639,9 +639,14 @@ reviewed:                              # reviews, each with exactly id and date
 
 A document without front matter is fine too; its first heading is its title.
 
-**Links that lead nowhere.** Link other files with plain relative Markdown links, for example
-`[minutes](../minutes/000012.yaml)` from `documents/acme.md`. When a link of a document leads to no
-file, the hub writes the document anyway and gives a hint. `office document create` and
+**Links that lead nowhere.** Link other files with plain relative Markdown links. For example,
+`documents/acme.md` links the minutes `minutes/000012.yaml` like this:
+
+```markdown
+[minutes](../minutes/000012.yaml)
+```
+
+When a link of a document leads to no file, the hub writes the document anyway and gives a hint. `office document create` and
 `office document change` print each hint on stderr; `--json` puts them into the field `hints`:
 
 ```text
