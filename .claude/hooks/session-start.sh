@@ -48,8 +48,12 @@ if ! make build >&2; then
 fi
 
 # Access to the shared office hub. The key comes from the environment of the cloud session.
-# The OFFICE_* variables are not exported for the whole session, because the tests take their
-# environment from the session. The wrapper office-web sets them for one call only.
+# Plain office and the tests never reach the shared hub: the session unsets the OFFICE_*
+# variables, also when the environment sets them, because the tests take their environment from
+# the session. The wrapper office-web sets them for one call only.
+if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
+  echo "unset OFFICE_HUB OFFICE_TENANT OFFICE_KEY OFFICE_RUNTIME_DIR" >> "$CLAUDE_ENV_FILE"
+fi
 if [ -n "${CLAUDE_WEB_OFFICE_ADMIN_KEY:-}" ]; then
   dir="$HOME/.config/agentic-office-web"
   mkdir -p "$dir" "$HOME/.local/bin"
@@ -58,7 +62,7 @@ if [ -n "${CLAUDE_WEB_OFFICE_ADMIN_KEY:-}" ]; then
 #!/bin/sh
 # office with the shared hub. Override the tenant with --tenant or OFFICE_WEB_TENANT.
 exec env OFFICE_HUB="\${OFFICE_WEB_HUB:-https://office.no-panic.org}" \\
-  OFFICE_TENANT="\${OFFICE_WEB_TENANT:-test}" \\
+  OFFICE_TENANT="\${OFFICE_WEB_TENANT:-claude-web-office}" \\
   OFFICE_KEY="$dir/key.pem" \\
   OFFICE_RUNTIME_DIR="$dir/run" \\
   "$PWD/bin/office" "\$@"
