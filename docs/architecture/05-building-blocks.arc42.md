@@ -161,8 +161,9 @@ in between leads to a new refusal with a new token.
 
 The interface also tells who may read a session its release: the status and deadline, the staged
 files, whether the caller may release or object now, and, once released, the release commit with
-the human who released and the authors of the artifacts. Every other member of the tenant gets
-only the release of a released session.
+the human who released and the authors of the artifacts, and the staged files that the release
+did not release because their path is taken. Every other member of the tenant gets only the
+release commit of a released session.
 
 The same interface lets everyone who may read a session check its log (`dec-merkle-log`): it hands
 out signed tree heads, proofs and the public key of the hub. It owns no log types. The events, the tree
