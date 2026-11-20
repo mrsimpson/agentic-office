@@ -90,7 +90,7 @@ func (r *runner) finalPrompt(bt batch) string {
 		r.writeBatch(&b, bt)
 		b.WriteString("\n")
 	}
-	b.WriteString("If your role has work for the end of the meeting, for example the minutes, decisions or tasks, do it now. Do not speak in the meeting any more: a new utterance would open the session again. Then end your turn. This is my last message; I stop after it.")
+	b.WriteString("If your role has work for the end of the meeting, for example the minutes, decisions or tasks, do it now. Do not speak in the meeting any more: it has ended and takes no new utterances. Then end your turn. This is my last message; I stop after it.")
 	return b.String()
 }
 

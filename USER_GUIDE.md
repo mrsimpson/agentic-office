@@ -1099,8 +1099,8 @@ nobody in the meeting.
   ended, gives the task for that (`--topic-task`; the default is to update the minutes and record
   the decisions and tasks of the block, if the role asks for it).
 - After the meeting ended, the last prompt carries what is left and asks the agent to finish the
-  work of its role, for example the minutes, decisions or tasks, **without speaking**: a new
-  sentence would open the session again.
+  work of its role, for example the minutes, decisions or tasks, **without speaking**: the
+  ended session takes no new sentences.
 
 ### Bring a decision model
 

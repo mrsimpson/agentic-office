@@ -1301,7 +1301,7 @@ keeps its own interface for writing (`dec-records-per-type`).
 - **The history of the archive is the log of the wiki.** The hub writes no index file and no log
   file.
 
-**Consequences:** Notes are Markdown; `dec-yaml-git-storage` needs to say so once this decision is
+**Consequences:** Notes are Markdown, which `dec-yaml-git-storage` must say once this decision is
 accepted. The note contract stays, and the note schema gains tags. Documents
 gain an optional schema for their front matter, owned by the documents part. Every part that owns a
 type gains a description of its files next to its check. Apart from the release, which gives time and shows word-for-word quotes
@@ -1375,18 +1375,23 @@ would share even more, and every sentence of it could have been off the record.
   out. New minutes replace the staged minutes.
 - **The writer names the session.** A write that comes from a session names it. Only a participant
   of that session may name it; the part that owns the type checks this with the meeting session.
-  The archive keeps a staging area for each session from its start until its release and writes
-  there while the area exists. A write that names a session that is already released goes to the
-  artifact repository at once. The agent runner tells its agent to name the session for everything
+  The meeting session knows whether a session is released, and that status decides: a write goes
+  to the staging area of its session if the artifact is new or was staged by the same session, and
+  to the artifact repository if the session is released. A change that names another session, or
+  no session, to an artifact that waits for a release is refused, and so is a write when the status
+  and the staging area disagree. The staging repository keeps one area for each session that is
+  not released. The agent runner tells its agent to name the session for everything
   that comes from the meeting.
 - **A stub reserves the name.** When a session creates an artifact in the staging area, a stub
   under the same name goes into the artifact repository. Its content is the same for every stub: the
   artifact waits for a release. It names neither the session nor a time, and its author is the hub.
   The part that owns the type writes, checks and describes the stub of its type, as a second form
-  of its schema. So no push and no other writer can take the name, and a link to the artifact leads
-  somewhere. A push that changes a stub is refused.
+  of its schema; the commit that writes a stub says nothing about the artifact either. So no push
+  and no other writer can take the name, and a link to the artifact leads somewhere. No interface
+  and no push may change a stub.
 - **What is held.** The minutes, notes and decisions of a session, and the slides and documents
-  that it creates. A change that a session makes to an artifact that is already released is not
+  that it creates. A session that stages nothing still has a release status, so writes that come
+  late are held too. A change that a session makes to an artifact that is already released is not
   held.
 - **A human participant releases.** When the session ends, a grace period starts: 24 hours unless
   the tenant sets another length. Any one human who took part may release, or object; an objection
@@ -1410,33 +1415,33 @@ would share even more, and every sentence of it could have been off the record.
   is the human who released, or the hub when the grace period ended; its time is the time of the
   release; it names the authors of the artifacts as co-authors, and the portal shows them. Because
   history is never rewritten, when and by whom an artifact was released never changes. Afterwards a record stays as it is, and other artifacts change like any other.
-- **The release survives a restart.** The stub is written before the staged artifact, and the
-  commit in the artifact repository is the release itself; cleaning up the staging area and the
-  event in the session log follow it and are repaired at start if they are missing. The staging
-  area records the deadline of each held session, set once when the session ends. A deadline that
-  passed while the hub was down is released at start. The meeting session rebuilds its timers from it at start, and a
-  release that was cut off is completed, never done twice. Each change of the release status is an
-  event in the session log.
+- **The release survives a restart.** The staging area records the name of a staged artifact
+  before its stub is written, and the deadline of each session, set once when the session ends. A
+  release first closes the area for writes, then commits, then cleans up; each step is recorded, so
+  a release that a restart cut off is completed, never done twice, and no write is acknowledged and
+  then lost. A deadline that passed while the hub was down is released at start. Each change of the
+  release status is an event in the session log, which an ended session still takes without
+  starting again.
 - **A session is never opened again.** A later meeting on the same topic is a new session.
 
 **Consequences:** Every member sees what a session created from the release on, not from its end.
 The note and decision interfaces offer a change while a record is in the staging area. The parts
 that keep artifacts in memory follow the staging repository like the artifact repository
-(`if-archive-watch`), and the archive decides from the session of a write where it goes. The
-wiki ingests only released records (`dec-wiki`). Every member sees the name of a staged artifact
-and when its release is due, but not its content and not its session; an author who fears that a
-name says too much chooses a neutral one. A paraphrase of a sentence off the record can
+(`if-archive-watch`). The wiki ingests only released records (`dec-wiki`). An author who fears
+that a name says too much chooses a neutral one. A paraphrase of a sentence off the record can
 still pass the release; the grace period gives the speaker time to see it, unless a human releases
 early. Every member sees in the artifact repository that a session stages artifacts, how many and
-under which names, but not their content, their session or their due time; the portal shows the due
+under which names, and when a session writes, but not their content, their session or their due
+time; the portal shows the due
 time to the readers of the session. The portal shows the
 release status of a session and offers the release and the objection, besides the administration
 of keys (`dec-web-portal`). An assistant that works with the key of a human counts as that human;
 its instructions must say that it releases or objects only when its human tells it to.
 
 The hold has gaps that only the people and agents who write can close: a session may change an
-artifact that is already released, a participant may push a file during a session, and a note may
-be written without naming its session. The memory skill tells agents to avoid all three
+artifact that is already released, a participant may push a file during a session, a record may be
+written without naming its session, a task is not held, and what agents write after a release at
+the end of a session is published at once. The memory skill tells agents to avoid all three
 (`risk-retraction-leak`).
 
 **Rejected:**
@@ -1456,23 +1461,22 @@ be written without naming its session. The memory skill tells agents to avoid al
 - A release by agents: the release is the moment a human checks what is shared.
 - Holding a change to a released document: it would need a pending version next to the released
   one, with its own version check.
-- A message broker or a scheduler for the timers: the staging area already keeps the state, and
-  the timers of one hub fit in memory.
+- A message broker or a scheduler for the timers: the staging area already keeps the state.
 - The release only in the portal: `dec-cli-and-mcp` asks for every feature in the CLI and MCP.
 
 OPEN:
 
 - Tasks: the real task lives in the task tool of the team, so holding its small artifact protects
   nothing.
-- Marking a sentence off the record after the end of a session: today every command after the end
-  is refused, so a speaker can ask the authors for a correction but cannot set the mark.
+- Marking a sentence off the record after the end of a session: an ended session takes no
+  command, so a speaker can ask the authors for a correction but cannot set the mark.
 - A follow-up session that continues an ended one.
 - Tenant admins as a fallback when no human of a session can release any more, a quorum of the
   humans, and confidential sessions (#194).
 - Starting the agent that claimed the ingest when the release happens (#195).
 - Changes to the accepted decisions `dec-artifacts`, `dec-artifact-sync`, `dec-web-portal`,
-  `dec-off-the-record`, `dec-session-end-milestone` (which still says that a session can be opened
-  again, #193) and to `concept-multi-tenancy` once this decision is accepted.
+  `dec-off-the-record`, `dec-session-end-milestone` (#193), `concept-multi-tenancy`,
+  `if-archive-storage` and `if-archive-watch` once this decision is accepted.
 
 ```arc42
 :::decision

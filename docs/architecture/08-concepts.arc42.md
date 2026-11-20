@@ -458,7 +458,7 @@ An assistant that works with the key of a human counts as that human, so it acts
 human tells it to.
 
 **The timers.** The staging area keeps the deadline of every held session. The meeting session
-keeps the deadlines of a tenant in memory and rebuilds them from the staging area at start. When a
+rebuilds the deadlines of a tenant from the staging area at start. When a
 deadline passes, it releases. A release that a restart cut off is completed, never repeated.
 
 **Off the record over the whole life.**
@@ -466,13 +466,13 @@ deadline passes, it releases. A release that a restart cut off is completed, nev
 | When the sentence is marked | What protects it |
 | --- | --- |
 | During the session | The interfaces show a placeholder; agents are told to keep it out of what they write |
-| After the end, before the release | The speaker asks the authors to correct the staged artifacts; the release shows word-for-word quotes |
+| After the end, before the release | The speaker asks the authors to correct the staged artifacts, or objects; any other human may still release; the release shows word-for-word quotes |
 | After the release | Nothing removes it from clones and history (`risk-retraction-leak`) |
 
 A paraphrase can pass every step. The grace period gives the speaker time to read what is shared.
-Three ways skip the staging area and rely on the people and agents who write: a change to an
-artifact that is already released, a push during a session, and a note that does not name its
-session.
+Five ways skip the staging area and rely on the people and agents who write: a change to an
+artifact that is already released, a push during a session, a record that does not name its
+session, a task, and what agents write after a release at the end of the session.
 
 **Into the wiki.** Agents ingest only released records. They use what the records say, not what
 they heard in the session, because only the participants read the session but every member reads
