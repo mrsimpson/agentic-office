@@ -181,7 +181,7 @@ func (g *gatewayView) report(err error) {
 		return
 	}
 	if g.e.json {
-		g.e.printJSON(commands.ErrorJSON(errorCode(err), err.Error()))
+		g.e.printJSON(commands.ErrorJSON(errorCode(err), err.Error(), nil))
 		return
 	}
 	fmt.Fprintf(g.e.stderr, "office: %v%s", err, g.nl)

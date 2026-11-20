@@ -51,11 +51,11 @@ service SessionCommandsService {
   // it answers and completes the move after a restart.
   //
   // Before it releases, the hub searches the staged files for word-for-word quotes of sentences
-  // off the record. While it finds any, it refuses: it appends no event and answers without a
-  // result, with the places and a quote token. The caller releases anyway with the same command
-  // again and accept_quotes set to that token. The hub searches again and releases only if the
-  // search gives the same token; otherwise it refuses again with the new places and token. The
-  // hub changes no content.
+  // off the record. While it finds any, it refuses with failed_precondition and a QuoteRefusal
+  // error detail: the places and a quote token. It appends no event and does not remember the
+  // command as done. The caller releases anyway with the same command again and accept_quotes
+  // set to that token. The hub searches again and releases only if the search gives the same
+  // token; otherwise it refuses again with the new places and token. The hub changes no content.
   rpc ReleaseSession(ReleaseSessionRequest) returns (ReleaseSessionResponse);
   // ObjectToRelease holds the release of an ended session (concept-session-release): it appends
   // release.objected, and the hub does not release the session when its grace period ends. Only a
@@ -264,16 +264,22 @@ message ReleaseSessionRequest {
 }
 
 message ReleaseSessionResponse {
-  // result is the session.released event. It is unset when the hub refused the release because
-  // of quotes.
+  // result is the session.released event.
   CommandResult result = 1;
   // quotes are the places where a staged file of the session quotes a sentence off the record
-  // word for word: the reason of a refusal, or the quotes that accept_quotes accepted. They name
-  // the place, never the sentence. A repeated command_id returns none.
+  // word for word that accept_quotes accepted. They name the place, never the sentence. A
+  // repeated command_id returns none.
   repeated Quote quotes = 2;
-  // quote_token is set when the hub refused the release because of quotes. It is a hash over the
-  // session and the exact quotes that the search found; it reveals no sentence.
-  string quote_token = 3;
+}
+
+// QuoteRefusal is the error detail of a release that the hub refused with failed_precondition
+// because staged files quote sentences off the record word for word.
+message QuoteRefusal {
+  // quotes are the places of the quotes. They name the place, never the sentence.
+  repeated Quote quotes = 1;
+  // quote_token is a hash over the session and the exact quotes that the search found; it
+  // reveals no sentence. A release with accept_quotes set to it releases despite these quotes.
+  string quote_token = 2;
 }
 
 // Quote is a place in a staged file that quotes a sentence off the record word for word.

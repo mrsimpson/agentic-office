@@ -159,11 +159,14 @@ only these commands, notices about artifacts and, until the release, a mark off 
 in one step are two calls, one event each.
 
 Before it releases, the hub searches the staged files for sentences off the record, word for word.
-While it finds one, it refuses and creates no event. The answer lists each place (the file, the
-line and the event of the sentence, never the sentence) and a token: a hash over the session and
-the exact quotes. To release anyway, the human sends the release again with this token. The hub
-searches again and releases only if the search gives the same token, so a staged file that changed
-in between leads to a new refusal with a new token.
+While it finds one, it refuses with an error, like every other refusal of the release, and creates
+no event. The error has the code for a failed precondition and a typed detail: each place (the
+file, the line and the event of the sentence, never the sentence) and a token, a hash over the
+session and the exact quotes. A caller that checks only for errors therefore never takes the
+refusal for a release. The hub does not remember a refused command as done: to release anyway, the
+human sends the same command again with this token. The hub searches again and releases only if
+the search gives the same token, so a staged file that changed in between leads to a new refusal
+with a new token.
 
 The interface also tells who may read a session its release: the status and deadline, the staged
 files, whether the caller may release or object now, and, once released, the release commit with
@@ -555,7 +558,8 @@ same design as the stage.
 The page of a session shows its readers the release status, when the hub releases it, and the
 staged artifacts. A human who took part gets two forms: release, and, while the session waits,
 object. When the hub refuses a release because staged files quote sentences off the record, the
-page lists the places and a button "release anyway" whose form carries the token. A member who did
+page lists the places from the error and a button "release anyway" whose form sends the refused
+command again with the token. A member who did
 not take part sees a session only once it is released, and then only the released artifacts, who
 released them and their original authors. After the release, the readers of the session also see
 each staged artifact that the release did not release, marked "not released: the path is taken".
@@ -1524,8 +1528,8 @@ flowchart LR
 Shell commands with machine-readable output (OPEN: `--json` convention). A command that writes a
 document shows the hints of the hub, such as a link that leads nowhere, next to its result; the
 hints never make the command fail. A release that the hub refuses because staged files quote
-sentences off the record fails: the command shows the places and the token, and the same command
-with the token confirms the quotes.
+sentences off the record fails with an error: the command shows the places and the token, and the
+same command with the token confirms the quotes.
 
 ```arc42
 :::interface
@@ -1546,8 +1550,8 @@ change or remove the records of a session before its release, create and update 
 session. The names say what an agent does, not how the hub works. A tool that writes a document
 returns the hints of the hub with its result, such as a link that leads nowhere, so the agent can
 fix them. A release or a hold of a session is passed on for the human of the agent; a release that
-the hub refuses because of quotes off the record returns the places and the token, which the human
-may confirm.
+the hub refuses because of quotes off the record returns an error that holds the places and the
+token, which the human may confirm.
 
 ```arc42
 :::interface

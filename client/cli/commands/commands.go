@@ -36,7 +36,13 @@ const (
 	CodeError         = "error"
 )
 
-// ErrorJSON is the --json output of a failed command: {"error":{"code":…,"message":…}}.
-func ErrorJSON(code, message string) map[string]any {
-	return map[string]any{"error": map[string]string{"code": code, "message": message}}
+// ErrorJSON is the --json output of a failed command: {"error":{"code":…,"message":…}}. detail adds
+// fields to the error object, for example "quotes" and "quoteToken" of a release refused because
+// of quotes.
+func ErrorJSON(code, message string, detail map[string]any) map[string]any {
+	e := map[string]any{"code": code, "message": message}
+	for k, v := range detail {
+		e[k] = v
+	}
+	return map[string]any{"error": e}
 }

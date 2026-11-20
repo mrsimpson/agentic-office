@@ -187,7 +187,7 @@ func (h *Handler) sessionPage(w http.ResponseWriter, r *http.Request, c *backend
 		return
 	}
 	if q := extra.refusal; q != nil {
-		v.Release.Quotes, v.Release.QuoteToken, v.Release.AnywayCommand = q.GetQuotes(), q.GetQuoteToken(), commandID()
+		v.Release.Quotes, v.Release.QuoteToken, v.Release.AnywayCommand = q.GetQuotes(), q.GetQuoteToken(), extra.refusedCmd
 	}
 	render(w, extra.status, c.me, web.TenantPath(tenant), tenant, map[string]any{"Title": sid, "Section": "Session", "Mode": "session",
 		"Session": v, "Back": web.TenantPath(tenant), "CSRF": csrf(ck.Value), "Notice": extra.notice, "Error": extra.error})

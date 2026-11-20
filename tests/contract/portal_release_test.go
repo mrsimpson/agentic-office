@@ -51,7 +51,7 @@ func formOf(t *testing.T, doc *html.Node, name string) url.Values {
 // artifacts. A human who took part gets the forms to release and to object; an agent and a tenant
 // admin who did not take part read without forms. A member who did not take part sees nothing
 // before the release. The forms object, release with a refusal because of quotes, and release
-// anyway with the token. After the release, every member sees the released artifacts, who released
+// anyway: the refused command again, with the token. After the release, every member sees the released artifacts, who released
 // them, and their authors, but not the transcript.
 func TestPortalRelease(t *testing.T) {
 	m := newMeetingArgs(t, "-release-grace-period", "1h")
@@ -111,7 +111,8 @@ func TestPortalRelease(t *testing.T) {
 	}
 
 	// Release: refused because of the quote. The page names the place, never the sentence.
-	res, body = post(t, b, page+"/release", formOf(t, doc, "release"))
+	refused := formOf(t, doc, "release")
+	res, body = post(t, b, page+"/release", refused)
 	doc = parseDoc(t, body)
 	quotes := one(t, doc, "data-quotes", "")
 	if res.StatusCode != http.StatusConflict || len(findAll(quotes, withAttr("data-quote", "documents/plan.md:5"))) != 1 ||
@@ -124,6 +125,10 @@ func TestPortalRelease(t *testing.T) {
 	anyway := formOf(t, doc, "release-anyway")
 	if anyway.Get("accept_quotes") == "" {
 		t.Fatalf("the form to release anyway carries no token: %v", anyway)
+	}
+	// It sends the refused command again: the hub did not remember it as done.
+	if anyway.Get("command_id") == "" || anyway.Get("command_id") != refused.Get("command_id") {
+		t.Errorf("the form to release anyway has the command %q, want the refused command %q", anyway.Get("command_id"), refused.Get("command_id"))
 	}
 	res, body = post(t, b, page+"/release", anyway)
 	doc = parseDoc(t, body)

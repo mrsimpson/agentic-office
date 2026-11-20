@@ -402,7 +402,7 @@ func (e *env) fail(err error) int {
 	}
 	msg := err.Error()
 	if e.json {
-		e.printJSON(commands.ErrorJSON(code, msg))
+		e.printJSON(commands.ErrorJSON(code, msg, coreapi.ErrorDetailJSON(err)))
 	} else {
 		fmt.Fprintf(e.stderr, "office: %s\n", msg)
 		if exit == commands.ExitUsage {
