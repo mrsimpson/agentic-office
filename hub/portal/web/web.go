@@ -6,6 +6,7 @@
 //	GET  /portal/login?code=<code>        swaps the code of a portal link for a session
 //	GET  /portal/                         the start page: the tenants of the user
 //	GET  /portal/t/<tenant>/              the start page of a tenant: the role and the sessions
+//	GET  /portal/t/<tenant>/s/<session>   one session, read only: transcript, minutes, records
 //	GET  /portal/t/<tenant>/members       the members of a tenant (tenant admins)
 //	GET  /portal/admin/keys               the users and their keys (system admins)
 //	GET  /portal/admin/keys/new           the form that registers a key
@@ -50,6 +51,11 @@ const (
 
 // TenantPath is the start page of a tenant.
 func TenantPath(tenant string) string { return TenantPrefix + url.PathEscape(tenant) + "/" }
+
+// SessionPath is the page of one session of a tenant.
+func SessionPath(tenant, session string) string {
+	return TenantPrefix + url.PathEscape(tenant) + "/s/" + url.PathEscape(session)
+}
 
 // MembersPath is the page with the members of a tenant.
 func MembersPath(tenant string) string { return TenantPrefix + url.PathEscape(tenant) + "/members" }
@@ -99,6 +105,15 @@ h2 { margin: 1.6rem 0 0.6rem; }
 .chip { font-size: 0.8rem; padding: 0 0.55em; border: 1px solid var(--line); border-radius: 99px; }
 .chip.agent { border-radius: 0; }
 .badge.imported { color: var(--warn); border-color: currentColor; }
+.back { margin: -1rem 0 1rem; }
+.prose { max-width: 46rem; }
+.prose > :first-child { margin-top: 0; }
+ol.records, ol.transcript { list-style: none; margin: 0; padding: 0; max-width: 54rem; }
+ol.records li { padding: 0.6rem 0; border-bottom: 1px solid var(--line); }
+ol.transcript li { display: grid; grid-template-columns: 4.6rem 9rem minmax(0, 1fr) auto; gap: 0.8rem; padding: 0.35rem 0; border-bottom: 1px solid var(--line); }
+ol.transcript time { color: var(--muted); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.speaker { font-weight: 600; overflow-wrap: anywhere; }
+.corrected { color: var(--muted); }
 .toolbar { display: flex; justify-content: flex-end; margin: -3.2rem 0 1.4rem; }
 .button, button { font: inherit; font-size: 0.9rem; font-weight: 500; padding: 0.4rem 1.1rem; border: 1px solid var(--ink); border-radius: 0; background: var(--ink); color: var(--on-ink); text-decoration: none; cursor: pointer; }
 .button.quiet, button.quiet { background: none; color: var(--text); border-color: var(--line); }
@@ -170,12 +185,31 @@ var Page = template.Must(template.New("page").Funcs(template.FuncMap{
 {{if .Sessions}}<table class="sessions">
 <tr><th>Session</th><th>Started (UTC)</th><th>Ended (UTC)</th><th>Participants</th></tr>
 {{range .Sessions}}<tr data-session="{{.SessionId}}"{{if .Running}} data-running{{end}}{{if .Imported}} data-imported{{end}}>
-<td><span class="name">{{.SessionId}}</span>{{if .Imported}} <span class="badge imported">imported</span>{{end}}</td>
+<td><a class="name" href="{{.Href}}">{{.SessionId}}</a>{{if .Imported}} <span class="badge imported">imported</span>{{end}}</td>
 <td><small>{{.Started}}</small></td>
 <td>{{if .Running}}<span class="badge active">running</span>{{else}}<small>{{.Ended}}</small>{{end}}</td>
 <td><div class="chips">{{range .Participants}}<span class="chip{{if .Agent}} agent{{end}}" data-participant="{{.ParticipantId}}" title="{{.ParticipantId}}">{{.Name}}</span>{{end}}</div></td>
 </tr>
 {{end}}</table>{{else}}<p class="empty" data-empty="sessions">You took part in no session of this tenant yet.</p>{{end}}
+{{else if eq .Mode "session"}}{{with .Session}}<p class="back"><a class="link" href="{{$.Back}}">All sessions</a></p>
+<dl class="facts" data-session="{{.SessionId}}"{{if .Running}} data-running{{end}}>
+<dt>Started (UTC)</dt><dd>{{.Started}}</dd>
+<dt>Ended (UTC)</dt><dd>{{if .Running}}<span class="badge active">running</span> <small>This page shows the session as it was when you opened it.</small>{{else}}{{.Ended}}{{end}}</dd>
+{{if .Source}}<dt>Imported</dt><dd data-origin><span class="badge imported">imported</span> {{.Source}}{{if .ImportTitle}}: {{.ImportTitle}}{{end}} <small>by {{.Importer}}. The office did not see this conversation happen.</small></dd>{{end}}
+<dt>Participants</dt><dd><div class="chips">{{range .Participants}}<span class="chip{{if .Agent}} agent{{end}}" data-participant="{{.ParticipantId}}" title="{{.ParticipantId}}">{{.Name}}</span>{{end}}</div></dd>
+</dl>
+<h2>Minutes</h2>
+{{if .Minutes}}<div class="prose" data-minutes{{if .MinutesRunning}} data-running-minutes{{end}}>{{if .MinutesRunning}}<p class="muted">The running minutes; the session has not stored minutes yet.</p>{{end}}{{.Minutes}}</div>{{else}}<p class="empty" data-empty="minutes">Nobody wrote minutes.</p>{{end}}
+<h2>Decisions</h2>
+{{if .Decisions}}<ol class="records">{{range .Decisions}}<li data-decision="{{.Id}}"><div class="prose">{{.Text}}</div><small>{{.Author}}, {{.Time}} UTC</small></li>{{end}}</ol>{{else}}<p class="empty" data-empty="decisions">No decisions.</p>{{end}}
+<h2>Tasks</h2>
+{{if .Tasks}}<table class="tasks"><tr><th>Task</th><th>Status</th><th>Assignee</th></tr>
+{{range .Tasks}}<tr data-task="{{.Ref}}"><td>{{.Title}}</td><td>{{.Status}}</td><td>{{.Assignee}}</td></tr>{{end}}</table>{{else}}<p class="empty" data-empty="tasks">No tasks.</p>{{end}}
+<h2>Notes</h2>
+{{if .Notes}}<ol class="records">{{range .Notes}}<li data-note="{{.Id}}"><div class="prose">{{.Text}}</div><small>{{.Author}}, {{.Time}} UTC</small></li>{{end}}</ol>{{else}}<p class="empty" data-empty="notes">No notes.</p>{{end}}
+<h2>Transcript</h2>
+{{if .Lines}}<ol class="transcript">{{range .Lines}}<li data-utterance="{{.EventId}}" data-participant="{{.SpeakerId}}"><time>{{.Time}}</time><span class="speaker{{if .Agent}} agent{{end}}">{{.Speaker}}</span><span class="text">{{.Text}}</span>{{if .Corrected}} <small class="corrected">(corrected)</small>{{end}}</li>{{end}}</ol>{{else}}<p class="empty" data-empty="transcript">Nothing was said.</p>{{end}}
+{{end}}
 {{else if eq .Mode "members"}}<table class="members">
 <tr><th>User</th><th>Role</th><th>Since</th></tr>
 {{range .Members}}<tr data-member="{{.UserId}}"><td><span class="name">{{.UserId}}</span></td><td>{{.Role}}</td><td><small>{{.Since}}</small></td></tr>

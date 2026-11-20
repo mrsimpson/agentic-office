@@ -444,6 +444,51 @@ sequenceDiagram
     bb_portal-->>actor_human: start page of the tenant
 ```
 
+## A user reads a session in the portal
+
+A user opens a session from the list on the page of a tenant. The portal reads the log of the
+session from the session stream with the token of the user. The meeting session answers only who
+may read the session (`concept-multi-tenancy`); for everybody else the session does not exist,
+and the portal shows that. A sentence off the record comes as a placeholder and does not appear.
+Then the portal asks the minutes, the decisions, the notes and the tasks for those of this
+session, and renders everything on one page. A running session shows as it was when the page
+was opened.
+
+```arc42
+:::runtime-scenario
+id: rs-user-reads-session
+title: A user reads a session in the portal
+trigger: A user opens a session from the list of a tenant
+involves: bb-portal, bb-session-service, bb-records, bb-tasks, bb-office-hub
+:::
+```
+
+```arc42
+:::diagram
+id: seq-user-reads-session
+notation: mermaid-sequence
+scenario: rs-user-reads-session
+aliases: actor_human=actor-human, bb_portal=bb-portal, bb_session_service=bb-session-service, bb_records=bb-records, bb_tasks=bb-tasks
+:::
+```
+
+```mermaid
+sequenceDiagram
+    participant actor_human as Human participant
+    participant bb_portal as Portal
+    participant bb_session_service as Meeting session
+    participant bb_records as Records
+    participant bb_tasks as Tasks
+    actor_human->>bb_portal: opens a session of the list
+    bb_portal->>bb_session_service: events of the session, with the token
+    bb_session_service-->>bb_portal: events, sentences off the record as placeholders
+    bb_portal->>bb_records: minutes, decisions and notes of the session
+    bb_records-->>bb_portal: records
+    bb_portal->>bb_tasks: tasks of the session
+    bb_tasks-->>bb_portal: tasks
+    bb_portal-->>actor_human: page with header, minutes, decisions, tasks, notes and transcript
+```
+
 ## Human marks a sentence off the record
 
 What is said stays said (`dec-off-the-record`). The human presses a key in the gateway terminal

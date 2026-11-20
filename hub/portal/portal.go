@@ -102,7 +102,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, web.KeysPath, http.StatusSeeOther)
 		return
 	}
-	if rest, ok := strings.CutPrefix(path, web.TenantPrefix); ok {
+	// The pages of a tenant work on the escaped path: a session ID may hold a slash.
+	if rest, ok := strings.CutPrefix(strings.TrimSuffix(r.URL.EscapedPath(), "/"), web.TenantPrefix); ok && r.Method == http.MethodGet {
 		tenant, page, _ := strings.Cut(rest, "/")
 		h.tenant(w, r, tenant, page)
 		return

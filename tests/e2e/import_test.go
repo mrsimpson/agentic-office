@@ -80,7 +80,7 @@ func TestImportedConversationToRecords(t *testing.T) {
 
 	// The agent joins the imported session through MCP and reads it from its local log.
 	cmd := exec.Command(contracttest.Binary(t, "office"), "mcp")
-	cmd.Env = append(os.Environ(), bot...)
+	cmd.Env = append(contracttest.Environ(), bot...)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	cs, err := mcp.NewClient(&mcp.Implementation{Name: "agent", Version: "1"}, nil).Connect(ctx, &mcp.CommandTransport{Command: cmd}, nil)

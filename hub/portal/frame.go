@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/mrsimpson/agentic-office/hub/portal/web"
@@ -130,6 +131,10 @@ func (h *Handler) tenant(w http.ResponseWriter, r *http.Request, escaped, page s
 		h.fail(w, http.StatusNotFound, "Not found", "There is no such tenant for you.")
 		return
 	}
+	if escapedSession, ok := strings.CutPrefix(page, "s/"); ok {
+		h.session(w, r, c, tenant, escapedSession)
+		return
+	}
 	switch page {
 	case "":
 		// The sessions that the user may see (if-session-list), with the tenant of the page.
@@ -143,7 +148,7 @@ func (h *Handler) tenant(w http.ResponseWriter, r *http.Request, escaped, page s
 			return
 		}
 		h.page(w, c.me, web.TenantPath(tenant), tenant, map[string]any{"Title": tenant, "Section": "Tenant", "Mode": "tenant",
-			"Tenant": tenant, "Role": roleName(m), "Sessions": sessionRows(res.GetSessions())})
+			"Tenant": tenant, "Role": roleName(m), "Sessions": sessionRows(tenant, res.GetSessions())})
 	case "members":
 		if !m.GetTenantAdmin() {
 			h.fail(w, http.StatusForbidden, "Not allowed", "Only a tenant admin sees the members of the tenant.")
@@ -177,9 +182,9 @@ func (h *Handler) tenant(w http.ResponseWriter, r *http.Request, escaped, page s
 
 // sessionRow is a session in the list of a tenant.
 type sessionRow struct {
-	SessionId, Started, Ended string
-	Running, Imported         bool
-	Participants              []participantChip
+	SessionId, Href, Started, Ended string
+	Running, Imported               bool
+	Participants                    []participantChip
 }
 
 type participantChip struct {
@@ -188,11 +193,11 @@ type participantChip struct {
 }
 
 // sessionRows turns the sessions of the list into rows. Times are UTC.
-func sessionRows(ss []*sessionlistv1.Session) []sessionRow {
+func sessionRows(tenant string, ss []*sessionlistv1.Session) []sessionRow {
 	const layout = "2006-01-02 15:04"
 	var rows []sessionRow
 	for _, s := range ss {
-		row := sessionRow{SessionId: s.GetSessionId(), Started: s.GetStartedAt().AsTime().UTC().Format(layout),
+		row := sessionRow{SessionId: s.GetSessionId(), Href: web.SessionPath(tenant, s.GetSessionId()), Started: s.GetStartedAt().AsTime().UTC().Format(layout),
 			Running: s.GetEndedAt() == nil, Imported: s.GetImported()}
 		if !row.Running {
 			row.Ended = s.GetEndedAt().AsTime().UTC().Format(layout)

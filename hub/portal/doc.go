@@ -24,6 +24,12 @@
 //   - The page of a tenant lists the sessions that the user may see, the newest first: those it
 //     joined or imported, and every session for a tenant admin. It asks the session list with the
 //     tenant of the page.
+//   - The page of a session (session.go) reads the log from the session stream, which decides who
+//     may read it (a refusal gives 404), and the minutes, decisions, notes and tasks of the session
+//     from their interfaces. It shows the header, the stored minutes (the running minutes while
+//     the session runs), the records and the transcript: a sentence off the record is a
+//     placeholder and does not appear, a correction replaces the text. A session ID may hold a
+//     slash; the pages of a tenant work on the escaped path.
 //   - The start page lists the tenants of the user. A user with one tenant and no administration
 //     goes straight to that tenant.
 //   - Register a key: "Register key" opens a form with the user ID, the display name (needed for a

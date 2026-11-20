@@ -802,7 +802,9 @@ office meeting end
   `office minutes list`.
 - `office session list` lists the sessions in which you took part or that you imported, the newest
   first, with start, end and participants; a tenant admin sees every session of the tenant. The
-  portal shows the same list on the page of the tenant (`office portal link`).
+  portal shows the same list on the page of the tenant (`office portal link`). Open a session there
+  to read it: its minutes, decisions, tasks, notes and transcript. Sentences off the record do not
+  appear.
 - A decision or a note is linked to a session only with `--session`.
 - For now a task is a local draft in the hub. Its reference, for example `local:42`, is opaque:
   keep it and pass it back. The statuses are `open`, `in_progress`, `done` and `cancelled`. Any
