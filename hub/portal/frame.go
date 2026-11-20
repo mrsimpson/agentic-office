@@ -76,7 +76,7 @@ func (u *user) nav(active, tenant string) []navGroup {
 		out = append(out, g)
 	}
 	if m, ok := u.membership(tenant); ok {
-		g := navGroup{Group: tenant, Links: []navLink{link(web.TenantPath(tenant), "Overview")}}
+		g := navGroup{Group: tenant, Links: []navLink{link(web.TenantPath(tenant), "Overview"), link(web.WikiPath(tenant), "Wiki")}}
 		if m.GetTenantAdmin() {
 			g.Links = append(g.Links, link(web.MembersPath(tenant), "Members"))
 		}
@@ -133,6 +133,10 @@ func (h *Handler) tenant(w http.ResponseWriter, r *http.Request, escaped, page s
 	}
 	if escapedSession, ok := strings.CutPrefix(page, "s/"); ok {
 		h.session(w, r, c, tenant, escapedSession)
+		return
+	}
+	if page == "wiki" || strings.HasPrefix(page, "wiki/") {
+		h.wiki(w, r, c, tenant, page[len("wiki"):])
 		return
 	}
 	switch page {

@@ -497,6 +497,52 @@ sequenceDiagram
     bb_portal-->>actor_human: page with header, minutes, decisions, tasks, notes and transcript
 ```
 
+## A member searches the wiki in the portal
+
+A member of a tenant types words into the search form of the wiki in the portal. The form works
+without scripts: the browser asks the portal for the page of the search. The portal asks the wiki
+part for the hits with the token of the user and the tenant of the page. The wiki part answers
+only a member of the tenant; for everybody else the wiki of the tenant does not exist. The member
+opens a hit. The portal asks the wiki part for the artifact with its links, backlinks, sources and
+citations, and the archive for its text. It renders the text, and a link to another artifact of the
+wiki leads to the page of that artifact in the portal.
+
+```arc42
+:::runtime-scenario
+id: rs-member-searches-wiki
+title: A member searches the wiki in the portal
+trigger: A member sends the search form of the wiki
+involves: bb-portal, bb-wiki, bb-archive, bb-office-hub
+:::
+```
+
+```arc42
+:::diagram
+id: seq-member-searches-wiki
+notation: mermaid-sequence
+scenario: rs-member-searches-wiki
+aliases: actor_human=actor-human, bb_portal=bb-portal, bb_wiki=bb-wiki, bb_archive=bb-archive
+:::
+```
+
+```mermaid
+sequenceDiagram
+    participant actor_human as Human participant
+    participant bb_portal as Portal
+    participant bb_wiki as Wiki
+    participant bb_archive as Archive
+    actor_human->>bb_portal: sends the search form with words
+    bb_portal->>bb_wiki: search the wiki of the tenant, with the token
+    bb_wiki-->>bb_portal: hits, best first
+    bb_portal-->>actor_human: page with the hits
+    actor_human->>bb_portal: opens a hit
+    bb_portal->>bb_wiki: the artifact with its links, backlinks, sources and citations
+    bb_wiki-->>bb_portal: artifact and references
+    bb_portal->>bb_archive: read the file of the artifact
+    bb_archive-->>bb_portal: content
+    bb_portal-->>actor_human: page with the rendered text, links to other artifact pages
+```
+
 ## Human marks a sentence off the record
 
 What is said stays said (`dec-off-the-record`). The human presses a key in the gateway terminal

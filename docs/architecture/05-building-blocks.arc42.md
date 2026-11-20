@@ -565,6 +565,16 @@ released them and their original authors. After the release, the readers of the 
 each staged artifact that the release did not release, marked "not released: the path is taken".
 A participant moves such an artifact to a new path by hand, through the interface of its type.
 
+Every member of a tenant reads its wiki (`concept-wiki`) in the portal: the index of the artifacts,
+filtered by a tag, with every tag and the number of its artifacts; one artifact with its text, its
+links, its backlinks, its cited sources and the documents that cite it; a search form that works
+without scripts, with its hits, best first; the links that lead nowhere; and the sources that no
+document cites yet. A link between two artifacts leads from the page of one to the page of the
+other. The page of a document shows its front matter as written, with its status, owner and
+reviews. OPEN: the rest of the trust data of an artifact (the last author and whether a human or
+an agent, the age of its newest source, who released it and when) has no interface yet (issue
+#235).
+
 ```arc42
 :::interface
 id: if-portal-web
@@ -585,8 +595,11 @@ the user and tenant APIs for the administration and the members, the session lis
 sessions of a tenant, the session stream for the events of one session, and the minutes, decisions,
 notes and tasks of that session. On the page of a session it asks the session commands for the
 release and the archive read API for the staged, released or not released artifacts, and its
-forms send release and objection to the session commands. It reads the wiki of a tenant through the
-wiki interface (`concept-wiki`). OPEN: the pages of the wiki in the portal (issue #208).
+forms send release and objection to the session commands. The pages of the wiki of a tenant ask the
+wiki interface for the index, the references of an artifact, the search, the broken links and the
+ingest queue, and the archive read API for the text of an artifact (`concept-wiki`). The wiki
+interface decides what is in the wiki and where a link leads; the portal only turns the links
+between artifacts into links between its pages.
 
 ```arc42
 :::building-block
