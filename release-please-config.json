@@ -3,6 +3,7 @@
   "packages": {
     ".": {
       "release-type": "simple",
+      "release-as": "0.4.0",
       "package-name": "agentic-office",
       "include-v-in-tag": true,
       "include-component-in-tag": false,
