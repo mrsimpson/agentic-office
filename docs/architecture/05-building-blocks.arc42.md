@@ -195,7 +195,9 @@ the subscriber then offers its copy.
 
 The live stream ends with the end of the session. The events that an ended session still takes
 (changes of the release status, notices about artifacts and marks off the record) come only with a
-one-time request for the events after a cursor (`dec-session-end-milestone`).
+one-time request for the events after a cursor (`dec-session-end-milestone`). A change of the
+release status without an actor comes from the hub: a release when the grace period ends, or a
+hold because staged files quote sentences off the record.
 
 The interface owns the event log: the event types, the signed tree head and the code that builds
 and verifies the Merkle tree (`dec-merkle-log`). The other interfaces return events and tree heads
@@ -1297,7 +1299,9 @@ flowchart LR
 
 ### CLI
 
-Shell commands with machine-readable output (OPEN: `--json` convention).
+Shell commands with machine-readable output (OPEN: `--json` convention). A release that the hub
+refuses because staged files quote sentences off the record fails: the command shows the places
+and the token, and the same command with the token confirms the quotes.
 
 ```arc42
 :::interface
@@ -1315,7 +1319,9 @@ path: client/cli/commands
 The office as tools for an agent, with the same features as the CLI: join and leave a meeting,
 raise a hand, update the minutes, focus an artifact, render slides, record decisions, add notes,
 change or remove the records of a session before its release, create and update tasks, import a
-session. The names say what an agent does, not how the hub works.
+session. A release or a hold of a session is passed on for the human of the agent; a release that
+the hub refuses because of quotes off the record returns the places and the token, which the human
+may confirm. The names say what an agent does, not how the hub works.
 
 ```arc42
 :::interface
