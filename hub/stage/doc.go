@@ -48,6 +48,10 @@
 //     stage shows the session without them.
 //   - After session.ended the status shows that the session has ended, and the stream sends "end"
 //     and closes. When the link expires, an open stream shows that and also sends "end".
+//   - The header has a plain link "Open in portal" to the portal page of the session in the tenant
+//     of the link (if-portal-web). It carries no token and sends no referrer. The portal asks for
+//     its own sign-in: a browser without a portal session sees "Not signed in" and the command
+//     "office portal link".
 //   - No external assets, no frontend build. A Content-Security-Policy allows only the inline
 //     styles, the one inline script (by hash) and the event stream of the same origin.
 package stage

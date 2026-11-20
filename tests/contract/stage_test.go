@@ -366,7 +366,22 @@ func TestStagePageNeedsStageLink(t *testing.T) {
 	}
 	// No external assets: no element loads anything from an address.
 	for _, n := range findAll(doc, func(n *html.Node) bool { _, s := attr(n, "src"); _, h := attr(n, "href"); return s || h }) {
+		if id, _ := attr(n, "id"); id == "portal" {
+			continue
+		}
 		t.Errorf("page loads an asset: <%s %v>", n.Data, n.Attr)
+	}
+	// The one link leaves the page: to the portal page of the session. It carries no token and
+	// sends no referrer, so the stage link does not leak.
+	if p := findAll(doc, withAttr("id", "portal")); len(p) != 1 {
+		t.Errorf("page should have exactly one link #portal")
+	} else {
+		href, _ := attr(p[0], "href")
+		rel, _ := attr(p[0], "rel")
+		if !strings.HasPrefix(href, "/portal/t/") || !strings.HasSuffix(href, "/s/"+url.PathEscape(m.sid)) ||
+			strings.Contains(href, "token") || !strings.Contains(rel, "noreferrer") {
+			t.Errorf("portal link: href %q, rel %q", href, rel)
+		}
 	}
 	// The one inline script is allowed by its hash in the Content-Security-Policy, nothing else is.
 	if scripts := findAll(doc, byTag("script")); len(scripts) != 1 || scripts[0].FirstChild == nil {

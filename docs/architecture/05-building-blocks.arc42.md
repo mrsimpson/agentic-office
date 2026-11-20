@@ -1410,7 +1410,7 @@ id: bb-stage
 title: Stage
 technology: Go, rendered by the hub / server-sent events
 parent: bb-office-hub
-requires: if-session-stream, if-session-activity, if-slides-api, if-auth-api, if-archive-read
+requires: if-session-stream, if-session-activity, if-slides-api, if-auth-api, if-archive-read, if-portal-web
 implements: concept-transparency, concept-session-release
 path: hub/stage
 :::

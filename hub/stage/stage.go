@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	portalweb "github.com/mrsimpson/agentic-office/hub/portal/web"
 	"github.com/mrsimpson/agentic-office/hub/stage/web"
 
 	"connectrpc.com/connect/v2"
@@ -34,6 +35,9 @@ type Slides interface {
 type StageLink struct {
 	// SessionID is the session of the link.
 	SessionID string
+	// TenantID is the tenant of the link. The page links to the portal page of the session in this
+	// tenant. The link carries no credential: the portal asks for its own sign-in.
+	TenantID string
 	// Slides loads the shown decks of the tenant of the link (artifact IDs "slides/<n>"). Nil
 	// means the stage shows a note instead.
 	Slides Slides
@@ -105,7 +109,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.events(w, r, sid, token, link)
 		return
 	}
-	h.page(w, r, sid, token)
+	h.page(w, r, sid, token, link)
 }
 
 // check returns http.StatusOK if token is a valid stage link for the session.
@@ -140,12 +144,12 @@ func (h *Handler) fail(w http.ResponseWriter, status int, title, msg string) {
 }
 
 // page renders the page with an empty view. The event stream fills it.
-func (h *Handler) page(w http.ResponseWriter, r *http.Request, sid, token string) {
+func (h *Handler) page(w http.ResponseWriter, r *http.Request, sid, token string, link StageLink) {
 	w.Header().Set("Content-Security-Policy", web.PageCSP)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	events := web.PathPrefix + url.PathEscape(sid) + "/events?" + url.Values{"token": {token}}.Encode()
 	_ = web.Page.Execute(w, map[string]any{"Session": sid, "Events": events,
-		"Regions": newView().renderAll(), "Script": template.JS(web.Script)})
+		"Portal": portalweb.SessionPath(link.TenantID, sid), "Regions": newView().renderAll(), "Script": template.JS(web.Script)})
 }
 
 // coalesce is how long the stream waits for more events before it sends the changed regions.
