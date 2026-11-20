@@ -353,8 +353,11 @@ path: hub/records/minutes/api
 
 ### Notes
 
-Adds free notes, with or without a session, and lists them like the decisions. A sentence that is
-off the record must not go into a note.
+Adds free notes, with or without a session, and lists them like the decisions. A note is a
+memory: once it is released, it never changes; a correction is a new note that refers to the old
+one. Notes are sources of the wiki (`dec-wiki`, `concept-wiki`). A sentence that is off the record must not go into a
+note. Ingest copies notes into documents, so the hub cannot remove a sentence that is marked off
+the record later from those copies.
 
 ```arc42
 :::interface
@@ -563,7 +566,7 @@ of every session; then nothing is lost and there is no wait.
 
 The memory of the team: decisions, minutes and notes (`dec-records-per-type`). Each type has its
 own interface and its own types, and each record keeps who wrote it and whether that was a human
-or an agent. Tasks are not part of this block; they have their own part of the hub.
+or an agent. Decisions, minutes and notes are the sources of the wiki (`dec-wiki`). Tasks are not part of this block; they have their own part of the hub.
 
 Every new record is one commit in the archive (`dec-yaml-git-storage`). A command returns only
 after its commit, so a record that a client got back is stored. Local commits are fast, so this
@@ -580,6 +583,7 @@ technology: Go / YAML in the archive
 parent: bb-office-hub
 path: hub/records
 requires: if-token-check, if-archive-storage, if-archive-watch
+implements: concept-wiki
 :::
 ```
 
@@ -640,7 +644,7 @@ path: hub/tasks/check
 
 The documents part stores each text document as one Markdown file in the archive and one commit
 per change. It checks the base version of a change and tells the meeting session when a call names
-one.
+one. Documents are the pages of the wiki (`dec-wiki`).
 
 ```arc42
 :::building-block
@@ -650,6 +654,7 @@ technology: Go / Markdown in the archive
 parent: bb-office-hub
 requires: if-token-check, if-archive-storage, if-session-notice
 path: hub/documents
+implements: concept-wiki
 :::
 ```
 
@@ -1288,7 +1293,9 @@ session and one agent key, it:
 - joins the session as the agent and runs the log replicator in its own process, so it follows
   the local log of the agent;
 - starts the agent harness, opens one ACP session, hands it the office tools as an MCP server with
-  the key of the agent and sends a first prompt with the role of the agent and the meeting;
+  the key of the agent and sends a first prompt with the role of the agent and the meeting, and
+  with the rule that an agent says in the session which artifact it takes on and the hint to follow
+  the skill of the wiki (`dec-wiki`);
 - decides with one wake strategy, chosen by the user at start, when to wake the agent
   (`dec-agent-runner-delivery`): at each change of speaker, or when a forwarding judge or a
   decision model that the user brings says so (`dec-wake-check-per-utterance`,

@@ -1010,6 +1010,20 @@ each other. For example:
 All three can run in the meeting `weekly` at the same time. Each agent hears the others: the
 runner also tells it what the other agents said, and that they are agents.
 
+### Teach the agent the memory of the team
+
+The office ships a skill, `office-memory`, that tells an agent how to read and write the memory of
+the team: which artifacts never change (minutes, decisions and notes), how to write a page of the
+wiki with its front matter, and how to bring a meeting into the wiki. It lies in
+`skills/office-memory` of the repository. Install it in the folder of the agent with the
+[skills CLI](https://www.npmjs.com/package/skills):
+
+```bash
+npx skills add mrsimpson/agentic-office --skill office-memory
+```
+
+Do not change the installed skill. Put the rules of your team into the role of the agent instead.
+
 ### When the runner wakes the agent
 
 Waking a harness with a large model costs time and money. So you choose when the runner wakes
@@ -1087,8 +1101,8 @@ nobody in the meeting.
   ended, gives the task for that (`--topic-task`; the default is to update the minutes and record
   the decisions and tasks of the block, if the role asks for it).
 - After the meeting ended, the last prompt carries what is left and asks the agent to finish the
-  work of its role, for example the minutes, decisions or tasks, **without speaking**: a new
-  sentence would open the session again.
+  work of its role, for example the minutes, decisions or tasks, **without speaking**: the
+  ended session takes no new sentences.
 
 ### Bring a decision model
 

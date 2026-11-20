@@ -183,8 +183,9 @@ start, and every tenant has at least one tenant admin.
 imported it, by the tenant admins of its tenant, and by a stage link of exactly this session. For
 every other member of the tenant the session does not exist. This holds for its events, its tree
 heads and proofs, its activities and the list of sessions. A participant who joins a running
-session reads its history from its join on. The records of a session (minutes, decisions, notes,
-tasks) are read by every member of the tenant. OPEN: whether they follow the session (#15).
+session reads its history from its join on. The records and other artifacts of a session are read by
+every member of the tenant once they are released; until then, only the readers of the session
+read them (`concept-session-release`). Tasks are not held.
 
 **Rules for changes.** Identity is the only writer of users, keys, memberships and system admins.
 It refuses a change when the caller may not make it, when the tenant or user does not exist, or
@@ -194,8 +195,9 @@ ID is never used again and the history shows who was a member when. A compromise
 by a system admin and stops working in all tenants. Identity checks the same rules when it loads
 the hub repository and refuses to start on a violation.
 
-**Repository.** A tenant has exactly one git repository, with a directory for each kind of
-content. Every session, record, task and slide deck belongs to exactly one tenant, and the archive
+**Repository.** A tenant has one git repository for its artifacts, with a directory for each kind
+of content, one for its session logs, and one for what its sessions have not released
+(`dec-staging-repository`). Every session, record, task and slide deck belongs to exactly one tenant, and the archive
 writes to the repository of that tenant only (`dec-yaml-git-storage`).
 
 **Separation.** Every call of the meeting session, the records, the tasks, the slides and the
@@ -321,5 +323,220 @@ of their own.
 id: concept-client-configuration
 title: Client configuration in a user file and a project file
 category: usability
+:::
+```
+
+## Wiki of the tenant
+
+All artifacts of a tenant form one wiki (`dec-wiki`). It follows the pattern "LLM wiki": agents
+read what the team leaves behind and keep linked pages up to date. Knowledge builds up in those
+pages, so an agent does not have to find it again for every question, and a human can follow it
+from page to page.
+
+**Three layers.**
+
+- **Sources** are memories: minutes, decisions and notes. They come into being as a side effect of
+  a session or of other work. Once released, they never change (`concept-session-release`). A correction is a new
+  record that refers to the old one. The transcript of a session is not a source: only its
+  participants may read it, while every member reads the wiki.
+- **Pages** are documents. Humans and agents write and change them. A page has a title, and it may
+  have a one-line summary, tags, the sources that it draws on, a status (draft, reviewed or
+  outdated), an owner and its reviews. It links to other pages and to
+  sources.
+- **The skill** tells agents how to work with the wiki: the layers, the front matter, and each
+  operation. It ships with the office and is the same for every tenant; agents never change it.
+  Rules of a team come from the role of an agent and from the overview pages of the wiki.
+
+**Three operations.** All of them are work of an agent, because the hub has no model
+(`con-no-intelligence`).
+
+- **Ingest.** An agent reads a new source, for example the minutes of a session that just ended or
+  a new note. It writes or updates the pages that the source touches, links them and cites the
+  source. One source may touch many pages. The released sources that no page cites yet are the queue; a record of a session waits
+  for its release (`concept-session-release`). So that two
+  agents do not ingest the same source, an agent that takes on the ingest of a session says so in
+  the session, and the others leave it to it.
+- **Query.** An agent answers a question from the pages, with the artifacts it used. A good answer
+  may become a new page.
+- **Lint.** An agent looks for contradictions, outdated statements, pages without links to them,
+  topics without a page, and broken links. It fixes pages and reports the rest. It never changes a
+  source.
+
+**Who does what in the hub.**
+
+- The part of each type writes its files, checks them and describes them: title, summary and
+  outgoing links. When it writes a file, it reports links that lead nowhere as hints, but it
+  accepts the write.
+- The archive stores every change in one commit and reports it. It knows no content.
+- The wiki part follows those changes and keeps a derived view for each tenant: the index, links
+  and backlinks, broken links, sources without a page, and a search by words. It writes nothing,
+  needs no model, and can rebuild the view from the archive at any time.
+- The portal (`dec-web-portal`) shows the index, an artifact with its links and backlinks, and the
+  search. It reads them through the interface of the wiki part with the token of the user. The stage
+  shows only the artifacts of its session.
+
+**Navigation and search.** Agents use their clone and their own tools. Humans use the portal.
+
+**Example.** During a session, an agent added a note about a new price. The session ends, and a
+human who took part releases its minutes and the note. The agent that claimed the ingest in the
+session ingests both: it updates the
+page about the customer, adds the price to the page about pricing, links both pages, and cites the
+minutes and the note. Later, a human searches for "price" in the portal. The search finds the
+pricing page, its backlinks lead to the customer page, and its sources lead to the minutes and the
+note.
+
+```arc42
+:::concept
+id: concept-wiki
+title: Wiki of the tenant
+category: domain
+:::
+```
+
+## Artifacts from a session and their release
+
+This concept describes what a team leaves behind, who may read it at which time, and how it becomes
+knowledge of the organization. The goal is to share as much as possible, but nothing that a speaker
+took off the record (`dec-off-the-record`). Once an artifact is in the artifact repository, every
+member has it in a clone and in history that is never rewritten, so what a session creates waits
+for a release. A staging repository per tenant holds it until then (`dec-staging-repository`).
+
+**What a team leaves behind.**
+
+| Kind | Examples | Changes after release? |
+| --- | --- | --- |
+| Session log | every utterance and event of a session | the log grows; it is never shared with the tenant |
+| Records | minutes, notes, decisions | never; a correction is a new record |
+| Work artifacts | slides, documents | yes, with the version check of their type |
+
+The records are the sources of the wiki, and documents are its pages (`concept-wiki`). There is no
+public transcript: what a session shares are its minutes, if it has any, and the other artifacts it
+creates.
+
+**Three places, three groups of readers.**
+
+| Place | What lies there | Who reads it |
+| --- | --- | --- |
+| Session logs | the log of every session, with the original of sentences off the record | the participants, the importer and the tenant admins |
+| Staging area | what a session created that is not released yet, with the readers of the session | the readers of that session, and its stage |
+| Artifact repository | everything that is released, and a stub for every staged artifact | every member of the tenant, and every clone |
+
+**Where a write goes.** A write that comes from a session names it, and only a participant of the
+session may do so; the part that owns the type checks this with the meeting session. The agent
+runner tells its agent to name the session for everything that comes from the meeting. The release
+status of the session, which the meeting session keeps, decides the place:
+
+- The artifact is new, or the same session staged it, and the session is not released: the
+  staging area of the session.
+- The session is released, or the write names no session: the artifact repository. An artifact
+  that is created outside a session is therefore released at once.
+- A change that names another session, or no session, to an artifact that waits for a release is
+  refused, and so is a write when the release status and the staging area disagree.
+
+**The staging area of a session.** The meeting session creates it when the session starts and adds
+every participant who joins to its list of readers; the importer counts as a participant. Tenant
+admins read by their role, which is checked when they read. Every part that reads a staged artifact
+checks the list, and the stage reads the area of its own session. Until the release, every
+participant may change or remove a staged artifact, the minutes too; each change is a commit that
+the readers of the session see, and a removed record comes back only as a new record.
+
+**Stubs.** For each staged artifact, a stub with the same name goes into the artifact repository.
+Every stub says the same: the artifact waits for a release. It names no session and no time, its
+author is the hub, and the commit that writes it says nothing about the artifact. The part that owns
+the type writes, checks and describes the stub of its type. The stub keeps the name free for the
+release and lets links to the artifact work. No interface may change a stub, and the push rules
+refuse every change or removal of one. Every member can still see that a session stages artifacts,
+how many, under which names and when; an author who fears that a name says too much chooses a
+neutral one.
+
+**The release.**
+
+1. While the session runs, participants write minutes, notes, decisions and new artifacts. They go
+   to the staging area. A meeting without minutes works the same way, and a session that stages
+   nothing still has a release status.
+2. The session ends. If no human took part, the hub releases at once. Otherwise the human who ends
+   it can release in the same step, or a grace period starts: 24 hours unless the tenant sets
+   another length.
+3. During the grace period, a speaker can still mark a sentence off the record. That mark reaches no
+   local copy of the log and no agent, so the speaker also corrects the staged artifacts or asks
+   their authors. Any human who took part may release, or object; an objection holds the session
+   until a human releases it.
+4. Before a human releases, the meeting session shows where a staged file quotes a sentence off the
+   record word for word. It holds the originals, and they never leave it. The human decides; the hub
+   changes no content.
+5. The release closes the area for writes, moves everything in it into the artifact repository in
+   one commit, and then cleans up. Each artifact replaces its stub. The author of the commit is the
+   human who released, or the hub when the grace period ended, and it names the authors of the
+   artifacts as co-authors. So the history says for good when and by whom each artifact was
+   released.
+6. Every member sees the artifacts, and the wiki can ingest them. A record no longer changes; other
+   artifacts change like any other.
+
+A session is never opened again; a later meeting is a new session. An ended session still takes
+three kinds of events without starting again: changes of the release status, notices about
+artifacts, and, until the release, a mark that puts a sentence off the record. The hub stores such
+an event before it acknowledges it, because no peer follows an ended session any more.
+
+**Who releases.** Release and objection are commands of the meeting session. It accepts them only
+from a human who took part. The CLI, the MCP server and the portal pass them on and add no logic
+(`dec-cli-and-mcp`, `dec-web-portal`). An imported session follows the same rules
+(`dec-session-import`); an import that only agents worked on is released when it ends. An agent
+never releases or objects. An assistant that works with the key of a human counts as that human, so
+it acts only when its human tells it to. The humans of a session are trusted: one of them may
+release early or lift an objection.
+
+**The timers.** The staging area records the name of a staged artifact before its stub is written,
+and the deadline of each session, set once when the session ends. The meeting session rebuilds the
+deadlines of a tenant from the staging area at start. Each step of a release is recorded, so a
+release that a restart cut off is completed, never done twice, and no write is acknowledged and
+then lost. A deadline that passed while the hub was down is released at start.
+
+**Reading lists of records.** A list of records pages by number, so a reader who follows it misses
+a record that is released after newer ones; such a reader learns of it from the changes of the
+archive (`if-artifact-changes`).
+
+**Off the record over the whole life.**
+
+| When the sentence is marked | What protects it |
+| --- | --- |
+| During the session | The interfaces show a placeholder; agents are told to keep it out of what they write |
+| After the end, before the release | The speaker marks the sentence, corrects the staged artifacts, or objects; any other human may still release; the release shows word-for-word quotes |
+| After the release | Nothing removes it from clones and history (`risk-retraction-leak`) |
+
+A paraphrase can pass every step. The grace period gives the speaker time to read what is shared,
+unless a human releases early.
+
+**Gaps.** Five ways skip the staging area and rely on the people and agents who write: a change to
+an artifact that is already released, a push during a session, a record that does not name its
+session, a task, and what agents write after a release at the end of the session. The memory skill
+and the agent runner tell agents to avoid the first three and that tasks are not held. A release at
+the end is accepted as a gap: the team trusts the human who releases to know that agents may still
+write in their last turn.
+
+**Into the wiki.** Agents ingest only released records. They use what the records say, not what
+they heard in the session, because only the participants read the session but every member reads
+the wiki. A page cites records, never a session.
+
+**Example.** In the weekly meeting, Ada, Ben and an agent take part. The agent keeps the minutes and
+adds a note about a new price. Ben says a sentence about a colleague and marks it off the record a
+minute later; the agent takes it out of the running minutes. Ada ends the meeting, reads the staged
+minutes in the portal, sees no marked quote, and releases. The minutes and the note move into the
+artifact repository in one commit with Ada as its author. The agent that claimed the ingest in the
+meeting updates the pricing page and cites both records.
+
+OPEN:
+
+- Tasks: the real task lives in the task tool of the team, so holding its small artifact protects
+  nothing.
+- A follow-up session that continues an ended one.
+- Tenant admins as a fallback, a quorum of the humans, and confidential sessions (#194).
+- Starting the agent that claimed the ingest when the release happens (#195).
+
+```arc42
+:::ignore W001 the meeting session and the archive implement it when it is built :::
+:::concept
+id: concept-session-release
+title: Artifacts from a session and their release
+category: data
 :::
 ```

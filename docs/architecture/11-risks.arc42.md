@@ -3,14 +3,18 @@
 ## Classified sentences stay with the agent
 
 A sentence that is marked off the record afterwards is already in the local files and in the
-context of the agents that read it. It cannot be removed from an agent's context.
+context of the agents that read it. It cannot be removed from an agent's context. Off the record is
+a rule for the people and agents who write, not a mechanism: nothing in the hub checks that
+minutes, decisions, notes or documents leave such a sentence out. If an agent has written it into
+a record or a page of the wiki (`dec-wiki`), it is visible to every member of the tenant and stays
+in the history of every clone.
 
 ```arc42
 :::risk
 id: risk-retraction-leak
 title: Sentences marked off the record stay in agent context
 severity: high
-mitigation: The interfaces suppress the text of sentences off the record for every later reader (dec-off-the-record); the agent contract requires respecting the mark
+mitigation: The interfaces of the session suppress the text of sentences off the record for every later reader, and only the readers of a session see its log (dec-off-the-record); the runner prompt and the memory skill tell agents to respect the mark; nothing checks records and documents. What a session creates waits in a staging area until a human releases it or a grace period ends, and the release shows word-for-word quotes of sentences off the record (concept-session-release, dec-staging-repository); a change to a released artifact during a session, a push during a session and a record without its session, a task, and agent writes after a release at the end bypass the hold; a human may release early
 :::
 ```
 
