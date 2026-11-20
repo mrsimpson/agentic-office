@@ -334,8 +334,7 @@ from page to page.
 **Three layers.**
 
 - **Sources** are memories: minutes, decisions and notes. They come into being as a side effect of
-  a session or of other work. Once released, they never change (`concept-session-release`). A
-  session that is opened again stores its minutes again as a new version. A correction is a new
+  a session or of other work. Once released, they never change (`concept-session-release`). A correction is a new
   record that refers to the old one. The transcript of a session is not a source: only its
   participants may read it, while every member reads the wiki.
 - **Pages** are documents. Humans and agents write and change them. A page has a title, and it may
@@ -417,12 +416,17 @@ The records are the sources of the wiki. Documents are its pages (`concept-wiki`
 | Staging area | what a session created that is not released yet | the readers of that session, and its stage |
 | Artifact repository | everything that is released, and a stub for every staged artifact | every member of the tenant, and every clone |
 
-The staging area has the same layout as the artifact repository. A write through an interface that
-names a session that is not released goes to the staging area; every other write goes to the
-artifact repository. For each staged artifact, the hub writes a stub with the same name into the
-artifact repository: it says only that the artifact waits for a release and when the release is
-due. The stub keeps the name free for the release and lets links to the artifact work. Only the hub
-changes a stub. An artifact that is created outside a session is therefore released at once.
+The staging area has the same layout as the artifact repository. A write that comes from a session
+names it; only a participant of the session may do so. While the session is not released, the
+write goes to its staging area; every other write goes to the artifact repository. An artifact that
+is created outside a session, or that names a released session, is therefore released at once. The
+agent runner tells its agent to name the session for everything that comes from the meeting.
+
+For each staged artifact, a stub with the same name goes into the artifact repository. Every stub
+says the same: the artifact waits for a release. It names no session and no time. The part that
+owns the type writes and checks it. The stub keeps the name free for the release and lets links to
+the artifact work. Every member can still see that a session stages artifacts, how many and under
+which names.
 
 **The life of the artifacts of a session.**
 
@@ -431,21 +435,24 @@ changes a stub. An artifact that is created outside a session is therefore relea
 2. The session ends. If no human took part, the hub releases at once. Otherwise the human who ends
    it can release in the same step, or a grace period starts: 24 hours unless the tenant sets
    another length.
-3. During the grace period, a speaker can still mark a sentence off the record, and authors correct
-   what quotes it. Any human who took part may release, or object. An objection holds the session
+3. During the grace period, a speaker can ask the authors to correct what quotes a sentence that
+   should be off the record, and authors correct it; new minutes replace the staged ones. Any human who took part may release, or object. An objection holds the session
    until a human releases it.
 4. Before a human releases, the hub shows where an artifact quotes a sentence off the record word
    for word. The human decides.
 5. At the release, everything in the staging area of the session moves into the artifact
    repository in one commit, and each artifact replaces its stub. Its author is the human who released, or the hub when the grace
-   period ended. So the history says for good when and by whom each artifact was released. The
-   release is also an event in the session log.
+   period ended, and it names the authors of the artifacts as co-authors. So the history says for
+   good when and by whom each artifact was released. The release is also an event in the session
+   log.
 6. Every member sees the artifacts, and the wiki can ingest them. A record no longer changes; other
    artifacts change like any other.
-7. A session that is opened again writes to its staging area again and needs a new release.
+7. A session is never opened again; a later meeting is a new session.
 
 **Who triggers the release.** Release and objection are commands of the meeting session. It accepts
-them only from a human who took part; an imported session is released by its importer. The CLI,
+them only from a human who took part; an imported session is released by the human who imported
+it, and at once if an agent imported it. The humans of a session are trusted: one of them may
+release early or lift an objection. The CLI,
 the MCP server and the portal pass them on and add no logic. An agent never releases or objects.
 An assistant that works with the key of a human counts as that human, so it acts only when its
 human tells it to.
@@ -459,7 +466,7 @@ deadline passes, it releases. A release that a restart cut off is completed, nev
 | When the sentence is marked | What protects it |
 | --- | --- |
 | During the session | The interfaces show a placeholder; agents are told to keep it out of what they write |
-| After the end, before the release | Authors correct the staged artifacts; the release shows word-for-word quotes |
+| After the end, before the release | The speaker asks the authors to correct the staged artifacts; the release shows word-for-word quotes |
 | After the release | Nothing removes it from clones and history (`risk-retraction-leak`) |
 
 A paraphrase can pass every step. The grace period gives the speaker time to read what is shared.
