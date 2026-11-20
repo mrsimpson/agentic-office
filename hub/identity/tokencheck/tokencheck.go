@@ -2,6 +2,8 @@
 // the server learn from it who makes a call, whether the caller is a system admin and in which
 // tenants the caller is a member, with which role. The identity interceptor checks the access token of
 // every call and puts the caller into the context of the call.
+//
+// Kinds tells the kind of any participant by its ID, without a call.
 package tokencheck
 
 import (
@@ -77,4 +79,12 @@ func (c Caller) Member(tenantID string) (Role, bool) {
 		}
 	}
 	return 0, false
+}
+
+// Kinds tells whether a participant is a human or an agent, by the participant ID alone. A part
+// that shows who wrote an artifact uses it, for example the wiki.
+type Kinds interface {
+	// KindOf returns the kind of the user with the participant ID, also of a user who was
+	// removed. An ID that names no user has KindUnknown.
+	KindOf(participantID string) Kind
 }

@@ -418,8 +418,22 @@ func (s *Service) CreateTask(ctx context.Context, req *taskv1.CreateTaskRequest)
 	return nil, connect.NewError(connect.CodeInternal, "store the task in the archive: too many files were pushed meanwhile; repeat the command")
 }
 
-// write stores the task of e as the file of the local number n, in one commit. base is the
-// Base of the file (see storage.File). A conflict is returned as it is.
+// authorOf returns the author of a change by the caller of the call: the participant, with its
+// display name when it has one, or the hub for a call without a participant.
+func authorOf(ctx context.Context) storage.Author {
+	c, _ := tokencheck.CallerFrom(ctx)
+	if c.ParticipantID == "" {
+		return storage.Author{}
+	}
+	name := c.DisplayName
+	if name == "" {
+		name = c.ParticipantID
+	}
+	return storage.ParticipantAuthor(name, c.ParticipantID)
+}
+
+// write stores the task of e as the file of the local number n, in one commit by the caller.
+// base is the Base of the file (see storage.File). A conflict is returned as it is.
 func (s *Service) write(ctx context.Context, n uint64, e *entry, message, base string) error {
 	data, err := encode(e.task, e.commands)
 	if err != nil {
@@ -430,7 +444,7 @@ func (s *Service) write(ctx context.Context, n uint64, e *entry, message, base s
 	}
 	// A cancelled commit could leave the repository locked, so the commit is not cancelled with
 	// the call.
-	if _, err := s.arch.Commit(context.WithoutCancel(ctx), storage.Change{Message: message,
+	if _, err := s.arch.Commit(context.WithoutCancel(ctx), storage.Change{Message: message, Author: authorOf(ctx),
 		Files: []storage.File{{Path: check.FilePath(n), Data: data, Base: base}}}); err != nil {
 		if storage.IsConflict(err) {
 			return err

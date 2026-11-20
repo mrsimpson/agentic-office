@@ -47,6 +47,11 @@ type Repo struct {
 	turn sync.Mutex // one change at a time
 
 	changes changeLog // the followers of main (if-artifact-changes)
+
+	// staging is the staging repository of the same tenant, for the artifact repository of a
+	// tenant; nil for every other repository. LastChange finds the author of a released file in
+	// it.
+	staging *Repo
 }
 
 var _ storage.Archive = (*Repo)(nil)

@@ -2,13 +2,16 @@ package wiki
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"connectrpc.com/connect/v2"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/mrsimpson/agentic-office/hub/archive/storage"
 	"github.com/mrsimpson/agentic-office/hub/archive/watch"
@@ -29,6 +32,9 @@ type Options struct {
 	Archive storage.Archive
 	// Watcher reports the changes of the artifact repository (if-archive-watch).
 	Watcher watch.Watcher
+	// Kinds tells whether an author is a human or an agent (if-token-check). Nil: the kind of
+	// every author is unknown.
+	Kinds tokencheck.Kinds
 	// Logf logs; nil means log.Printf.
 	Logf func(string, ...any)
 }
@@ -38,6 +44,7 @@ type Options struct {
 type Service struct {
 	arch    storage.Archive
 	watcher watch.Watcher
+	kinds   tokencheck.Kinds
 	logf    func(string, ...any)
 	ctx     context.Context
 	cancel  context.CancelFunc
@@ -60,7 +67,7 @@ func Open(ctx context.Context, o Options) (*Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("wiki: watch the archive: %w", err)
 	}
-	s := &Service{arch: o.Archive, watcher: o.Watcher, logf: o.Logf, done: make(chan struct{})}
+	s := &Service{arch: o.Archive, watcher: o.Watcher, kinds: o.Kinds, logf: o.Logf, done: make(chan struct{})}
 	if err := s.loadAll(ctx); err != nil {
 		sub.Close()
 		return nil, err
@@ -229,21 +236,43 @@ func (s *Service) GetArtifact(ctx context.Context, req *wikiv1.GetArtifactReques
 		return nil, connect.NewError(connect.CodeInvalidArgument, "name the path of the artifact")
 	}
 	p := cleanPath(req.GetPath())
+	res, sources, err := s.artifact(p)
+	if err != nil {
+		return nil, err
+	}
+	// The history is read outside the lock: it runs git and must not hold up the view.
+	if err := s.history(ctx, p, sources, res.Trust); err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+// artifact returns the answer of GetArtifact for p from the view, with the trust data of the
+// description, and the cited sources that are files of the repository.
+func (s *Service) artifact(p string) (*wikiv1.GetArtifactResponse, []string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	e := s.v.entries[p]
 	if e == nil {
-		return nil, connect.NewError(connect.CodeNotFound, "the wiki has no artifact "+p)
+		return nil, nil, connect.NewError(connect.CodeNotFound, "the wiki has no artifact "+p)
 	}
 	link := func(target string) *wikiv1.Link {
 		return &wikiv1.Link{Path: target, Broken: !s.v.exists(target), Artifact: artifactOf(s.v.entries[target])}
 	}
-	res := &wikiv1.GetArtifactResponse{Artifact: artifactOf(e)}
+	trust := &wikiv1.Trust{Status: e.desc.Status, Owner: e.desc.Owner}
+	for _, r := range e.desc.Reviews {
+		trust.Reviews = append(trust.Reviews, &wikiv1.Review{ParticipantId: r.ParticipantID, Date: r.Date})
+	}
+	res := &wikiv1.GetArtifactResponse{Artifact: artifactOf(e), Trust: trust}
 	for _, l := range e.desc.Links {
 		res.Links = append(res.Links, link(l))
 	}
+	var sources []string
 	for _, src := range e.sources {
 		res.Sources = append(res.Sources, link(src))
+		if s.v.files[src] && !slices.Contains(sources, src) {
+			sources = append(sources, src)
+		}
 	}
 	for _, o := range s.v.sorted() {
 		if slices.Contains(o.desc.Links, p) {
@@ -253,7 +282,67 @@ func (s *Service) GetArtifact(ctx context.Context, req *wikiv1.GetArtifactReques
 			res.CitedBy = append(res.CitedBy, artifactOf(o))
 		}
 	}
-	return res, nil
+	return res, sources, nil
+}
+
+// history fills the trust data that the archive knows: who changed the artifact at p last and
+// when, whether that was a release and by whom, and when the newest of the sources was written.
+func (s *Service) history(ctx context.Context, p string, sources []string, t *wikiv1.Trust) error {
+	last, ok, err := s.lastChange(ctx, p)
+	if err != nil || !ok {
+		return err
+	}
+	t.LastAuthor = s.author(last.Author)
+	t.LastChange = timestamppb.New(last.Time)
+	if r := last.Release; r != nil {
+		t.ReleasedAt = timestamppb.New(r.Time)
+		t.ReleasedBy = s.author(r.By)
+	}
+	var newest time.Time
+	for _, src := range sources {
+		ch, ok, err := s.lastChange(ctx, src)
+		if err != nil {
+			return err
+		}
+		if ok && ch.Time.After(newest) {
+			newest = ch.Time
+		}
+	}
+	if !newest.IsZero() {
+		t.NewestSourceTime = timestamppb.New(newest)
+	}
+	return nil
+}
+
+// lastChange returns the newest change of the file at p. ok is false when no change wrote it,
+// for example because it was removed in the meantime.
+func (s *Service) lastChange(ctx context.Context, p string) (storage.PathChange, bool, error) {
+	ch, err := s.arch.LastChange(ctx, p)
+	if errors.Is(err, storage.ErrNoChange) {
+		return ch, false, nil
+	}
+	if err != nil {
+		s.logf("wiki: read the history of %s: %v", p, err)
+		return ch, false, connect.NewError(connect.CodeUnavailable, "the history of "+p+" could not be read")
+	}
+	return ch, true, nil
+}
+
+// author returns the author of a change as the wiki interface shows it, or nil for the hub.
+func (s *Service) author(a storage.Author) *wikiv1.Author {
+	if a == (storage.Author{}) {
+		return nil
+	}
+	out := &wikiv1.Author{Name: a.Name, ParticipantId: a.ParticipantID()}
+	if out.ParticipantId != "" && s.kinds != nil {
+		switch s.kinds.KindOf(out.ParticipantId) {
+		case tokencheck.KindHuman:
+			out.Kind = wikiv1.AuthorKind_AUTHOR_KIND_HUMAN
+		case tokencheck.KindAgent:
+			out.Kind = wikiv1.AuthorKind_AUTHOR_KIND_AGENT
+		}
+	}
+	return out
 }
 
 // ListBrokenLinks implements if-wiki-api.

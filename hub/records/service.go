@@ -245,13 +245,13 @@ func author(ctx context.Context, commandID, text, authorID string) (tokencheck.C
 	return c, k, nil
 }
 
-// storageAuthor is the author of a change in the staging area: the participant, with its
-// display name when it has one.
+// storageAuthor is the author of a change: the participant, with its display name when it has
+// one.
 func storageAuthor(pid, name string) storage.Author {
 	if name == "" {
 		name = pid
 	}
-	return storage.Author{Name: name, Email: pid + "@office.invalid"}
+	return storage.ParticipantAuthor(name, pid)
 }
 
 // errNotParticipant is the answer for a session that the caller may not name. A session that does
@@ -308,19 +308,20 @@ var errReleased = errors.New("released")
 // Only a participant may name a session. It never runs while the part holds a lock, because the
 // meeting session may wait for the part at the same time (StoreMinutes).
 func (s *Service) route(ctx context.Context, sessionID string, c tokencheck.Caller) (target, error) {
+	author := storageAuthor(c.ParticipantID, c.DisplayName)
 	if sessionID == "" {
-		return target{}, nil
+		return target{author: author}, nil
 	}
 	if err := s.tookPart(ctx, sessionID, c.ParticipantID); err != nil {
 		return target{}, err
 	}
 	switch err := s.releasing(ctx, sessionID); {
 	case errors.Is(err, errReleased):
-		return target{}, nil
+		return target{author: author}, nil
 	case err != nil:
 		return target{}, err
 	}
-	return target{session: sessionID, author: storageAuthor(c.ParticipantID, c.DisplayName)}, nil
+	return target{session: sessionID, author: author}, nil
 }
 
 // readerOf returns whether the caller may read the staged records of a session: a tenant admin,

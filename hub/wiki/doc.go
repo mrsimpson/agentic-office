@@ -27,10 +27,18 @@
 //     is a run of letters and digits, compared in lower case. The frequency of a word in an
 //     artifact is the weighted sum over the fields, and the length of an artifact is the weighted
 //     sum of the lengths of its fields. Hits are ordered by score, then by path.
+//   - GetArtifact gives the trust data of an artifact. The status, the owner and the reviews come
+//     from the description of a document. The last author and the time of the last change come
+//     from the archive (if-archive-storage, Archive.LastChange): for an artifact that a release
+//     brought, the author who wrote it last in the session, and the release with who released it
+//     and when. The token check (if-token-check, tokencheck.Kinds) tells whether an author is a
+//     human or an agent. The time of the newest source is the newest time of the last change
+//     among the cited sources that are files of the repository. The view holds none of this: the
+//     part asks the archive on each call, outside the lock of the view.
 //   - Every call needs the caller from the identity token check (if-token-check). The identity
 //     interceptor has checked that the caller is a member of the tenant. A stage link, which has
 //     no participant, is refused with PermissionDenied. Every member reads the whole view.
 //   - Error codes: no valid token is Unauthenticated; a stage link is PermissionDenied; a missing
 //     path or a query without a word is InvalidArgument; a path that is not in the index is
-//     NotFound.
+//     NotFound; a history that the archive cannot read is Unavailable.
 package wiki

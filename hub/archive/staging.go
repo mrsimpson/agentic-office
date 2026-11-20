@@ -866,27 +866,20 @@ func (s *Staging) Released(ctx context.Context, session string) (storage.Release
 		return storage.ReleaseCommit{}, err
 	}
 	trailer := releaseTrailer + ": " + areaName(session)
-	out, err := s.artifacts.run(ctx, "log", "refs/heads/main", "-F", "--grep="+trailer,
-		"--format=%H%x00%an%x00%ae%x00%aI%x00%B%x1e")
+	out, err := s.artifacts.run(ctx, "log", "refs/heads/main", "-F", "--grep="+trailer, logFormat)
 	if err != nil {
 		return storage.ReleaseCommit{}, err
 	}
-	for _, rec := range strings.Split(out, "\x1e") {
-		fields := strings.SplitN(strings.TrimLeft(rec, "\n"), "\x00", 5)
-		if len(fields) != 5 {
-			continue
-		}
-		lines := strings.Split(strings.TrimSpace(fields[4]), "\n")
+	commits, err := parseLog(out)
+	if err != nil {
+		return storage.ReleaseCommit{}, err
+	}
+	for _, c := range commits {
+		lines := strings.Split(strings.TrimSpace(c.body), "\n")
 		if !slices.Contains(lines, trailer) {
 			continue // the trailer names another session that starts the same way
 		}
-		rc := storage.ReleaseCommit{ID: fields[0]}
-		if fields[2] != hubEmail {
-			rc.Author = storage.Author{Name: fields[1], Email: fields[2]}
-		}
-		if rc.Time, err = time.Parse(time.RFC3339, fields[3]); err != nil {
-			return storage.ReleaseCommit{}, fmt.Errorf("archive: the time of the release commit %s: %w", rc.ID, err)
-		}
+		rc := storage.ReleaseCommit{ID: c.id, Author: c.author, Time: c.time}
 		for _, l := range lines {
 			if m := coAuthorLine.FindStringSubmatch(l); m != nil {
 				rc.CoAuthors = append(rc.CoAuthors, storage.Author{Name: m[1], Email: m[2]})

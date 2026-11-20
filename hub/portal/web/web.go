@@ -347,7 +347,13 @@ var _ = template.Must(Page.New("wiki").Parse(`<div class="wikibar" data-wikibar>
 <dt>Kind</dt><dd data-kind>{{.Kind}}{{if .Entry.Schema}} <small><code>{{.Entry.Schema}}</code></small>{{end}}</dd>
 {{if .Entry.Summary}}<dt>Summary</dt><dd data-summary>{{.Entry.Summary}}</dd>{{end}}
 {{if .Entry.Tags}}<dt>Tags</dt><dd><div class="chips">{{range .Entry.Tags}}<a class="chip" href="{{.Href}}" data-tag="{{.Tag}}">{{.Tag}}</a>{{end}}</div></dd>{{end}}
-{{if .FrontMatter}}<dt>Front matter</dt><dd><details data-front-matter><summary><small>As written: status, owner and reviews of a document; the author and time of a note</small></summary><pre class="artifact">{{.FrontMatter}}</pre></details></dd>{{end}}
+{{with .Trust}}{{if .Status}}<dt>Status</dt><dd data-status>{{.Status}}</dd>{{end}}
+{{if .Owner}}<dt>Owner</dt><dd data-owner><code>{{.Owner}}</code></dd>{{end}}
+{{if .Reviews}}<dt>Reviews</dt><dd><ul class="refs">{{range .Reviews}}<li data-review="{{.ParticipantID}} {{.Date}}"><code>{{.ParticipantID}}</code> on {{.Date}}</li>{{end}}</ul></dd>{{end}}
+{{if .LastChange}}<dt>Last change</dt><dd data-last-change>{{template "wiki-author" .LastAuthor}} · {{.LastChange}} UTC</dd>{{end}}
+{{if .ReleasedAt}}<dt>Released</dt><dd data-released>by {{if .ReleasedBy}}{{template "wiki-author" .ReleasedBy}}{{else}}the hub at the deadline{{end}} · {{.ReleasedAt}} UTC</dd>{{end}}
+{{if .NewestSource}}<dt>Newest source</dt><dd data-newest-source>written {{.NewestSource}} UTC</dd>{{end}}{{end}}
+{{if .FrontMatter}}<dt>Front matter</dt><dd><details data-front-matter><summary><small>As written</small></summary><pre class="artifact">{{.FrontMatter}}</pre></details></dd>{{end}}
 </dl>
 {{if .Missing}}<p class="empty" data-empty="content">The file cannot be read now.</p>{{else if .Text}}<pre class="artifact" data-content>{{.Text}}</pre>{{else}}<div class="prose" data-content>{{.Body}}</div>{{end}}{{if .Cut}}<small>The page shows the start of the file only.</small>{{end}}
 <h2>Links</h2>
@@ -359,6 +365,10 @@ var _ = template.Must(Page.New("wiki").Parse(`<div class="wikibar" data-wikibar>
 {{if .Entry.Source}}<h2>Cited by</h2>
 {{template "wiki-entries" .CitedBy}}{{if not .CitedBy}}<p class="empty" data-empty="cited-by">No document cites this source yet. It waits in the ingest queue.</p>{{end}}{{end}}
 {{end}}{{end}}`))
+
+// wiki-author is an author of a change: the name, the participant ID and whether a human or an
+// agent; nil is the hub.
+var _ = template.Must(Page.New("wiki-author").Parse(`{{if .}}<span data-author="{{.ParticipantID}}"{{if .Kind}} data-author-kind="{{.Kind}}"{{end}}>{{.Name}}{{if .ParticipantID}} <small><code>{{.ParticipantID}}</code></small>{{end}}{{if .Kind}} <span class="badge imported">{{.Kind}}</span>{{end}}</span>{{else}}<span data-author="">the hub</span>{{end}}`))
 
 // wiki-entries is a list of artifacts of the wiki.
 var _ = template.Must(Page.New("wiki-entries").Parse(`{{if .}}<table class="wiki"><tr><th>Artifact</th><th>Summary</th><th>Tags</th></tr>

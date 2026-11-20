@@ -41,7 +41,9 @@ See also [the plan](missing.md) and [the web](https://example.org/).
 `
 
 // wikiPath is the address of a page of the wiki of a tenant in the portal.
-func wikiPath(tenant, rest string) string { return "/portal/t/" + url.PathEscape(tenant) + "/wiki" + rest }
+func wikiPath(tenant, rest string) string {
+	return "/portal/t/" + url.PathEscape(tenant) + "/wiki" + rest
+}
 
 // openPage fetches a page of the portal and checks its status.
 func openPage(t *testing.T, b *http.Client, srv *contracttest.Hub, page string, status int) *html.Node {
@@ -76,9 +78,9 @@ func hrefs(n *html.Node, label string) []string {
 }
 
 // A member reads the wiki of the tenant in the portal: the index with its tags and the filter, an
-// artifact with its rendered text, its trust data as written, links, backlinks, sources and
-// citations, a link that leads to the page of the other artifact, the search, the broken links and
-// the ingest queue.
+// artifact with its rendered text, its trust data, its front matter as written, links, backlinks,
+// sources and citations, a link that leads to the page of the other artifact, the search, the
+// broken links and the ingest queue.
 func TestPortalWiki(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
@@ -152,6 +154,18 @@ func TestPortalWiki(t *testing.T) {
 	if fm := findAll(facts[0], withAttr("data-front-matter", "")); len(fm) != 1 || !strings.Contains(text(fm[0]), "status: reviewed") ||
 		!strings.Contains(text(fm[0]), "owner: ada") || !strings.Contains(text(fm[0]), "id: bob") {
 		t.Errorf("the front matter: %q", text(facts[0]))
+	}
+	// The trust data that the wiki gives: the state of review, and who changed the page last.
+	for _, want := range []struct{ attr, value, text string }{
+		{"data-status", "", "reviewed"}, {"data-owner", "", "ada"}, {"data-review", "bob 2026-11-19", "bob on 2026-11-19"},
+		{"data-author", "ada", "Ada"}, {"data-author-kind", "human", "human"}, {"data-newest-source", "", "written"},
+	} {
+		if el := findAll(facts[0], withAttr(want.attr, want.value)); len(el) != 1 || !strings.Contains(text(el[0]), want.text) {
+			t.Errorf("the trust data %s=%q: %q", want.attr, want.value, text(facts[0]))
+		}
+	}
+	if len(findAll(facts[0], withAttr("data-last-change", ""))) != 1 || len(findAll(facts[0], withAttr("data-released", ""))) != 0 {
+		t.Errorf("the last change of the page: %q", text(facts[0]))
 	}
 	var links []string
 	for _, el := range findAll(doc, func(n *html.Node) bool { _, ok := attr(n, "data-link"); return ok }) {

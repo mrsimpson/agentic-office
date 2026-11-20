@@ -14,6 +14,7 @@ import (
 	"connectrpc.com/connect/v2"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/text"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	archivev1 "github.com/mrsimpson/agentic-office/hub/archive/api"
 	"github.com/mrsimpson/agentic-office/hub/archive/api/archivev1connect"
@@ -24,7 +25,7 @@ import (
 )
 
 // This file is the wiki of a tenant in the portal (concept-wiki): the index with its tags, one
-// artifact with its links, backlinks, sources and the documents that cite it, the search, the
+// artifact with its trust data, links, backlinks, sources and the documents that cite it, the search, the
 // broken links and the ingest queue. The view of the wiki (if-wiki-api) decides what is in it and
 // how links resolve; the content of an artifact comes from the archive read API.
 
@@ -78,6 +79,62 @@ type artifactPage struct {
 	Missing            bool // the archive has no readable file at the path
 	Links, Sources     []linkView
 	Backlinks, CitedBy []entryView
+	Trust              trustView
+}
+
+// trustView is the trust data of an artifact as the wiki gives it (dec-wiki). The times are
+// formatted; an empty field is not shown.
+type trustView struct {
+	Status, Owner string
+	Reviews       []reviewView
+	// LastAuthor is who wrote the artifact last; nil when the hub wrote it.
+	LastAuthor *authorView
+	LastChange string
+	// NewestSource is when the newest cited source was written.
+	NewestSource string
+	// ReleasedAt is set when the last change was a release; ReleasedBy is nil when the hub
+	// released the session.
+	ReleasedAt string
+	ReleasedBy *authorView
+}
+
+// formatTime formats a time of the trust data, or gives "" when it is not set.
+func formatTime(ts *timestamppb.Timestamp) string {
+	if ts == nil {
+		return ""
+	}
+	return ts.AsTime().UTC().Format(timeLayout)
+}
+
+type reviewView struct{ ParticipantID, Date string }
+
+// authorView is an author. Kind is "human", "agent" or "".
+type authorView struct{ Name, ParticipantID, Kind string }
+
+func authorOf(a *wikiv1.Author) *authorView {
+	if a == nil {
+		return nil
+	}
+	v := &authorView{Name: a.GetName(), ParticipantID: a.GetParticipantId()}
+	switch a.GetKind() {
+	case wikiv1.AuthorKind_AUTHOR_KIND_HUMAN:
+		v.Kind = "human"
+	case wikiv1.AuthorKind_AUTHOR_KIND_AGENT:
+		v.Kind = "agent"
+	}
+	return v
+}
+
+func trustOf(t *wikiv1.Trust) trustView {
+	v := trustView{Status: t.GetStatus(), Owner: t.GetOwner(), LastAuthor: authorOf(t.GetLastAuthor()),
+		ReleasedBy: authorOf(t.GetReleasedBy())}
+	for _, r := range t.GetReviews() {
+		v.Reviews = append(v.Reviews, reviewView{ParticipantID: r.GetParticipantId(), Date: r.GetDate()})
+	}
+	v.LastChange = formatTime(t.GetLastChange())
+	v.NewestSource = formatTime(t.GetNewestSourceTime())
+	v.ReleasedAt = formatTime(t.GetReleasedAt())
+	return v
 }
 
 func (h *Handler) wikiClient(r *http.Request, tenant string) wikiv1connect.WikiServiceClient {
@@ -221,7 +278,8 @@ func kindOf(a *wikiv1.Artifact) string {
 // the archive read API.
 func (h *Handler) artifactPage(ctx context.Context, r *http.Request, tenant string, res *wikiv1.GetArtifactResponse) (*artifactPage, error) {
 	a := &artifactPage{Entry: entryOf(tenant, res.GetArtifact()), Kind: kindOf(res.GetArtifact()), Links: links(tenant, res.GetLinks()),
-		Sources: links(tenant, res.GetSources()), Backlinks: entries(tenant, res.GetBacklinks()), CitedBy: entries(tenant, res.GetCitedBy())}
+		Sources: links(tenant, res.GetSources()), Backlinks: entries(tenant, res.GetBacklinks()), CitedBy: entries(tenant, res.GetCitedBy()),
+		Trust: trustOf(res.GetTrust())}
 	p := a.Entry.Path
 	ck, _ := r.Cookie(web.CookieName)
 	read := archivev1connect.NewArchiveReadServiceClient(connect.NewClient(h.opts.Hub, auth.StaticToken(ck.Value), auth.Tenant(tenant)))

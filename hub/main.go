@@ -354,7 +354,7 @@ func main() {
 	if *gracePeriod <= 0 {
 		log.Fatal("-release-grace-period must be positive")
 	}
-	rts := newRuntimes(repos, signingKey, *archiveInterval, *restoreWait, *gracePeriod)
+	rts := newRuntimes(repos, ids, signingKey, *archiveInterval, *restoreWait, *gracePeriod)
 	tenants, err := ids.Tenants(context.Background())
 	if err != nil {
 		log.Fatal(err)

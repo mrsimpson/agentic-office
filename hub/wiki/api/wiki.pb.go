@@ -39,6 +39,7 @@ package wikiv1
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -50,6 +51,57 @@ const (
 	// Verify that runtime/protoimpl is sufficiently up-to-date.
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
+
+// AuthorKind tells whether an author is a human or an agent.
+type AuthorKind int32
+
+const (
+	// AUTHOR_KIND_UNSPECIFIED: the hub does not know the participant.
+	AuthorKind_AUTHOR_KIND_UNSPECIFIED AuthorKind = 0
+	AuthorKind_AUTHOR_KIND_HUMAN       AuthorKind = 1
+	AuthorKind_AUTHOR_KIND_AGENT       AuthorKind = 2
+)
+
+// Enum value maps for AuthorKind.
+var (
+	AuthorKind_name = map[int32]string{
+		0: "AUTHOR_KIND_UNSPECIFIED",
+		1: "AUTHOR_KIND_HUMAN",
+		2: "AUTHOR_KIND_AGENT",
+	}
+	AuthorKind_value = map[string]int32{
+		"AUTHOR_KIND_UNSPECIFIED": 0,
+		"AUTHOR_KIND_HUMAN":       1,
+		"AUTHOR_KIND_AGENT":       2,
+	}
+)
+
+func (x AuthorKind) Enum() *AuthorKind {
+	p := new(AuthorKind)
+	*p = x
+	return p
+}
+
+func (x AuthorKind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (AuthorKind) Descriptor() protoreflect.EnumDescriptor {
+	return file_office_wiki_v1_wiki_proto_enumTypes[0].Descriptor()
+}
+
+func (AuthorKind) Type() protoreflect.EnumType {
+	return &file_office_wiki_v1_wiki_proto_enumTypes[0]
+}
+
+func (x AuthorKind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use AuthorKind.Descriptor instead.
+func (AuthorKind) EnumDescriptor() ([]byte, []int) {
+	return file_office_wiki_v1_wiki_proto_rawDescGZIP(), []int{0}
+}
 
 // Artifact is one entry of the index.
 type Artifact struct {
@@ -346,7 +398,9 @@ type GetArtifactResponse struct {
 	// sources are the sources that a document cites, in the order of its front matter.
 	Sources []*Link `protobuf:"bytes,4,rep,name=sources,proto3" json:"sources,omitempty"`
 	// cited_by are the documents that cite this artifact as a source, ordered by path.
-	CitedBy       []*Artifact `protobuf:"bytes,5,rep,name=cited_by,json=citedBy,proto3" json:"cited_by,omitempty"`
+	CitedBy []*Artifact `protobuf:"bytes,5,rep,name=cited_by,json=citedBy,proto3" json:"cited_by,omitempty"`
+	// trust tells a reader how far to trust the artifact.
+	Trust         *Trust `protobuf:"bytes,6,opt,name=trust,proto3" json:"trust,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -416,6 +470,248 @@ func (x *GetArtifactResponse) GetCitedBy() []*Artifact {
 	return nil
 }
 
+func (x *GetArtifactResponse) GetTrust() *Trust {
+	if x != nil {
+		return x.Trust
+	}
+	return nil
+}
+
+// Trust is what the hub knows, without a model, about how far a reader can trust an artifact
+// (dec-wiki): the state of review that a document names, who changed the artifact last and when,
+// how old its newest source is, and who released it.
+type Trust struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// status is the status that a document names: draft, reviewed or outdated. Empty for every
+	// other artifact and for a document that names none.
+	Status string `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
+	// owner is the participant ID of the owner that a document names, or empty.
+	Owner string `protobuf:"bytes,2,opt,name=owner,proto3" json:"owner,omitempty"`
+	// reviews are the reviews that a document names, in the order of its front matter.
+	Reviews []*Review `protobuf:"bytes,3,rep,name=reviews,proto3" json:"reviews,omitempty"`
+	// last_author is who wrote the artifact last; unset when the hub wrote it. For an artifact
+	// that a release brought, it is who wrote it last in the session, not who released it.
+	LastAuthor *Author `protobuf:"bytes,4,opt,name=last_author,json=lastAuthor,proto3" json:"last_author,omitempty"`
+	// last_change is when the last author wrote the artifact.
+	LastChange *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=last_change,json=lastChange,proto3" json:"last_change,omitempty"`
+	// newest_source_time is when the newest of the sources that a document cites was written;
+	// unset when it cites none that exists.
+	NewestSourceTime *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=newest_source_time,json=newestSourceTime,proto3" json:"newest_source_time,omitempty"`
+	// released_at is set when the last change of the artifact was the release of a session: when
+	// the release brought it into the wiki.
+	ReleasedAt *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=released_at,json=releasedAt,proto3" json:"released_at,omitempty"`
+	// released_by is who released the session; unset when the hub released it at its deadline, and
+	// when the last change was no release.
+	ReleasedBy    *Author `protobuf:"bytes,8,opt,name=released_by,json=releasedBy,proto3" json:"released_by,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Trust) Reset() {
+	*x = Trust{}
+	mi := &file_office_wiki_v1_wiki_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Trust) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Trust) ProtoMessage() {}
+
+func (x *Trust) ProtoReflect() protoreflect.Message {
+	mi := &file_office_wiki_v1_wiki_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Trust.ProtoReflect.Descriptor instead.
+func (*Trust) Descriptor() ([]byte, []int) {
+	return file_office_wiki_v1_wiki_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *Trust) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *Trust) GetOwner() string {
+	if x != nil {
+		return x.Owner
+	}
+	return ""
+}
+
+func (x *Trust) GetReviews() []*Review {
+	if x != nil {
+		return x.Reviews
+	}
+	return nil
+}
+
+func (x *Trust) GetLastAuthor() *Author {
+	if x != nil {
+		return x.LastAuthor
+	}
+	return nil
+}
+
+func (x *Trust) GetLastChange() *timestamppb.Timestamp {
+	if x != nil {
+		return x.LastChange
+	}
+	return nil
+}
+
+func (x *Trust) GetNewestSourceTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.NewestSourceTime
+	}
+	return nil
+}
+
+func (x *Trust) GetReleasedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ReleasedAt
+	}
+	return nil
+}
+
+func (x *Trust) GetReleasedBy() *Author {
+	if x != nil {
+		return x.ReleasedBy
+	}
+	return nil
+}
+
+// Review is one review of a document.
+type Review struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// participant_id is the reviewer.
+	ParticipantId string `protobuf:"bytes,1,opt,name=participant_id,json=participantId,proto3" json:"participant_id,omitempty"`
+	// date is the day of the review, in the form YYYY-MM-DD, as the document names it.
+	Date          string `protobuf:"bytes,2,opt,name=date,proto3" json:"date,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Review) Reset() {
+	*x = Review{}
+	mi := &file_office_wiki_v1_wiki_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Review) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Review) ProtoMessage() {}
+
+func (x *Review) ProtoReflect() protoreflect.Message {
+	mi := &file_office_wiki_v1_wiki_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Review.ProtoReflect.Descriptor instead.
+func (*Review) Descriptor() ([]byte, []int) {
+	return file_office_wiki_v1_wiki_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *Review) GetParticipantId() string {
+	if x != nil {
+		return x.ParticipantId
+	}
+	return ""
+}
+
+func (x *Review) GetDate() string {
+	if x != nil {
+		return x.Date
+	}
+	return ""
+}
+
+// Author is a participant who changed an artifact.
+type Author struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// name is the display name that the change names.
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// participant_id is the ID of the participant; empty when the change names no participant of
+	// the hub.
+	ParticipantId string     `protobuf:"bytes,2,opt,name=participant_id,json=participantId,proto3" json:"participant_id,omitempty"`
+	Kind          AuthorKind `protobuf:"varint,3,opt,name=kind,proto3,enum=office.wiki.v1.AuthorKind" json:"kind,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Author) Reset() {
+	*x = Author{}
+	mi := &file_office_wiki_v1_wiki_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Author) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Author) ProtoMessage() {}
+
+func (x *Author) ProtoReflect() protoreflect.Message {
+	mi := &file_office_wiki_v1_wiki_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Author.ProtoReflect.Descriptor instead.
+func (*Author) Descriptor() ([]byte, []int) {
+	return file_office_wiki_v1_wiki_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *Author) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *Author) GetParticipantId() string {
+	if x != nil {
+		return x.ParticipantId
+	}
+	return ""
+}
+
+func (x *Author) GetKind() AuthorKind {
+	if x != nil {
+		return x.Kind
+	}
+	return AuthorKind_AUTHOR_KIND_UNSPECIFIED
+}
+
 // Link is a link or a cited source of an artifact.
 type Link struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -432,7 +728,7 @@ type Link struct {
 
 func (x *Link) Reset() {
 	*x = Link{}
-	mi := &file_office_wiki_v1_wiki_proto_msgTypes[6]
+	mi := &file_office_wiki_v1_wiki_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -444,7 +740,7 @@ func (x *Link) String() string {
 func (*Link) ProtoMessage() {}
 
 func (x *Link) ProtoReflect() protoreflect.Message {
-	mi := &file_office_wiki_v1_wiki_proto_msgTypes[6]
+	mi := &file_office_wiki_v1_wiki_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -457,7 +753,7 @@ func (x *Link) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Link.ProtoReflect.Descriptor instead.
 func (*Link) Descriptor() ([]byte, []int) {
-	return file_office_wiki_v1_wiki_proto_rawDescGZIP(), []int{6}
+	return file_office_wiki_v1_wiki_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *Link) GetPath() string {
@@ -489,7 +785,7 @@ type ListBrokenLinksRequest struct {
 
 func (x *ListBrokenLinksRequest) Reset() {
 	*x = ListBrokenLinksRequest{}
-	mi := &file_office_wiki_v1_wiki_proto_msgTypes[7]
+	mi := &file_office_wiki_v1_wiki_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -501,7 +797,7 @@ func (x *ListBrokenLinksRequest) String() string {
 func (*ListBrokenLinksRequest) ProtoMessage() {}
 
 func (x *ListBrokenLinksRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_office_wiki_v1_wiki_proto_msgTypes[7]
+	mi := &file_office_wiki_v1_wiki_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -514,7 +810,7 @@ func (x *ListBrokenLinksRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListBrokenLinksRequest.ProtoReflect.Descriptor instead.
 func (*ListBrokenLinksRequest) Descriptor() ([]byte, []int) {
-	return file_office_wiki_v1_wiki_proto_rawDescGZIP(), []int{7}
+	return file_office_wiki_v1_wiki_proto_rawDescGZIP(), []int{10}
 }
 
 type ListBrokenLinksResponse struct {
@@ -526,7 +822,7 @@ type ListBrokenLinksResponse struct {
 
 func (x *ListBrokenLinksResponse) Reset() {
 	*x = ListBrokenLinksResponse{}
-	mi := &file_office_wiki_v1_wiki_proto_msgTypes[8]
+	mi := &file_office_wiki_v1_wiki_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -538,7 +834,7 @@ func (x *ListBrokenLinksResponse) String() string {
 func (*ListBrokenLinksResponse) ProtoMessage() {}
 
 func (x *ListBrokenLinksResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_office_wiki_v1_wiki_proto_msgTypes[8]
+	mi := &file_office_wiki_v1_wiki_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -551,7 +847,7 @@ func (x *ListBrokenLinksResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListBrokenLinksResponse.ProtoReflect.Descriptor instead.
 func (*ListBrokenLinksResponse) Descriptor() ([]byte, []int) {
-	return file_office_wiki_v1_wiki_proto_rawDescGZIP(), []int{8}
+	return file_office_wiki_v1_wiki_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ListBrokenLinksResponse) GetLinks() []*BrokenLink {
@@ -576,7 +872,7 @@ type BrokenLink struct {
 
 func (x *BrokenLink) Reset() {
 	*x = BrokenLink{}
-	mi := &file_office_wiki_v1_wiki_proto_msgTypes[9]
+	mi := &file_office_wiki_v1_wiki_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -588,7 +884,7 @@ func (x *BrokenLink) String() string {
 func (*BrokenLink) ProtoMessage() {}
 
 func (x *BrokenLink) ProtoReflect() protoreflect.Message {
-	mi := &file_office_wiki_v1_wiki_proto_msgTypes[9]
+	mi := &file_office_wiki_v1_wiki_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -601,7 +897,7 @@ func (x *BrokenLink) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BrokenLink.ProtoReflect.Descriptor instead.
 func (*BrokenLink) Descriptor() ([]byte, []int) {
-	return file_office_wiki_v1_wiki_proto_rawDescGZIP(), []int{9}
+	return file_office_wiki_v1_wiki_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *BrokenLink) GetFromPath() string {
@@ -633,7 +929,7 @@ type ListIngestQueueRequest struct {
 
 func (x *ListIngestQueueRequest) Reset() {
 	*x = ListIngestQueueRequest{}
-	mi := &file_office_wiki_v1_wiki_proto_msgTypes[10]
+	mi := &file_office_wiki_v1_wiki_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -645,7 +941,7 @@ func (x *ListIngestQueueRequest) String() string {
 func (*ListIngestQueueRequest) ProtoMessage() {}
 
 func (x *ListIngestQueueRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_office_wiki_v1_wiki_proto_msgTypes[10]
+	mi := &file_office_wiki_v1_wiki_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -658,7 +954,7 @@ func (x *ListIngestQueueRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListIngestQueueRequest.ProtoReflect.Descriptor instead.
 func (*ListIngestQueueRequest) Descriptor() ([]byte, []int) {
-	return file_office_wiki_v1_wiki_proto_rawDescGZIP(), []int{10}
+	return file_office_wiki_v1_wiki_proto_rawDescGZIP(), []int{13}
 }
 
 type ListIngestQueueResponse struct {
@@ -670,7 +966,7 @@ type ListIngestQueueResponse struct {
 
 func (x *ListIngestQueueResponse) Reset() {
 	*x = ListIngestQueueResponse{}
-	mi := &file_office_wiki_v1_wiki_proto_msgTypes[11]
+	mi := &file_office_wiki_v1_wiki_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -682,7 +978,7 @@ func (x *ListIngestQueueResponse) String() string {
 func (*ListIngestQueueResponse) ProtoMessage() {}
 
 func (x *ListIngestQueueResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_office_wiki_v1_wiki_proto_msgTypes[11]
+	mi := &file_office_wiki_v1_wiki_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -695,7 +991,7 @@ func (x *ListIngestQueueResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListIngestQueueResponse.ProtoReflect.Descriptor instead.
 func (*ListIngestQueueResponse) Descriptor() ([]byte, []int) {
-	return file_office_wiki_v1_wiki_proto_rawDescGZIP(), []int{11}
+	return file_office_wiki_v1_wiki_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ListIngestQueueResponse) GetSources() []*Artifact {
@@ -723,7 +1019,7 @@ type SearchRequest struct {
 
 func (x *SearchRequest) Reset() {
 	*x = SearchRequest{}
-	mi := &file_office_wiki_v1_wiki_proto_msgTypes[12]
+	mi := &file_office_wiki_v1_wiki_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -735,7 +1031,7 @@ func (x *SearchRequest) String() string {
 func (*SearchRequest) ProtoMessage() {}
 
 func (x *SearchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_office_wiki_v1_wiki_proto_msgTypes[12]
+	mi := &file_office_wiki_v1_wiki_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -748,7 +1044,7 @@ func (x *SearchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchRequest.ProtoReflect.Descriptor instead.
 func (*SearchRequest) Descriptor() ([]byte, []int) {
-	return file_office_wiki_v1_wiki_proto_rawDescGZIP(), []int{12}
+	return file_office_wiki_v1_wiki_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *SearchRequest) GetQuery() string {
@@ -774,7 +1070,7 @@ type SearchResponse struct {
 
 func (x *SearchResponse) Reset() {
 	*x = SearchResponse{}
-	mi := &file_office_wiki_v1_wiki_proto_msgTypes[13]
+	mi := &file_office_wiki_v1_wiki_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -786,7 +1082,7 @@ func (x *SearchResponse) String() string {
 func (*SearchResponse) ProtoMessage() {}
 
 func (x *SearchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_office_wiki_v1_wiki_proto_msgTypes[13]
+	mi := &file_office_wiki_v1_wiki_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -799,7 +1095,7 @@ func (x *SearchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchResponse.ProtoReflect.Descriptor instead.
 func (*SearchResponse) Descriptor() ([]byte, []int) {
-	return file_office_wiki_v1_wiki_proto_rawDescGZIP(), []int{13}
+	return file_office_wiki_v1_wiki_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *SearchResponse) GetHits() []*SearchHit {
@@ -821,7 +1117,7 @@ type SearchHit struct {
 
 func (x *SearchHit) Reset() {
 	*x = SearchHit{}
-	mi := &file_office_wiki_v1_wiki_proto_msgTypes[14]
+	mi := &file_office_wiki_v1_wiki_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -833,7 +1129,7 @@ func (x *SearchHit) String() string {
 func (*SearchHit) ProtoMessage() {}
 
 func (x *SearchHit) ProtoReflect() protoreflect.Message {
-	mi := &file_office_wiki_v1_wiki_proto_msgTypes[14]
+	mi := &file_office_wiki_v1_wiki_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -846,7 +1142,7 @@ func (x *SearchHit) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchHit.ProtoReflect.Descriptor instead.
 func (*SearchHit) Descriptor() ([]byte, []int) {
-	return file_office_wiki_v1_wiki_proto_rawDescGZIP(), []int{14}
+	return file_office_wiki_v1_wiki_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *SearchHit) GetArtifact() *Artifact {
@@ -867,7 +1163,7 @@ var File_office_wiki_v1_wiki_proto protoreflect.FileDescriptor
 
 const file_office_wiki_v1_wiki_proto_rawDesc = "" +
 	"\n" +
-	"\x19office/wiki/v1/wiki.proto\x12\x0eoffice.wiki.v1\"\x92\x01\n" +
+	"\x19office/wiki/v1/wiki.proto\x12\x0eoffice.wiki.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x92\x01\n" +
 	"\bArtifact\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x16\n" +
 	"\x06schema\x18\x02 \x01(\tR\x06schema\x12\x14\n" +
@@ -884,13 +1180,34 @@ const file_office_wiki_v1_wiki_proto_rawDesc = "" +
 	"\x03tag\x18\x01 \x01(\tR\x03tag\x12\x14\n" +
 	"\x05count\x18\x02 \x01(\rR\x05count\"(\n" +
 	"\x12GetArtifactRequest\x12\x12\n" +
-	"\x04path\x18\x01 \x01(\tR\x04path\"\x94\x02\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\"\xc1\x02\n" +
 	"\x13GetArtifactResponse\x124\n" +
 	"\bartifact\x18\x01 \x01(\v2\x18.office.wiki.v1.ArtifactR\bartifact\x12*\n" +
 	"\x05links\x18\x02 \x03(\v2\x14.office.wiki.v1.LinkR\x05links\x126\n" +
 	"\tbacklinks\x18\x03 \x03(\v2\x18.office.wiki.v1.ArtifactR\tbacklinks\x12.\n" +
 	"\asources\x18\x04 \x03(\v2\x14.office.wiki.v1.LinkR\asources\x123\n" +
-	"\bcited_by\x18\x05 \x03(\v2\x18.office.wiki.v1.ArtifactR\acitedBy\"h\n" +
+	"\bcited_by\x18\x05 \x03(\v2\x18.office.wiki.v1.ArtifactR\acitedBy\x12+\n" +
+	"\x05trust\x18\x06 \x01(\v2\x15.office.wiki.v1.TrustR\x05trust\"\x9d\x03\n" +
+	"\x05Trust\x12\x16\n" +
+	"\x06status\x18\x01 \x01(\tR\x06status\x12\x14\n" +
+	"\x05owner\x18\x02 \x01(\tR\x05owner\x120\n" +
+	"\areviews\x18\x03 \x03(\v2\x16.office.wiki.v1.ReviewR\areviews\x127\n" +
+	"\vlast_author\x18\x04 \x01(\v2\x16.office.wiki.v1.AuthorR\n" +
+	"lastAuthor\x12;\n" +
+	"\vlast_change\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"lastChange\x12H\n" +
+	"\x12newest_source_time\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\x10newestSourceTime\x12;\n" +
+	"\vreleased_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"releasedAt\x127\n" +
+	"\vreleased_by\x18\b \x01(\v2\x16.office.wiki.v1.AuthorR\n" +
+	"releasedBy\"C\n" +
+	"\x06Review\x12%\n" +
+	"\x0eparticipant_id\x18\x01 \x01(\tR\rparticipantId\x12\x12\n" +
+	"\x04date\x18\x02 \x01(\tR\x04date\"s\n" +
+	"\x06Author\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12%\n" +
+	"\x0eparticipant_id\x18\x02 \x01(\tR\rparticipantId\x12.\n" +
+	"\x04kind\x18\x03 \x01(\x0e2\x1a.office.wiki.v1.AuthorKindR\x04kind\"h\n" +
 	"\x04Link\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x16\n" +
 	"\x06broken\x18\x02 \x01(\bR\x06broken\x124\n" +
@@ -913,7 +1230,12 @@ const file_office_wiki_v1_wiki_proto_rawDesc = "" +
 	"\x04hits\x18\x01 \x03(\v2\x19.office.wiki.v1.SearchHitR\x04hits\"W\n" +
 	"\tSearchHit\x124\n" +
 	"\bartifact\x18\x01 \x01(\v2\x18.office.wiki.v1.ArtifactR\bartifact\x12\x14\n" +
-	"\x05score\x18\x02 \x01(\x01R\x05score2\xd4\x03\n" +
+	"\x05score\x18\x02 \x01(\x01R\x05score*W\n" +
+	"\n" +
+	"AuthorKind\x12\x1b\n" +
+	"\x17AUTHOR_KIND_UNSPECIFIED\x10\x00\x12\x15\n" +
+	"\x11AUTHOR_KIND_HUMAN\x10\x01\x12\x15\n" +
+	"\x11AUTHOR_KIND_AGENT\x10\x022\xd4\x03\n" +
 	"\vWikiService\x12\\\n" +
 	"\rListArtifacts\x12$.office.wiki.v1.ListArtifactsRequest\x1a%.office.wiki.v1.ListArtifactsResponse\x12V\n" +
 	"\vGetArtifact\x12\".office.wiki.v1.GetArtifactRequest\x1a#.office.wiki.v1.GetArtifactResponse\x12b\n" +
@@ -933,52 +1255,66 @@ func file_office_wiki_v1_wiki_proto_rawDescGZIP() []byte {
 	return file_office_wiki_v1_wiki_proto_rawDescData
 }
 
-var file_office_wiki_v1_wiki_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_office_wiki_v1_wiki_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_office_wiki_v1_wiki_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_office_wiki_v1_wiki_proto_goTypes = []any{
-	(*Artifact)(nil),                // 0: office.wiki.v1.Artifact
-	(*ListArtifactsRequest)(nil),    // 1: office.wiki.v1.ListArtifactsRequest
-	(*ListArtifactsResponse)(nil),   // 2: office.wiki.v1.ListArtifactsResponse
-	(*TagCount)(nil),                // 3: office.wiki.v1.TagCount
-	(*GetArtifactRequest)(nil),      // 4: office.wiki.v1.GetArtifactRequest
-	(*GetArtifactResponse)(nil),     // 5: office.wiki.v1.GetArtifactResponse
-	(*Link)(nil),                    // 6: office.wiki.v1.Link
-	(*ListBrokenLinksRequest)(nil),  // 7: office.wiki.v1.ListBrokenLinksRequest
-	(*ListBrokenLinksResponse)(nil), // 8: office.wiki.v1.ListBrokenLinksResponse
-	(*BrokenLink)(nil),              // 9: office.wiki.v1.BrokenLink
-	(*ListIngestQueueRequest)(nil),  // 10: office.wiki.v1.ListIngestQueueRequest
-	(*ListIngestQueueResponse)(nil), // 11: office.wiki.v1.ListIngestQueueResponse
-	(*SearchRequest)(nil),           // 12: office.wiki.v1.SearchRequest
-	(*SearchResponse)(nil),          // 13: office.wiki.v1.SearchResponse
-	(*SearchHit)(nil),               // 14: office.wiki.v1.SearchHit
+	(AuthorKind)(0),                 // 0: office.wiki.v1.AuthorKind
+	(*Artifact)(nil),                // 1: office.wiki.v1.Artifact
+	(*ListArtifactsRequest)(nil),    // 2: office.wiki.v1.ListArtifactsRequest
+	(*ListArtifactsResponse)(nil),   // 3: office.wiki.v1.ListArtifactsResponse
+	(*TagCount)(nil),                // 4: office.wiki.v1.TagCount
+	(*GetArtifactRequest)(nil),      // 5: office.wiki.v1.GetArtifactRequest
+	(*GetArtifactResponse)(nil),     // 6: office.wiki.v1.GetArtifactResponse
+	(*Trust)(nil),                   // 7: office.wiki.v1.Trust
+	(*Review)(nil),                  // 8: office.wiki.v1.Review
+	(*Author)(nil),                  // 9: office.wiki.v1.Author
+	(*Link)(nil),                    // 10: office.wiki.v1.Link
+	(*ListBrokenLinksRequest)(nil),  // 11: office.wiki.v1.ListBrokenLinksRequest
+	(*ListBrokenLinksResponse)(nil), // 12: office.wiki.v1.ListBrokenLinksResponse
+	(*BrokenLink)(nil),              // 13: office.wiki.v1.BrokenLink
+	(*ListIngestQueueRequest)(nil),  // 14: office.wiki.v1.ListIngestQueueRequest
+	(*ListIngestQueueResponse)(nil), // 15: office.wiki.v1.ListIngestQueueResponse
+	(*SearchRequest)(nil),           // 16: office.wiki.v1.SearchRequest
+	(*SearchResponse)(nil),          // 17: office.wiki.v1.SearchResponse
+	(*SearchHit)(nil),               // 18: office.wiki.v1.SearchHit
+	(*timestamppb.Timestamp)(nil),   // 19: google.protobuf.Timestamp
 }
 var file_office_wiki_v1_wiki_proto_depIdxs = []int32{
-	0,  // 0: office.wiki.v1.ListArtifactsResponse.artifacts:type_name -> office.wiki.v1.Artifact
-	3,  // 1: office.wiki.v1.ListArtifactsResponse.tags:type_name -> office.wiki.v1.TagCount
-	0,  // 2: office.wiki.v1.GetArtifactResponse.artifact:type_name -> office.wiki.v1.Artifact
-	6,  // 3: office.wiki.v1.GetArtifactResponse.links:type_name -> office.wiki.v1.Link
-	0,  // 4: office.wiki.v1.GetArtifactResponse.backlinks:type_name -> office.wiki.v1.Artifact
-	6,  // 5: office.wiki.v1.GetArtifactResponse.sources:type_name -> office.wiki.v1.Link
-	0,  // 6: office.wiki.v1.GetArtifactResponse.cited_by:type_name -> office.wiki.v1.Artifact
-	0,  // 7: office.wiki.v1.Link.artifact:type_name -> office.wiki.v1.Artifact
-	9,  // 8: office.wiki.v1.ListBrokenLinksResponse.links:type_name -> office.wiki.v1.BrokenLink
-	0,  // 9: office.wiki.v1.ListIngestQueueResponse.sources:type_name -> office.wiki.v1.Artifact
-	14, // 10: office.wiki.v1.SearchResponse.hits:type_name -> office.wiki.v1.SearchHit
-	0,  // 11: office.wiki.v1.SearchHit.artifact:type_name -> office.wiki.v1.Artifact
-	1,  // 12: office.wiki.v1.WikiService.ListArtifacts:input_type -> office.wiki.v1.ListArtifactsRequest
-	4,  // 13: office.wiki.v1.WikiService.GetArtifact:input_type -> office.wiki.v1.GetArtifactRequest
-	7,  // 14: office.wiki.v1.WikiService.ListBrokenLinks:input_type -> office.wiki.v1.ListBrokenLinksRequest
-	10, // 15: office.wiki.v1.WikiService.ListIngestQueue:input_type -> office.wiki.v1.ListIngestQueueRequest
-	12, // 16: office.wiki.v1.WikiService.Search:input_type -> office.wiki.v1.SearchRequest
-	2,  // 17: office.wiki.v1.WikiService.ListArtifacts:output_type -> office.wiki.v1.ListArtifactsResponse
-	5,  // 18: office.wiki.v1.WikiService.GetArtifact:output_type -> office.wiki.v1.GetArtifactResponse
-	8,  // 19: office.wiki.v1.WikiService.ListBrokenLinks:output_type -> office.wiki.v1.ListBrokenLinksResponse
-	11, // 20: office.wiki.v1.WikiService.ListIngestQueue:output_type -> office.wiki.v1.ListIngestQueueResponse
-	13, // 21: office.wiki.v1.WikiService.Search:output_type -> office.wiki.v1.SearchResponse
-	17, // [17:22] is the sub-list for method output_type
-	12, // [12:17] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	1,  // 0: office.wiki.v1.ListArtifactsResponse.artifacts:type_name -> office.wiki.v1.Artifact
+	4,  // 1: office.wiki.v1.ListArtifactsResponse.tags:type_name -> office.wiki.v1.TagCount
+	1,  // 2: office.wiki.v1.GetArtifactResponse.artifact:type_name -> office.wiki.v1.Artifact
+	10, // 3: office.wiki.v1.GetArtifactResponse.links:type_name -> office.wiki.v1.Link
+	1,  // 4: office.wiki.v1.GetArtifactResponse.backlinks:type_name -> office.wiki.v1.Artifact
+	10, // 5: office.wiki.v1.GetArtifactResponse.sources:type_name -> office.wiki.v1.Link
+	1,  // 6: office.wiki.v1.GetArtifactResponse.cited_by:type_name -> office.wiki.v1.Artifact
+	7,  // 7: office.wiki.v1.GetArtifactResponse.trust:type_name -> office.wiki.v1.Trust
+	8,  // 8: office.wiki.v1.Trust.reviews:type_name -> office.wiki.v1.Review
+	9,  // 9: office.wiki.v1.Trust.last_author:type_name -> office.wiki.v1.Author
+	19, // 10: office.wiki.v1.Trust.last_change:type_name -> google.protobuf.Timestamp
+	19, // 11: office.wiki.v1.Trust.newest_source_time:type_name -> google.protobuf.Timestamp
+	19, // 12: office.wiki.v1.Trust.released_at:type_name -> google.protobuf.Timestamp
+	9,  // 13: office.wiki.v1.Trust.released_by:type_name -> office.wiki.v1.Author
+	0,  // 14: office.wiki.v1.Author.kind:type_name -> office.wiki.v1.AuthorKind
+	1,  // 15: office.wiki.v1.Link.artifact:type_name -> office.wiki.v1.Artifact
+	13, // 16: office.wiki.v1.ListBrokenLinksResponse.links:type_name -> office.wiki.v1.BrokenLink
+	1,  // 17: office.wiki.v1.ListIngestQueueResponse.sources:type_name -> office.wiki.v1.Artifact
+	18, // 18: office.wiki.v1.SearchResponse.hits:type_name -> office.wiki.v1.SearchHit
+	1,  // 19: office.wiki.v1.SearchHit.artifact:type_name -> office.wiki.v1.Artifact
+	2,  // 20: office.wiki.v1.WikiService.ListArtifacts:input_type -> office.wiki.v1.ListArtifactsRequest
+	5,  // 21: office.wiki.v1.WikiService.GetArtifact:input_type -> office.wiki.v1.GetArtifactRequest
+	11, // 22: office.wiki.v1.WikiService.ListBrokenLinks:input_type -> office.wiki.v1.ListBrokenLinksRequest
+	14, // 23: office.wiki.v1.WikiService.ListIngestQueue:input_type -> office.wiki.v1.ListIngestQueueRequest
+	16, // 24: office.wiki.v1.WikiService.Search:input_type -> office.wiki.v1.SearchRequest
+	3,  // 25: office.wiki.v1.WikiService.ListArtifacts:output_type -> office.wiki.v1.ListArtifactsResponse
+	6,  // 26: office.wiki.v1.WikiService.GetArtifact:output_type -> office.wiki.v1.GetArtifactResponse
+	12, // 27: office.wiki.v1.WikiService.ListBrokenLinks:output_type -> office.wiki.v1.ListBrokenLinksResponse
+	15, // 28: office.wiki.v1.WikiService.ListIngestQueue:output_type -> office.wiki.v1.ListIngestQueueResponse
+	17, // 29: office.wiki.v1.WikiService.Search:output_type -> office.wiki.v1.SearchResponse
+	25, // [25:30] is the sub-list for method output_type
+	20, // [20:25] is the sub-list for method input_type
+	20, // [20:20] is the sub-list for extension type_name
+	20, // [20:20] is the sub-list for extension extendee
+	0,  // [0:20] is the sub-list for field type_name
 }
 
 func init() { file_office_wiki_v1_wiki_proto_init() }
@@ -991,13 +1327,14 @@ func file_office_wiki_v1_wiki_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_office_wiki_v1_wiki_proto_rawDesc), len(file_office_wiki_v1_wiki_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   15,
+			NumEnums:      1,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_office_wiki_v1_wiki_proto_goTypes,
 		DependencyIndexes: file_office_wiki_v1_wiki_proto_depIdxs,
+		EnumInfos:         file_office_wiki_v1_wiki_proto_enumTypes,
 		MessageInfos:      file_office_wiki_v1_wiki_proto_msgTypes,
 	}.Build()
 	File_office_wiki_v1_wiki_proto = out.File
