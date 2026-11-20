@@ -476,8 +476,7 @@ rules are the same as for a push, because the check is the same.
 
 A create or a change answers with a hint for every relative Markdown link of the document that
 leads to no file of the artifact repository. A stub counts as a file, so a link to a staged
-document works. A hint never refuses the write. The CLI prints the hints, and the MCP server
-returns them to the agent.
+document works. A hint never refuses the write.
 
 ```arc42
 :::interface
@@ -1076,7 +1075,7 @@ title: Git access
 technology: Go / Git (smart HTTP)
 parent: bb-office-hub
 requires: if-token-check, if-archive-repository, if-artifact-check
-implements: concept-multi-tenancy, concept-session-release
+implements: concept-multi-tenancy, concept-session-release, concept-wiki
 path: hub/gitaccess
 :::
 ```
@@ -1300,7 +1299,9 @@ flowchart LR
 
 ### CLI
 
-Shell commands with machine-readable output (OPEN: `--json` convention).
+Shell commands with machine-readable output (OPEN: `--json` convention). A command that writes a
+document shows the hints of the hub, such as a link that leads nowhere, next to its result; the
+hints never make the command fail.
 
 ```arc42
 :::interface
@@ -1318,7 +1319,9 @@ path: client/cli/commands
 The office as tools for an agent, with the same features as the CLI: join and leave a meeting,
 raise a hand, update the minutes, focus an artifact, render slides, record decisions, add notes,
 change or remove the records of a session before its release, create and update tasks, import a
-session. The names say what an agent does, not how the hub works.
+session. The names say what an agent does, not how the hub works. A tool that writes a document
+returns the hints of the hub with its result, such as a link that leads nowhere, so the agent can
+fix them.
 
 ```arc42
 :::interface
