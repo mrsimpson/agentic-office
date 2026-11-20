@@ -84,7 +84,7 @@ var MeetingEnd = &sdk.Tool{Name: "meeting_end", Title: "End the meeting for ever
 
 // SessionRelease is the tool session_release.
 var SessionRelease = &sdk.Tool{Name: "session_release", Title: "Release an ended session", Annotations: Additive,
-	Description: `Release what an ended session created: its staged minutes, notes, decisions, documents and slides move into the artifact repository of the tenant, which every member reads. Only a human who took part may release; an agent is refused. Only do this when your human tells you to. Returns {"event", "duplicate", "quotes": [{"path", "line", "utteranceEventId"}]}: each quote is a place where a staged file repeats a sentence off the record word for word; tell your human about every one.`}
+	Description: `Release what an ended session created: its staged minutes, notes, decisions, documents and slides move into the artifact repository of the tenant, which every member reads. Only a human who took part may release; an agent is refused. Only do this when your human tells you to. While a staged file repeats a sentence off the record word for word, the hub refuses and returns {"refused": true, "quotes": [{"path", "line", "utteranceEventId"}], "quoteToken"}: tell your human about every place. Only if your human then decides to release anyway, call session_release again with acceptQuotes set to quoteToken. A release returns {"event", "duplicate", "quotes"}, with the quotes that were accepted.`}
 
 // SessionHold is the tool session_hold.
 var SessionHold = &sdk.Tool{Name: "session_hold", Title: "Hold the release of an ended session", Annotations: Additive,
@@ -261,6 +261,12 @@ type JoinIn struct {
 // SessionIn is the input of a tool.
 type SessionIn struct {
 	Session string `json:"session,omitempty" jsonschema:"Session ID. Default: the session given when the server was started, else the only session you joined from this machine."`
+}
+
+// ReleaseIn is the input of session_release.
+type ReleaseIn struct {
+	Session      string `json:"session,omitempty" jsonschema:"Session ID. Default: the session given when the server was started, else the only session you joined from this machine."`
+	AcceptQuotes string `json:"acceptQuotes,omitempty" jsonschema:"The quoteToken of a refused release. Release although staged files quote sentences off the record; only when your human decided so."`
 }
 
 // EndIn is the input of meeting_end.

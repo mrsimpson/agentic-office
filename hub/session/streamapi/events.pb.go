@@ -1489,9 +1489,10 @@ func (x *SessionImported) GetImporterKind() ParticipantKind {
 	return ParticipantKind_PARTICIPANT_KIND_UNSPECIFIED
 }
 
-// ReleaseObjected says that a human who took part in the session objects to its release
-// (concept-session-release). The actor is that human. The session stays held until a human
-// releases it.
+// ReleaseObjected says that the release of the session is held (concept-session-release). The
+// actor is the human who took part and objects; an empty actor is the hub, when the grace period
+// ended while a staged file quoted a sentence off the record word for word. The session stays held
+// until a human releases it.
 type ReleaseObjected struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields

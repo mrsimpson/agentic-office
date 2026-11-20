@@ -2,6 +2,10 @@ package session
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"regexp"
@@ -34,6 +38,10 @@ const DefaultGracePeriod = 24 * time.Hour
 // the end of its grace period, or at the end of a session without humans. A session has one log,
 // so the ID is unique in it.
 const HubReleaseCommandID = "office/release"
+
+// HubHoldCommandID is the command ID of release.objected when the hub holds a session: its grace
+// period ended while a staged file quoted a sentence off the record word for word.
+const HubHoldCommandID = "office/hold"
 
 // releaseRetry is the time after which the worker tries a release again that failed.
 const releaseRetry = 5 * time.Second
@@ -222,6 +230,30 @@ func (s *Service) releaseDue(ctx context.Context, sid string) error {
 			s.rel.opts.Logf("release: session %q: %v", sid, err)
 			return nil
 		}
+		// A session with humans is held while a staged file quotes a sentence off the record:
+		// only a human releases it then, with the quote token. Nobody could confirm the quotes of
+		// a session without humans.
+		if st.hasHumans() {
+			quotes, _, err := s.findQuotes(ctx, sid, st)
+			if err != nil {
+				st.mu.Unlock()
+				return err
+			}
+			if len(quotes) > 0 {
+				ev := &sessionstreamv1.Event{SessionId: sid, CommandId: HubHoldCommandID,
+					Payload: &sessionstreamv1.Event_ReleaseObjected{ReleaseObjected: &sessionstreamv1.ReleaseObjected{}}}
+				if err := s.appendEvent(sid, st, ev); err != nil {
+					st.mu.Unlock()
+					return err
+				}
+				st.mu.Unlock()
+				s.rel.opts.Logf("release: session %q held by the hub: %d quotes of sentences off the record", sid, len(quotes))
+				if err := s.persistNow(ctx, sid); err != nil {
+					return err
+				}
+				return s.markHeld(ctx, sid)
+			}
+		}
 		ev := &sessionstreamv1.Event{SessionId: sid, CommandId: HubReleaseCommandID,
 			Payload: &sessionstreamv1.Event_SessionReleased{SessionReleased: &sessionstreamv1.SessionReleased{}}}
 		if err := s.appendEvent(sid, st, ev); err != nil {
@@ -405,7 +437,17 @@ func humanOnly(c Caller) error {
 	return nil
 }
 
-// ReleaseSession releases a session for a human who took part (see commands.proto).
+// quotesRefused is the refusal of a release because staged files quote sentences off the record.
+type quotesRefused struct {
+	quotes []*sessioncommandsv1.Quote
+	token  string
+}
+
+func (e *quotesRefused) Error() string { return "staged files quote sentences off the record" }
+
+// ReleaseSession releases a session for a human who took part (see commands.proto). While a
+// staged file quotes a sentence off the record, it refuses with the places and a quote token,
+// unless the request accepts exactly that token.
 func (s *Service) ReleaseSession(ctx context.Context, req *sessioncommandsv1.ReleaseSessionRequest) (*sessioncommandsv1.ReleaseSessionResponse, error) {
 	var quotes []*sessioncommandsv1.Quote
 	res, err := s.run(ctx, command{
@@ -421,14 +463,21 @@ func (s *Service) ReleaseSession(ctx context.Context, req *sessioncommandsv1.Rel
 			if !st.ended {
 				return nil, precondition("the session has not ended; end it first")
 			}
-			q, err := s.findQuotes(ctx, req.GetSessionId(), st)
+			q, token, err := s.findQuotes(ctx, req.GetSessionId(), st)
 			if err != nil {
 				return nil, connect.NewError(connect.CodeUnavailable, "search the staged files for quotes: "+err.Error())
+			}
+			if len(q) > 0 && !hmac.Equal([]byte(req.GetAcceptQuotes()), []byte(token)) {
+				return nil, &quotesRefused{quotes: q, token: token}
 			}
 			quotes = q
 			return &sessionstreamv1.Event{Payload: &sessionstreamv1.Event_SessionReleased{SessionReleased: &sessionstreamv1.SessionReleased{}}}, nil
 		},
 	}, false)
+	var refused *quotesRefused
+	if errors.As(err, &refused) {
+		return &sessioncommandsv1.ReleaseSessionResponse{Quotes: refused.quotes, QuoteToken: refused.token}, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -475,6 +524,67 @@ func (s *Service) ObjectToRelease(ctx context.Context, req *sessioncommandsv1.Ob
 		}
 	}
 	return &sessioncommandsv1.ObjectToReleaseResponse{Result: res}, nil
+}
+
+// GetRelease returns the release of a session (see commands.proto): everything to who may read
+// the session, and the release commit of a released session to every other member of the tenant.
+func (s *Service) GetRelease(ctx context.Context, req *sessioncommandsv1.GetReleaseRequest) (*sessioncommandsv1.GetReleaseResponse, error) {
+	sid := req.GetSessionId()
+	if sid == "" {
+		return nil, invalid("session_id is required")
+	}
+	caller, err := s.auth.Caller(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if caller.StageSessionID != "" {
+		return nil, connect.NewError(connect.CodePermissionDenied, "a stage link cannot read the release of a session")
+	}
+	st, err := s.lock(sid)
+	if err != nil {
+		return nil, err
+	}
+	exists := st.lastID != 0
+	reader := mayRead(caller, st) == nil
+	released := st.released
+	may := caller.Kind == sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_HUMAN && st.tookPart(caller.ParticipantID) &&
+		st.ended && !st.released
+	st.mu.Unlock()
+	if !exists || (!reader && !released) {
+		return nil, notFound("no such session for you: only who may read a session sees its release before it is released")
+	}
+	status, err := s.releaseStatus(sid)
+	if err != nil {
+		return nil, err
+	}
+	out := &sessioncommandsv1.GetReleaseResponse{Status: status, MayRelease: may}
+	if s.rel == nil {
+		return out, nil
+	}
+	if !released {
+		paths, err := s.rel.opts.Staging.List(ctx, sid)
+		if err != nil && !errors.Is(err, storage.ErrNoArea) {
+			return nil, connect.NewError(connect.CodeUnavailable, "list the staged files: "+err.Error())
+		}
+		out.Staged = paths
+		return out, nil
+	}
+	rc, err := s.rel.opts.Staging.Released(ctx, sid)
+	if errors.Is(err, storage.ErrNotReleased) {
+		return out, nil
+	}
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnavailable, "read the release commit: "+err.Error())
+	}
+	commit := &sessioncommandsv1.ReleaseCommit{CommitId: rc.ID, Time: timestamppb.New(rc.Time), Paths: rc.Paths}
+	if rc.Author != (storage.Author{}) {
+		commit.ReleasedBy = &sessioncommandsv1.CommitAuthor{Name: rc.Author.Name, Email: rc.Author.Email}
+	}
+	for _, a := range rc.CoAuthors {
+		commit.Authors = append(commit.Authors, &sessioncommandsv1.CommitAuthor{Name: a.Name, Email: a.Email})
+	}
+	out.Commit = commit
+	return out, nil
 }
 
 // persistNow writes a session to the archive and returns when the commit is made. The release
@@ -539,13 +649,14 @@ const minQuoteWords = 3
 var sentenceEnd = regexp.MustCompile(`[.!?]+(\s+|$)`)
 
 // findQuotes returns the places where a staged file of the session quotes a sentence off the
-// record word for word (concept-session-release). It is a raw text search: it knows no file type,
-// ignores case and treats every run of white space as one space. It looks for each sentence of an
-// utterance off the record with at least minQuoteWords words, and for the whole utterance. It
-// changes nothing. The caller holds st.mu.
-func (s *Service) findQuotes(ctx context.Context, sid string, st *state) ([]*sessioncommandsv1.Quote, error) {
+// record word for word (concept-session-release), and the quote token over them. It is a raw text
+// search: it knows no file type, ignores case and treats every run of white space as one space. It
+// looks for each sentence of an utterance off the record with at least minQuoteWords words, and
+// for the whole utterance. It changes nothing. Without quotes, the token is empty. The caller
+// holds st.mu.
+func (s *Service) findQuotes(ctx context.Context, sid string, st *state) ([]*sessioncommandsv1.Quote, string, error) {
 	if s.rel == nil {
-		return nil, nil
+		return nil, "", nil
 	}
 	type needle struct {
 		id   uint32
@@ -554,7 +665,7 @@ func (s *Service) findQuotes(ctx context.Context, sid string, st *state) ([]*ses
 	var needles []needle
 	evs, _, err := s.store.Read(sid, 0)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	for _, ev := range evs {
 		u := st.utterances[ev.GetId()]
@@ -574,20 +685,21 @@ func (s *Service) findQuotes(ctx context.Context, sid string, st *state) ([]*ses
 		}
 	}
 	if len(needles) == 0 {
-		return nil, nil
+		return nil, "", nil
 	}
 	paths, err := s.rel.opts.Staging.List(ctx, sid)
 	if errors.Is(err, storage.ErrNoArea) {
-		return nil, nil
+		return nil, "", nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	var out []*sessioncommandsv1.Quote
+	quoted := map[*sessioncommandsv1.Quote]string{} // the sentence that a place quotes
 	for _, p := range paths {
 		files, err := s.rel.opts.Staging.Read(ctx, sid, p)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		for _, f := range files {
 			if f.Path != p || !utf8.Valid(f.Data) {
@@ -609,7 +721,9 @@ func (s *Service) findQuotes(ctx context.Context, sid string, st *state) ([]*ses
 					line := uint32(strings.Count(string(f.Data[:offsets[at]]), "\n") + 1)
 					if k := (key{line, nd.id}); !found[k] {
 						found[k] = true
-						out = append(out, &sessioncommandsv1.Quote{Path: f.Path, Line: line, UtteranceEventId: nd.id})
+						q := &sessioncommandsv1.Quote{Path: f.Path, Line: line, UtteranceEventId: nd.id}
+						out = append(out, q)
+						quoted[q] = nd.text
 					}
 					from = at + len(nd.text)
 				}
@@ -625,7 +739,30 @@ func (s *Service) findQuotes(ctx context.Context, sid string, st *state) ([]*ses
 		}
 		return int(a.GetUtteranceEventId()) - int(b.GetUtteranceEventId())
 	})
-	return out, nil
+	if len(out) == 0 {
+		return nil, "", nil
+	}
+	return out, s.quoteToken(sid, out, quoted), nil
+}
+
+// quoteToken returns the quote token of a search: a keyed hash over the session and the exact
+// quotes, each with its place and the sentence it quotes. The key comes from the signing key of
+// the hub, so nobody can test a guessed sentence against a token.
+func (s *Service) quoteToken(sid string, quotes []*sessioncommandsv1.Quote, quoted map[*sessioncommandsv1.Quote]string) string {
+	k := sha256.Sum256(append([]byte("office-quote-token\x00"), s.key.Seed()...))
+	m := hmac.New(sha256.New, k[:])
+	field := func(b []byte) {
+		_ = binary.Write(m, binary.BigEndian, uint64(len(b)))
+		m.Write(b)
+	}
+	field([]byte(sid))
+	for _, q := range quotes {
+		field([]byte(q.GetPath()))
+		_ = binary.Write(m, binary.BigEndian, q.GetLine())
+		_ = binary.Write(m, binary.BigEndian, q.GetUtteranceEventId())
+		field([]byte(quoted[q]))
+	}
+	return hex.EncodeToString(m.Sum(nil)[:16])
 }
 
 // normalize returns text in lower case with every run of white space as one space and without

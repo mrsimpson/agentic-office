@@ -51,6 +51,10 @@ type sessionView struct {
 	MinutesRunning            bool // the minutes are the running minutes of the log, not stored ones
 	Decisions, Notes          []recordView
 	Tasks                     []taskView
+	Release                   *releaseView
+	// Limited is set for a member who may not read the session: the page shows only what the
+	// session released.
+	Limited bool
 }
 
 type lineView struct {
@@ -81,6 +85,17 @@ func (h *Handler) session(w http.ResponseWriter, r *http.Request, c *backend, te
 		h.fail(w, http.StatusNotFound, "Not found", "There is no such session for you.")
 		return
 	}
+	notice := map[string]string{"released": "The session is released. Every member of the tenant sees its artifacts now.",
+		"held": "The session is held. The hub does not release it; a human who took part releases it later."}[r.URL.Query().Get("done")]
+	h.sessionPage(w, r, c, tenant, sid, pageExtra{notice: notice})
+}
+
+// sessionPage renders the page of a session, with what a form adds to it. A member who may not
+// read the session sees only what it released.
+func (h *Handler) sessionPage(w http.ResponseWriter, r *http.Request, c *backend, tenant, sid string, extra pageExtra) {
+	if extra.status == 0 {
+		extra.status = http.StatusOK
+	}
 	ck, _ := r.Cookie(web.CookieName)
 	cc := connect.NewClient(h.opts.Hub, auth.StaticToken(ck.Value), auth.Tenant(tenant))
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
@@ -91,6 +106,15 @@ func (h *Handler) session(w http.ResponseWriter, r *http.Request, c *backend, te
 	var evs []*sessionstreamv1.Event
 	for after := uint32(0); ; {
 		res, err := stream.GetEvents(ctx, &sessionstreamv1.GetEventsRequest{SessionId: sid, AfterEventId: after, Limit: 1000})
+		if connect.CodeOf(err) == connect.CodeNotFound {
+			// The released artifacts of a session are for every member (concept-session-release).
+			if rel, rerr := release(ctx, cc, tenant, sid); rerr == nil {
+				data := map[string]any{"Title": sid, "Section": "Session", "Mode": "session",
+					"Session": sessionView{SessionId: sid, Limited: true, Release: rel}, "Back": web.TenantPath(tenant)}
+				render(w, extra.status, c.me, web.TenantPath(tenant), tenant, data)
+				return
+			}
+		}
 		if err != nil {
 			h.denied(w, err)
 			return
@@ -158,8 +182,15 @@ func (h *Handler) session(w http.ResponseWriter, r *http.Request, c *backend, te
 			break
 		}
 	}
-	h.page(w, c.me, web.TenantPath(tenant), tenant, map[string]any{"Title": sid, "Section": "Session", "Mode": "session",
-		"Session": v, "Back": web.TenantPath(tenant)})
+	if v.Release, err = release(ctx, cc, tenant, sid); err != nil {
+		h.denied(w, err)
+		return
+	}
+	if q := extra.refusal; q != nil {
+		v.Release.Quotes, v.Release.QuoteToken, v.Release.AnywayCommand = q.GetQuotes(), q.GetQuoteToken(), commandID()
+	}
+	render(w, extra.status, c.me, web.TenantPath(tenant), tenant, map[string]any{"Title": sid, "Section": "Session", "Mode": "session",
+		"Session": v, "Back": web.TenantPath(tenant), "CSRF": csrf(ck.Value), "Notice": extra.notice, "Error": extra.error})
 }
 
 // listAll reads every page of a list of records that pages by the ID of the last record.

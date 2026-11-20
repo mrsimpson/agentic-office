@@ -58,7 +58,7 @@ func cmdMeetingEnd(e *env, fs *flag.FlagSet) func([]string) error {
 			}
 			return nil
 		}
-		rel, err := c.ReleaseSession(e.ctx, sid)
+		rel, err := c.ReleaseSession(e.ctx, sid, "")
 		if err != nil {
 			return fmt.Errorf("the session has ended, but the release failed: %w", err)
 		}
@@ -66,16 +66,20 @@ func cmdMeetingEnd(e *env, fs *flag.FlagSet) func([]string) error {
 			out := coreapi.EndJSON(end)
 			out["released"] = coreapi.ReleaseJSON(rel)
 			e.printJSON(out)
+			if coreapi.Refused(rel) {
+				return errRefused
+			}
 			return nil
 		}
 		_ = e.printResult(end.GetResult())
-		e.printRelease(rel.GetResult(), rel.GetQuotes())
-		return nil
+		return e.printRelease(sid, rel)
 	}
 }
 
-// cmdSessionRelease releases what an ended session staged.
+// cmdSessionRelease releases what an ended session staged. While staged files quote sentences off
+// the record, the hub refuses; the command prints the places and the token that releases anyway.
 func cmdSessionRelease(e *env, fs *flag.FlagSet) func([]string) error {
+	accept := fs.String("accept-quotes", "", "release although staged files quote sentences off the record: the token that a refused release printed")
 	return func(args []string) error {
 		c, err := e.client()
 		if err != nil {
@@ -85,16 +89,18 @@ func cmdSessionRelease(e *env, fs *flag.FlagSet) func([]string) error {
 		if err != nil {
 			return err
 		}
-		rel, err := c.ReleaseSession(e.ctx, sid)
+		rel, err := c.ReleaseSession(e.ctx, sid, *accept)
 		if err != nil {
 			return err
 		}
 		if e.json {
 			e.printJSON(coreapi.ReleaseJSON(rel))
+			if coreapi.Refused(rel) {
+				return errRefused
+			}
 			return nil
 		}
-		e.printRelease(rel.GetResult(), rel.GetQuotes())
-		return nil
+		return e.printRelease(sid, rel)
 	}
 }
 
@@ -121,10 +127,24 @@ func cmdSessionHold(e *env, fs *flag.FlagSet) func([]string) error {
 	}
 }
 
-// printRelease prints the result of a release and every quote of a sentence off the record.
-func (e *env) printRelease(res *sessioncommandsv1.CommandResult, quotes []*sessioncommandsv1.Quote) {
-	_ = e.printResult(res)
-	for _, q := range quotes {
-		fmt.Fprintf(e.stdout, "warning: %s\n", coreapi.QuoteLine(q))
+// printRelease prints the result of a release and every quote of a sentence off the record that
+// it accepted, or the refusal because of quotes. A refusal returns errRefused.
+func (e *env) printRelease(sid string, rel *sessioncommandsv1.ReleaseSessionResponse) error {
+	if coreapi.Refused(rel) {
+		fmt.Fprint(e.stdout, coreapi.RefusalText(sid, rel))
+		return errRefused
 	}
+	_ = e.printResult(rel.GetResult())
+	for _, q := range rel.GetQuotes() {
+		fmt.Fprintf(e.stdout, "accepted: %s\n", coreapi.QuoteLine(q))
+	}
+	return nil
 }
+
+// errRefused ends a command whose refusal is printed already. It exits with an error and prints
+// nothing more.
+var errRefused = refusedError{}
+
+type refusedError struct{}
+
+func (refusedError) Error() string { return "refused" }

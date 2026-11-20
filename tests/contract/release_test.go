@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect/v2"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
 	documentv1 "github.com/mrsimpson/agentic-office/hub/documents/api"
@@ -44,8 +45,35 @@ func (m *meeting) endWithStatus(pid string) *sessioncommandsv1.EndSessionRespons
 }
 
 func (m *meeting) releaseBy(pid string) (*sessioncommandsv1.ReleaseSessionResponse, error) {
+	return m.releaseWith(pid, "")
+}
+
+// releaseWith releases the session as pid and accepts the quotes of token.
+func (m *meeting) releaseWith(pid, token string) (*sessioncommandsv1.ReleaseSessionResponse, error) {
 	return m.s(pid).ReleaseSession(m.ctx(), &sessioncommandsv1.ReleaseSessionRequest{SessionId: m.sid,
-		CommandId: coreapi.NewCommandID(), ParticipantId: pid})
+		CommandId: coreapi.NewCommandID(), ParticipantId: pid, AcceptQuotes: token})
+}
+
+// refusedFor checks that a release was refused because of quotes, at the places want, and returns
+// its quote token.
+func refusedFor(t *testing.T, rel *sessioncommandsv1.ReleaseSessionResponse, err error, want ...*sessioncommandsv1.Quote) string {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("release: %v", err)
+	}
+	if rel.GetResult() != nil || rel.GetQuoteToken() == "" {
+		t.Fatalf("release %v, want a refusal with a quote token", rel)
+	}
+	got := rel.GetQuotes()
+	if len(got) != len(want) {
+		t.Fatalf("quotes %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i].GetPath() != want[i].GetPath() || got[i].GetLine() != want[i].GetLine() || got[i].GetUtteranceEventId() != want[i].GetUtteranceEventId() {
+			t.Fatalf("quotes %v, want %v", got, want)
+		}
+	}
+	return rel.GetQuoteToken()
 }
 
 func (m *meeting) objectBy(pid string) (*sessioncommandsv1.ObjectToReleaseResponse, error) {
@@ -168,8 +196,9 @@ func TestReleaseAreaOpensWithTheSession(t *testing.T) {
 
 // A human who took part releases the session: the release is an event in the log, and the staged
 // files move into the artifact repository in one commit with the human as the author. Agents and
-// people who did not take part are refused. The answer of the release names the places where a
-// staged file quotes a sentence off the record word for word, and the hub changes no content.
+// people who did not take part are refused. While a staged file quotes a sentence off the record
+// word for word, the release is refused without an event: the answer names the places, never the
+// sentence, and a token. The same token releases, and the hub changes no content.
 func TestReleaseByAHuman(t *testing.T) {
 	m := newMeetingArgs(t, "-release-grace-period", "1h")
 	ada := m.join("Ada", kHuman)
@@ -207,7 +236,22 @@ func TestReleaseByAHuman(t *testing.T) {
 		t.Fatal("a refused release released the session")
 	}
 
+	want := &sessioncommandsv1.Quote{Path: "documents/notes.md", Line: 4, UtteranceEventId: secret.GetId()}
 	rel, err := m.releaseBy(ada)
+	token := refusedFor(t, rel, err, want)
+	if m.released(ada) != nil || m.releasedDoc("documents/notes.md") {
+		t.Fatal("a release refused because of quotes released the session")
+	}
+	if b, _ := protojson.Marshal(rel); strings.Contains(strings.ToLower(string(b)), "leave the company") {
+		t.Fatalf("the refusal names the sentence: %s", b)
+	}
+	// Another token does not release.
+	rel, err = m.releaseWith(ada, "not-the-token")
+	if again := refusedFor(t, rel, err, want); again != token {
+		t.Errorf("a second search gave the token %q, want %q", again, token)
+	}
+
+	rel, err = m.releaseWith(ada, token)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,10 +259,17 @@ func TestReleaseByAHuman(t *testing.T) {
 	if ev.GetType() != events.SessionReleased || ev.GetActorParticipantId() != ada {
 		t.Fatalf("release event %v", ev)
 	}
-	want := []*sessioncommandsv1.Quote{{Path: "documents/notes.md", Line: 4, UtteranceEventId: secret.GetId()}}
-	if got := rel.GetQuotes(); len(got) != len(want) || got[0].GetPath() != want[0].Path ||
-		got[0].GetLine() != want[0].Line || got[0].GetUtteranceEventId() != want[0].UtteranceEventId {
-		t.Fatalf("quotes %v, want %v", got, want)
+	if got := rel.GetQuotes(); len(got) != 1 || got[0].GetPath() != want.Path || got[0].GetLine() != want.Line {
+		t.Fatalf("accepted quotes %v, want %v", got, want)
+	}
+	var released int
+	for _, e := range m.logOf(ada) {
+		if e.GetType() == events.SessionReleased {
+			released++
+		}
+	}
+	if released != 1 {
+		t.Errorf("the log has %d session.released events, want 1", released)
 	}
 	if got := m.artifact("documents/notes.md"); got != notes {
 		t.Errorf("released note %q, want it unchanged %q", got, notes)
@@ -324,10 +375,11 @@ func TestReleaseWithoutHumans(t *testing.T) {
 	} else if r, _ := area["readers"].([]any); len(r) != 1 || r[0] != "porter" {
 		t.Errorf("readers of the import %v, want the importer", r)
 	}
+	// The importer writes for the session without joining it; it joins to end the session.
+	stageDocumentAs(t, im.a, im.sid, "documents/imported.md", "# Imported\n")
 	if _, err := im.a.Commands.Join(ctx10(t), &sessioncommandsv1.JoinRequest{SessionId: im.sid, CommandId: coreapi.NewCommandID()}); err != nil {
 		t.Fatal(err)
 	}
-	stageDocumentAs(t, im.a, im.sid, "documents/imported.md", "# Imported\n")
 	res, err := im.a.Commands.EndSession(ctx10(t), &sessioncommandsv1.EndSessionRequest{SessionId: im.sid,
 		CommandId: coreapi.NewCommandID(), ParticipantId: "porter"})
 	if err != nil {
@@ -481,5 +533,123 @@ func TestReleaseEventsAfterTheEnd(t *testing.T) {
 		Content: "# Released\n", CommandId: coreapi.NewCommandID(), SessionId: m.sid})
 	if err != nil {
 		t.Fatalf("document for the released session: %v", err)
+	}
+}
+
+// A quote token holds only for the quotes it was made for: after a staged file changed, the old
+// token is refused with the new places and a new token, which then releases.
+func TestReleaseQuoteTokenGoesStale(t *testing.T) {
+	m := newMeetingArgs(t, "-release-grace-period", "1h")
+	ada := m.join("Ada", kHuman)
+	secret := m.say(ada, "The merger with Acme is planned for May.")
+	if err := m.markOff(ada, secret.GetId()); err != nil {
+		t.Fatal(err)
+	}
+	res, err := m.a(ada).Document.CreateDocument(m.ctx(), &documentv1.CreateDocumentRequest{Path: "documents/plan.md",
+		Content: "# Plan\n\nThe merger with Acme is planned for May.\n", CommandId: coreapi.NewCommandID(), SessionId: m.sid})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.end(ada)
+	rel, err := m.releaseBy(ada)
+	first := refusedFor(t, rel, err, &sessioncommandsv1.Quote{Path: "documents/plan.md", Line: 3, UtteranceEventId: secret.GetId()})
+
+	// The author moves the sentence one line down.
+	if _, err := m.a(ada).Document.ChangeDocument(m.ctx(), &documentv1.ChangeDocumentRequest{Path: "documents/plan.md",
+		Content: "# Plan\n\nNews:\nthe merger with Acme is planned for May.\n", CommandId: coreapi.NewCommandID(), SessionId: m.sid,
+		BaseVersion: res.GetDocument().GetVersion()}); err != nil {
+		t.Fatal(err)
+	}
+	rel, err = m.releaseWith(ada, first)
+	second := refusedFor(t, rel, err, &sessioncommandsv1.Quote{Path: "documents/plan.md", Line: 4, UtteranceEventId: secret.GetId()})
+	if second == first {
+		t.Fatal("the token did not change with the quotes")
+	}
+	if m.released(ada) != nil {
+		t.Fatal("an old token released the session")
+	}
+	if rel, err := m.releaseWith(ada, second); err != nil || rel.GetResult().GetEvent().GetType() != events.SessionReleased {
+		t.Fatalf("release with the new token: %v, %v", rel, err)
+	}
+	if !m.releasedDoc("documents/plan.md") {
+		t.Error("the document was not released")
+	}
+}
+
+// When the grace period ends while a staged file quotes a sentence off the record, the hub holds
+// the session instead of releasing it: release.objected without an actor. A human then releases
+// it with the token. A session without humans is released at its end, quotes or not.
+func TestReleaseHeldByQuotesAtTheDeadline(t *testing.T) {
+	m := newMeetingArgs(t, "-release-grace-period", "1s")
+	ada := m.join("Ada", kHuman)
+	secret := m.say(ada, "Ben will leave the company in March.")
+	if err := m.markOff(ada, secret.GetId()); err != nil {
+		t.Fatal(err)
+	}
+	m.stageDocument(ada, "documents/held.md", "# Held\n\nBen will leave the company in March.\n")
+	m.end(ada)
+	held := func() *sessionstreamv1.Event {
+		for _, ev := range m.logOf(ada) {
+			if ev.GetType() == events.ReleaseObjected {
+				return ev
+			}
+		}
+		return nil
+	}
+	waitUntil(t, 15*time.Second, "the hub holds the session", func() bool { return held() != nil })
+	if ev := held(); ev.GetActorParticipantId() != "" {
+		t.Fatalf("hold %v, want one by the hub", ev)
+	}
+	st, err := m.s(ada).GetRelease(m.ctx(), &sessioncommandsv1.GetReleaseRequest{SessionId: m.sid})
+	if err != nil || st.GetStatus().GetState() != sessioncommandsv1.ReleaseState_RELEASE_STATE_HELD || !st.GetMayRelease() {
+		t.Fatalf("release of the held session: %v, %v", st, err)
+	}
+	waitUntil(t, 5*time.Second, "the staging area records the hold", func() bool {
+		area := contracttest.AreaState(t, m.staging(), m.sid)
+		return area != nil && area["held"] == true
+	})
+	time.Sleep(1500 * time.Millisecond)
+	if m.released(ada) != nil || m.releasedDoc("documents/held.md") {
+		t.Fatal("the hub released a session whose staged files quote sentences off the record")
+	}
+	rel, err := m.releaseBy(ada)
+	token := refusedFor(t, rel, err, &sessioncommandsv1.Quote{Path: "documents/held.md", Line: 3, UtteranceEventId: secret.GetId()})
+	if rel, err := m.releaseWith(ada, token); err != nil || rel.GetResult().GetEvent().GetActorParticipantId() != ada {
+		t.Fatalf("release of the held session: %v, %v", rel, err)
+	}
+
+	// Agents alone: released at the end, although a staged file quotes a sentence off the record.
+	m.sid = "s-" + coreapi.NewCommandID()
+	bot := m.join("Bot", kAgent)
+	said := m.say(bot, "The price rises by ten percent.")
+	if err := m.markOff(bot, said.GetId()); err != nil {
+		t.Fatal(err)
+	}
+	m.stageDocument(bot, "documents/agents.md", "The price rises by ten percent.\n")
+	if st := m.endWithStatus(bot).GetRelease().GetState(); st != sessioncommandsv1.ReleaseState_RELEASE_STATE_RELEASED {
+		t.Fatalf("release state at the end of a session of agents: %v", st)
+	}
+}
+
+// The importer of a session takes part in it (if-session-notice, if-session-release): it writes a
+// document for the session without joining it, and the log notes the artifact for it.
+func TestImporterWritesWithoutJoining(t *testing.T) {
+	srv := contracttest.StartHub(t, nil, "-release-grace-period", "1h")
+	im := newImporter(t, srv, "porter")
+	im.ok(&sessionimportv1.ImportConversationRequest{Conversation: conversation(), Participants: people(),
+		Utterances: []*sessionimportv1.ImportedUtterance{utt("ada", "Hello.")}, Complete: true})
+	stageDocumentAs(t, im.a, im.sid, "documents/summary.md", "# Summary\n")
+	res, err := im.a.Stream.GetEvents(ctx10(t), &sessionstreamv1.GetEventsRequest{SessionId: im.sid, Limit: 1000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var noted *sessionstreamv1.Event
+	for _, ev := range res.GetEvents() {
+		if ev.GetType() == events.ArtifactCreated {
+			noted = ev
+		}
+	}
+	if noted == nil || noted.GetActorParticipantId() != "porter" || noted.GetArtifactCreated().GetPath() != "documents/summary.md" {
+		t.Fatalf("artifact.created %v, want one by the importer", noted)
 	}
 }

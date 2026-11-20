@@ -47,15 +47,28 @@ service SessionCommandsService {
   // repository with the caller as the author. Only a human who took part in the session may
   // release it (also one who left, and the participant who imported it); an agent gets
   // permission_denied, everyone else not_found. The session must have ended and must not be
-  // released (failed_precondition). A release lifts an objection. The answer lists the places
-  // where a staged file quotes a sentence off the record word for word; the hub changes no
-  // content. The hub stores the event before it answers and completes the move after a restart.
+  // released (failed_precondition). A release lifts an objection. The hub stores the event before
+  // it answers and completes the move after a restart.
+  //
+  // Before it releases, the hub searches the staged files for word-for-word quotes of sentences
+  // off the record. While it finds any, it refuses: it appends no event and answers without a
+  // result, with the places and a quote token. The caller releases anyway with the same command
+  // again and accept_quotes set to that token. The hub searches again and releases only if the
+  // search gives the same token; otherwise it refuses again with the new places and token. The
+  // hub changes no content.
   rpc ReleaseSession(ReleaseSessionRequest) returns (ReleaseSessionResponse);
   // ObjectToRelease holds the release of an ended session (concept-session-release): it appends
   // release.objected, and the hub does not release the session when its grace period ends. Only a
   // human releases it then. Who may object: as for ReleaseSession. A session that is held or
   // released fails with failed_precondition.
   rpc ObjectToRelease(ObjectToReleaseRequest) returns (ObjectToReleaseResponse);
+  // GetRelease returns the release of a session (concept-session-release). Who may read the
+  // session, as the session stream decides (stream.proto), gets the release status, the paths of
+  // the staged files and, once the session is released, its release commit. Every other member of
+  // the tenant gets only the release status and the release commit of a released session; for
+  // them a session that is not released does not exist (not_found). A stage link gets
+  // permission_denied.
+  rpc GetRelease(GetReleaseRequest) returns (GetReleaseResponse);
 
   // GetTreeHead, GetConsistencyProof and GetInclusionProof answer only who may read the
   // session, as the session stream decides (stream.proto); everybody else gets not_found.
@@ -245,14 +258,22 @@ message ReleaseSessionRequest {
   string session_id = 1;
   string command_id = 2;
   string participant_id = 3;
+  // accept_quotes is the quote token of an earlier refusal. With it, the hub releases despite
+  // the quotes, as long as a new search gives the same token.
+  string accept_quotes = 4;
 }
 
 message ReleaseSessionResponse {
+  // result is the session.released event. It is unset when the hub refused the release because
+  // of quotes.
   CommandResult result = 1;
   // quotes are the places where a staged file of the session quotes a sentence off the record
-  // word for word, found just before the release. They name the place, not the sentence. A
-  // repeated command_id returns none.
+  // word for word: the reason of a refusal, or the quotes that accept_quotes accepted. They name
+  // the place, never the sentence. A repeated command_id returns none.
   repeated Quote quotes = 2;
+  // quote_token is set when the hub refused the release because of quotes. It is a hash over the
+  // session and the exact quotes that the search found; it reveals no sentence.
+  string quote_token = 3;
 }
 
 // Quote is a place in a staged file that quotes a sentence off the record word for word.
@@ -273,6 +294,44 @@ message ObjectToReleaseRequest {
 
 message ObjectToReleaseResponse {
   CommandResult result = 1;
+}
+
+message GetReleaseRequest {
+  string session_id = 1;
+}
+
+message GetReleaseResponse {
+  ReleaseStatus status = 1;
+  // staged are the paths of the files in the staging area of the session, ordered, while it is
+  // not released. Only who may read the session gets them.
+  repeated string staged = 2;
+  // commit is the release commit in the artifact repository, once the release moved the staging
+  // area. It is unset before, and for a release that had nothing to move.
+  ReleaseCommit commit = 3;
+  // may_release is set when the caller may release or object now: a human who took part, while
+  // the session waits for its release or is held.
+  bool may_release = 4;
+}
+
+// ReleaseCommit is the commit that moved the staged files of a session into the artifact
+// repository.
+message ReleaseCommit {
+  string commit_id = 1;
+  google.protobuf.Timestamp time = 2;
+  // released_by is the author of the commit: the human who released. It is unset when the hub
+  // released the session.
+  CommitAuthor released_by = 3;
+  // authors are the authors of the staged files, named as co-authors of the commit (trailer
+  // Co-authored-by), without the author of the commit.
+  repeated CommitAuthor authors = 4;
+  // paths are the files that the commit wrote, ordered.
+  repeated string paths = 5;
+}
+
+// CommitAuthor is an author of a commit, as Git records it.
+message CommitAuthor {
+  string name = 1;
+  string email = 2;
 }
 
 message GetTreeHeadRequest {
