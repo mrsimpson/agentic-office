@@ -379,6 +379,21 @@ func TestPortalFormsRefuse(t *testing.T) {
 	if res, err := b.Do(req); err != nil || res.StatusCode != http.StatusForbidden {
 		t.Errorf("foreign origin: %v, %v", res, err)
 	}
+	// A browser sends Origin: null with a form under the referrer policy no-referrer, so the
+	// portal must not use it: every form would be refused (issue 254).
+	page, _ := fetch(t, b, srv.URL+"/portal/admin/keys/new")
+	if p := page.Header.Get("Referrer-Policy"); p == "" || p == "no-referrer" {
+		t.Errorf("referrer policy %q: a browser sends Origin: null with the forms", p)
+	}
+	if strings.Contains(body, `name="referrer" content="no-referrer"`) {
+		t.Error("the page sets the referrer policy no-referrer: a browser sends Origin: null with the forms")
+	}
+	req, _ = http.NewRequestWithContext(ctx10(t), http.MethodPost, reg, strings.NewReader(form(nil).Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Origin", "null")
+	if res, err := b.Do(req); err != nil || res.StatusCode != http.StatusForbidden {
+		t.Errorf("origin null: %v, %v", res, err)
+	}
 	if res, _ := post(t, browser(t, srv, true), reg, form(nil)); res.StatusCode != http.StatusUnauthorized {
 		t.Errorf("no session: status %d", res.StatusCode)
 	}
