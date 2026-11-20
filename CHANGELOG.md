@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.0](https://github.com/mrsimpson/agentic-office/compare/v0.3.1...v0.4.0) (2026-11-20)
+
+
+### Features
+
+* **cli,stage:** print the stage link after join and link the stage to the portal ([#260](https://github.com/mrsimpson/agentic-office/issues/260)) ([a99dafb](https://github.com/mrsimpson/agentic-office/commit/a99dafb7765d9301a27d8574201f6ba27a462ae8))
+* **import:** extend an imported session with a longer version of the same conversation ([#258](https://github.com/mrsimpson/agentic-office/issues/258)) ([5c14e90](https://github.com/mrsimpson/agentic-office/commit/5c14e902ce5aa0e02bcfc1a885ec963be916968d)), closes [#257](https://github.com/mrsimpson/agentic-office/issues/257) [#51](https://github.com/mrsimpson/agentic-office/issues/51)
+
 ## [0.3.1](https://github.com/mrsimpson/agentic-office/compare/v0.3.0...v0.3.1) (2026-11-20)
 
 
