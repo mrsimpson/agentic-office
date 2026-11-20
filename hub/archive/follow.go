@@ -243,7 +243,7 @@ func NewChangesService(r *Repo) *ChangesService { return &ChangesService{repo: r
 
 // Follow implements the RPC. It needs the access token of a participant of the tenant.
 func (s *ChangesService) Follow(ctx context.Context, req *changesv1.FollowRequest, stream changesv1connect.ArchiveChangesServiceFollowServerStream) error {
-	if err := participant(ctx); err != nil {
+	if _, err := participant(ctx); err != nil {
 		return err
 	}
 	var prefixes []string

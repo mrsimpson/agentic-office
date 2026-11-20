@@ -11,6 +11,11 @@
 //
 // The signatures use only types that Go has built in. Every stored deck is a YAML file and names
 // its schema in the field "schema".
+//
+// The schema has a second form: the stub of a staged deck (concept-session-release). A deck that
+// waits for the release of its session lies in the staging area of the session, and its stub lies
+// at the same path in the artifact repository. Every stub of a deck has the same content (Stub):
+// it names no session, no time and no author. The check accepts exactly that content.
 package check
 
 import (
@@ -32,10 +37,23 @@ const SchemaDeck = "office.slides.v1"
 const (
 	// SchemaKey is the field of a stored deck that names its schema.
 	SchemaKey = "schema"
+	// StubKey and StagedKey are fields of the contract that a deck file never stores. A stub has
+	// the field stub.
+	StubKey   = "stub"
+	StagedKey = "staged"
 	// Kind is the first part of the ID of a deck, for example "slides/42". It is also the
 	// directory of the decks in the archive.
 	Kind = "slides"
 )
+
+// stub is the content of every stub of a deck.
+const stub = "schema: " + SchemaDeck + "\nstub: This slide deck waits for the release of the session that made it.\n"
+
+// Stub returns the content of the stub of a deck: the same for every staged deck.
+func Stub() []byte { return []byte(stub) }
+
+// IsStub reports whether content is the stub of a deck.
+func IsStub(content []byte) bool { return string(content) == stub }
 
 // Schemas returns the names of the schemas that this part owns.
 func Schemas() []string { return []string{SchemaDeck} }
@@ -57,13 +75,20 @@ func Number(id string) (uint64, bool) {
 }
 
 // Validate checks the content of the file at filePath against the schema. It returns the reasons
-// in plain words, or nothing when the file is valid.
+// in plain words, or nothing when the file is valid. A file is valid in one of two forms: a deck,
+// or the stub of a deck (Stub), byte for byte.
 func Validate(schema, filePath string, content []byte) []string {
 	if schema != SchemaDeck {
 		return []string{fmt.Sprintf("the schema %q is not a schema of the slides", schema)}
 	}
 	if path.Ext(filePath) != ".yaml" {
 		return []string{fmt.Sprintf("a file of the schema %s must have the ending .yaml", schema)}
+	}
+	if IsStub(content) {
+		if _, ok := numberOfPath(filePath); !ok {
+			return []string{fmt.Sprintf("the stub of a deck belongs in %s/NNNNNN.yaml", Kind)}
+		}
+		return nil
 	}
 	var v map[string]any
 	if err := yaml.Unmarshal(content, &v); err != nil {
@@ -77,6 +102,12 @@ func Validate(schema, filePath string, content []byte) []string {
 		reasons = append(reasons, fmt.Sprintf("the field %s must be %q", SchemaKey, schema))
 	}
 	delete(v, SchemaKey)
+	for _, k := range []string{StubKey, StagedKey} {
+		if _, has := v[k]; has {
+			reasons = append(reasons, fmt.Sprintf("a deck never stores the field %s; a stub has exactly the content of the stub of a deck", k))
+			delete(v, k)
+		}
+	}
 	// The rendered output is not a field of the file.
 	delete(v, "media_type")
 	delete(v, "content")
@@ -109,6 +140,20 @@ func Validate(schema, filePath string, content []byte) []string {
 		}
 	}
 	return reasons
+}
+
+// numberOfPath returns the number of the deck file at p, such as "slides/000042.yaml".
+func numberOfPath(p string) (uint64, bool) {
+	p = path.Clean(p)
+	if path.Dir(p) != Kind {
+		return 0, false
+	}
+	base, ok := strings.CutSuffix(path.Base(p), ".yaml")
+	if !ok {
+		return 0, false
+	}
+	n, err := strconv.ParseUint(base, 10, 64)
+	return n, err == nil && FilePath(n, ".yaml") == p
 }
 
 func firstLine(err error) string {

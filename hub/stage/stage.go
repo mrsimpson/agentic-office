@@ -23,9 +23,11 @@ import (
 	slidesv1 "github.com/mrsimpson/agentic-office/hub/slides/api"
 )
 
-// Slides loads decks in-process (if-slides-api). slides.Service implements it.
+// Slides loads decks in-process (if-slides-api), as the stage of a session sees them: a staged
+// deck of that session with its content, a staged deck of another session as its stub.
+// slides.Service implements it.
 type Slides interface {
-	Load(ctx context.Context, id string) (*slidesv1.Deck, error)
+	Load(ctx context.Context, session, id string) (*slidesv1.Deck, error)
 }
 
 // StageLink is what the stage learns from a stage link token.
@@ -236,11 +238,11 @@ func (h *Handler) events(w http.ResponseWriter, r *http.Request, sid, token stri
 		case <-timer.C:
 			pending = false
 			v.live = true
-			v.refresh(ctx, link.Slides, link.Artifacts)
+			v.refresh(ctx, sid, link.Slides, link.Artifacts)
 			send()
 		case err := <-errc:
 			v.live = true
-			v.refresh(ctx, link.Slides, link.Artifacts)
+			v.refresh(ctx, sid, link.Slides, link.Artifacts)
 			switch {
 			case errors.Is(err, io.EOF):
 				// The stream ends after session.ended.

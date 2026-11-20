@@ -96,7 +96,8 @@ func (r *runtimes) get(ctx context.Context, tenant string) (*tenantRuntime, erro
 		rt.records.Close()
 		return nil, err
 	}
-	if rt.slides, err = slides.Open(ctx, arch, watcher, logf); err != nil {
+	if rt.slides, err = slides.Open(ctx, slides.Options{Archive: arch, Watcher: watcher, Staging: staging,
+		StagingWatcher: stagingWatcher, Logf: logf}); err != nil {
 		rt.records.Close()
 		rt.tasks.Close()
 		return nil, err
@@ -111,10 +112,15 @@ func (r *runtimes) get(ctx context.Context, tenant string) (*tenantRuntime, erro
 	}()
 	logf("%d decisions, %d minutes, %d notes, %d local drafts, %d decks", nd, nm, nn, rt.tasks.Count(), rt.slides.Count())
 	rt.sessions = session.New(session.NewMemoryStore(), session.TokenCheck(), rt.records, r.signingKey)
-	// The records route a write that names a session by its release status (if-session-release).
+	// The records, the slides and the documents route a write that names a session by its release
+	// status (if-session-release).
 	rt.records.UseSessions(rt.sessions.Releases())
-	rt.documents = documents.New(arch, rt.sessions)
-	rt.archiveRead = archive.NewReadService(arch)
+	rt.slides.UseSessions(rt.sessions.Releases())
+	if rt.documents, err = documents.Open(ctx, documents.Options{Archive: arch, Staging: staging, Sessions: rt.sessions.Releases(),
+		Notify: rt.sessions, Logf: logf}); err != nil {
+		return nil, err
+	}
+	rt.archiveRead = archive.NewReadService(arch, staging)
 	if rt.archiveChanges, err = r.repos.Changes(tenant); err != nil {
 		return nil, err
 	}

@@ -150,8 +150,15 @@ type Client interface {
 	RemoveTenant(ctx context.Context, tenantID string) error
 	ListTenants(ctx context.Context) ([]*tenantv1.Tenant, error)
 
+	// RenderDeck renders a deck. A deck whose request names a session (session_id) waits for the
+	// release of the session; only a participant may name it.
 	RenderDeck(ctx context.Context, req *slidesv1.RenderDeckRequest) (*slidesv1.RenderDeckResponse, error)
 	GetDeck(ctx context.Context, id string) (*slidesv1.Deck, error)
+	// ChangeDeck replaces the title and the slides of a staged deck, and RemoveDeck removes one,
+	// before the release of its session. sessionID must be the session of the deck; only a
+	// participant of it may.
+	ChangeDeck(ctx context.Context, id, sessionID, title string, slides []*slidesv1.Slide) (*slidesv1.ChangeDeckResponse, error)
+	RemoveDeck(ctx context.Context, id, sessionID string) (*slidesv1.RemoveDeckResponse, error)
 
 	// CreatePortalLink creates a link that opens the portal (dec-web-portal), at the pages of
 	// tenant, or at the start page if tenant is empty. Every user may call it; tenant must be a
@@ -164,6 +171,9 @@ type Client interface {
 	// ChangeDocument replaces a document. baseVersion is the version that the caller read; a stale
 	// one fails with the code aborted and the error says the current version.
 	ChangeDocument(ctx context.Context, path, content, baseVersion, sessionID string) (*documentv1.ChangeDocumentResponse, error)
+	// RemoveDocument removes a staged document before the release of its session. sessionID must
+	// be the session of the document; only a participant of it may.
+	RemoveDocument(ctx context.Context, path, baseVersion, sessionID string) (*documentv1.RemoveDocumentResponse, error)
 	// ReadFile reads a Markdown or YAML file of the archive with its version.
 	ReadFile(ctx context.Context, path string) (*archivev1.File, error)
 	// ListFiles lists the files of a directory of the archive.

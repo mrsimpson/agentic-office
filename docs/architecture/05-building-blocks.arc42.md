@@ -433,6 +433,11 @@ A deck has an ID with the type in front, for example `slides/42`, and the stage 
 this ID. In general, an artifact is anything that the stage can show by an ID like this; slide
 decks are the first type (`term-artifact`).
 
+A render may name a session, and the deck keeps it. A deck that names a session waits for the
+release of that session (`concept-session-release`). Until then, every participant of the session
+may change or remove it, and only the readers of the session see its content; everyone else sees
+its stub. The stage sees the decks of its own session.
+
 ```arc42
 :::interface
 id: if-slides-api
@@ -452,6 +457,12 @@ it when another change came first, so two authors never overwrite each other unn
 archive records the caller as the author of the commit. A call may name a session; the hub then
 tells the meeting session, which logs it. A sentence that is off the record must not go into a
 document; the hub cannot check this, so the author takes care of it.
+
+A new document that names a session waits for the release of that session
+(`concept-session-release`). Until then, every participant of the session may change or remove it,
+and each change must name that session. A change of a released document is not held. A staged
+document is read through the archive read interface, which shows its content only to the readers
+of the session.
 
 ```arc42
 :::interface
@@ -731,15 +742,33 @@ The documents part stores each text document as one Markdown file in the archive
 per change. It checks the base version of a change and tells the meeting session when a call names
 one. Documents are the pages of the wiki (`dec-wiki`).
 
+It routes every write that names a session like the records part (`concept-session-release`):
+
+- Only a participant of the session may name it. The part asks the meeting session
+  (`if-session-release`).
+- A new document goes into the staging area of the session while the session is not released.
+  Otherwise, and without a session, it goes into the artifact repository.
+- For each staged document, the part writes the stub of a document into the artifact repository.
+  Every stub of a document has the same content: Markdown whose front matter names the schema of
+  documents and marks it as a stub. It names no session and no time, and its commit is by the hub
+  with a message that says nothing about the document. No interface changes a stub.
+- Until the release, every participant may change or remove a staged document. A change that names
+  another session, or no session, is refused, and so is a write when the release status and the
+  staging area disagree. A change of a released document goes to the artifact repository and is
+  not held.
+
+The part keeps no documents in memory: it reads the state of a path from the archive at each
+write.
+
 ```arc42
 :::building-block
 id: bb-documents
 title: Documents
 technology: Go / Markdown in the archive
 parent: bb-office-hub
-requires: if-token-check, if-archive-storage, if-session-notice
+requires: if-token-check, if-archive-storage, if-session-notice, if-session-release
 path: hub/documents
-implements: concept-wiki
+implements: concept-wiki, concept-session-release
 :::
 ```
 
@@ -753,6 +782,16 @@ input when it is needed. A later version of the hub may render a deck differentl
 records part, it writes synchronously, and it reloads a deck file that a push changed or added
 (`if-archive-watch`).
 
+It routes a render that names a session like the records part (`concept-session-release`): only a
+participant may name the session (`if-session-release`); a new deck goes into the staging area of
+the session while the session is not released, and its stub into the artifact repository. Every
+stub of a deck has the same content, names no session and no time, and its commit is by the hub
+with a message that says nothing about the deck. Until the release, every participant may change
+or remove a staged deck; a change that names another session, or none, is refused. A staged deck
+shows its content only to the readers of its session, to the tenant admins and to the stage of its
+session; everyone else sees the stub. The part follows the staging repository like the artifact
+repository.
+
 The check of business plans by calculation (consistency, unit economics, completeness) is a
 different type with its own interface when it is built.
 
@@ -763,14 +802,17 @@ title: Slides
 technology: Go / YAML in the archive
 parent: bb-office-hub
 path: hub/slides
-requires: if-token-check, if-archive-storage, if-archive-watch
+requires: if-token-check, if-archive-storage, if-archive-watch, if-session-release
+implements: concept-session-release
 :::
 ```
 
 #### Slides check
 
 Lets the artifacts part check a file of a slide deck before it accepts a push. The part owns the schemas of
-its types, and the same check serves its own interface, so every rule exists once. The part names the schemas that it owns. A call
+its types, and the same check serves its own interface, so every rule exists once. The schema of a
+deck has a second form: the stub of a staged deck (`concept-session-release`). Every stub of a deck
+has the same content, and the check accepts exactly that content. The part names the schemas that it owns. A call
 gives the path, the content and the name of the schema; the part answers that the file is valid, or
 that it is invalid, with the reasons in plain words.
 
@@ -830,6 +872,11 @@ the files of a directory. The caller needs the access token of a participant. A 
 use it, because the link is shown on the shared screen. The stage reads in-process, and only paths
 that the log of its own session names. Only Markdown and YAML files can be read. The session logs lie in
 another repository and cannot be read here.
+
+A path that the staging area of a session names is staged (`concept-session-release`). A reader of
+that session, or a tenant admin by role, reads the staged file, marked as staged, with its version
+in the staging area; everyone else reads what the artifact repository holds there, the stub. The
+stage reads the staged files of its own session only.
 OPEN: how a call names the tenant, once the archive keeps one repository per tenant
 (`dec-multi-tenancy`).
 
@@ -1034,7 +1081,9 @@ someone focuses another artifact. Until there are minutes, the stage asks for an
 them. It marks an imported session with its source and never shows it as live. It is only a view of
 the session log and has no logic of its own: it reads an artifact straight from the archive
 (`if-archive-read`) and renders it by its schema (`dec-artifacts`), and only paths that the log of
-its own session names.
+its own session names. It reads the decks through the slides interface. A staged artifact of its own
+session shows its content, read from the staging area through the same interfaces; a staged
+artifact of another session shows as its stub (`concept-session-release`).
 
 ```arc42
 :::building-block
@@ -1043,7 +1092,7 @@ title: Stage
 technology: Go, rendered by the hub / server-sent events
 parent: bb-office-hub
 requires: if-session-stream, if-session-activity, if-slides-api, if-auth-api, if-archive-read
-implements: concept-transparency
+implements: concept-transparency, concept-session-release
 path: hub/stage
 :::
 ```
