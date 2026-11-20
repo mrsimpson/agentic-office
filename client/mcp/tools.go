@@ -133,7 +133,7 @@ func (s *Server) addTools(srv *sdk.Server) {
 			}
 			out := coreapi.EndJSON(end)
 			if in.Release {
-				rel, err := c.ReleaseSession(ctx, sid)
+				rel, err := c.ReleaseSession(ctx, sid, "")
 				if err != nil {
 					return nil, fmt.Errorf("the session has ended, but the release failed: %w", err)
 				}
@@ -143,12 +143,12 @@ func (s *Server) addTools(srv *sdk.Server) {
 		})
 
 	tool(srv, s, tools.SessionRelease,
-		func(ctx context.Context, c coreapi.Client, in tools.SessionIn) (any, error) {
+		func(ctx context.Context, c coreapi.Client, in tools.ReleaseIn) (any, error) {
 			sid, err := s.sessionID(ctx, c, in.Session)
 			if err != nil {
 				return nil, err
 			}
-			rel, err := c.ReleaseSession(ctx, sid)
+			rel, err := c.ReleaseSession(ctx, sid, in.AcceptQuotes)
 			if err != nil {
 				return nil, err
 			}

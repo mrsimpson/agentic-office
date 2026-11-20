@@ -108,9 +108,11 @@ type Client interface {
 	// EndSession ends the session for everyone. The answer carries the release status of the
 	// session (concept-session-release).
 	EndSession(ctx context.Context, sessionID string) (*sessioncommandsv1.EndSessionResponse, error)
-	// ReleaseSession releases what an ended session staged. Only a human who took part may. The
-	// answer lists where a staged file quotes a sentence off the record word for word.
-	ReleaseSession(ctx context.Context, sessionID string) (*sessioncommandsv1.ReleaseSessionResponse, error)
+	// ReleaseSession releases what an ended session staged. Only a human who took part may. While
+	// a staged file quotes a sentence off the record word for word, the hub refuses: the answer
+	// has no result, but the places and a quote token. acceptQuotes is such a token: with it, the
+	// hub releases as long as the quotes have not changed.
+	ReleaseSession(ctx context.Context, sessionID, acceptQuotes string) (*sessioncommandsv1.ReleaseSessionResponse, error)
 	// ObjectToRelease holds the release of an ended session until a human releases it.
 	ObjectToRelease(ctx context.Context, sessionID string) (*sessioncommandsv1.CommandResult, error)
 	// Events returns the events after a cursor from the hub, and whether there are more.

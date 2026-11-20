@@ -1321,7 +1321,7 @@ keeps its own interface for writing (`dec-records-per-type`).
 
 **Consequences:** Notes are Markdown (`dec-yaml-git-storage`). The note contract stays, and the note schema gains tags. Documents
 gain an optional schema for their front matter, owned by the documents part. Every part that owns a
-type gains a description of its files next to its check. Apart from the release, which gives time and shows word-for-word quotes
+type gains a description of its files next to its check. Apart from the release, which gives time and stops at word-for-word quotes until a human confirms them
 (`concept-session-release`), nothing in the hub keeps a sentence off the record out of a record or a
 page: the rule binds the people and agents who write, and ingest copies statements into documents
 and into the history of every clone (`risk-retraction-leak`). A clone of the tenant repository opens as a wiki in ordinary

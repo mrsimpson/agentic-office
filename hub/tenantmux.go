@@ -143,6 +143,14 @@ func (m commandsMux) ObjectToRelease(ctx context.Context, req *commandsapi.Objec
 	return rt.sessions.ObjectToRelease(ctx, req)
 }
 
+func (m commandsMux) GetRelease(ctx context.Context, req *commandsapi.GetReleaseRequest) (*commandsapi.GetReleaseResponse, error) {
+	rt, err := m.forCall(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return rt.sessions.GetRelease(ctx, req)
+}
+
 func (m commandsMux) GetTreeHead(ctx context.Context, req *commandsapi.GetTreeHeadRequest) (*commandsapi.GetTreeHeadResponse, error) {
 	rt, err := m.forCall(ctx)
 	if err != nil {

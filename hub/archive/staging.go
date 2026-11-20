@@ -557,3 +557,57 @@ func (r *Repo) onMain(ctx context.Context, id string) (bool, error) {
 	}
 	return false, err
 }
+
+// hubEmail is the e-mail of the hub as the author of a commit (see Repo.runEnv).
+const hubEmail = "office-hub@localhost"
+
+// coAuthorLine is a co-author in the message of a release commit.
+var coAuthorLine = regexp.MustCompile(`^Co-authored-by: (.+) <([^<>]*)>$`)
+
+// Released implements storage.Staging. It reads the newest commit on main of the artifact
+// repository whose trailer names the session.
+func (s *Staging) Released(ctx context.Context, session string) (storage.ReleaseCommit, error) {
+	if err := checkSession(session); err != nil {
+		return storage.ReleaseCommit{}, err
+	}
+	trailer := releaseTrailer + ": " + areaName(session)
+	out, err := s.artifacts.run(ctx, "log", "refs/heads/main", "-F", "--grep="+trailer,
+		"--format=%H%x00%an%x00%ae%x00%aI%x00%B%x1e")
+	if err != nil {
+		return storage.ReleaseCommit{}, err
+	}
+	for _, rec := range strings.Split(out, "\x1e") {
+		fields := strings.SplitN(strings.TrimLeft(rec, "\n"), "\x00", 5)
+		if len(fields) != 5 {
+			continue
+		}
+		lines := strings.Split(strings.TrimSpace(fields[4]), "\n")
+		if !slices.Contains(lines, trailer) {
+			continue // the trailer names another session that starts the same way
+		}
+		rc := storage.ReleaseCommit{ID: fields[0]}
+		if fields[2] != hubEmail {
+			rc.Author = storage.Author{Name: fields[1], Email: fields[2]}
+		}
+		if rc.Time, err = time.Parse(time.RFC3339, fields[3]); err != nil {
+			return storage.ReleaseCommit{}, fmt.Errorf("archive: the time of the release commit %s: %w", rc.ID, err)
+		}
+		for _, l := range lines {
+			if m := coAuthorLine.FindStringSubmatch(l); m != nil {
+				rc.CoAuthors = append(rc.CoAuthors, storage.Author{Name: m[1], Email: m[2]})
+			}
+		}
+		paths, err := s.artifacts.run(ctx, "diff-tree", "--no-commit-id", "-r", "--name-only", "-z", "--diff-filter=AMT", rc.ID)
+		if err != nil {
+			return storage.ReleaseCommit{}, err
+		}
+		for _, p := range strings.Split(paths, "\x00") {
+			if p != "" {
+				rc.Paths = append(rc.Paths, p)
+			}
+		}
+		slices.Sort(rc.Paths)
+		return rc, nil
+	}
+	return storage.ReleaseCommit{}, storage.ErrNotReleased
+}

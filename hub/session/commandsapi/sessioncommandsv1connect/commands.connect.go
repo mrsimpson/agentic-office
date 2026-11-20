@@ -78,6 +78,9 @@ const (
 	// SessionCommandsServiceObjectToReleaseProcedure is the procedure name of the
 	// SessionCommandsService's ObjectToRelease RPC.
 	SessionCommandsServiceObjectToReleaseProcedure = "/office.sessioncommands.v1.SessionCommandsService/ObjectToRelease"
+	// SessionCommandsServiceGetReleaseProcedure is the procedure name of the SessionCommandsService's
+	// GetRelease RPC.
+	SessionCommandsServiceGetReleaseProcedure = "/office.sessioncommands.v1.SessionCommandsService/GetRelease"
 	// SessionCommandsServiceGetTreeHeadProcedure is the procedure name of the SessionCommandsService's
 	// GetTreeHead RPC.
 	SessionCommandsServiceGetTreeHeadProcedure = "/office.sessioncommands.v1.SessionCommandsService/GetTreeHead"
@@ -187,6 +190,13 @@ var (
 			Procedure:  SessionCommandsServiceObjectToReleaseProcedure,
 		}
 	})
+	sessionCommandsServiceGetReleaseSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     commandsapi.File_office_sessioncommands_v1_commands_proto.Services().ByName("SessionCommandsService").Methods().ByName("GetRelease"),
+			Procedure:  SessionCommandsServiceGetReleaseProcedure,
+		}
+	})
 	sessionCommandsServiceGetTreeHeadSpec = sync.OnceValue(func() connect.Spec {
 		return connect.Spec{
 			StreamType: connect.StreamTypeUnary,
@@ -251,15 +261,28 @@ type SessionCommandsServiceClient interface {
 	// repository with the caller as the author. Only a human who took part in the session may
 	// release it (also one who left, and the participant who imported it); an agent gets
 	// permission_denied, everyone else not_found. The session must have ended and must not be
-	// released (failed_precondition). A release lifts an objection. The answer lists the places
-	// where a staged file quotes a sentence off the record word for word; the hub changes no
-	// content. The hub stores the event before it answers and completes the move after a restart.
+	// released (failed_precondition). A release lifts an objection. The hub stores the event before
+	// it answers and completes the move after a restart.
+	//
+	// Before it releases, the hub searches the staged files for word-for-word quotes of sentences
+	// off the record. While it finds any, it refuses: it appends no event and answers without a
+	// result, with the places and a quote token. The caller releases anyway with the same command
+	// again and accept_quotes set to that token. The hub searches again and releases only if the
+	// search gives the same token; otherwise it refuses again with the new places and token. The
+	// hub changes no content.
 	ReleaseSession(context.Context, *commandsapi.ReleaseSessionRequest) (*commandsapi.ReleaseSessionResponse, error)
 	// ObjectToRelease holds the release of an ended session (concept-session-release): it appends
 	// release.objected, and the hub does not release the session when its grace period ends. Only a
 	// human releases it then. Who may object: as for ReleaseSession. A session that is held or
 	// released fails with failed_precondition.
 	ObjectToRelease(context.Context, *commandsapi.ObjectToReleaseRequest) (*commandsapi.ObjectToReleaseResponse, error)
+	// GetRelease returns the release of a session (concept-session-release). Who may read the
+	// session, as the session stream decides (stream.proto), gets the release status, the paths of
+	// the staged files and, once the session is released, its release commit. Every other member of
+	// the tenant gets only the release status and the release commit of a released session; for
+	// them a session that is not released does not exist (not_found). A stage link gets
+	// permission_denied.
+	GetRelease(context.Context, *commandsapi.GetReleaseRequest) (*commandsapi.GetReleaseResponse, error)
 	// GetTreeHead, GetConsistencyProof and GetInclusionProof answer only who may read the
 	// session, as the session stream decides (stream.proto); everybody else gets not_found.
 	// GetTreeHead returns the signed tree head of the session log (dec-merkle-log): for the current
@@ -322,15 +345,28 @@ type SessionCommandsServiceHandler interface {
 	// repository with the caller as the author. Only a human who took part in the session may
 	// release it (also one who left, and the participant who imported it); an agent gets
 	// permission_denied, everyone else not_found. The session must have ended and must not be
-	// released (failed_precondition). A release lifts an objection. The answer lists the places
-	// where a staged file quotes a sentence off the record word for word; the hub changes no
-	// content. The hub stores the event before it answers and completes the move after a restart.
+	// released (failed_precondition). A release lifts an objection. The hub stores the event before
+	// it answers and completes the move after a restart.
+	//
+	// Before it releases, the hub searches the staged files for word-for-word quotes of sentences
+	// off the record. While it finds any, it refuses: it appends no event and answers without a
+	// result, with the places and a quote token. The caller releases anyway with the same command
+	// again and accept_quotes set to that token. The hub searches again and releases only if the
+	// search gives the same token; otherwise it refuses again with the new places and token. The
+	// hub changes no content.
 	ReleaseSession(context.Context, *commandsapi.ReleaseSessionRequest) (*commandsapi.ReleaseSessionResponse, error)
 	// ObjectToRelease holds the release of an ended session (concept-session-release): it appends
 	// release.objected, and the hub does not release the session when its grace period ends. Only a
 	// human releases it then. Who may object: as for ReleaseSession. A session that is held or
 	// released fails with failed_precondition.
 	ObjectToRelease(context.Context, *commandsapi.ObjectToReleaseRequest) (*commandsapi.ObjectToReleaseResponse, error)
+	// GetRelease returns the release of a session (concept-session-release). Who may read the
+	// session, as the session stream decides (stream.proto), gets the release status, the paths of
+	// the staged files and, once the session is released, its release commit. Every other member of
+	// the tenant gets only the release status and the release commit of a released session; for
+	// them a session that is not released does not exist (not_found). A stage link gets
+	// permission_denied.
+	GetRelease(context.Context, *commandsapi.GetReleaseRequest) (*commandsapi.GetReleaseResponse, error)
 	// GetTreeHead, GetConsistencyProof and GetInclusionProof answer only who may read the
 	// session, as the session stream decides (stream.proto); everybody else gets not_found.
 	// GetTreeHead returns the signed tree head of the session log (dec-merkle-log): for the current
@@ -377,6 +413,7 @@ func RegisterSessionCommandsServiceHandler(server *connect.Server, svc SessionCo
 		connect.Method{Spec: sessionCommandsServiceEndSessionSpec(), Handler: adapter.endSession},
 		connect.Method{Spec: sessionCommandsServiceReleaseSessionSpec(), Handler: adapter.releaseSession},
 		connect.Method{Spec: sessionCommandsServiceObjectToReleaseSpec(), Handler: adapter.objectToRelease},
+		connect.Method{Spec: sessionCommandsServiceGetReleaseSpec(), Handler: adapter.getRelease},
 		connect.Method{Spec: sessionCommandsServiceGetTreeHeadSpec(), Handler: adapter.getTreeHead},
 		connect.Method{Spec: sessionCommandsServiceGetConsistencyProofSpec(), Handler: adapter.getConsistencyProof},
 		connect.Method{Spec: sessionCommandsServiceGetInclusionProofSpec(), Handler: adapter.getInclusionProof},
@@ -438,6 +475,10 @@ func (UnimplementedSessionCommandsServiceHandler) ReleaseSession(context.Context
 
 func (UnimplementedSessionCommandsServiceHandler) ObjectToRelease(context.Context, *commandsapi.ObjectToReleaseRequest) (*commandsapi.ObjectToReleaseResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, "office.sessioncommands.v1.SessionCommandsService.ObjectToRelease is not implemented")
+}
+
+func (UnimplementedSessionCommandsServiceHandler) GetRelease(context.Context, *commandsapi.GetReleaseRequest) (*commandsapi.GetReleaseResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "office.sessioncommands.v1.SessionCommandsService.GetRelease is not implemented")
 }
 
 func (UnimplementedSessionCommandsServiceHandler) GetTreeHead(context.Context, *commandsapi.GetTreeHeadRequest) (*commandsapi.GetTreeHeadResponse, error) {
@@ -563,6 +604,14 @@ func (c *sessionCommandsServiceClient) ReleaseSession(ctx context.Context, req *
 func (c *sessionCommandsServiceClient) ObjectToRelease(ctx context.Context, req *commandsapi.ObjectToReleaseRequest) (*commandsapi.ObjectToReleaseResponse, error) {
 	var res commandsapi.ObjectToReleaseResponse
 	if err := c.client.CallUnary(ctx, sessionCommandsServiceObjectToReleaseSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *sessionCommandsServiceClient) GetRelease(ctx context.Context, req *commandsapi.GetReleaseRequest) (*commandsapi.GetReleaseResponse, error) {
+	var res commandsapi.GetReleaseResponse
+	if err := c.client.CallUnary(ctx, sessionCommandsServiceGetReleaseSpec(), req, &res); err != nil {
 		return nil, err
 	}
 	return &res, nil
@@ -760,6 +809,18 @@ func (h sessionCommandsServiceHandler) objectToRelease(ctx context.Context, _ co
 		return err
 	}
 	res, err := h.svc.ObjectToRelease(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h sessionCommandsServiceHandler) getRelease(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req commandsapi.GetReleaseRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.GetRelease(ctx, &req)
 	if err != nil {
 		return err
 	}

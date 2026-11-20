@@ -392,6 +392,9 @@ func (e *env) fail(err error) int {
 	if err == nil {
 		return commands.ExitOK
 	}
+	if errors.As(err, new(refusedError)) {
+		return commands.ExitError
+	}
 	code, exit := errorCode(err), commands.ExitError
 	var u usageError
 	if errors.As(err, &u) {

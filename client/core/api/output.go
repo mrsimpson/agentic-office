@@ -83,15 +83,36 @@ func EndJSON(res *sessioncommandsv1.EndSessionResponse) map[string]any {
 
 // ReleaseJSON is the output of a release: {"event", "duplicate", "quotes": [{"path", "line",
 // "utteranceEventId"}]}. A quote is a place where a staged file quotes a sentence off the record
-// word for word.
+// word for word. A release that the hub refused because of quotes is {"refused": true, "quotes",
+// "quoteToken"}: the places, and the token that releases anyway.
 func ReleaseJSON(res *sessioncommandsv1.ReleaseSessionResponse) map[string]any {
-	out := ResultJSON(res.GetResult())
 	quotes := []map[string]any{}
 	for _, q := range res.GetQuotes() {
 		quotes = append(quotes, map[string]any{"path": q.GetPath(), "line": q.GetLine(), "utteranceEventId": q.GetUtteranceEventId()})
 	}
+	if Refused(res) {
+		return map[string]any{"refused": true, "quotes": quotes, "quoteToken": res.GetQuoteToken()}
+	}
+	out := ResultJSON(res.GetResult())
 	out["quotes"] = quotes
 	return out
+}
+
+// Refused reports whether the hub refused a release because staged files quote sentences off the
+// record.
+func Refused(res *sessioncommandsv1.ReleaseSessionResponse) bool {
+	return res.GetResult() == nil && res.GetQuoteToken() != ""
+}
+
+// RefusalText tells a human why the hub refused a release and how to release anyway.
+func RefusalText(sessionID string, res *sessioncommandsv1.ReleaseSessionResponse) string {
+	var b strings.Builder
+	b.WriteString("The release is refused: staged files quote sentences that are off the record, word for word.\n")
+	for _, q := range res.GetQuotes() {
+		fmt.Fprintf(&b, "  %s\n", QuoteLine(q))
+	}
+	fmt.Fprintf(&b, "Correct these files, or release anyway with:\n  office session release %s --accept-quotes %s\n", sessionID, res.GetQuoteToken())
+	return b.String()
 }
 
 // ReleaseHint tells the humans of an ended session how its release goes on, in plain words.

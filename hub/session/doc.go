@@ -131,8 +131,16 @@
 //     storage.Staging.Areas and the logs, so a release that a restart cut off and a deadline that
 //     passed while the hub was down are due at start. A failed release is tried again after a
 //     few seconds. Before a human releases, findQuotes searches the staged files for the
-//     sentences off the record, as raw text (case and white space ignored, at least three words),
-//     and the answer names the places; nothing is changed.
+//     sentences off the record, as raw text (case and white space ignored, at least three words).
+//     While it finds any, ReleaseSession writes no event and answers with the places and a quote
+//     token: an HMAC, keyed from the signing key of the hub, over the session and each place with
+//     the sentence it quotes. A request whose accept_quotes equals the token of a new search
+//     releases; nothing is changed. When a deadline comes while a session with humans has quotes,
+//     releaseDue holds it instead: release.objected with an empty actor and the command ID
+//     HubHoldCommandID, and the area records it. GetRelease returns the status, the staged paths
+//     (storage.Staging.List) and the release commit (storage.Staging.Released).
+//   - NoteArtifact accepts every participant who took part (state.tookPart), the same rule as
+//     release.Checker.TookPart, so the importer writes for its session without joining.
 //   - After session.ended (dec-session-end-milestone), a command fails, except release, object,
 //     NoteArtifact and, until the release, MarkOffTheRecord. run writes such an event (and
 //     session.ended itself) to the archive before it answers (persistNow), because no peer follows

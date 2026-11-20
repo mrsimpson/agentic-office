@@ -810,8 +810,8 @@ office meeting end
 - `office session list` lists the sessions in which you took part or that you imported, the newest
   first, with start, end and participants; a tenant admin sees every session of the tenant. The
   portal shows the same list on the page of the tenant (`office portal link`). Open a session there
-  to read it: its minutes, decisions, tasks, notes and transcript. Sentences off the record do not
-  appear.
+  to read it: its minutes, decisions, tasks, notes and transcript, and its release with the staged
+  artifacts. Sentences off the record do not appear.
 - A decision or a note is linked to a session only with `--session`, and only a participant of
   the session may name it. It then waits for the release of the session, like the minutes; see the
   next section. A decision or a note without a session is shared with the tenant at once.
@@ -836,6 +836,7 @@ office meeting end                     # prints when the hub releases the sessio
 office session release weekly          # release it now
 office session hold weekly             # or object: the hub then does not release it
 office meeting end --release           # end and release in one go
+office session release weekly --accept-quotes <token>   # release despite quotes (see below)
 ```
 
 - **Who releases.** Every human who took part may release or object, also after leaving. An agent
@@ -847,9 +848,24 @@ office meeting end --release           # end and release in one go
   no local log and no agent any more: correct the staged files yourself, ask their authors, or
   object with `office session hold`. An objection holds the session until a human releases it.
 - **The release** moves everything the session staged into the artifact repository in one commit,
-  with you (or the hub) as the author. Before it, the hub searches the staged files for sentences
-  that are off the record, word for word, and `office session release` prints a warning with the
-  file and the line for each one. The hub changes no content.
+  with you (or the hub) as the author, and the authors of the artifacts as co-authors.
+- **Quotes off the record.** Before every release, the hub searches the staged files for
+  sentences that are off the record, word for word (sentences of at least three words; case and
+  spaces do not count). If it finds one, it refuses the release. `office session release` then
+  prints each place (file, line and the event of the sentence, never the sentence) and a token,
+  and exits with 1. Correct the files and release again, or release anyway with
+  `--accept-quotes <token>`. The hub searches again and releases only if it finds exactly the same
+  quotes; if a staged file changed in between, you get new places and a new token. The hub changes
+  no content.
+- **The grace period ends with quotes.** Then the hub does not release the session but holds it,
+  as if someone had objected. A human who took part releases it with the token. A session without
+  humans is released at its end all the same.
+- **In the portal**, the page of a session shows the release status, when the hub releases it,
+  and the staged artifacts to everyone who took part and to the tenant admins. A human who took
+  part gets a button to release and, while the session waits, one to object. If the hub refuses a
+  release because of quotes, the page lists the places and a button "Release anyway". Other members
+  see a session only after its release: the released artifacts, who released them and their
+  authors.
 - After the end, a session takes only the release, the objection, notes about artifacts and,
   until the release, marks off the record.
 

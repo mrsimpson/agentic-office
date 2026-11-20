@@ -59,3 +59,42 @@ func TestReleaseWithTheCLI(t *testing.T) {
 		t.Errorf("meeting_end of a session of agents: %v", end)
 	}
 }
+
+// "session release" prints the places where staged files quote a sentence off the record and a
+// token, and exits with 1; with --accept-quotes and that token it releases. The MCP tool
+// session_release takes the token as acceptQuotes.
+func TestReleaseQuotesWithTheCLI(t *testing.T) {
+	m := newMachine(t)
+	ada := m.user("ada", "Ada", "human")
+	sid := newSession()
+	ada.join(sid)
+	sentence := "Ben will leave the company in March."
+	said := ada.ok("say", sentence, "--session", sid)
+	_, ev := eventOf(t, said)
+	ada.ok("utterance", "off-the-record", "--last", "--session", sid)
+	ada.ok("document", "create", "documents/news.md", "# News\n\n"+sentence+"\n", "--session", sid)
+	ada.ok("meeting", "end", "--session", sid)
+
+	out, errOut, code := ada.run("session", "release", sid)
+	if code != 1 || !strings.Contains(out, "documents/news.md:3") || !strings.Contains(out, "--accept-quotes ") || strings.Contains(out, sentence) {
+		t.Fatalf("session release with quotes: exit %d, stdout %q, stderr %q", code, out, errOut)
+	}
+	v, code := ada.call("session", "release", sid)
+	token, _ := v["quoteToken"].(string)
+	if code != 1 || v["refused"] != true || token == "" || !strings.Contains(out, token) {
+		t.Fatalf("session release --json with quotes: exit %d, %v", code, v)
+	}
+	if q, _ := v["quotes"].([]any); len(q) != 1 || q[0].(map[string]any)["utteranceEventId"] != float64(ev.GetId()) {
+		t.Errorf("quotes %v, want the sentence of event %d", v["quotes"], ev.GetId())
+	}
+
+	// An agent cannot release, with or without the token.
+	bot := m.user("bot", "Bot", "agent")
+	s := startMCP(t, bot)
+	s.fails("permission_denied", "session_release", map[string]any{"session": sid, "acceptQuotes": token})
+
+	rel := ada.ok("session", "release", sid, "--accept-quotes", token)
+	if _, ev := eventOf(t, rel); ev.GetType() != "session.released" {
+		t.Fatalf("session release --accept-quotes: %v", rel)
+	}
+}

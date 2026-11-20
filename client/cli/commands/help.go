@@ -365,8 +365,9 @@ hub releases it at once. Otherwise it releases it when the grace period ends (24
 hub sets another length); the command prints when. Until then every human who took part can
 release it ("office session release") or hold it ("office session hold").
 
---release ends the session and then releases it, as two commands; only a human can release.
---json prints {"event", "duplicate", "release": {"state", "deadline"}}, and with --release also
+--release ends the session and then releases it, as two commands; only a human can release. If
+staged files quote sentences off the record, the release is refused as with "office session
+release"; the session has ended all the same. --json prints {"event", "duplicate", "release": {"state", "deadline"}}, and with --release also
 "released" as "office session release" prints it.`,
 		Examples: []string{"office meeting end", "office meeting end --release"}},
 	{Name: "say", Group: groupMeeting, Summary: "submit a typed utterance",
@@ -511,7 +512,8 @@ The hub refuses other paths and content over 1 MiB, and it fails with already_ex
 path is taken. --session links the document to a session that you took part in: the log then
 gets artifact.created, and the document waits for the release of the session. Until then only
 its participants read it; everyone else reads its stub. Prints the version of the document.
-Never put a sentence that is off the record into a document; the hub does not check this.
+Never put a sentence that is off the record into a document; the release of the session is
+refused while a staged file quotes one word for word.
 --json prints {"path", "version", "staged", "duplicate"}.`,
 		Examples: []string{"V=$(office document create documents/plan.md --file plan.md --session weekly)"}},
 	{Name: "document change", Group: groupStage, Summary: "replace a text document",
@@ -725,18 +727,22 @@ imported), the start, the end or "running" (UTC), and the participants. --json p
 		Examples: []string{"office session list", "office session list --json"}},
 
 	{Name: "session release", Group: groupRecords, Summary: "release what an ended session created",
-		Usage: "session release [<session>]",
+		Usage: "session release [<session>] [--accept-quotes TOKEN]",
 		Details: `Moves what the session staged (minutes, notes, decisions, documents, slides) from its
 staging area into the artifact repository of the tenant, in one commit with you as the author.
 Every member sees it then. Only a human who took part in the session may release it, also after
 leaving; the session must have ended. A release lifts an objection. Without <session>, the session
 is --session or the only session you joined on this computer.
 
-Before the release, the hub searches the staged files for sentences that are off the record,
-word for word, and prints a warning for each place. It changes no content: if you see a warning,
-the release has happened, so ask the author to correct the file. --json prints {"event",
-"duplicate", "quotes": [{"path", "line", "utteranceEventId"}]}.`,
-		Examples: []string{"office session release weekly", "office session release --json"}},
+Before the release, the hub searches the staged files for sentences that are off the record, word
+for word. If it finds one, it refuses: the command prints each place (file, line, event of the
+sentence, never the sentence), a token, and exits with 1. Correct the files and release again, or
+release anyway with --accept-quotes TOKEN. The hub searches again and releases only if it finds
+exactly the same quotes; otherwise it refuses with a new token. The hub changes no content.
+
+--json prints {"event", "duplicate", "quotes": [{"path", "line", "utteranceEventId"}]}, or for a
+refusal {"refused": true, "quotes", "quoteToken"}.`,
+		Examples: []string{"office session release weekly", "office session release weekly --accept-quotes 3f9c…", "office session release --json"}},
 	{Name: "session hold", Group: groupRecords, Summary: "object to the release of an ended session",
 		Usage: "session hold [<session>]",
 		Details: `Holds the release: when the grace period ends, the hub does not release the session. A

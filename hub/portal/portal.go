@@ -86,6 +86,20 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if path != web.HomePath {
 		path = strings.TrimSuffix(path, "/")
 	}
+	// The forms of a session page: /portal/t/<tenant>/s/<session>/release or /object.
+	if rest, ok := strings.CutPrefix(r.URL.EscapedPath(), web.TenantPrefix); ok {
+		if tenant, page, _ := strings.Cut(rest, "/"); strings.HasPrefix(page, "s/") {
+			if i := strings.LastIndex(page, "/"); i > 1 && (page[i+1:] == "release" || page[i+1:] == "object") {
+				if r.Method != http.MethodPost {
+					w.Header().Set("Allow", http.MethodPost)
+					h.fail(w, http.StatusMethodNotAllowed, "Not allowed", "This address does not answer this method.")
+					return
+				}
+				h.sessionAction(w, r, tenant, page[len("s/"):i], page[i+1:])
+				return
+			}
+		}
+	}
 	post := path == web.RegisterPath || path == web.RevokePath
 	if r.Method != http.MethodGet && !(post && r.Method == http.MethodPost) {
 		if path == web.RegisterPath {

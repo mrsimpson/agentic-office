@@ -99,6 +99,8 @@ flowchart LR
     bb_portal -->|if-decision-api| bb_records
     bb_portal -->|if-note-api| bb_records
     bb_portal -->|if-task-api| bb_tasks
+    bb_portal -->|if-session-commands| bb_session_service
+    bb_portal -->|if-archive-read| bb_archive
     bb_documents -->|if-archive-storage| bb_archive
     bb_documents -->|if-session-notice| bb_session_service
     bb_documents -->|if-token-check| bb_identity
@@ -139,11 +141,22 @@ client, so a repeated call has no extra effect and a client may always repeat af
 
 The same interface carries the release of an ended session (`concept-session-release`): release
 and object. Only a human who took part in the session may call them, also after leaving; an agent
-is refused. The answer to the end says when the hub releases the session, and the answer to a
-release names every place where a staged file quotes a sentence off the record word for word. An
-ended session takes only these commands, notices about artifacts and, until the release, a mark
-off the record (`dec-session-end-milestone`); the hub stores such an event before it answers.
-Ending and releasing in one step are two calls, one event each.
+is refused. The answer to the end says when the hub releases the session. An ended session takes
+only these commands, notices about artifacts and, until the release, a mark off the record
+(`dec-session-end-milestone`); the hub stores such an event before it answers. Ending and releasing
+in one step are two calls, one event each.
+
+Before it releases, the hub searches the staged files for sentences off the record, word for word.
+While it finds one, it refuses and creates no event. The answer lists each place (the file, the
+line and the event of the sentence, never the sentence) and a token: a hash over the session and
+the exact quotes. To release anyway, the human sends the release again with this token. The hub
+searches again and releases only if the search gives the same token, so a staged file that changed
+in between leads to a new refusal with a new token.
+
+The interface also tells who may read a session its release: the status and deadline, the staged
+files, whether the caller may release or object now, and, once released, the release commit with
+the human who released and the authors of the artifacts. Every other member of the tenant gets
+only the release of a released session.
 
 The same interface lets everyone who may read a session check its log (`dec-merkle-log`): it hands
 out signed tree heads, proofs and the public key of the hub. It owns no log types. The events, the tree
@@ -486,6 +499,13 @@ system admin, the users with their keys, the tenants and the system admins, with
 register users and keys and to revoke keys. The tenant is part of the address of a page. It has the
 same design as the stage.
 
+The page of a session shows its readers the release status, when the hub releases it, and the
+staged artifacts. A human who took part gets two forms: release, and, while the session waits,
+object. When the hub refuses a release because staged files quote sentences off the record, the
+page lists the places and a button "release anyway" whose form carries the token. A member who did
+not take part sees a session only once it is released, and then only the released artifacts, who
+released them and their original authors.
+
 ```arc42
 :::interface
 id: if-portal-web
@@ -504,7 +524,9 @@ page asks the interfaces of the hub with the access token of the user and shows 
 portal has exactly the rights of the key (`dec-web-portal`). It asks the auth API who the user is,
 the user and tenant APIs for the administration and the members, the session list for the
 sessions of a tenant, the session stream for the events of one session, and the minutes, decisions,
-notes and tasks of that session.
+notes and tasks of that session. On the page of a session it asks the session commands for the
+release and the archive read API for the staged or released artifacts, and its forms send release
+and objection to the session commands.
 
 ```arc42
 :::building-block
@@ -512,7 +534,7 @@ id: bb-portal
 title: Portal
 technology: Go, rendered by the hub
 parent: bb-office-hub
-requires: if-auth-api, if-user-api, if-tenant-api, if-session-list, if-session-stream, if-minutes-api, if-decision-api, if-note-api, if-task-api
+requires: if-auth-api, if-user-api, if-tenant-api, if-session-list, if-session-stream, if-session-commands, if-minutes-api, if-decision-api, if-note-api, if-task-api, if-archive-read
 path: hub/portal
 :::
 ```
@@ -570,8 +592,10 @@ It owns the release of each session (`concept-session-release`, `dec-staging-rep
 - An objection holds the session, and the staging area records it. Only a human releases a held
   session.
 - The release is an event in the log first, then the archive moves the area with the human who
-  released, or the hub, as the author. Before a human releases, it searches the staged files for
-  word-for-word quotes of sentences off the record. It knows no file type and changes no content.
+  released, or the hub, as the author. Before every release of a session with humans, it searches
+  the staged files for word-for-word quotes of sentences off the record. It knows no file type and
+  changes no content. A human releases despite quotes only with the token of the quotes found. When
+  the grace period ends while quotes exist, it holds the session instead of releasing it.
 
 ```arc42
 :::building-block
@@ -592,7 +616,8 @@ and whether a participant took part in it. The release status decides where a wr
 staging area of the session while it is not released, else into the artifact repository. Every
 session that exists has a status, also one that staged nothing: open while it runs, waiting until
 its deadline, held after an objection, or released. Only a participant who took part may name a
-session in a write.
+session in a write: one who joined it at any time, or the participant who imported it. The session
+notice accepts the same participants.
 
 ```arc42
 :::interface
@@ -607,7 +632,9 @@ path: hub/session/release
 #### Session notice
 
 Lets a part of the hub that writes artifacts tell the session about it. The session logs the
-change for the participant who wrote, who must have joined the session.
+change for the participant who wrote, who must have taken part in the session by the same rule as
+the session release: joined at any time, or imported it. So a write that passes the check of the
+session release never fails on the notice afterwards.
 
 ```arc42
 :::interface
@@ -912,7 +939,9 @@ For the staging repository, a caller works on the area of a session:
 - read and list the files of an area, and list every area with its state;
 - release the area: close it for writes, move its files into the artifact repository in one
   commit, then remove the area. A file replaces the stub at its path, and the stub of a removed
-  file goes away. A release that a restart cut off is completed by the next call.
+  file goes away. A release that a restart cut off is completed by the next call;
+- find the release commit of a session in the artifact repository, with its author, its
+  co-authors and the files it wrote.
 
 The stubs themselves belong to the parts of the types, not to the archive.
 
