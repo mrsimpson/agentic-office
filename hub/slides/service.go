@@ -960,10 +960,12 @@ func (s *Service) add(ctx context.Context, n uint64, d *slidesv1.Deck, to target
 	s.high = n
 	s.setName(n, to.session)
 	if err := s.writeStub(ctx, n); err != nil {
-		// Take the staged file back. A push that put a file at this path first keeps it.
-		if _, rerr := s.opts.Staging.Commit(ctx, to.session, storage.Change{Message: fmt.Sprintf("Slides %s: taken back", d.GetId()),
-			Files: []storage.File{{Path: p, Remove: true}}}); rerr != nil {
+		// Take the staged file back, and the area forgets the path. A push that put a file at this
+		// path first keeps it, also at the release.
+		if rerr := s.opts.Staging.TakeBack(ctx, to.session, p); rerr != nil {
 			s.opts.Logf("slides: take back the staged %s: %v", p, rerr)
+		} else {
+			s.setName(n, "")
 		}
 		if storage.IsConflict(err) {
 			return taken()

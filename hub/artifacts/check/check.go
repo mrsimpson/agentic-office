@@ -15,6 +15,9 @@
 //     part owns is invalid.
 //   - A file that names no schema is valid when it is valid Markdown (any text in UTF-8) or valid
 //     YAML.
+//   - A file is the stub of a staged artifact (concept-session-release) when it names a schema and
+//     the part that owns the schema recognises it as the stub of its type (IsStub). Git access
+//     asks this for the old state of every path that a push changes or removes.
 package check
 
 import (
@@ -37,27 +40,7 @@ const SchemaKey = "schema"
 // Validate checks the file at filePath, a path relative to the repository of the tenant, with the
 // given content. It returns the reasons in plain words, or nothing when the file is valid.
 func Validate(filePath string, content []byte) []string {
-	clean := path.Clean(filePath)
-	switch {
-	case filePath == "" || path.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, "../"):
-		return []string{fmt.Sprintf("the path %q is not a path inside the repository", filePath)}
-	}
-	var (
-		schema string
-		named  bool
-		err    error
-	)
-	switch ext := path.Ext(clean); ext {
-	case ".md":
-		if !utf8.Valid(content) {
-			return []string{"a Markdown file must be text in UTF-8"}
-		}
-		schema, named, err = markdownSchema(content)
-	case ".yaml", ".yml":
-		schema, named, err = yamlSchema(content)
-	default:
-		return []string{fmt.Sprintf("a file must end in .md, .yaml or .yml, not %q", ext)}
-	}
+	clean, schema, named, err := schemaOf(filePath, content)
 	if err != nil {
 		return []string{err.Error()}
 	}
@@ -68,7 +51,40 @@ func Validate(filePath string, content []byte) []string {
 	if !ok {
 		return []string{fmt.Sprintf("the schema %q is not known; the schemas are %s", schema, strings.Join(artifacts.Schemas(), ", "))}
 	}
-	return owner(schema, clean, content)
+	return owner.Validate(schema, clean, content)
+}
+
+// IsStub reports whether the file at filePath with the given content is the stub of a staged
+// artifact (concept-session-release): the file names a schema, and the part that owns the schema
+// recognises the content as the stub of its type. A file that is not valid is never a stub.
+func IsStub(filePath string, content []byte) bool {
+	clean, schema, named, err := schemaOf(filePath, content)
+	if err != nil || !named {
+		return false
+	}
+	owner, ok := artifacts.Owner(schema)
+	return ok && owner.IsStub(schema, content) && len(owner.Validate(schema, clean, content)) == 0
+}
+
+// schemaOf returns the clean path of a file and the schema that the file names, if any. The error
+// says in plain words why the path or the content is not an artifact.
+func schemaOf(filePath string, content []byte) (clean, schema string, named bool, err error) {
+	clean = path.Clean(filePath)
+	if filePath == "" || path.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, "../") {
+		return clean, "", false, fmt.Errorf("the path %q is not a path inside the repository", filePath)
+	}
+	switch ext := path.Ext(clean); ext {
+	case ".md":
+		if !utf8.Valid(content) {
+			return clean, "", false, errors.New("a Markdown file must be text in UTF-8")
+		}
+		schema, named, err = markdownSchema(content)
+	case ".yaml", ".yml":
+		schema, named, err = yamlSchema(content)
+	default:
+		err = fmt.Errorf("a file must end in .md, .yaml or .yml, not %q", ext)
+	}
+	return clean, schema, named, err
 }
 
 // markdownSchema returns the schema that the front matter of a Markdown file names, if any.
