@@ -544,14 +544,17 @@ read it. A retraction pretends that it was never said. **Decision:** What is sai
 Utterances are never retracted or removed. A participant can mark their own sentence off the
 record afterwards. This is its own command; the hub checks that the caller is the speaker. The
 mark is a new event. The interfaces then suppress the text: they deliver a placeholder with the
-same ID, the stage hides it, and it does not go into minutes, decisions or notes. Agents that already
-read it must respect the mark. The raw log keeps the original. Marking the sentences of others
+same ID, the stage hides it, and it must not go into minutes, decisions or notes. This is a rule for
+the people and agents who write, not a check of the hub: what a session creates waits for a release,
+and until then the speaker may still mark the sentence, even after the end of the session, and have
+it taken out (`concept-session-release`). Agents that already read it must respect the mark. The raw log keeps the original. Marking the sentences of others
 (moderation) is out of scope for the first stage. **Consequences:** The log stays
 complete and honest. Suppression works for every reader that uses the interfaces, but not for
 what an agent already holds in its context. The published session keeps the original and the
 mark; reading it from the archive also gives the placeholder (`dec-session-persistence`).
 **Rejected:** retraction; a hold period before
-publishing (it adds seconds of latency); a general classification command (not needed yet).
+the live stream (it adds seconds of latency; the release holds only what is shared with the
+tenant); a general classification command (not needed yet).
 
 ```arc42
 :::decision
@@ -713,7 +716,8 @@ addresses: qg-usability
 
 **Context:** The storage behind the interfaces should be local and predictably fast at first, and
 replaceable later. **Decision:** At first, the hub stores every type as YAML files in a local Git
-repository on the hub host and commits locally. The push to a remote is mocked. Tasks are local
+repository on the hub host and commits locally; notes are Markdown with YAML front matter
+(`dec-wiki`). The push to a remote is mocked. Tasks are local
 drafts too. Later, tasks are synced with the task tool of the team (for example GitHub or GitLab
 issues), and the synced task replaces the local draft. **Consequences:** No external service is
 needed to start, and commits stay fast. Sessions are written in the background at an interval
@@ -818,8 +822,9 @@ session realizes it, so every session log keeps one writer. The first event mark
 imported, with its source and the participant who imported it. The speakers become imported
 participants that never match a registered participant. Until the import is complete, only the
 participant who started it may add to it. After that, it is a session like any other: participants
-join, write minutes and end it, and the stream, the archive and the restore treat it like every
-other session. The signed tree heads prove who imported the log and that it has not changed
+join, write minutes and end it, and the stream, the archive, the restore and the release treat it
+like every other session (`concept-session-release`). The participant who imported it counts as a
+participant. The signed tree heads prove who imported the log and that it has not changed
 since; they do not prove that the speakers said what it says. **Consequences:** Agents and humans
 derive records from an imported session through the existing interfaces, without a second path.
 Readers recognise an imported session by its first event. The new events are a new revision of
@@ -1055,7 +1060,9 @@ addresses: qg-confidentiality
 **Context:** Humans and agents work together in one session. They create notes, slide decks,
 documents and changes to documents, and the stage must be able to show any of them.
 **Decision:** An artifact is a file in the git repository of the tenant, and its path is its
-identity. Text (Markdown) and data (YAML) are artifacts; the hub refuses other files. The file
+identity. What a session creates waits in the staging repository of the tenant under the same path
+until it is released, and a stub keeps its path in the artifact repository
+(`concept-session-release`, `dec-staging-repository`). Text (Markdown) and data (YAML) are artifacts; the hub refuses other files. The file
 names its schema inside itself, the hub ships the schemas, and a schema decides how the hub checks
 the artifact and how the stage renders it. A text file without a schema is shown as plain text.
 Every type keeps its own interface that creates and changes its artifacts
@@ -1068,7 +1075,7 @@ artifacts and exactly one has the focus. The minutes are the first artifact and 
 until another artifact gets it. The archive stores every change in one commit, and the rule for
 off the record applies when an artifact is created. The archive offers an interface to read
 artifacts by path (`if-archive-read`); the stage reads through it, and only paths that the log of
-its own session names. **Consequences:** The stage chooses its renderer by the schema. The session
+its own session names; for a staged artifact it reads the staging area of its own session. **Consequences:** The stage chooses its renderer by the schema. The session
 log needs events for created, changed and focused artifacts. Decisions, minutes, notes, slides and
 tasks keep their interfaces and each has a schema; what they share is the path, the schema
 reference, the commit per change, the version check and the focus. **Rejected:** schemas defined
@@ -1108,7 +1115,9 @@ or YAML. The schema belongs to its type: the part of the hub that owns a type ow
 checks its files. A small part of the hub knows which type owns which schema and hands a check
 to it, and Git access knows no schema. Git refuses a push on an old base,
 which is the base version of the interfaces. The tenant has a second repository for its session logs, which Git access never serves, because
-the logs hold the original of sentences that are off the record (`dec-off-the-record`). The archive
+the logs hold the original of sentences that are off the record (`dec-off-the-record`), and a third
+one for what sessions have not released (`dec-staging-repository`), which Git access never serves
+either. The push rules also refuse every change or removal of a stub of a staged artifact. The archive
 keeps the artifact repository without a work
 tree, and the archive and a push both move main in one atomic step of Git, so no lock is needed. After
 every change of main, from an interface or from a push, the archive tells the clients that follow
@@ -1150,15 +1159,17 @@ token of the key and keeps it in a cookie that scripts cannot read. Every page c
 interfaces of the hub with this token, so the portal has exactly the rights of the key. The portal
 shows what the key may see:
 
-- every member of a tenant: the sessions in which the member took part, and the minutes, notes,
-  decisions, tasks, slides and documents of the tenant;
+- every member of a tenant: the sessions in which the member took part, with what they staged and
+  when their release is due, and the released minutes, notes, decisions, tasks, slides and
+  documents of the tenant;
 - a tenant admin, in addition: every session of the tenant and the members of the tenant;
 - a system admin, in addition: users and keys, tenants and system admins. A system admin who is
   no member of a tenant sees no content of it.
 
 The tenant is part of the address of a page, so a user with several memberships switches between
-them. The portal reads only, except the administration of keys by system admins: register users and
-keys and revoke keys. Writing content stays with the CLI, MCP and Git
+them. The portal reads only, except the administration of keys by system admins (register users and
+keys and revoke keys) and the release of a session and the objection to it by a human who took
+part (`concept-session-release`). Writing content stays with the CLI, MCP and Git
 (`dec-artifact-sync`). The stage stays separate: it is opened by a link without login, for one
 session, for a screen share. The meeting session lists the sessions that a caller may see, with
 their start, end, participants and whether they were imported, through an interface of its own
@@ -1168,8 +1179,9 @@ every user and every admin. The code is useless after its first use, so a link o
 does no harm once it was opened. The access token lives one hour. Every page goes through an
 interface that checks the rights, so the portal cannot show more than the CLI. A form carries a
 token that is derived from the session, and the portal refuses a post from another origin.
-Revoking asks for a confirmation on its own page, so no script is needed. Notes are visible to every member like the other records, also notes made in a session;
-only the session itself, whose log holds sentences off the record, stays with its readers.
+Revoking asks for a confirmation on its own page, so no script is needed. Notes are visible to every member like the other records once they are released, also notes made
+in a session; only the session itself, whose log holds sentences off the record, stays with its
+readers.
 OPEN: a login with passkeys; creating tenants and managing memberships in the
 portal. **Rejected:** a separate admin view next to a portal (two logins, two designs, and no place for
 tenant admins); a password (a second secret to keep); a signature in the browser (needs scripts and
@@ -1307,8 +1319,7 @@ keeps its own interface for writing (`dec-records-per-type`).
 - **The history of the archive is the log of the wiki.** The hub writes no index file and no log
   file.
 
-**Consequences:** Notes are Markdown, which `dec-yaml-git-storage` must say once this decision is
-accepted. The note contract stays, and the note schema gains tags. Documents
+**Consequences:** Notes are Markdown (`dec-yaml-git-storage`). The note contract stays, and the note schema gains tags. Documents
 gain an optional schema for their front matter, owned by the documents part. Every part that owns a
 type gains a description of its files next to its check. Apart from the release, which gives time and shows word-for-word quotes
 (`concept-session-release`), nothing in the hub keeps a sentence off the record out of a record or a
@@ -1401,9 +1412,7 @@ their content.
 - A message broker or a scheduler for the deadlines: the staging repository already keeps the
   state.
 
-OPEN: the changes to `dec-artifacts`, `dec-artifact-sync`, `dec-web-portal`, `dec-off-the-record`,
-`dec-session-import`, `concept-multi-tenancy` and to the
-archive, Git access and the artifacts check in chapter 5.
+The archive, Git access and the artifacts check in chapter 5 change with their code.
 
 ```arc42
 :::decision

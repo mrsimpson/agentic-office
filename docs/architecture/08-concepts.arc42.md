@@ -183,8 +183,9 @@ start, and every tenant has at least one tenant admin.
 imported it, by the tenant admins of its tenant, and by a stage link of exactly this session. For
 every other member of the tenant the session does not exist. This holds for its events, its tree
 heads and proofs, its activities and the list of sessions. A participant who joins a running
-session reads its history from its join on. The records of a session (minutes, decisions, notes,
-tasks) are read by every member of the tenant. OPEN: whether they follow the session (#15).
+session reads its history from its join on. The records and other artifacts of a session are read by
+every member of the tenant once they are released; until then, only the readers of the session
+read them (`concept-session-release`). Tasks are not held.
 
 **Rules for changes.** Identity is the only writer of users, keys, memberships and system admins.
 It refuses a change when the caller may not make it, when the tenant or user does not exist, or
@@ -194,8 +195,9 @@ ID is never used again and the history shows who was a member when. A compromise
 by a system admin and stops working in all tenants. Identity checks the same rules when it loads
 the hub repository and refuses to start on a violation.
 
-**Repository.** A tenant has exactly one git repository, with a directory for each kind of
-content. Every session, record, task and slide deck belongs to exactly one tenant, and the archive
+**Repository.** A tenant has one git repository for its artifacts, with a directory for each kind
+of content, one for its session logs, and one for what its sessions have not released
+(`dec-staging-repository`). Every session, record, task and slide deck belongs to exactly one tenant, and the archive
 writes to the repository of that tenant only (`dec-yaml-git-storage`).
 
 **Separation.** Every call of the meeting session, the records, the tasks, the slides and the
