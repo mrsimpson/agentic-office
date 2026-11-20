@@ -1,6 +1,7 @@
 package session
 
 import (
+	"bytes"
 	"context"
 	"regexp"
 	"slices"
@@ -21,10 +22,6 @@ import (
 // it, so every session log keeps one writer. See import.proto for the contract.
 
 var _ sessionimportv1connect.SessionImportServiceHandler = (*Service)(nil)
-
-// ImportedPrefix starts the participant ID of every imported participant. No registered
-// participant ID contains ':', so an imported participant never matches a registered one.
-const ImportedPrefix = "imported:"
 
 // MaxImportPage is the largest number of participants, and of utterances, in one page.
 const MaxImportPage = 1000
@@ -113,7 +110,23 @@ func (s *Service) ImportConversation(ctx context.Context, req *sessionimportv1.I
 		return nil, err
 	}
 	first := st.lastID == 0
+	base := req.GetBase()
 	switch {
+	case base != nil && req.GetConversation() != nil:
+		return nil, invalid("a page with a base must not set conversation")
+	case base != nil && st.importer == "":
+		return nil, precondition("the session is not an imported session")
+	case base != nil && st.importer != caller.ParticipantID:
+		return nil, connect.NewError(connect.CodePermissionDenied, "only the participant who imported the session can extend it")
+	case base != nil && st.ended:
+		return nil, precondition("the session has ended; an ended session takes no more utterances")
+	case base != nil && (base.GetUtterances() != st.imported || !bytes.Equal(base.GetDigest(), st.importDigest)):
+		return nil, precondition("the conversation does not start with the " + strconv.Itoa(int(st.imported)) +
+			" imported utterances of the session, unchanged and in the same order")
+	case base != nil && len(req.GetParticipants()) == 0 && len(req.GetUtterances()) == 0 && !req.GetComplete():
+		return nil, invalid("a page needs participants, utterances or complete")
+	case base != nil:
+		// An importer extends its session (see import.proto).
 	case first && req.GetConversation() == nil:
 		return nil, invalid("conversation is required on the first page")
 	case !first && req.GetConversation() != nil:
@@ -128,13 +141,21 @@ func (s *Service) ImportConversation(ctx context.Context, req *sessionimportv1.I
 	case !first && len(req.GetParticipants()) == 0 && len(req.GetUtterances()) == 0 && !req.GetComplete():
 		return nil, invalid("a page needs participants, utterances or complete")
 	}
+	var join []*sessionimportv1.ImportedParticipant
 	for i, p := range req.GetParticipants() {
-		if st.participants[ImportedPrefix+p.GetKey()] != nil {
+		pt := st.participants[sessionimportv1.ImportedPrefix+p.GetKey()]
+		if pt == nil {
+			join = append(join, p)
+			continue
+		}
+		// A page with a base may name a participant of the import again, if it is the same.
+		j := pt.joined.GetParticipantJoined()
+		if base == nil || j.GetDisplayName() != p.GetDisplayName() || j.GetKind() != p.GetKind() {
 			return nil, invalid(field("participants", i, "key") + " is already a participant of the import")
 		}
 	}
 	for i, u := range req.GetUtterances() {
-		if !page[u.GetSpeaker()] && st.participants[ImportedPrefix+u.GetSpeaker()] == nil {
+		if !page[u.GetSpeaker()] && st.participants[sessionimportv1.ImportedPrefix+u.GetSpeaker()] == nil {
 			return nil, invalid(field("utterances", i, "speaker") + " is not a participant of the import")
 		}
 	}
@@ -149,13 +170,13 @@ func (s *Service) ImportConversation(ctx context.Context, req *sessionimportv1.I
 		payloads = append(payloads, &sessionstreamv1.Event{Payload: &sessionstreamv1.Event_SessionImported{SessionImported: &sessionstreamv1.SessionImported{
 			Source: req.GetConversation().GetSource(), Title: req.GetConversation().GetTitle(), ImporterKind: caller.Kind}}})
 	}
-	for _, p := range req.GetParticipants() {
+	for _, p := range join {
 		payloads = append(payloads, &sessionstreamv1.Event{Payload: &sessionstreamv1.Event_ParticipantJoined{ParticipantJoined: &sessionstreamv1.ParticipantJoined{
-			ParticipantId: ImportedPrefix + p.GetKey(), DisplayName: p.GetDisplayName(), Kind: p.GetKind(), Imported: true}}})
+			ParticipantId: sessionimportv1.ImportedPrefix + p.GetKey(), DisplayName: p.GetDisplayName(), Kind: p.GetKind(), Imported: true}}})
 	}
 	for _, u := range req.GetUtterances() {
 		payloads = append(payloads, &sessionstreamv1.Event{Payload: &sessionstreamv1.Event_UtteranceFinal{UtteranceFinal: &sessionstreamv1.UtteranceFinal{
-			ParticipantId: ImportedPrefix + u.GetSpeaker(), Text: u.GetText(), Modality: u.GetModality(), OriginalTime: u.GetTime()}}})
+			ParticipantId: sessionimportv1.ImportedPrefix + u.GetSpeaker(), Text: u.GetText(), Modality: u.GetModality(), OriginalTime: u.GetTime()}}})
 	}
 	if req.GetComplete() {
 		n := st.imported + uint32(len(req.GetUtterances()))
