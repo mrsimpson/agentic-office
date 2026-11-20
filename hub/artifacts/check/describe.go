@@ -16,6 +16,8 @@ package check
 //     is true, and no other field is set apart from Schema.
 //   - Source is true for a source of the wiki: a decision, minutes or a note, not a stub. The
 //     records part owns these types, and they are what a document cites (dec-wiki).
+//   - Status, Owner and Reviews are the state of review of a document: its status, the owner and
+//     the reviews, as its front matter names them.
 //   - Links and Sources are paths from the top of the repository. Links are the relative links in
 //     the text of the file. Sources are the records that a document cites in its front matter.
 //     Which types have which fields: see the description interface of each part
@@ -40,8 +42,22 @@ type Description struct {
 	// Source is true for a source of the wiki that a document may cite: a decision, minutes or a
 	// note that is not a stub (dec-wiki).
 	Source bool
+	// Status is the status of a document (draft, reviewed or outdated), Owner the participant ID
+	// of its owner, and Reviews its reviews in the order of its front matter. Only a document
+	// that names the schema of documents has them.
+	Status  string
+	Owner   string
+	Reviews []Review
 	// Stub is true for the stub of a staged artifact.
 	Stub bool
+}
+
+// Review is one review of a document.
+type Review struct {
+	// ParticipantID is the reviewer.
+	ParticipantID string
+	// Date is the day of the review, in the form YYYY-MM-DD.
+	Date string
 }
 
 // Describe describes the file at filePath, a path relative to the repository of the tenant, with
@@ -69,9 +85,14 @@ func Describe(filePath string, content []byte) (d Description, ok bool) {
 		if !ok {
 			continue
 		}
+		var reviews []Review
+		for _, r := range pd.Reviews {
+			reviews = append(reviews, Review{ParticipantID: r.ParticipantID, Date: r.Date})
+		}
 		return Description{
 			Schema: schema, Title: pd.Title, Summary: pd.Summary, Tags: pd.Tags,
-			Links: pd.Links, Sources: pd.Sources, Source: pd.Source, Stub: pd.Stub,
+			Links: pd.Links, Sources: pd.Sources, Source: pd.Source,
+			Status: pd.Status, Owner: pd.Owner, Reviews: reviews, Stub: pd.Stub,
 		}, true
 	}
 	return Description{}, false

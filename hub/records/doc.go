@@ -66,8 +66,8 @@
 //     records the stub that the release may replace: the same content for every stub of a type
 //     (check.Stub), no session, no time, the hub as the author and StubMessage as the commit
 //     message. A record that names a released session, or none, goes into the artifact
-//     repository at once, with the title, the ID and the first 60 characters of its text as the
-//     message. A crash between the two commits leaves a staged record without a stub, and Open
+//     repository at once, with the participant as the author and the title, the ID and the first
+//     60 characters of its text as the message. A crash between the two commits leaves a staged record without a stub, and Open
 //     writes the stub. A stub whose path a push took first takes the staged file back
 //     (storage.Staging.TakeBack), so the area forgets the name, and the record gets the next ID.
 //     When Open finds the path taken, the record stays staged; the release keeps it back and

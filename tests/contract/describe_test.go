@@ -161,8 +161,8 @@ func TestSlidesDescription(t *testing.T) {
 }
 
 // TestDocumentsDescription: a document is described by its front matter and its body: the title
-// from the front matter, else the first heading, else the name of the file; summary, tags and
-// sources from the front matter of the schema; links from the body.
+// from the front matter, else the first heading, else the name of the file; summary, tags,
+// sources, status, owner and reviews from the front matter of the schema; links from the body.
 func TestDocumentsDescription(t *testing.T) {
 	const s = "office.document.v1"
 	cases := []struct {
@@ -175,6 +175,9 @@ func TestDocumentsDescription(t *testing.T) {
 			Tags:    []string{"customer", "b2b"},
 			Sources: []string{"minutes/000012.yaml", "notes/000031.md"},
 			Links:   []string{"documents/customers/plain.md"},
+			Status:  "draft",
+			Owner:   "ada",
+			Reviews: []documentsdescribe.Review{{ParticipantID: "bob", Date: "2026-11-19"}, {ParticipantID: "cy.agent", Date: "2026-11-20"}},
 		}},
 		{"a page without front matter", "", "documents/customers/README.md",
 			"Intro text.\n\n## The *customers* of `2026`\n\n- [ACME](acme.md#contacts)\n- [Beta](./beta.md) and [ACME](acme.md)\n" +
@@ -188,7 +191,7 @@ func TestDocumentsDescription(t *testing.T) {
 			"---\nschema: office.document.v1\nsummary: What we charge.\nsources: [decisions/000004.yaml]\n---\n# Pricing\n",
 			documentsdescribe.Description{Title: "Pricing", Summary: "What we charge.", Sources: []string{"decisions/000004.yaml"}}},
 		{"front matter without the schema is not read", "", "documents/x.md",
-			"---\ntitle: Other tool\nsummary: no\ntags: [a]\n---\n# Heading\n",
+			"---\ntitle: Other tool\nsummary: no\ntags: [a]\nstatus: done\nowner: x\n---\n# Heading\n",
 			documentsdescribe.Description{Title: "Heading"}},
 		{"a page without title and heading", "", "documents/area/notes-on-x.md", "Just text.\n",
 			documentsdescribe.Description{Title: "notes-on-x"}},
@@ -240,7 +243,9 @@ func TestArtifactDescription(t *testing.T) {
 			Summary: "Customer since 2025; contract, contacts and open topics.",
 			Tags:    []string{"customer", "b2b"},
 			Sources: []string{"minutes/000012.yaml", "notes/000031.md"},
-			Links:   []string{"documents/customers/plain.md"}}},
+			Links:   []string{"documents/customers/plain.md"},
+			Status:  "draft", Owner: "ada",
+			Reviews: []artifactcheck.Review{{ParticipantID: "bob", Date: "2026-11-19"}, {ParticipantID: "cy.agent", Date: "2026-11-20"}}}},
 		{"a page without a schema", "documents/plain.md", "# Plain\n\nSee [ACME](customers/acme.md).\n",
 			artifactcheck.Description{Title: "Plain", Links: []string{"documents/customers/acme.md"}}},
 		{"the stub of a note", "notes/000002.md", string(recordscheck.Stub("office.note.v1")),

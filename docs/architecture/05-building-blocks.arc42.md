@@ -527,12 +527,18 @@ path: hub/documents/api
 
 The view of the wiki of a tenant (`concept-wiki`), for the portal (`dec-web-portal`). It reads
 only. It lists the index of the artifacts with their title, summary and tags, filtered by a tag;
-one artifact with its links, its backlinks, the sources it cites and the documents that cite it;
-the links and cited sources that lead nowhere; the ingest queue, which holds the released sources
-that no document cites yet; and a search by words, ranked without a model. The view holds released
+one artifact with its links, its backlinks, the sources it cites, the documents that cite it and
+its trust data; the links and cited sources that lead nowhere; the ingest queue, which holds the
+released sources that no document cites yet; and a search by words, ranked without a model. The view holds released
 artifacts only: a stub is not in the index, the search or the queue, but a link to a stub leads
 somewhere. It follows every write and push, and it may show a change a moment after the write
 returned.
+
+The trust data of an artifact is what the hub knows without a model (`dec-wiki`): the status, the
+owner and the reviews that a document names; who changed the artifact last, with the name, the
+participant ID and whether a human or an agent, and when; when its newest cited source was
+written; and, when the last change was the release of a session, who released it and when. For an
+artifact that a release brought, the last author is who wrote it last in the session.
 
 Every member of the tenant reads the whole view, because every member may read every released
 artifact. A stage link cannot use it. Agents read their clone with their own tools, so the client,
@@ -575,10 +581,8 @@ filtered by a tag, with every tag and the number of its artifacts; one artifact 
 links, its backlinks, its cited sources and the documents that cite it; a search form that works
 without scripts, with its hits, best first; the links that lead nowhere; and the sources that no
 document cites yet. A link between two artifacts leads from the page of one to the page of the
-other. The page of a document shows its front matter as written, with its status, owner and
-reviews. OPEN: the rest of the trust data of an artifact (the last author and whether a human or
-an agent, the age of its newest source, who released it and when) has no interface yet (issue
-#235).
+other. The page of an artifact shows its trust data from the wiki interface, and the page of a
+document also its front matter as written.
 
 ```arc42
 :::interface
@@ -955,10 +959,11 @@ path: hub/documents/check
 
 Describes a document for the wiki (`dec-wiki`), the same way the part checks it. A call gives the
 path, the content and the name of the schema that the document names, if any. The answer is the
-title, the summary, the tags, the outgoing links and the sources of the document, or that the file
-is not a document that the check accepts. The title comes from the front matter, else from the
-first heading, else from the name of the file. The summary, the tags and the sources come from
-the front matter of a document that names the schema of documents. The links are the relative
+title, the summary, the tags, the outgoing links, the sources, the status, the owner and the
+reviews of the document, or that the file is not a document that the check accepts. The title comes from the front matter, else from the
+first heading, else from the name of the file. The summary, the tags, the sources, the status,
+the owner and the reviews come from the front matter of a document that names the schema of
+documents. The links are the relative
 links of the body, as paths from the top of the repository. The sources are the records that the
 document cites, so the wiki part can tell which sources no document cites yet. The stub of a
 document is described as a stub, with nothing of its content.
@@ -1161,6 +1166,10 @@ For the staging repository, a caller works on the area of a session:
 - find the release commit of a session in the artifact repository, with its author, its
   co-authors and the files it wrote.
 
+For any path, the archive gives the newest change that wrote the file: who wrote it and when, and
+whether the change was the release of a session, with who released it and when. For a released
+file, the author and the time are those of its last write in the area of the session.
+
 The content and the check of a stub belong to the parts of the types. The archive only records
 which version of a stub it wrote, and compares it at the release.
 
@@ -1331,7 +1340,8 @@ hold a file in the state that the file belongs to. A hint never makes a file inv
 A fourth call describes a file for the wiki (`dec-wiki`), so a reader needs one interface for all
 types. A file that names a schema goes to the description of the part that owns the schema, and a
 document without a schema to the documents part. The answer is the schema, the title, the
-summary, the tags, the outgoing links and the sources of the file, whether it is a source of the
+summary, the tags, the outgoing links and the sources of the file, the status, the owner and the
+reviews of a document, whether it is a source of the
 wiki (a decision, minutes or a note), and whether it is the stub of a staged artifact; or that the
 file is invalid or of no type that a part describes. This part reads
 no field of a type itself (`dec-artifact-sync`).
@@ -1355,12 +1365,16 @@ sees what a session has not released. At start it reads every file of the reposi
 the view again; after each change it reads the files that changed.
 
 It reads no field of a type. The artifact check describes each file for it, by the part that owns
-the type: title, summary, tags, links, cited sources, whether the file is a source and whether it
-is a stub. From these descriptions it derives the backlinks, the links that lead nowhere, the
+the type: title, summary, tags, links, cited sources, the state of review of a document, whether
+the file is a source and whether it is a stub. From these descriptions it derives the backlinks, the links that lead nowhere, the
 sources that no document cites, and an index of words for the search. The search needs no model
 (`con-no-intelligence`): it ranks by how rare a word is in the tenant, how often it occurs, in
 which field (the title counts most, then the tags and the summary, then the text) and how long
 the artifact is.
+
+For the trust data of one artifact, it takes the state of review from the description of a
+document, asks the archive for the newest change of the artifact and of each cited source
+(`if-archive-storage`), and asks the token check whether each author is a human or an agent.
 
 It checks the token of every call. The hub has checked that the caller is a member of the tenant.
 OPEN: how much memory the view needs for a large tenant.
@@ -1428,6 +1442,8 @@ path: hub/identity
 #### Token check
 
 Other parts of the hub check access tokens here and learn which participant a token belongs to.
+A part also learns here whether a participant, named by its ID, is a human or an agent, also after
+the user was removed.
 
 ```arc42
 :::interface

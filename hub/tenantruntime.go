@@ -44,6 +44,7 @@ type tenantRuntime struct {
 // runtimes holds the runtime of every tenant that has been used, and opens one on first use.
 type runtimes struct {
 	repos           *archive.Repos
+	kinds           tokencheck.Kinds
 	signingKey      ed25519.PrivateKey
 	archiveInterval time.Duration
 	restoreWait     time.Duration
@@ -53,8 +54,8 @@ type runtimes struct {
 	m  map[string]*tenantRuntime
 }
 
-func newRuntimes(repos *archive.Repos, key ed25519.PrivateKey, interval, restoreWait, gracePeriod time.Duration) *runtimes {
-	return &runtimes{repos: repos, signingKey: key, archiveInterval: interval, restoreWait: restoreWait,
+func newRuntimes(repos *archive.Repos, kinds tokencheck.Kinds, key ed25519.PrivateKey, interval, restoreWait, gracePeriod time.Duration) *runtimes {
+	return &runtimes{repos: repos, kinds: kinds, signingKey: key, archiveInterval: interval, restoreWait: restoreWait,
 		gracePeriod: gracePeriod, m: map[string]*tenantRuntime{}}
 }
 
@@ -106,7 +107,7 @@ func (r *runtimes) get(ctx context.Context, tenant string) (*tenantRuntime, erro
 		return nil, err
 	}
 	// The wiki part follows the artifact repository only, never the staging repository.
-	if rt.wiki, err = wiki.Open(ctx, wiki.Options{Archive: arch, Watcher: watcher, Logf: logf}); err != nil {
+	if rt.wiki, err = wiki.Open(ctx, wiki.Options{Archive: arch, Watcher: watcher, Kinds: r.kinds, Logf: logf}); err != nil {
 		rt.records.Close()
 		rt.tasks.Close()
 		rt.slides.Close()

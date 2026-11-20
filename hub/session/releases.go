@@ -310,7 +310,7 @@ func (s *Service) moveArea(ctx context.Context, sid string) error {
 		if pt := st.participants[by]; pt != nil && pt.joined.GetParticipantJoined().GetDisplayName() != "" {
 			name = pt.joined.GetParticipantJoined().GetDisplayName()
 		}
-		author = storage.Author{Name: name, Email: by + "@office.invalid"}
+		author = storage.ParticipantAuthor(name, by)
 	}
 	st.mu.Unlock()
 	res, err := s.rel.opts.Staging.Release(ctx, sid, author)

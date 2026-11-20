@@ -1,7 +1,7 @@
 // Package describe is the interface if-documents-describe of the building block Documents
 // (docs/architecture/05-building-blocks.arc42.md). It describes one document for the wiki
-// (concept-wiki, dec-wiki): its title, summary, tags, outgoing links and sources, and whether it
-// is the stub of a document. The documents part owns the fields of its type, so no other part
+// (concept-wiki, dec-wiki): its title, summary, tags, outgoing links and sources, its status,
+// owner and reviews, and whether it is the stub of a document. The documents part owns the fields of its type, so no other part
 // reads them (dec-artifact-sync).
 //
 // The rules:
@@ -21,8 +21,12 @@
 //     links that lead out of the repository, and images are not links of the description.
 //   - The sources are the paths of the field sources, as written: the records that the document
 //     cites (from the top of the repository, for example minutes/000012.yaml).
+//   - The status, the owner and the reviews come from the fields status, owner and reviewed of
+//     the front matter, as written, for a document that names the schema of documents. The
+//     reviews keep the order of the front matter.
 //
-// The signatures use only types that Go has built in and the type Description of this package.
+// The signatures use only types that Go has built in and the types Description and Review of
+// this package.
 package describe
 
 import (
@@ -46,8 +50,22 @@ type Description struct {
 	// Sources are the paths, from the top of the repository, of the records that the document
 	// cites in its front matter.
 	Sources []string
+	// Status is draft, reviewed or outdated, or "" when the document names none.
+	Status string
+	// Owner is the participant ID of the owner, or "".
+	Owner string
+	// Reviews are the reviews of the document, in the order of the front matter.
+	Reviews []Review
 	// Stub is true for the stub of a document. A stub has no other field.
 	Stub bool
+}
+
+// Review is one review of a document: who reviewed it and on which day.
+type Review struct {
+	// ParticipantID is the reviewer.
+	ParticipantID string
+	// Date is the day of the review, in the form YYYY-MM-DD.
+	Date string
 }
 
 // frontMatter holds the fields of the schema of documents that a description uses.
@@ -57,6 +75,12 @@ type frontMatter struct {
 	Summary string   `yaml:"summary"`
 	Tags    []string `yaml:"tags"`
 	Sources []string `yaml:"sources"`
+	Status  string   `yaml:"status"`
+	Owner   string   `yaml:"owner"`
+	Reviews []struct {
+		ID   string `yaml:"id"`
+		Date string `yaml:"date"`
+	} `yaml:"reviewed"`
 }
 
 // Describe describes the document at filePath, a path relative to the repository of the tenant,
@@ -79,6 +103,10 @@ func Describe(schema, filePath string, content []byte) (d Description, ok bool) 
 		var fm frontMatter
 		if err := yaml.Unmarshal(front, &fm); err == nil && fm.Schema == check.Schema {
 			d.Title, d.Summary, d.Tags, d.Sources = fm.Title, fm.Summary, fm.Tags, fm.Sources
+			d.Status, d.Owner = fm.Status, fm.Owner
+			for _, r := range fm.Reviews {
+				d.Reviews = append(d.Reviews, Review{ParticipantID: r.ID, Date: r.Date})
+			}
 		}
 	}
 	if d.Title == "" {

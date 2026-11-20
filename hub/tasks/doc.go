@@ -14,8 +14,8 @@
 //     tasks/NNNNNN.yaml, where NNNNNN is the number with at least six digits. The YAML starts
 //     with the field schema (office.task.v1), has the field names of the contract (snake_case,
 //     enums by name, times in RFC 3339), and the extra field command_ids: the command IDs of the creation and of every update, oldest first. A
-//     text with line breaks is a literal block. Creating a task is one commit; every change
-//     rewrites the file in a new commit, so Git keeps the history of a task. A command returns
+//     text with line breaks is a literal block. Creating a task is one commit by the caller;
+//     every change rewrites the file in a new commit by the caller, so Git keeps the history of a task. A command returns
 //     only after its commit. The check of the part (package check, if-tasks-check) decides what
 //     a valid file is. The part uses it for every file it writes and reads, and Git access uses
 //     it for a push, so every rule exists once.

@@ -712,14 +712,14 @@ func checkSlides(title string, slides []*slidesv1.Slide) ([]byte, error) {
 	return content, nil
 }
 
-// storageAuthor is the author of a change in the staging area: the participant, with its display
-// name when it has one.
+// storageAuthor is the author of a change: the participant, with its display name when it has
+// one.
 func storageAuthor(c tokencheck.Caller) storage.Author {
 	name := c.DisplayName
 	if name == "" {
 		name = c.ParticipantID
 	}
-	return storage.Author{Name: name, Email: c.ParticipantID + "@office.invalid"}
+	return storage.ParticipantAuthor(name, c.ParticipantID)
 }
 
 // errNotParticipant is the answer for a session that the caller may not name. A session that does
@@ -783,14 +783,14 @@ type target struct {
 // participant may name a session. It never runs while the part holds a lock.
 func (s *Service) route(ctx context.Context, sessionID string, c tokencheck.Caller) (target, error) {
 	if sessionID == "" {
-		return target{}, nil
+		return target{author: storageAuthor(c)}, nil
 	}
 	if err := s.tookPart(ctx, sessionID, c.ParticipantID); err != nil {
 		return target{}, err
 	}
 	switch err := s.releasing(ctx, sessionID); {
 	case errors.Is(err, errReleased):
-		return target{}, nil
+		return target{author: storageAuthor(c)}, nil
 	case err != nil:
 		return target{}, err
 	}
@@ -945,7 +945,7 @@ func (s *Service) add(ctx context.Context, n uint64, d *slidesv1.Deck, to target
 		return true, nil
 	}
 	if to.session == "" {
-		_, err = s.opts.Archive.Commit(ctx, storage.Change{Message: message, Files: file})
+		_, err = s.opts.Archive.Commit(ctx, storage.Change{Message: message, Author: to.author, Files: file})
 		if storage.IsConflict(err) {
 			return taken()
 		}

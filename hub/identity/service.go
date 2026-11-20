@@ -270,6 +270,19 @@ func (s *Service) CheckToken(tok string) (Caller, error) {
 	return c, nil
 }
 
+var _ tokencheck.Kinds = (*Service)(nil)
+
+// KindOf implements tokencheck.Kinds.
+func (s *Service) KindOf(participantID string) tokencheck.Kind {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	u := s.st.users[participantID]
+	if u == nil {
+		return tokencheck.KindUnknown
+	}
+	return callerKind(kindOf(u.Kind))
+}
+
 // newToken creates a token. The caller holds s.mu.
 func (s *Service) newToken(prefix, keyID, stageSession, stageTenant string, ttl time.Duration) (string, time.Time) {
 	now := time.Now()

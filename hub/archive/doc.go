@@ -135,6 +135,12 @@
 //     The parts that number their files take the highest number among the names as the floor of
 //     their next number, so a number whose file a push removed is never given again. History is
 //     never rewritten, so the answer only grows. The cost is one git run for each directory.
+//   - LastChange returns the newest commit of main that added or changed a file (git log with the
+//     filter "added, modified or type changed", no content read). A commit with the trailer
+//     "Office-Release" is a release: the artifact repository knows its staging repository, and
+//     the author and the time are those of the newest commit of the staging repository that
+//     wrote the file and changed the state of the area of that session, since every write of an
+//     area changes its state in the same commit.
 //   - A failed push does not fail the commit: the commit is in the local repository, and the
 //     next push takes it along. The error is logged.
 //

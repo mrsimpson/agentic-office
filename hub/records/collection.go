@@ -584,7 +584,7 @@ func (c *collection[T]) path(id uint32) string { return check.FilePath(c.schema,
 type target struct {
 	// session is the staging area of the write; empty means the artifact repository.
 	session string
-	// author is the author of the change in the staging area.
+	// author is the author of the change; empty means the hub.
 	author storage.Author
 }
 
@@ -666,7 +666,7 @@ func (c *collection[T]) add(ctx context.Context, r T, same func(stored, r T) boo
 		file := []storage.File{{Path: p, Data: data, Base: storage.NoFile}}
 		message := fmt.Sprintf("%s %d: %s", c.title, id, summary(text))
 		if to.session == "" {
-			_, err = c.arch.Commit(ctx, storage.Change{Message: message, Files: file})
+			_, err = c.arch.Commit(ctx, storage.Change{Message: message, Author: to.author, Files: file})
 			if storage.IsConflict(err) {
 				// A push came first. Read what is there; its number is taken from now on.
 				if err := c.reloadArt(ctx, []string{p}); err != nil {

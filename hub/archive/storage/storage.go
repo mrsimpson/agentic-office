@@ -53,7 +53,38 @@ type Archive interface {
 	// commits, has no names. Names fails if dir is not a valid path (see CheckPath). The cost is
 	// one walk through the history of the directory.
 	Names(ctx context.Context, dir string) ([]string, error)
+	// LastChange returns the newest change of main that wrote the file at path p, that is added
+	// or changed it: who wrote it and when, and whether the change was the release of a session.
+	// For a release, the author and the time are those of the newest write of the file in the
+	// area of the session, and Release names who released it and when. A release whose area
+	// the archive cannot find has the author and the time of the release. LastChange fails with
+	// ErrNoChange when no change of main wrote p, and when p is not a valid path (see
+	// CheckPath). It reads no content; the cost is one walk through the history of the file.
+	LastChange(ctx context.Context, p string) (PathChange, error)
 }
+
+// PathChange is the newest change of a file (Archive.LastChange).
+type PathChange struct {
+	// Time is when the author wrote the file.
+	Time time.Time
+	// Author is who wrote the file; empty means the hub.
+	Author Author
+	// Release is set when the change was the release of a session.
+	Release *PathRelease
+}
+
+// PathRelease is the release that moved a file into the artifact repository.
+type PathRelease struct {
+	// Session is the ID of the released session.
+	Session string
+	// By is who released the session; empty means the hub, for example at the deadline.
+	By Author
+	// Time is when the release moved the file into the artifact repository.
+	Time time.Time
+}
+
+// ErrNoChange is the error of Archive.LastChange for a path that no change of main wrote.
+var ErrNoChange = errors.New("archive: no change wrote the path")
 
 // Archives gives the archive of each repository (concept-multi-tenancy). The hub has one
 // repository of its own, for the users, the tenants and the memberships. Each tenant has three
@@ -113,10 +144,29 @@ type Change struct {
 }
 
 // Author names the person or agent behind a change. Both fields are required when an Author is
-// given.
+// given. A participant is named by ParticipantAuthor.
 type Author struct {
 	Name  string
 	Email string
+}
+
+// participantDomain is the domain of the address of a participant in a change.
+const participantDomain = "@office.invalid"
+
+// ParticipantAuthor returns the author of a change by a participant: the display name and the
+// address "<participant ID>@office.invalid".
+func ParticipantAuthor(displayName, participantID string) Author {
+	return Author{Name: displayName, Email: participantID + participantDomain}
+}
+
+// ParticipantID returns the participant ID of an author that ParticipantAuthor names, or "" for
+// any other author.
+func (a Author) ParticipantID() string {
+	id, ok := strings.CutSuffix(a.Email, participantDomain)
+	if !ok || strings.ContainsAny(id, "@ <>") {
+		return ""
+	}
+	return id
 }
 
 // File is the whole new content of one file.

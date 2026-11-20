@@ -17,7 +17,7 @@
 //     (concept-wiki). A hint never makes a file invalid. Hinters returns the parts that give
 //     hints; each part decides by itself which files are of its types.
 //   - Each part describes the files of its types for the wiki (dec-wiki): title, summary, tags,
-//     outgoing links, sources and whether a file is a stub, through its own description
+//     outgoing links, sources, the state of review of a document and whether a file is a stub, through its own description
 //     interface (if-records-describe, if-tasks-describe, if-slides-describe,
 //     if-documents-describe). The interface if-artifact-check (Describe of package check) asks the
 //     owner of the schema that a file names. A file that names no schema goes to the parts in
@@ -63,7 +63,17 @@ type Description struct {
 	// Source is true for a source of the wiki: a record (decision, minutes or note) that a
 	// document may cite (dec-wiki).
 	Source bool
-	Stub   bool
+	// Status, Owner and Reviews are the state of review of a document; only documents have them.
+	Status  string
+	Owner   string
+	Reviews []Review
+	Stub    bool
+}
+
+// Review is one review of a document: the participant ID of the reviewer and the day.
+type Review struct {
+	ParticipantID string
+	Date          string
 }
 
 // Describer describes the file at path with the given content as a file of the schema; schema is
@@ -116,7 +126,12 @@ func describeDeck(schema, p string, c []byte) (Description, bool) {
 
 func describeDocument(schema, p string, c []byte) (Description, bool) {
 	d, ok := documentsdescribe.Describe(schema, p, c)
-	return Description{Title: d.Title, Summary: d.Summary, Tags: d.Tags, Links: d.Links, Sources: d.Sources, Stub: d.Stub}, ok
+	var reviews []Review
+	for _, r := range d.Reviews {
+		reviews = append(reviews, Review{ParticipantID: r.ParticipantID, Date: r.Date})
+	}
+	return Description{Title: d.Title, Summary: d.Summary, Tags: d.Tags, Links: d.Links, Sources: d.Sources,
+		Status: d.Status, Owner: d.Owner, Reviews: reviews, Stub: d.Stub}, ok
 }
 
 // Describers returns the parts in the order of the list.

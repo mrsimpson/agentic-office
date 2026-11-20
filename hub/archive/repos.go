@@ -71,6 +71,7 @@ func OpenRepos(ctx context.Context, root string, opts Options) (*Repos, error) {
 		if err != nil {
 			return nil, err
 		}
+		r.tenants[e.Name()].staging = staging
 		r.staging[e.Name()] = &Staging{repo: staging, artifacts: r.tenants[e.Name()]}
 	}
 	return r, nil
@@ -177,6 +178,7 @@ func (r *Repos) CreateTenant(ctx context.Context, id string) error {
 		return err
 	}
 	r.tenants[id], r.sessionLogs[id] = repo, logs
+	repo.staging = staging
 	r.staging[id] = &Staging{repo: staging, artifacts: repo}
 	return nil
 }

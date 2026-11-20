@@ -325,7 +325,7 @@ func author(c tokencheck.Caller) storage.Author {
 	if name == "" {
 		name = c.ParticipantID
 	}
-	return storage.Author{Name: name, Email: c.ParticipantID + "@office.invalid"}
+	return storage.ParticipantAuthor(name, c.ParticipantID)
 }
 
 // storeErr maps an error of a write to the staging area.

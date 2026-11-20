@@ -111,8 +111,8 @@ type WikiServiceClient interface {
 	// ListArtifacts returns the index: every artifact of the view, ordered by path, and every tag
 	// with the number of its artifacts.
 	ListArtifacts(context.Context, *api.ListArtifactsRequest) (*api.ListArtifactsResponse, error)
-	// GetArtifact returns one artifact with its links, its backlinks, its sources and the documents
-	// that cite it. A path that is not in the view fails with not_found, also the path of a stub.
+	// GetArtifact returns one artifact with its links, its backlinks, its sources, the documents
+	// that cite it and its trust data (see Trust). A path that is not in the view fails with not_found, also the path of a stub.
 	GetArtifact(context.Context, *api.GetArtifactRequest) (*api.GetArtifactResponse, error)
 	// ListBrokenLinks returns every link and every cited source that leads nowhere, ordered by the
 	// path of the artifact that has it, then by its target.
@@ -135,8 +135,8 @@ type WikiServiceHandler interface {
 	// ListArtifacts returns the index: every artifact of the view, ordered by path, and every tag
 	// with the number of its artifacts.
 	ListArtifacts(context.Context, *api.ListArtifactsRequest) (*api.ListArtifactsResponse, error)
-	// GetArtifact returns one artifact with its links, its backlinks, its sources and the documents
-	// that cite it. A path that is not in the view fails with not_found, also the path of a stub.
+	// GetArtifact returns one artifact with its links, its backlinks, its sources, the documents
+	// that cite it and its trust data (see Trust). A path that is not in the view fails with not_found, also the path of a stub.
 	GetArtifact(context.Context, *api.GetArtifactRequest) (*api.GetArtifactResponse, error)
 	// ListBrokenLinks returns every link and every cited source that leads nowhere, ordered by the
 	// path of the artifact that has it, then by its target.

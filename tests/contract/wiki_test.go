@@ -2,13 +2,15 @@ package contract
 
 // Contract tests of the wiki part (bb-wiki) through its interface (if-wiki-api), against the real
 // office-hub: the index with its tags, links and backlinks, broken links, the ingest queue, the
-// search, the stubs of staged artifacts, the reload after a write and after a push, the rebuild
-// after a restart, and the separation of tenants. The tests write through the interfaces of the
+// search, the trust data of an artifact, the stubs of staged artifacts, the reload after a write
+// and after a push, the rebuild after a restart, and the separation of tenants. The tests write through the interfaces of the
 // parts and push with real Git. The view follows a change after the write returns, so the tests
 // wait for a condition with a generous deadline and never check how long it takes.
 
 import (
+	"net/http"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -392,4 +394,90 @@ func TestWikiTenantsAndTokens(t *testing.T) {
 	stage := m.srv.WithToken(t, stageToken(t, link.GetUrl()))
 	_, err = stage.Wiki.Search(ctx10(t), &wikiv1.SearchRequest{Query: "note"})
 	wantCode(t, "a stage link searches the wiki", err, connect.CodePermissionDenied)
+}
+
+// wantAuthor checks an author of the trust data.
+func wantAuthor(t *testing.T, what string, got *wikiv1.Author, name, id string, kind wikiv1.AuthorKind) {
+	t.Helper()
+	if got.GetName() != name || got.GetParticipantId() != id || got.GetKind() != kind {
+		t.Errorf("%s: %v, want %s (%s, %v)", what, got, name, id, kind)
+	}
+}
+
+// The trust data of an artifact: the state of review of a document, who changed the artifact last
+// (a human or an agent) and when, the time of the newest cited source, and for an artifact that a
+// release brought, who wrote it in the session and who released it when.
+func TestWikiTrust(t *testing.T) {
+	m := newMeetingArgs(t, "-release-grace-period", "1h")
+	ada := m.join("Ada", kHuman)
+	bot := m.join("Bot", kAgent)
+
+	// An agent writes a note without a session.
+	m.note(bot, "", "The price rises in January.")
+	waitFor(t, "the note in the wiki", func() bool { return slices.Contains(wikiIndex(t, m.a(ada), ""), "notes/000001.md") })
+	note := wikiArtifact(t, m.a(ada), "notes/000001.md").GetTrust()
+	wantAuthor(t, "the author of the note", note.GetLastAuthor(), "Bot", bot, wikiv1.AuthorKind_AUTHOR_KIND_AGENT)
+	if note.GetLastChange() == nil || note.GetReleasedAt() != nil || note.GetReleasedBy() != nil || note.GetStatus() != "" ||
+		note.GetNewestSourceTime() != nil {
+		t.Errorf("the trust data of the note: %v", note)
+	}
+
+	// A human pushes a document that cites the note and a source that does not exist.
+	p := newPusher(t, m.srv, m.a(ada), "Ada", contracttest.DefaultTenant)
+	p.write("documents/pricing.md", `---
+schema: office.document.v1
+title: Pricing
+sources: [notes/000001.md, minutes/000009.yaml]
+status: reviewed
+owner: ada
+reviewed:
+  - id: bob
+    date: 2026-11-19
+  - id: cy
+    date: "2026-11-20"
+---
+# Pricing
+`)
+	p.commit("add the pricing page")
+	p.mustPush()
+	waitFor(t, "the page in the wiki", func() bool { return slices.Contains(wikiIndex(t, m.a(ada), ""), "documents/pricing.md") })
+	page := wikiArtifact(t, m.a(bot), "documents/pricing.md").GetTrust()
+	if page.GetStatus() != "reviewed" || page.GetOwner() != "ada" || len(page.GetReviews()) != 2 ||
+		page.GetReviews()[0].GetParticipantId() != "bob" || page.GetReviews()[0].GetDate() != "2026-11-19" ||
+		page.GetReviews()[1].GetParticipantId() != "cy" || page.GetReviews()[1].GetDate() != "2026-11-20" {
+		t.Errorf("the state of review of the page: %v", page)
+	}
+	wantAuthor(t, "the author of the page", page.GetLastAuthor(), "Ada", ada, wikiv1.AuthorKind_AUTHOR_KIND_HUMAN)
+	if !page.GetNewestSourceTime().AsTime().Equal(note.GetLastChange().AsTime()) || page.GetReleasedAt() != nil {
+		t.Errorf("the newest source of the page: %v, want the time of the note %v", page, note.GetLastChange())
+	}
+
+	// The agent writes a note in the session, and the human releases the session.
+	if n := m.note(bot, m.sid, "A note of the meeting."); !n.GetStaged() {
+		t.Fatalf("the note of the meeting is not staged: %v", n)
+	}
+	m.endWithStatus(ada)
+	if _, err := m.releaseBy(ada); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "the released note in the wiki", func() bool { return slices.Contains(wikiIndex(t, m.a(ada), ""), "notes/000002.md") })
+	released := wikiArtifact(t, m.a(ada), "notes/000002.md").GetTrust()
+	wantAuthor(t, "the author of the released note", released.GetLastAuthor(), "Bot", bot, wikiv1.AuthorKind_AUTHOR_KIND_AGENT)
+	wantAuthor(t, "who released the note", released.GetReleasedBy(), "Ada", ada, wikiv1.AuthorKind_AUTHOR_KIND_HUMAN)
+	if released.GetReleasedAt() == nil || released.GetLastChange() == nil ||
+		released.GetReleasedAt().AsTime().Before(released.GetLastChange().AsTime()) {
+		t.Errorf("the times of the released note: %v", released)
+	}
+
+	// The portal shows the release on the page of the note.
+	b, _, _ := openPortal(t, m.srv, m.a(ada), contracttest.DefaultTenant)
+	doc := openPage(t, b, m.srv, wikiPath(contracttest.DefaultTenant, "/a/notes/000002.md"), http.StatusOK)
+	rel := findAll(doc, withAttr("data-released", ""))
+	if len(rel) != 1 || len(findAll(rel[0], withAttr("data-author", ada))) != 1 || !strings.Contains(text(rel[0]), "human") {
+		t.Errorf("the release in the portal: %q", text(doc))
+	}
+	last := findAll(doc, withAttr("data-last-change", ""))
+	if len(last) != 1 || len(findAll(last[0], withAttr("data-author-kind", "agent"))) != 1 {
+		t.Errorf("the last change in the portal: %q", text(doc))
+	}
 }
