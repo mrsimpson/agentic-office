@@ -39,7 +39,9 @@ run meetings, use the skill office-assistant.
 
 When something comes from a meeting, always name the meeting (`session`). Then it waits until a
 human releases the meeting, and only its participants see it until then. Until the release, you may
-correct or remove what you wrote; do so at once when a sentence goes off the record. Do not push
+correct or remove what you wrote (`note_change`, `note_remove`, `decision_change`,
+`decision_remove`, `minutes_change`, `minutes_remove`, with the same `session`); do so at once when
+a sentence goes off the record. Do not push
 files from a meeting with Git: a push skips the release. Tasks are never held, so keep sentences
 from the meeting out of them.
 

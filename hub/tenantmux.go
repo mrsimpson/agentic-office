@@ -247,6 +247,22 @@ func (m decisionMux) ListDecisions(ctx context.Context, req *decisionv1.ListDeci
 	return rt.records.ListDecisions(ctx, req)
 }
 
+func (m decisionMux) ChangeDecision(ctx context.Context, req *decisionv1.ChangeDecisionRequest) (*decisionv1.ChangeDecisionResponse, error) {
+	rt, err := m.forCall(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return rt.records.ChangeDecision(ctx, req)
+}
+
+func (m decisionMux) RemoveDecision(ctx context.Context, req *decisionv1.RemoveDecisionRequest) (*decisionv1.RemoveDecisionResponse, error) {
+	rt, err := m.forCall(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return rt.records.RemoveDecision(ctx, req)
+}
+
 type minutesMux struct{ *runtimes }
 
 var _ minutesv1connect.MinutesServiceHandler = minutesMux{}
@@ -267,6 +283,22 @@ func (m minutesMux) ListMinutes(ctx context.Context, req *minutesv1.ListMinutesR
 	return rt.records.ListMinutes(ctx, req)
 }
 
+func (m minutesMux) ChangeMinutes(ctx context.Context, req *minutesv1.ChangeMinutesRequest) (*minutesv1.ChangeMinutesResponse, error) {
+	rt, err := m.forCall(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return rt.records.ChangeMinutes(ctx, req)
+}
+
+func (m minutesMux) RemoveMinutes(ctx context.Context, req *minutesv1.RemoveMinutesRequest) (*minutesv1.RemoveMinutesResponse, error) {
+	rt, err := m.forCall(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return rt.records.RemoveMinutes(ctx, req)
+}
+
 type noteMux struct{ *runtimes }
 
 var _ notev1connect.NoteServiceHandler = noteMux{}
@@ -285,6 +317,22 @@ func (m noteMux) ListNotes(ctx context.Context, req *notev1.ListNotesRequest) (*
 		return nil, err
 	}
 	return rt.records.ListNotes(ctx, req)
+}
+
+func (m noteMux) ChangeNote(ctx context.Context, req *notev1.ChangeNoteRequest) (*notev1.ChangeNoteResponse, error) {
+	rt, err := m.forCall(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return rt.records.ChangeNote(ctx, req)
+}
+
+func (m noteMux) RemoveNote(ctx context.Context, req *notev1.RemoveNoteRequest) (*notev1.RemoveNoteResponse, error) {
+	rt, err := m.forCall(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return rt.records.RemoveNote(ctx, req)
 }
 
 type taskMux struct{ *runtimes }

@@ -568,7 +568,7 @@ func TestPortalSessionView(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := bob.Decision.RecordDecision(ctx, &decisionv1.RecordDecisionRequest{CommandId: coreapi.NewCommandID(), Text: "Another session.",
-		AuthorParticipantId: "bob", SessionId: "other"}); err != nil {
+		AuthorParticipantId: "bob"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := bob.Note.AddNote(ctx, &notev1.AddNoteRequest{CommandId: coreapi.NewCommandID(), Text: "Ask the *bank*.", AuthorParticipantId: "bob",

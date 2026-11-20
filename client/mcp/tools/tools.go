@@ -66,6 +66,8 @@ const drafts = ` Tasks are local drafts in the hub for now; later the hub syncs 
 var (
 	ReadOnly = &sdk.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: ptr(false)}
 	Additive = &sdk.ToolAnnotations{DestructiveHint: ptr(false), OpenWorldHint: ptr(false)}
+	// Destructive removes something.
+	Destructive = &sdk.ToolAnnotations{DestructiveHint: ptr(true), OpenWorldHint: ptr(false)}
 )
 
 // MeetingPause is the tool meeting_pause.
@@ -164,19 +166,43 @@ var SlidesGet = &sdk.Tool{Name: "slides_get", Title: "Get a slide deck", Annotat
 
 // DecisionRecord is the tool decision_record.
 var DecisionRecord = &sdk.Tool{Name: "decision_record", Title: "Record a decision", Annotations: Additive,
-	Description: `Record a decision of the team, for example "We ship on Friday.", with you as its author. Never put a sentence that is off the record into a decision. Give session to link it to a meeting. Returns {"decision", "duplicate"}.`}
+	Description: `Record a decision of the team, for example "We ship on Friday.", with you as its author. Never put a sentence that is off the record into a decision. Give session to link it to a meeting; only a participant may. A decision of a meeting waits for the release of the session: until then the participants can change or remove it (decision_change, decision_remove). Returns {"decision", "duplicate"}.`}
 
 // DecisionList is the tool decision_list.
 var DecisionList = &sdk.Tool{Name: "decision_list", Title: "List decisions", Annotations: ReadOnly,
-	Description: `List the recorded decisions, oldest first. Page with afterId (the last ID you have). Returns {"decisions": […]}.`}
+	Description: `List the recorded decisions, oldest first. Page with afterId (the last ID you have). A decision that waits for the release of its session has "staged": true; if you did not take part in that session you see only its id and "stub": true. Returns {"decisions": […]}.`}
 
 // NoteAdd is the tool note_add.
 var NoteAdd = &sdk.Tool{Name: "note_add", Title: "Add a note", Annotations: Additive,
-	Description: `Add a free note in Markdown, with you as its author and optional tags, for example ["budget"]. The hub stores it as notes/NNNNNN.md with front matter. Never put a sentence that is off the record into a note. Give session to link it to a meeting. Returns {"note", "duplicate"}.`}
+	Description: `Add a free note in Markdown, with you as its author and optional tags, for example ["budget"]. The hub stores it as notes/NNNNNN.md with front matter. Never put a sentence that is off the record into a note. Give session to link it to a meeting; only a participant may. A note of a meeting waits for the release of the session: until then the participants can change or remove it (note_change, note_remove). Returns {"note", "duplicate"}.`}
 
 // NoteList is the tool note_list.
 var NoteList = &sdk.Tool{Name: "note_list", Title: "List notes", Annotations: ReadOnly,
 	Description: `List the notes, oldest first. Page with afterId (the last ID you have). Returns {"notes": […]}.`}
+
+// DecisionChange is the tool decision_change.
+var DecisionChange = &sdk.Tool{Name: "decision_change", Title: "Change a staged decision", Annotations: Additive,
+	Description: `Replace the text of a decision that waits for the release of its session. session must be the session of the decision, and you must have taken part in it; you become the author. A released decision never changes: record a new one that refers to it. Never put a sentence that is off the record into it. Returns {"decision", "duplicate"}.`}
+
+// DecisionRemove is the tool decision_remove.
+var DecisionRemove = &sdk.Tool{Name: "decision_remove", Title: "Remove a staged decision", Annotations: Destructive,
+	Description: `Remove a decision that waits for the release of its session, with the rules of decision_change. Returns {"id", "duplicate"}.`}
+
+// NoteChange is the tool note_change.
+var NoteChange = &sdk.Tool{Name: "note_change", Title: "Change a staged note", Annotations: Additive,
+	Description: `Replace the text and the tags of a note that waits for the release of its session, with the rules of decision_change. Returns {"note", "duplicate"}.`}
+
+// NoteRemove is the tool note_remove.
+var NoteRemove = &sdk.Tool{Name: "note_remove", Title: "Remove a staged note", Annotations: Destructive,
+	Description: `Remove a note that waits for the release of its session, with the rules of decision_change. Returns {"id", "duplicate"}.`}
+
+// MinutesChange is the tool minutes_change.
+var MinutesChange = &sdk.Tool{Name: "minutes_change", Title: "Change the stored minutes", Annotations: Additive,
+	Description: `Replace the text of the minutes that the hub stored at the end of a session, while they wait for the release of the session, with the rules of decision_change. Take the id from minutes_get. Never include a sentence that is off the record. Returns {"minutes", "duplicate"}.`}
+
+// MinutesRemove is the tool minutes_remove.
+var MinutesRemove = &sdk.Tool{Name: "minutes_remove", Title: "Remove the stored minutes", Annotations: Destructive,
+	Description: `Remove the minutes of a session while they wait for the release of the session, with the rules of decision_change. Returns {"id", "duplicate"}.`}
 
 // MinutesGet is the tool minutes_get.
 var MinutesGet = &sdk.Tool{Name: "minutes_get", Title: "Get the minutes of a session", Annotations: ReadOnly,
@@ -334,6 +360,20 @@ type NoteIn struct {
 	Text    string   `json:"text" jsonschema:"The text in Markdown. Never include a sentence that is off the record."`
 	Tags    []string `json:"tags,omitempty" jsonschema:"Tags of the note, for example [\"budget\"]. Use the tags that similar notes and pages already use."`
 	Session string   `json:"session,omitempty" jsonschema:"Link the note to this session. Default: no session (unlike the session commands)."`
+}
+
+// ChangeIn is the input of decision_change, note_change and minutes_change.
+type ChangeIn struct {
+	ID      uint32   `json:"id" jsonschema:"The ID of the record."`
+	Text    string   `json:"text" jsonschema:"The new text. Never include a sentence that is off the record."`
+	Tags    []string `json:"tags,omitempty" jsonschema:"Only note_change: the new tags of the note; they replace the old ones."`
+	Session string   `json:"session" jsonschema:"The session of the record."`
+}
+
+// RemoveIn is the input of decision_remove, note_remove and minutes_remove.
+type RemoveIn struct {
+	ID      uint32 `json:"id" jsonschema:"The ID of the record."`
+	Session string `json:"session" jsonschema:"The session of the record."`
 }
 
 // ListIn is the input of a tool.

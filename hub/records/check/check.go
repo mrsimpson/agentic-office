@@ -10,6 +10,11 @@
 // names its schema in the field "schema". A note is a Markdown file (dec-wiki): its YAML front
 // matter names the schema in the field "schema" and holds the other fields; the body after the
 // front matter is the text.
+//
+// Every schema has a second form: the stub of a staged record (concept-session-release). A record
+// that waits for the release of its session lies in the staging area of the session, and its stub
+// lies at the same path in the artifact repository. Every stub of a schema has the same content
+// (Stub): it names no session, no time and no author. The check accepts exactly that content.
 package check
 
 import (
@@ -53,19 +58,46 @@ func Schemas() []string {
 // TextKey is the field of the text. A note holds its text in the body, not in the front matter.
 const TextKey = "text"
 
+// StubKey is the field of a stub. The fields staged and stub of the contract are never stored in
+// a record file.
+const (
+	StubKey   = "stub"
+	StagedKey = "staged"
+)
+
 // recordType is what the check knows of a record type.
 type recordType struct {
 	dir      string // the directory in the archive, for example "notes"
 	ext      string // the ending of a file, ".yaml" or ".md"
 	markdown bool   // the file is Markdown with front matter, and the body is the text
 	session  bool   // a record needs a session
+	stub     string // the content of every stub of the type
 }
 
 // types are the record types by schema.
 var types = map[string]recordType{
-	SchemaDecision: {dir: DecisionsDir, ext: ".yaml"},
-	SchemaMinutes:  {dir: MinutesDir, ext: ".yaml", session: true},
-	SchemaNote:     {dir: NotesDir, ext: ".md", markdown: true},
+	SchemaDecision: {dir: DecisionsDir, ext: ".yaml",
+		stub: "schema: " + SchemaDecision + "\nstub: This decision waits for the release of the session that made it.\n"},
+	SchemaMinutes: {dir: MinutesDir, ext: ".yaml", session: true,
+		stub: "schema: " + SchemaMinutes + "\nstub: These minutes wait for the release of their session.\n"},
+	SchemaNote: {dir: NotesDir, ext: ".md", markdown: true,
+		stub: "---\nschema: " + SchemaNote + "\nstub: true\n---\nThis note waits for the release of the session that wrote it.\n"},
+}
+
+// Stub returns the content of the stub of a schema: the same for every staged record of the
+// type. It is nil if the schema is not one of this part.
+func Stub(schema string) []byte {
+	t, ok := types[schema]
+	if !ok {
+		return nil
+	}
+	return []byte(t.stub)
+}
+
+// IsStub reports whether content is the stub of the schema.
+func IsStub(schema string, content []byte) bool {
+	t, ok := types[schema]
+	return ok && string(content) == t.stub
 }
 
 func (t recordType) filePath(id uint32) string { return fmt.Sprintf("%s/%06d%s", t.dir, id, t.ext) }
@@ -170,7 +202,8 @@ type record interface {
 }
 
 // Validate checks the content of the file at filePath against the schema. It returns the reasons
-// in plain words, or nothing when the file is valid.
+// in plain words, or nothing when the file is valid. A file is valid in one of two forms: a
+// record of the schema, or the stub of the schema (Stub), byte for byte.
 func Validate(schema, filePath string, content []byte) []string {
 	t, ok := types[schema]
 	if !ok {
@@ -188,6 +221,9 @@ func Validate(schema, filePath string, content []byte) []string {
 	if path.Ext(filePath) != t.ext {
 		return []string{fmt.Sprintf("a file of the schema %s must have the ending %s", schema, t.ext)}
 	}
+	if string(content) == t.stub {
+		return nil
+	}
 	v, reason := t.fields(content)
 	if reason != "" {
 		return []string{reason}
@@ -197,6 +233,12 @@ func Validate(schema, filePath string, content []byte) []string {
 		reasons = append(reasons, fmt.Sprintf("the field %s must be %q", SchemaKey, schema))
 	}
 	delete(v, SchemaKey)
+	for _, k := range []string{StubKey, StagedKey} {
+		if _, has := v[k]; has {
+			reasons = append(reasons, fmt.Sprintf("a record never stores the field %s; a stub has exactly the content of the stub of its type", k))
+			delete(v, k)
+		}
+	}
 	raw, err := json.Marshal(v)
 	if err != nil {
 		return append(reasons, "the file has a value that no record can hold: "+firstLine(err))

@@ -512,11 +512,12 @@ involves: bb-cli, bb-session-service, bb-replicator, bb-stage, bb-participant-cl
 
 The moderator ends the session. The agent that keeps the minutes writes the final version with
 `minutes.update`. The meeting session stores the confirmed minutes through the minutes interface.
-The records part writes them as one YAML file into the archive and commits it before it answers
-(`dec-yaml-git-storage`). Only then does the meeting session write `session.ended` to the log. If
-storing fails, the session does not end, and the moderator can repeat the command. The
-replicators stop. Afterwards every participant reads the stored minutes through the minutes
-interface.
+The records part writes them as one YAML file into the staging area of the session, and their stub
+into the artifact repository, and commits both before it answers (`dec-yaml-git-storage`,
+`concept-session-release`). It does not ask the meeting session back. Only then does the meeting
+session write `session.ended` to the log. If storing fails, the session does not end, and the
+moderator can repeat the command. The replicators stop. Afterwards every participant reads the
+stored minutes through the minutes interface and may change them until the release.
 
 ```arc42
 :::runtime-scenario

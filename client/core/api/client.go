@@ -176,6 +176,15 @@ type Client interface {
 	ListNotes(ctx context.Context, after uint32, sessionID string, limit uint32) ([]*notev1.Note, error)
 	GetMinutes(ctx context.Context, sessionID string) (*minutesv1.Minutes, error)
 	ListMinutes(ctx context.Context, after uint32, sessionID string, limit uint32) ([]*minutesv1.Minutes, error)
+	// ChangeDecision, ChangeNote and ChangeMinutes change a staged record, and the Remove calls
+	// remove one, before the release of its session. sessionID must be the session of the record;
+	// only a participant of it may.
+	ChangeDecision(ctx context.Context, id uint32, sessionID, text string) (*decisionv1.ChangeDecisionResponse, error)
+	RemoveDecision(ctx context.Context, id uint32, sessionID string) (*decisionv1.RemoveDecisionResponse, error)
+	ChangeNote(ctx context.Context, id uint32, sessionID, text string, tags []string) (*notev1.ChangeNoteResponse, error)
+	RemoveNote(ctx context.Context, id uint32, sessionID string) (*notev1.RemoveNoteResponse, error)
+	ChangeMinutes(ctx context.Context, id uint32, sessionID, text string) (*minutesv1.ChangeMinutesResponse, error)
+	RemoveMinutes(ctx context.Context, id uint32, sessionID string) (*minutesv1.RemoveMinutesResponse, error)
 	// ListSessions returns the sessions of the tenant that the participant may see, the newest
 	// first (if-session-list): those it joined or imported, and all for a tenant admin.
 	ListSessions(ctx context.Context) ([]*sessionlistv1.Session, error)

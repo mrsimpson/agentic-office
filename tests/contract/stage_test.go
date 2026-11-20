@@ -738,9 +738,10 @@ func TestStageShowsDocuments(t *testing.T) {
 	}
 
 	// A note is Markdown with front matter: the stage shows its text formatted, without the front
-	// matter.
+	// matter. The note names no session, so it is released at once: the stage does not read the
+	// staging area yet (#215).
 	if _, err := a.Note.AddNote(m.ctx(), &notev1.AddNoteRequest{CommandId: coreapi.NewCommandID(), Text: "Ask the *bank*.",
-		AuthorParticipantId: bot, SessionId: m.sid, Tags: []string{"bank"}}); err != nil {
+		AuthorParticipantId: bot, Tags: []string{"bank"}}); err != nil {
 		t.Fatal(err)
 	}
 	focus("notes/000001.md")

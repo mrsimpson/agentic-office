@@ -4,6 +4,13 @@
 // Every call needs an access token of a participant (see identity.proto). A stage link cannot
 // read or write decisions. A sentence that is off the record must not go into a decision
 // (dec-off-the-record).
+//
+// A decision that names a meeting session waits for the release of that session
+// (concept-session-release): it is staged. Only a participant of the session may name it. Until
+// the release, every participant of the session may change or remove a staged decision, and only
+// the readers of the session (its participants and the tenant admins) see its content. Everyone
+// else sees its stub: a decision with only its id and stub set. A released decision, or a
+// decision without a session, never changes.
 syntax = "proto3";
 
 package office.decision.v1;
@@ -19,6 +26,15 @@ service DecisionService {
   rpc RecordDecision(RecordDecisionRequest) returns (RecordDecisionResponse);
   // ListDecisions returns decisions with an ID greater than after_id, oldest first.
   rpc ListDecisions(ListDecisionsRequest) returns (ListDecisionsResponse);
+  // ChangeDecision replaces the text of a staged decision. The caller becomes its author. It
+  // fails with failed_precondition for a released decision, or when session_id is not the
+  // session of the decision, with permission_denied for a caller who did not take part in that
+  // session, and with not_found for a decision that does not exist or was removed. It is
+  // idempotent by command_id while the hub runs.
+  rpc ChangeDecision(ChangeDecisionRequest) returns (ChangeDecisionResponse);
+  // RemoveDecision removes a staged decision, with the same rules as ChangeDecision. Its number
+  // is not used again; the stub goes away with the release of the session.
+  rpc RemoveDecision(RemoveDecisionRequest) returns (RemoveDecisionResponse);
 }
 
 message Decision {
@@ -34,6 +50,12 @@ message Decision {
   string session_id = 5;
   google.protobuf.Timestamp time = 6;
   string command_id = 7;
+  // staged is set in a response for a decision that waits for the release of its session. It is
+  // never stored.
+  bool staged = 8;
+  // stub is set in a response for a staged decision that the caller may not read: only the id
+  // is set then. It is never stored.
+  bool stub = 9;
 }
 
 message RecordDecisionRequest {
@@ -43,13 +65,44 @@ message RecordDecisionRequest {
   string text = 2;
   // author_participant_id must be the participant of the access token.
   string author_participant_id = 3;
-  // session_id links the decision to a meeting session. Optional; it is not checked.
+  // session_id links the decision to a meeting session. Optional. Only a participant of the
+  // session may name it; the decision is staged until the release of the session.
   string session_id = 4;
 }
 
 message RecordDecisionResponse {
   Decision decision = 1;
   bool duplicate = 2;
+}
+
+message ChangeDecisionRequest {
+  // command_id is created by the client.
+  string command_id = 1;
+  // id is the decision to change.
+  uint32 id = 2;
+  // session_id must be the session of the decision.
+  string session_id = 3;
+  string text = 4;
+  // author_participant_id must be the participant of the access token.
+  string author_participant_id = 5;
+}
+
+message ChangeDecisionResponse {
+  Decision decision = 1;
+  bool duplicate = 2;
+}
+
+message RemoveDecisionRequest {
+  string command_id = 1;
+  uint32 id = 2;
+  // session_id must be the session of the decision.
+  string session_id = 3;
+  // author_participant_id must be the participant of the access token.
+  string author_participant_id = 4;
+}
+
+message RemoveDecisionResponse {
+  bool duplicate = 1;
 }
 
 message ListDecisionsRequest {

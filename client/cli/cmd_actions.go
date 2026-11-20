@@ -260,6 +260,18 @@ func recordJSON(m proto.Message) json.RawMessage { return coreapi.MessageJSON(m)
 // oneLine returns a text on one line, for the text output of lists.
 func oneLine(s string) string { return strings.ReplaceAll(strings.TrimSpace(s), "\n", " ") }
 
+// listLine is the text output of one record in a list: "#ID who: text". A staged record says so,
+// and a stub (a staged record that the caller may not read) shows only its ID.
+func listLine(id uint32, stub, staged bool, who, text string) string {
+	switch {
+	case stub:
+		return fmt.Sprintf("#%d (waits for the release of its session)", id)
+	case staged:
+		return fmt.Sprintf("#%d %s (staged): %s", id, who, oneLine(text))
+	}
+	return fmt.Sprintf("#%d %s: %s", id, who, oneLine(text))
+}
+
 // readRecordText reads the text of a new record from the arguments or --file.
 func (e *env) readRecordText(args []string, file, use string) (string, error) {
 	text, err := e.readText(args, file)
@@ -327,7 +339,7 @@ func cmdDecisionList(e *env, fs *flag.FlagSet) func([]string) error {
 			return nil
 		}
 		for _, d := range ds {
-			fmt.Fprintf(e.stdout, "#%d %s: %s\n", d.GetId(), d.GetAuthorParticipantId(), oneLine(d.GetText()))
+			fmt.Fprintln(e.stdout, listLine(d.GetId(), d.GetStub(), d.GetStaged(), d.GetAuthorParticipantId(), d.GetText()))
 		}
 		return nil
 	}
@@ -383,7 +395,7 @@ func cmdNoteList(e *env, fs *flag.FlagSet) func([]string) error {
 			return nil
 		}
 		for _, n := range ns {
-			fmt.Fprintf(e.stdout, "#%d %s: %s\n", n.GetId(), n.GetAuthorParticipantId(), oneLine(n.GetText()))
+			fmt.Fprintln(e.stdout, listLine(n.GetId(), n.GetStub(), n.GetStaged(), n.GetAuthorParticipantId(), n.GetText()))
 		}
 		return nil
 	}
@@ -446,7 +458,7 @@ func cmdMinutesList(e *env, fs *flag.FlagSet) func([]string) error {
 			return nil
 		}
 		for _, m := range ms {
-			fmt.Fprintf(e.stdout, "#%d %s %s: %s\n", m.GetId(), m.GetSessionId(), m.GetAuthorParticipantId(), oneLine(m.GetText()))
+			fmt.Fprintln(e.stdout, listLine(m.GetId(), m.GetStub(), m.GetStaged(), m.GetSessionId()+" "+m.GetAuthorParticipantId(), m.GetText()))
 		}
 		return nil
 	}
@@ -686,3 +698,109 @@ func cmdSessionList(e *env, fs *flag.FlagSet) func([]string) error {
 		return nil
 	}
 }
+
+// recordID reads the ID of a record from the first argument.
+func recordID(args []string, use string) (uint32, []string, error) {
+	if len(args) == 0 {
+		return 0, nil, usagef("usage: office %s", use)
+	}
+	n, err := strconv.ParseUint(strings.TrimPrefix(args[0], "#"), 10, 32)
+	if err != nil || n == 0 {
+		return 0, nil, usagef("the ID %q is not a record ID; usage: office %s", args[0], use)
+	}
+	return uint32(n), args[1:], nil
+}
+
+// cmdRecordChange is "decision change", "note change" and "minutes change": they change a staged
+// record of the session --session before its release.
+func cmdRecordChange(what string, tagged bool, change func(e *env, c coreapi.Client, id uint32, text string, tags []string) (proto.Message, bool, error)) func(*env, *flag.FlagSet) func([]string) error {
+	return func(e *env, fs *flag.FlagSet) func([]string) error {
+		file := fs.String("file", "", "read the text from this file (- for stdin)")
+		var tags stringList
+		if tagged {
+			fs.Var(&tags, "tag", "a tag of the note; repeat it for more tags. The tags replace the old ones")
+		}
+		use := what + " change <id> <text> | --file F --session S"
+		return func(args []string) error {
+			id, rest, err := recordID(args, use)
+			if err != nil {
+				return err
+			}
+			text, err := e.readRecordText(rest, *file, what+" change <id>")
+			if err != nil {
+				return err
+			}
+			c, err := e.client()
+			if err != nil {
+				return err
+			}
+			r, dup, err := change(e, c, id, text, tags)
+			if err != nil {
+				return err
+			}
+			if e.json {
+				e.printJSON(map[string]any{what: recordJSON(r), "duplicate": dup})
+			} else {
+				fmt.Fprintf(e.stdout, "%s %d changed\n", what, id)
+			}
+			return nil
+		}
+	}
+}
+
+// cmdRecordRemove is "decision remove", "note remove" and "minutes remove": they remove a staged
+// record of the session --session before its release.
+func cmdRecordRemove(what string, remove func(e *env, c coreapi.Client, id uint32) (bool, error)) func(*env, *flag.FlagSet) func([]string) error {
+	return func(e *env, fs *flag.FlagSet) func([]string) error {
+		return func(args []string) error {
+			id, rest, err := recordID(args, what+" remove <id> --session S")
+			if err != nil {
+				return err
+			}
+			if err := noArgs(rest); err != nil {
+				return err
+			}
+			c, err := e.client()
+			if err != nil {
+				return err
+			}
+			dup, err := remove(e, c, id)
+			if err != nil {
+				return err
+			}
+			if e.json {
+				e.printJSON(map[string]any{"id": id, "duplicate": dup})
+			} else {
+				fmt.Fprintf(e.stdout, "%s %d removed\n", what, id)
+			}
+			return nil
+		}
+	}
+}
+
+var (
+	cmdDecisionChange = cmdRecordChange("decision", false, func(e *env, c coreapi.Client, id uint32, text string, _ []string) (proto.Message, bool, error) {
+		res, err := c.ChangeDecision(e.ctx, id, e.session, text)
+		return res.GetDecision(), res.GetDuplicate(), err
+	})
+	cmdDecisionRemove = cmdRecordRemove("decision", func(e *env, c coreapi.Client, id uint32) (bool, error) {
+		res, err := c.RemoveDecision(e.ctx, id, e.session)
+		return res.GetDuplicate(), err
+	})
+	cmdNoteChange = cmdRecordChange("note", true, func(e *env, c coreapi.Client, id uint32, text string, tags []string) (proto.Message, bool, error) {
+		res, err := c.ChangeNote(e.ctx, id, e.session, text, tags)
+		return res.GetNote(), res.GetDuplicate(), err
+	})
+	cmdNoteRemove = cmdRecordRemove("note", func(e *env, c coreapi.Client, id uint32) (bool, error) {
+		res, err := c.RemoveNote(e.ctx, id, e.session)
+		return res.GetDuplicate(), err
+	})
+	cmdMinutesChange = cmdRecordChange("minutes", false, func(e *env, c coreapi.Client, id uint32, text string, _ []string) (proto.Message, bool, error) {
+		res, err := c.ChangeMinutes(e.ctx, id, e.session, text)
+		return res.GetMinutes(), res.GetDuplicate(), err
+	})
+	cmdMinutesRemove = cmdRecordRemove("minutes", func(e *env, c coreapi.Client, id uint32) (bool, error) {
+		res, err := c.RemoveMinutes(e.ctx, id, e.session)
+		return res.GetDuplicate(), err
+	})
+)

@@ -3,8 +3,13 @@
 //
 // While a session runs, its participants write the running minutes through the session commands
 // (minutes.update in commands.proto). When the session ends, the hub stores the last version as
-// the minutes of the session (rs-session-ends). This interface reads the stored minutes. Clients
-// do not write minutes here.
+// the minutes of the session (rs-session-ends). Clients never create minutes here.
+//
+// The stored minutes wait for the release of the session (concept-session-release): they are
+// staged. Until the release, every participant of the session may change or remove them here,
+// and only the readers of the session (its participants and the tenant admins) see their content.
+// Everyone else sees their stub: minutes with only their id and stub set. Released minutes never
+// change.
 //
 // Every call needs an access token of a participant (see identity.proto). A stage link cannot
 // read the minutes. A sentence that is off the record must not go into minutes
@@ -40,6 +45,12 @@ const (
 	MinutesServiceGetMinutesProcedure = "/office.minutes.v1.MinutesService/GetMinutes"
 	// MinutesServiceListMinutesProcedure is the procedure name of the MinutesService's ListMinutes RPC.
 	MinutesServiceListMinutesProcedure = "/office.minutes.v1.MinutesService/ListMinutes"
+	// MinutesServiceChangeMinutesProcedure is the procedure name of the MinutesService's ChangeMinutes
+	// RPC.
+	MinutesServiceChangeMinutesProcedure = "/office.minutes.v1.MinutesService/ChangeMinutes"
+	// MinutesServiceRemoveMinutesProcedure is the procedure name of the MinutesService's RemoveMinutes
+	// RPC.
+	MinutesServiceRemoveMinutesProcedure = "/office.minutes.v1.MinutesService/RemoveMinutes"
 )
 
 var (
@@ -57,6 +68,20 @@ var (
 			Procedure:  MinutesServiceListMinutesProcedure,
 		}
 	})
+	minutesServiceChangeMinutesSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     api.File_office_minutes_v1_minutes_proto.Services().ByName("MinutesService").Methods().ByName("ChangeMinutes"),
+			Procedure:  MinutesServiceChangeMinutesProcedure,
+		}
+	})
+	minutesServiceRemoveMinutesSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     api.File_office_minutes_v1_minutes_proto.Services().ByName("MinutesService").Methods().ByName("RemoveMinutes"),
+			Procedure:  MinutesServiceRemoveMinutesProcedure,
+		}
+	})
 )
 
 // MinutesServiceClient is a client for the office.minutes.v1.MinutesService service.
@@ -66,6 +91,15 @@ type MinutesServiceClient interface {
 	GetMinutes(context.Context, *api.GetMinutesRequest) (*api.GetMinutesResponse, error)
 	// ListMinutes returns stored minutes with an ID greater than after_id, oldest first.
 	ListMinutes(context.Context, *api.ListMinutesRequest) (*api.ListMinutesResponse, error)
+	// ChangeMinutes replaces the text of staged minutes. The caller becomes their author. It fails
+	// with failed_precondition for released minutes, or when session_id is not the session of the
+	// minutes, with permission_denied for a caller who did not take part in that session, and with
+	// not_found for minutes that do not exist or were removed. It is idempotent by command_id while
+	// the hub runs.
+	ChangeMinutes(context.Context, *api.ChangeMinutesRequest) (*api.ChangeMinutesResponse, error)
+	// RemoveMinutes removes staged minutes, with the same rules as ChangeMinutes. Their number is
+	// not used again; the stub goes away with the release of the session.
+	RemoveMinutes(context.Context, *api.RemoveMinutesRequest) (*api.RemoveMinutesResponse, error)
 }
 
 // NewMinutesServiceClient constructs a client for the office.minutes.v1.MinutesService service.
@@ -81,6 +115,15 @@ type MinutesServiceHandler interface {
 	GetMinutes(context.Context, *api.GetMinutesRequest) (*api.GetMinutesResponse, error)
 	// ListMinutes returns stored minutes with an ID greater than after_id, oldest first.
 	ListMinutes(context.Context, *api.ListMinutesRequest) (*api.ListMinutesResponse, error)
+	// ChangeMinutes replaces the text of staged minutes. The caller becomes their author. It fails
+	// with failed_precondition for released minutes, or when session_id is not the session of the
+	// minutes, with permission_denied for a caller who did not take part in that session, and with
+	// not_found for minutes that do not exist or were removed. It is idempotent by command_id while
+	// the hub runs.
+	ChangeMinutes(context.Context, *api.ChangeMinutesRequest) (*api.ChangeMinutesResponse, error)
+	// RemoveMinutes removes staged minutes, with the same rules as ChangeMinutes. Their number is
+	// not used again; the stub goes away with the release of the session.
+	RemoveMinutes(context.Context, *api.RemoveMinutesRequest) (*api.RemoveMinutesResponse, error)
 }
 
 // RegisterMinutesServiceHandler registers svc as the office.minutes.v1.MinutesService
@@ -90,6 +133,8 @@ func RegisterMinutesServiceHandler(server *connect.Server, svc MinutesServiceHan
 	server.Register(
 		connect.Method{Spec: minutesServiceGetMinutesSpec(), Handler: adapter.getMinutes},
 		connect.Method{Spec: minutesServiceListMinutesSpec(), Handler: adapter.listMinutes},
+		connect.Method{Spec: minutesServiceChangeMinutesSpec(), Handler: adapter.changeMinutes},
+		connect.Method{Spec: minutesServiceRemoveMinutesSpec(), Handler: adapter.removeMinutes},
 	)
 }
 
@@ -102,6 +147,14 @@ func (UnimplementedMinutesServiceHandler) GetMinutes(context.Context, *api.GetMi
 
 func (UnimplementedMinutesServiceHandler) ListMinutes(context.Context, *api.ListMinutesRequest) (*api.ListMinutesResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, "office.minutes.v1.MinutesService.ListMinutes is not implemented")
+}
+
+func (UnimplementedMinutesServiceHandler) ChangeMinutes(context.Context, *api.ChangeMinutesRequest) (*api.ChangeMinutesResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "office.minutes.v1.MinutesService.ChangeMinutes is not implemented")
+}
+
+func (UnimplementedMinutesServiceHandler) RemoveMinutes(context.Context, *api.RemoveMinutesRequest) (*api.RemoveMinutesResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "office.minutes.v1.MinutesService.RemoveMinutes is not implemented")
 }
 
 type minutesServiceClient struct {
@@ -119,6 +172,22 @@ func (c *minutesServiceClient) GetMinutes(ctx context.Context, req *api.GetMinut
 func (c *minutesServiceClient) ListMinutes(ctx context.Context, req *api.ListMinutesRequest) (*api.ListMinutesResponse, error) {
 	var res api.ListMinutesResponse
 	if err := c.client.CallUnary(ctx, minutesServiceListMinutesSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *minutesServiceClient) ChangeMinutes(ctx context.Context, req *api.ChangeMinutesRequest) (*api.ChangeMinutesResponse, error) {
+	var res api.ChangeMinutesResponse
+	if err := c.client.CallUnary(ctx, minutesServiceChangeMinutesSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *minutesServiceClient) RemoveMinutes(ctx context.Context, req *api.RemoveMinutesRequest) (*api.RemoveMinutesResponse, error) {
+	var res api.RemoveMinutesResponse
+	if err := c.client.CallUnary(ctx, minutesServiceRemoveMinutesSpec(), req, &res); err != nil {
 		return nil, err
 	}
 	return &res, nil
@@ -144,6 +213,30 @@ func (h minutesServiceHandler) listMinutes(ctx context.Context, _ connect.Spec, 
 		return err
 	}
 	res, err := h.svc.ListMinutes(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h minutesServiceHandler) changeMinutes(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req api.ChangeMinutesRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.ChangeMinutes(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h minutesServiceHandler) removeMinutes(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req api.RemoveMinutesRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.RemoveMinutes(ctx, &req)
 	if err != nil {
 		return err
 	}

@@ -17,6 +17,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
+	recordscheck "github.com/mrsimpson/agentic-office/hub/records/check"
 	decisionv1 "github.com/mrsimpson/agentic-office/hub/records/decision/api"
 	minutesv1 "github.com/mrsimpson/agentic-office/hub/records/minutes/api"
 	notev1 "github.com/mrsimpson/agentic-office/hub/records/note/api"
@@ -107,7 +108,18 @@ func archivedYAML(t *testing.T, srv *contracttest.Hub, path string) map[string]a
 // matter and its body.
 func archivedNote(t *testing.T, srv *contracttest.Hub, path string) (map[string]any, string) {
 	t.Helper()
-	raw := contracttest.Git(t, srv.ArchiveDir(), "show", "HEAD:"+path)
+	return frontMatter(t, path, contracttest.Git(t, srv.ArchiveDir(), "show", "HEAD:"+path))
+}
+
+// stagedFile reads a file of the staging repository of the default tenant.
+func stagedFile(t *testing.T, srv *contracttest.Hub, path string) string {
+	t.Helper()
+	return contracttest.Git(t, srv.TenantStagingDir(contracttest.DefaultTenant), "show", "main:"+path)
+}
+
+// frontMatter parses the front matter of a Markdown file and returns it with the body.
+func frontMatter(t *testing.T, path, raw string) (map[string]any, string) {
+	t.Helper()
 	rest, ok := strings.CutPrefix(raw, "---\n")
 	if !ok {
 		t.Fatalf("%s does not start with front matter:\n%s", path, raw)
@@ -123,6 +135,16 @@ func archivedNote(t *testing.T, srv *contracttest.Hub, path string) (map[string]
 	return v, body
 }
 
+// joinAll lets the actors join a session, so they may name it in records.
+func joinAll(t *testing.T, sid string, actors ...*contracttest.Actor) {
+	t.Helper()
+	for _, a := range actors {
+		if _, err := a.Commands.Join(ctx10(t), &sessioncommandsv1.JoinRequest{SessionId: sid, CommandId: coreapi.NewCommandID()}); err != nil {
+			t.Fatalf("%s joins %s: %v", a.ParticipantID, sid, err)
+		}
+	}
+}
+
 // commitsOf returns how many commits changed path in the archive.
 func commitsOf(t *testing.T, srv *contracttest.Hub, path string) int {
 	t.Helper()
@@ -131,11 +153,12 @@ func commitsOf(t *testing.T, srv *contracttest.Hub, path string) int {
 
 // TestDecisionsRecordAndList: decisions keep their text, record the author and its kind from the
 // token, get growing IDs and a time, and come back oldest first, filtered by session and paged
-// by the cursor.
+// by the cursor. A decision of a session that is not released is staged.
 func TestDecisionsRecordAndList(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
 	bot := srv.Participant(t, "bot", "Bot", agent)
+	joinAll(t, "s1", ada, bot)
 
 	before := time.Now().Add(-time.Second)
 	d1 := recordDecision(t, ada, "We ship on Friday.", "s1")
@@ -153,7 +176,7 @@ func TestDecisionsRecordAndList(t *testing.T) {
 		{d3, 3, "bot", decisionv1.AuthorKind_AUTHOR_KIND_AGENT, "s1"},
 	} {
 		if w.d.GetId() != w.id || w.d.GetAuthorParticipantId() != w.author || w.d.GetAuthorKind() != w.kind ||
-			w.d.GetSessionId() != w.sid || w.d.GetCommandId() == "" {
+			w.d.GetSessionId() != w.sid || w.d.GetCommandId() == "" || w.d.GetStaged() != (w.sid != "") || w.d.GetStub() {
 			t.Fatalf("decision %d: %v", w.id, w.d)
 		}
 		if tm := w.d.GetTime().AsTime(); tm.Before(before) || tm.After(time.Now().Add(time.Second)) {
@@ -188,7 +211,10 @@ func TestDecisionsRecordAndList(t *testing.T) {
 	}
 
 	// Every decision is its own YAML file in the archive, written in its own commit, with the
-	// fields of the contract.
+	// fields of the contract. A staged decision has its stub there.
+	if raw := contracttest.Git(t, srv.ArchiveDir(), "show", "HEAD:decisions/000001.yaml"); raw != string(recordscheck.Stub(recordscheck.SchemaDecision)) {
+		t.Errorf("decisions/000001.yaml is not the stub:\n%s", raw)
+	}
 	y := archivedYAML(t, srv, "decisions/000002.yaml")
 	if y["id"] != 2 || y["text"] != "Line one\nline two" || y["author_participant_id"] != "bot" ||
 		y["author_kind"] != "AUTHOR_KIND_AGENT" || y["session_id"] != "" || y["command_id"] != d2.GetCommandId() || y["time"] == nil {
@@ -213,6 +239,7 @@ func TestNotesAddAndList(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
 	bot := srv.Participant(t, "bot", "Bot", agent)
+	joinAll(t, "s1", ada, bot)
 
 	recordDecision(t, ada, "A decision does not count as a note.", "")
 	n1 := addNote(t, bot, "Remember the budget.", "s1")
@@ -227,8 +254,9 @@ func TestNotesAddAndList(t *testing.T) {
 	wantIDs(t, "all notes", listNotes(t, ada, &notev1.ListNotesRequest{}), 1, 2)
 	wantIDs(t, "notes of s1", listNotes(t, ada, &notev1.ListNotesRequest{SessionId: "s1"}), 1)
 	wantIDs(t, "notes after 1", listNotes(t, ada, &notev1.ListNotesRequest{AfterId: 1}), 2)
-	// A note is a Markdown file: the fields in the front matter, the text as the body.
-	if y, body := archivedNote(t, srv, "notes/000001.md"); y["schema"] != "office.note.v1" || y["session_id"] != "s1" ||
+	// A note is a Markdown file: the fields in the front matter, the text as the body. The note of
+	// s1 waits in the staging area.
+	if y, body := frontMatter(t, "notes/000001.md", stagedFile(t, srv, "notes/000001.md")); y["schema"] != "office.note.v1" || y["session_id"] != "s1" ||
 		y["author_participant_id"] != "bot" || y["author_kind"] != "AUTHOR_KIND_AGENT" || y["time"] == nil || y["id"] != 1 ||
 		y["text"] != nil || body != "Remember the budget.\n" {
 		t.Fatalf("notes/000001.md: %v, body %q", y, body)
@@ -268,6 +296,7 @@ func TestRecordsIdempotent(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
 	bot := srv.Participant(t, "bot", "Bot", agent)
+	joinAll(t, "s1", ada)
 
 	dreq := &decisionv1.RecordDecisionRequest{CommandId: coreapi.NewCommandID(), Text: "We ship.", AuthorParticipantId: "ada", SessionId: "s1"}
 	first, err := ada.Decision.RecordDecision(ctx10(t), dreq)
@@ -422,6 +451,7 @@ func TestRecordsSurviveRestart(t *testing.T) {
 	srv := contracttest.StartHub(t, nil)
 	ada := srv.Participant(t, "ada", "Ada", human)
 	bot := srv.Participant(t, "bot", "Bot", agent)
+	joinAll(t, "s1", ada, bot)
 	d1 := recordDecision(t, ada, "We ship.", "s1")
 	d2 := recordDecision(t, bot, "Line one\nline two\n\n  indented: yes # not a comment\n", "")
 	n1 := addNote(t, bot, "123", "")
@@ -432,9 +462,7 @@ func TestRecordsSurviveRestart(t *testing.T) {
 	}
 	n2 := tagged.GetNote()
 	sid := "s-" + coreapi.NewCommandID()
-	if _, err := bot.Commands.Join(ctx10(t), &sessioncommandsv1.JoinRequest{SessionId: sid, CommandId: coreapi.NewCommandID()}); err != nil {
-		t.Fatal(err)
-	}
+	joinAll(t, sid, bot, ada)
 	if _, err := bot.Commands.UpdateMinutes(ctx10(t), &sessioncommandsv1.UpdateMinutesRequest{SessionId: sid, CommandId: coreapi.NewCommandID(),
 		ParticipantId: "bot", Text: "## Minutes\n- We ship."}); err != nil {
 		t.Fatal(err)
@@ -477,7 +505,7 @@ func TestRecordsSurviveRestart(t *testing.T) {
 	if _, body := archivedNote(t, srv, "notes/000001.md"); body != "123\n" {
 		t.Fatalf("the body of a note is its text: %q", body)
 	}
-	if y, _ := archivedNote(t, srv, "notes/000002.md"); fmt.Sprint(y["tags"]) != "[true 123 budget: 2027]" {
+	if y, _ := frontMatter(t, "notes/000002.md", stagedFile(t, srv, "notes/000002.md")); fmt.Sprint(y["tags"]) != "[true 123 budget: 2027]" {
 		t.Fatalf("tags that look like other types must stay strings: %#v", y["tags"])
 	}
 }
@@ -541,7 +569,18 @@ func TestSessionEndStoresMinutes(t *testing.T) {
 	if got := listMinutes(t, ada, &minutesv1.ListMinutesRequest{SessionId: sid}); len(got) != 1 || got[0].String() != m.String() {
 		t.Fatalf("list of the session: %v", got)
 	}
-	if y := archivedYAML(t, srv, "minutes/000001.yaml"); y["session_id"] != sid || y["text"] != m.GetText() ||
+	// The minutes wait in the staging area of the session; the artifact repository has their stub.
+	if !m.GetStaged() {
+		t.Errorf("the minutes of a session that is not released are not staged: %v", m)
+	}
+	if raw := contracttest.Git(t, srv.ArchiveDir(), "show", "HEAD:minutes/000001.yaml"); raw != string(recordscheck.Stub(recordscheck.SchemaMinutes)) {
+		t.Errorf("minutes/000001.yaml in the artifact repository is not the stub:\n%s", raw)
+	}
+	var y map[string]any
+	if err := yaml.Unmarshal([]byte(stagedFile(t, srv, "minutes/000001.yaml")), &y); err != nil {
+		t.Fatal(err)
+	}
+	if y["session_id"] != sid || y["text"] != m.GetText() ||
 		y["author_participant_id"] != "scribe" || y["author_kind"] != "AUTHOR_KIND_AGENT" || y["command_id"] != m.GetCommandId() {
 		t.Fatalf("minutes/000001.yaml: %v", y)
 	}

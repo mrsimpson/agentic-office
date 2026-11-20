@@ -59,9 +59,11 @@ func (denyAll) Caller(context.Context) (Caller, error) {
 // Minutes is the part of the minutes (if-minutes-api) that the session needs: it stores the
 // minutes when a session ends (rs-session-ends). records.Service implements it.
 type Minutes interface {
-	// StoreMinutes stores the minutes of a session. It is idempotent by the command ID of the
-	// minutes: a repeated call returns the stored minutes and true.
-	StoreMinutes(ctx context.Context, m *minutesv1.Minutes) (*minutesv1.Minutes, bool, error)
+	// StoreMinutes stores the minutes of a session in its staging area. authorName is the display
+	// name of the author. It is idempotent by the command ID of the minutes: a repeated call
+	// returns the stored minutes and true. It never calls back into the session, because the
+	// session holds the lock of the session while it calls.
+	StoreMinutes(ctx context.Context, m *minutesv1.Minutes, authorName string) (*minutesv1.Minutes, bool, error)
 }
 
 // MinutesCommandPrefix starts the command ID of the minutes that the session stores. The rest is
@@ -868,13 +870,15 @@ func (s *Service) storeMinutes(ctx context.Context, st *state, req *sessioncomma
 	}
 	author := st.minutes.GetActorParticipantId()
 	var kind sessionstreamv1.ParticipantKind
+	var name string
 	if pt := st.participants[author]; pt != nil {
 		kind = pt.joined.GetParticipantJoined().GetKind()
+		name = pt.joined.GetParticipantJoined().GetDisplayName()
 	}
 	_, _, err := s.minutes.StoreMinutes(ctx, &minutesv1.Minutes{
 		CommandId: MinutesCommandPrefix + req.GetCommandId(), SessionId: req.GetSessionId(),
 		Text: text, AuthorParticipantId: author, AuthorKind: authorKind(kind),
-	})
+	}, name)
 	if err != nil {
 		return connect.NewError(connect.CodeInternal, "store the minutes: "+err.Error())
 	}
