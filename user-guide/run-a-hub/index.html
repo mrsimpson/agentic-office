@@ -194,6 +194,9 @@ most <code dir="auto">-restore-wait</code> (10 seconds), commands of a session t
 <code dir="auto">unavailable</code>. Repeat the command; nothing is lost or stored twice.</li>
 <li>Users, keys, tenants and memberships are files in the hub repository and survive. Access
 tokens do not: clients sign in again.</li>
+<li>Releases survive too (see <a href="/agentic-office/user-guide/join-a-meeting/#release-what-a-session-created">Release what a session created</a>):
+a session whose grace period ended while the hub was down is released at start, and a release
+that the stop cut off is completed, once.</li>
 <li>A known gap (issue #47): a session that the hub never wrote to the archive is unknown after a
 crash until a participant offers a whole copy of its log.</li>
 </ul>
