@@ -128,6 +128,7 @@ flowchart LR
     bb_artifacts -->|if-records-check| bb_records
     bb_artifacts -->|if-slides-check| bb_slides
     bb_artifacts -->|if-tasks-check| bb_tasks
+    bb_artifacts -->|if-documents-check| bb_documents
     bb_git_access -->|if-token-check| bb_identity
 ```
 
@@ -687,9 +688,10 @@ Lets the artifacts part check a file of a record type (decision, minutes or note
 checked as YAML, and a note as Markdown with front matter and a text in its body. The part owns the schemas of
 its types, and the same check serves its own interface, so every rule exists once. A schema has a
 second form: the stub of a staged record (`concept-session-release`). Every stub of a type has the
-same content, and the check accepts exactly that content. The part names the schemas that it owns. A call
-gives the path, the content and the name of the schema; the part answers that the file is valid, or
-that it is invalid, with the reasons in plain words.
+same content, and the check accepts exactly that content at the path of a record of the type. The
+part also tells whether a content is the stub of a type. The part names the schemas that it owns. A
+call gives the path, the content and the name of the schema; the part answers that the file is
+valid, or that it is invalid, with the reasons in plain words.
 
 ```arc42
 :::interface
@@ -759,7 +761,11 @@ It routes every write that names a session like the records part (`concept-sessi
   not held.
 
 The part keeps no documents in memory: it reads the state of a path from the archive at each
-write.
+write. If it cannot write the stub of a document that it has just staged, because a push took the
+path first, it takes the staged document back, and the staging area forgets the path.
+
+The part owns the schema of documents. Most documents name no schema and are plain Markdown. A
+document may name the schema; the stub always does.
 
 ```arc42
 :::building-block
@@ -770,6 +776,25 @@ parent: bb-office-hub
 requires: if-token-check, if-archive-storage, if-session-notice, if-session-release
 path: hub/documents
 implements: concept-wiki, concept-session-release
+:::
+```
+
+#### Documents check
+
+Lets the artifacts part check a document that names the schema of documents before it accepts a
+push. A document of the schema is Markdown under the directory of the documents; the stub of a
+document is one of them. The part also tells whether a content is the stub of a document, byte for
+byte, so the documents part and the push rules decide the same way. The part names the schemas
+that it owns. A call gives the path, the content and the name of the schema; the part answers that
+the file is valid, or that it is invalid, with the reasons in plain words.
+
+```arc42
+:::interface
+id: if-documents-check
+title: Documents check
+provider: bb-documents
+protocol: In-process Go call
+path: hub/documents/check
 :::
 ```
 
@@ -813,9 +838,10 @@ implements: concept-session-release
 Lets the artifacts part check a file of a slide deck before it accepts a push. The part owns the schemas of
 its types, and the same check serves its own interface, so every rule exists once. The schema of a
 deck has a second form: the stub of a staged deck (`concept-session-release`). Every stub of a deck
-has the same content, and the check accepts exactly that content. The part names the schemas that it owns. A call
-gives the path, the content and the name of the schema; the part answers that the file is valid, or
-that it is invalid, with the reasons in plain words.
+has the same content, and the check accepts exactly that content. The part also tells whether a
+content is the stub of a deck. The part names the schemas that it owns. A call gives the path, the
+content and the name of the schema; the part answers that the file is valid, or that it is invalid,
+with the reasons in plain words.
 
 ```arc42
 :::interface
@@ -853,7 +879,9 @@ release. Git access does not serve it either. The release moves an area into the
 repository in one commit, in which each file replaces its stub. The author of that commit is the
 human who released, or the hub, and the authors of the files are its co-authors. The commit names
 the session, and each step of a release is recorded, so a release that a restart cut off is
-completed and never done twice. The archive moves the files without reading their content.
+completed and never done twice. The archive moves the files without reading their content. A part
+that staged a file and could not write its stub takes the file back, and the area forgets the path;
+so the release never removes a file at a path where the area never had a stub.
 
 ```arc42
 :::building-block
@@ -910,6 +938,8 @@ For the staging repository, a caller works on the area of a session:
   objection holds it);
 - write, change and remove files in the area, each change in one commit; a path belongs to one
   area only;
+- take a file back whose stub could not be written: the file goes away, and the area forgets the
+  path, so the release leaves that path alone;
 - read and list the files of an area, and list every area with its state;
 - release the area: close it for writes, move its files into the artifact repository in one
   commit, then remove the area. A file replaces the stub at its path, and the stub of a removed
@@ -1002,6 +1032,11 @@ rules. It does three things:
   is valid against the schema that it names. Git access knows no schema: it asks the artifacts
   part, which hands the check to the part of the hub that owns the schema. A refused push shows
   its reason to the participant.
+- Rules for the stubs of staged artifacts (`concept-session-release`): no push changes or removes
+  a path that holds a stub, and no push writes the content of a stub. A rule needs the old state
+  of a path, so Git access asks the artifacts part whether the file that a push changes or
+  removes is a stub. A push next to a stub passes. Git access never serves the staging
+  repository, so a clone holds stubs and never staged content.
 - After an accepted push, it tells the archive that main moved.
 
 Git alone decides whether a push builds on the current state: a push on an old base is refused,
@@ -1014,7 +1049,7 @@ title: Git access
 technology: Go / Git (smart HTTP)
 parent: bb-office-hub
 requires: if-token-check, if-archive-repository, if-artifact-check
-implements: concept-multi-tenancy
+implements: concept-multi-tenancy, concept-session-release
 path: hub/gitaccess
 :::
 ```
@@ -1043,8 +1078,9 @@ path: hub/gitaccess/web
 Knows which part of the hub owns which schema and passes the check of a file to that part. It
 owns no schema, because a schema belongs to its type (`dec-artifacts`). It finds the owner by the
 name of the schema that the file names. A file that names no schema is plain text, and a file
-that names a schema that no part owns is invalid. A new type needs a check in its own part and a
-line in this part.
+that names a schema that no part owns is invalid. Each part also recognises the stub of its types
+(`concept-session-release`), so this part can tell a stub from any other file without knowing the
+stubs itself. A new type needs a check in its own part and a line in this part.
 
 ```arc42
 :::building-block
@@ -1052,7 +1088,7 @@ id: bb-artifacts
 title: Artifacts
 technology: Go
 parent: bb-office-hub
-requires: if-records-check, if-slides-check, if-tasks-check
+requires: if-records-check, if-slides-check, if-tasks-check, if-documents-check
 implements: concept-module-boundaries
 path: hub/artifacts
 :::
@@ -1061,7 +1097,9 @@ path: hub/artifacts
 #### Artifact check
 
 Checks the content of one file against the schema that the file names, whichever part owns the
-schema. The answer is valid, or invalid with the reasons in plain words.
+schema. The answer is valid, or invalid with the reasons in plain words. A second call tells
+whether a file is the stub of a staged artifact: the file names a schema, is valid, and the part
+that owns the schema recognises it as the stub of its type.
 
 ```arc42
 :::interface

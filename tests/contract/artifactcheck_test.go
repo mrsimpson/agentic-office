@@ -1,7 +1,8 @@
 package contract
 
-// Contract tests of the checks of the artifacts (dec-artifact-sync) through their four interfaces:
-// if-records-check, if-tasks-check, if-slides-check and if-artifact-check. The checks are
+// Contract tests of the checks of the artifacts (dec-artifact-sync) through their five interfaces:
+// if-records-check, if-tasks-check, if-slides-check, if-documents-check and if-artifact-check. The
+// artifact check also tells the stub of a staged artifact from any other file. The checks are
 // in-process Go calls, so the tests call them directly and use nothing but their signatures.
 //
 // The same check serves the own interface of a part. The tests show this with the real office-hub:
@@ -17,6 +18,7 @@ import (
 	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
 
 	artifactcheck "github.com/mrsimpson/agentic-office/hub/artifacts/check"
+	documentscheck "github.com/mrsimpson/agentic-office/hub/documents/check"
 	recordscheck "github.com/mrsimpson/agentic-office/hub/records/check"
 	slidescheck "github.com/mrsimpson/agentic-office/hub/slides/check"
 	taskv1 "github.com/mrsimpson/agentic-office/hub/tasks/api"
@@ -172,6 +174,9 @@ func TestRecordsCheck(t *testing.T) {
 		{"not YAML", d, "decisions/000001.yaml", "text: [unclosed\n", "not valid YAML"},
 		{"empty", d, "decisions/000001.yaml", "", "empty"},
 		{"an empty note", n, "notes/000003.md", "", "no front matter"},
+		{"the stub of a note", n, "notes/000003.md", string(recordscheck.Stub(n)), ""},
+		{"the stub of a note in another directory", n, "decisions/000003.md", string(recordscheck.Stub(n)), "belongs in notes/NNNNNN.md"},
+		{"the stub of a note without a number", n, "notes/plan.md", string(recordscheck.Stub(n)), "belongs in notes/NNNNNN.md"},
 	})
 }
 
@@ -226,6 +231,72 @@ func TestSlidesCheck(t *testing.T) {
 	})
 }
 
+// TestDocumentsCheck: the check of the documents part names its schema, accepts any Markdown at
+// the path of a document, the stub of a document among it, and recognises the stub byte for byte.
+func TestDocumentsCheck(t *testing.T) {
+	if got := documentscheck.Schemas(); !slices.Equal(got, []string{"office.document.v1"}) {
+		t.Fatalf("schemas %v", got)
+	}
+	const s = "office.document.v1"
+	stub := string(documentscheck.Stub())
+	page := "---\nschema: office.document.v1\ntitle: Plan\n---\n# Plan\n"
+	runChecks(t, documentscheck.Validate, []checkCase{
+		{"a document", s, "documents/plan.md", page, ""},
+		{"a document in a folder", s, "documents/2026/plan.md", page, ""},
+		{"the stub", s, "documents/plan.md", stub, ""},
+		{"a schema of another part", "office.note.v1", "documents/plan.md", page, "not a schema of the documents"},
+		{"outside the documents", s, "notes/plan.md", page, "lies in documents/"},
+		{"as YAML", s, "documents/plan.yaml", "schema: office.document.v1\n", "ends in .md"},
+	})
+	for _, c := range []struct {
+		name    string
+		content string
+		want    bool
+	}{
+		{"the stub", stub, true},
+		{"the stub with CRLF", strings.ReplaceAll(stub, "\n", "\r\n"), false},
+		{"the stub with more text", stub + "More.\n", false},
+		{"a document", page, false},
+		{"the stub of a note", string(recordscheck.Stub("office.note.v1")), false},
+	} {
+		if got := documentscheck.IsStub([]byte(c.content)); got != c.want {
+			t.Errorf("%s: IsStub %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+// TestArtifactCheckKnowsTheStubs: the artifact check tells the stub of every staged type from any
+// other file, and asks the part that owns the schema. A stub at a path where its type cannot lie is
+// no stub, and neither is a file without a schema.
+func TestArtifactCheckKnowsTheStubs(t *testing.T) {
+	cases := []struct {
+		name, path, content string
+		want                bool
+	}{
+		{"the stub of a decision", "decisions/000001.yaml", string(recordscheck.Stub("office.decision.v1")), true},
+		{"the stub of minutes", "minutes/000001.yaml", string(recordscheck.Stub("office.minutes.v1")), true},
+		{"the stub of a note", "notes/000003.md", string(recordscheck.Stub("office.note.v1")), true},
+		{"the stub of a deck", "slides/000004.yaml", string(slidescheck.Stub()), true},
+		{"the stub of a document", "documents/plan.md", string(documentscheck.Stub()), true},
+		{"a decision", "decisions/000001.yaml", decisionFile, false},
+		{"a note", "notes/000003.md", noteFile, false},
+		{"a task", "tasks/000002.yaml", taskFile, false},
+		{"a deck", "slides/000004.yaml", deckFile, false},
+		{"a document without a schema", "documents/plan.md", "# Plan\n", false},
+		{"a changed stub of a note", "notes/000003.md", strings.Replace(string(recordscheck.Stub("office.note.v1")), "waits", "waited", 1), false},
+		{"the stub of a note in the decisions", "decisions/000001.md", string(recordscheck.Stub("office.note.v1")), false},
+		{"the stub of a deck as a note", "notes/000003.yaml", string(slidescheck.Stub()), false},
+		{"the stub of a document outside the documents", "notes/plan.md", string(documentscheck.Stub()), false},
+		{"a file of another type", "data/a.json", string(slidescheck.Stub()), false},
+		{"an empty file", "documents/plan.md", "", false},
+	}
+	for _, c := range cases {
+		if got := artifactcheck.IsStub(c.path, []byte(c.content)); got != c.want {
+			t.Errorf("%s: IsStub(%s) %v, want %v", c.name, c.path, got, c.want)
+		}
+	}
+}
+
 // artifactCase is one file and what the artifact check must answer.
 type artifactCase struct {
 	name    string
@@ -253,6 +324,10 @@ func TestArtifactCheck(t *testing.T) {
 		{"an invalid deck", "slides/000004.yaml", replace(t, deckFile, "command_id: c-1\n", ""), "command_id is missing"},
 		{"a decision in the wrong place", "notes/000001.yaml", decisionFile, "belongs in decisions/000001.yaml"},
 		{"a decision as Markdown", "decisions/000001.md", front("office.decision.v1"), "ending .yaml"},
+		{"a document that names its schema", "documents/plan.md", front("office.document.v1"), ""},
+		{"the stub of a document", "documents/plan.md", string(documentscheck.Stub()), ""},
+		{"a document outside the documents", "notes/plan.md", front("office.document.v1"), "lies in documents/"},
+		{"a document without a schema", "documents/plan.md", "# Plan\n", ""},
 		// A schema that no part owns.
 		{"an unknown schema in YAML", "other/a.yaml", "schema: office.other.v1\nx: 1\n", "not known"},
 		{"an unknown schema in front matter", "docs/a.md", front("office.other.v1"), "not known"},

@@ -38,8 +38,8 @@
 //     session (if-session-release). While the session is not released, the deck goes into the
 //     staging area of the session, and then the stub of a deck (check.Stub) at the same path into
 //     the artifact repository, by the hub with StubMessage. If the stub cannot be written, the
-//     staged file is taken back. A released session, or no session, writes into the artifact
-//     repository. The part asks the meeting session before it takes its lock.
+//     staged file is taken back and the area forgets the path. A released session, or no session,
+//     writes into the artifact repository. The part asks the meeting session before it takes its lock.
 //   - ChangeDeck and RemoveDeck change or remove a staged deck for a participant of its session
 //     who names that session; the caller becomes the author of a change. A released deck, a stub
 //     and a deck of another session are refused. While the release moves the area, a write is
