@@ -1,5 +1,53 @@
 # Changelog
 
+## [0.3.0](https://github.com/mrsimpson/agentic-office/compare/v0.2.0...v0.3.0) (2026-11-20)
+
+
+### ⚠ BREAKING CHANGES
+
+* office meeting events and every read of a session by a member who never joined it fail with not_found.
+* office admin link, /admin/ and CreateAdminLink/ExchangeAdminLink are gone; use office portal link, /portal/ and CreatePortalLink/ExchangePortalLink.
+
+### Features
+
+* **agentrunner:** ask the agent once when its reply stayed in its chat ([#175](https://github.com/mrsimpson/agentic-office/issues/175)) ([c305c23](https://github.com/mrsimpson/agentic-office/commit/c305c23552744ce333dead9a15260ab9b7386ca1)), closes [#170](https://github.com/mrsimpson/agentic-office/issues/170)
+* **agentrunner:** hand the office-memory skill to the harness ([#222](https://github.com/mrsimpson/agentic-office/issues/222)) ([ba60f33](https://github.com/mrsimpson/agentic-office/commit/ba60f33f388ef3884460ceedfa3c8f58c6956d32))
+* **archive:** a staging repository per tenant ([#211](https://github.com/mrsimpson/agentic-office/issues/211)) ([2e007d6](https://github.com/mrsimpson/agentic-office/commit/2e007d64c81cc6354442f8c9883741c7f212b2ea)), closes [#199](https://github.com/mrsimpson/agentic-office/issues/199)
+* **archive:** discard a staged artifact that the release kept back ([#237](https://github.com/mrsimpson/agentic-office/issues/237)) ([a188536](https://github.com/mrsimpson/agentic-office/commit/a188536cbb47df56b6e3dfdfd71532cc9bf79bda))
+* **artifacts:** each type describes its files for the wiki ([#229](https://github.com/mrsimpson/agentic-office/issues/229)) ([5137616](https://github.com/mrsimpson/agentic-office/commit/513761696d596da7668bf847110ee7ab28cdc3b0))
+* **cli:** help for command groups and suggestions for unknown commands ([#184](https://github.com/mrsimpson/agentic-office/issues/184)) ([10a15f0](https://github.com/mrsimpson/agentic-office/commit/10a15f0ae39ff5b0ddc4089e5c6baf31018fd073)), closes [#183](https://github.com/mrsimpson/agentic-office/issues/183)
+* **documents:** front matter schema and hints for broken links ([#224](https://github.com/mrsimpson/agentic-office/issues/224)) ([dccf2bf](https://github.com/mrsimpson/agentic-office/commit/dccf2bf59c18897d5ef6eb6ef9e451cac46ed220)), closes [#205](https://github.com/mrsimpson/agentic-office/issues/205)
+* **gitaccess:** push rules protect stubs; a check for documents ([#221](https://github.com/mrsimpson/agentic-office/issues/221)) ([a1f2fd8](https://github.com/mrsimpson/agentic-office/commit/a1f2fd87400be2391a4fec108749338cce0b53c4))
+* list the sessions that a user may see, in the portal and the CLI (if-session-list) ([#185](https://github.com/mrsimpson/agentic-office/issues/185)) ([bca2e70](https://github.com/mrsimpson/agentic-office/commit/bca2e708522d8ec236b8cd5295d92bc81ed5f178))
+* only participants, the importer, tenant admins and stage links read a session ([#189](https://github.com/mrsimpson/agentic-office/issues/189)) ([6dedccd](https://github.com/mrsimpson/agentic-office/commit/6dedccdbb74fc73c7f8962e12d5da687b2ce84ec)), closes [#187](https://github.com/mrsimpson/agentic-office/issues/187) [#179](https://github.com/mrsimpson/agentic-office/issues/179)
+* **portal:** read one session: minutes, decisions, tasks, notes and transcript ([#191](https://github.com/mrsimpson/agentic-office/issues/191)) ([3b0a9a1](https://github.com/mrsimpson/agentic-office/commit/3b0a9a1eb46bdc1fadc5d15726799e15b7ff1b80)), closes [#188](https://github.com/mrsimpson/agentic-office/issues/188) [#179](https://github.com/mrsimpson/agentic-office/issues/179)
+* **portal:** release status, staged artifacts, release and objection; refuse quotes off the record ([#223](https://github.com/mrsimpson/agentic-office/issues/223)) ([6550891](https://github.com/mrsimpson/agentic-office/commit/655089108a59371a348e74c88c696665bbcf9e3b))
+* **portal:** show the wiki of a tenant with index, references and search ([#236](https://github.com/mrsimpson/agentic-office/issues/236)) ([8c12b47](https://github.com/mrsimpson/agentic-office/commit/8c12b473918ed4beb0a3aaff6c173b4f15ffec07)), closes [#208](https://github.com/mrsimpson/agentic-office/issues/208)
+* **records:** staged minutes, notes and decisions, with stubs ([#216](https://github.com/mrsimpson/agentic-office/issues/216)) ([0a655eb](https://github.com/mrsimpson/agentic-office/commit/0a655eb6ee6e831bc1dd21a673556d6280af19df))
+* **records:** store notes as Markdown with front matter and tags ([#210](https://github.com/mrsimpson/agentic-office/issues/210)) ([62a0b21](https://github.com/mrsimpson/agentic-office/commit/62a0b211640cea5db029c3539882ee0902e6537e))
+* **session:** release status, release and objection, durable deadlines ([#214](https://github.com/mrsimpson/agentic-office/issues/214)) ([88a093a](https://github.com/mrsimpson/agentic-office/commit/88a093a7a0625921e2a26b3f9f79cd45721aa566))
+* show the activity of agents on the stage (dec-agent-activity) ([#178](https://github.com/mrsimpson/agentic-office/issues/178)) ([3516c9e](https://github.com/mrsimpson/agentic-office/commit/3516c9ee39c2bd1c07552aeb2fd26fec28431944))
+* stage documents and slide decks of a session, with stubs ([#218](https://github.com/mrsimpson/agentic-office/issues/218)) ([3771ff0](https://github.com/mrsimpson/agentic-office/commit/3771ff0ca9f054a6eeb71a5a33178d98efe1dc75))
+* the portal replaces the admin view (dec-web-portal) ([#181](https://github.com/mrsimpson/agentic-office/issues/181)) ([2938f69](https://github.com/mrsimpson/agentic-office/commit/2938f690d67f977b30d1186cc4f1499d546ff89e))
+* **wiki:** give the trust data of an artifact to the portal ([#247](https://github.com/mrsimpson/agentic-office/issues/247)) ([3af7d98](https://github.com/mrsimpson/agentic-office/commit/3af7d9804e525f4f8cb29a654f03e67416adc7e0)), closes [#235](https://github.com/mrsimpson/agentic-office/issues/235)
+* **wiki:** wiki part with index, backlinks, broken links, search and ingest queue ([#234](https://github.com/mrsimpson/agentic-office/issues/234)) ([3fb9ed0](https://github.com/mrsimpson/agentic-office/commit/3fb9ed09d5791cc4e706f01af3616d15e8344951))
+
+
+### Bug fixes
+
+* **archive:** release replaces a path only where it holds the recorded stub ([#233](https://github.com/mrsimpson/agentic-office/issues/233)) ([9284ebd](https://github.com/mrsimpson/agentic-office/commit/9284ebd65476d554dbba3b20e1d38eb075bc3755))
+* **hub:** check the start before writing, refuse a certificate that misses a host ([#186](https://github.com/mrsimpson/agentic-office/issues/186)) ([503e0d9](https://github.com/mrsimpson/agentic-office/commit/503e0d959f00169d66de640043efa236b0547c59)), closes [#182](https://github.com/mrsimpson/agentic-office/issues/182)
+* **session:** refuse a release because of quotes with an error ([#232](https://github.com/mrsimpson/agentic-office/issues/232)) ([03fb05d](https://github.com/mrsimpson/agentic-office/commit/03fb05d3dcd030a16add25ef8caae9a314d7cd9f)), closes [#230](https://github.com/mrsimpson/agentic-office/issues/230)
+
+
+### Documentation
+
+* add the office-assistant skill ([3b9eb4d](https://github.com/mrsimpson/agentic-office/commit/3b9eb4ddd2fb724cb19fa763f0be3f7abc153b34))
+* **architecture:** a wiki of the tenant and the release of what a session creates ([#196](https://github.com/mrsimpson/agentic-office/issues/196)) ([c5f0357](https://github.com/mrsimpson/agentic-office/commit/c5f0357d6653193092a006c66bf6e94061bd1384))
+* **architecture:** model the skills as a building block ([b6757aa](https://github.com/mrsimpson/agentic-office/commit/b6757aa63d918310a8e3ea4c42c9d87761e2bc9b))
+* **architecture:** name the hints in the CLI and the MCP tools ([#225](https://github.com/mrsimpson/agentic-office/issues/225)) ([8098fd7](https://github.com/mrsimpson/agentic-office/commit/8098fd76b82aa6a53695ea99ffde89bcb50cf296)), closes [#205](https://github.com/mrsimpson/agentic-office/issues/205)
+* move the link example of the user guide into a code block ([#227](https://github.com/mrsimpson/agentic-office/issues/227)) ([5d7d1af](https://github.com/mrsimpson/agentic-office/commit/5d7d1af11cee2e2a52c0786de471bea160cff64d)), closes [#226](https://github.com/mrsimpson/agentic-office/issues/226)
+
 ## [0.2.0](https://github.com/mrsimpson/agentic-office/compare/v0.1.2...v0.2.0) (2026-11-16)
 
 
