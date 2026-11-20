@@ -132,11 +132,12 @@
 //     passed while the hub was down are due at start. A failed release is tried again after a
 //     few seconds. Before a human releases, findQuotes searches the staged files for the
 //     sentences off the record, as raw text (case and white space ignored, at least three words).
-//     While it finds any, ReleaseSession writes no event and answers with the places and a quote
-//     token: an HMAC, keyed from the signing key of the hub, over the session and each place with
-//     the sentence it quotes. A request whose accept_quotes equals the token of a new search
-//     releases; nothing is changed. When a deadline comes while a session with humans has quotes,
-//     releaseDue holds it instead: release.objected with an empty actor and the command ID
+//     While it finds any, ReleaseSession writes no event and fails with failed_precondition and a
+//     QuoteRefusal detail (RefusalError) with the places and a quote token: an HMAC, keyed from
+//     the signing key of the hub, over the session and each place with the sentence it quotes. A
+//     refusal stores nothing, so a request (also with the same command ID) whose accept_quotes
+//     equals the token of a new search releases; nothing is changed. When a deadline comes while
+//     a session with humans has quotes, releaseDue holds it instead: release.objected with an empty actor and the command ID
 //     HubHoldCommandID, and the area records it. GetRelease returns the status, the staged paths
 //     (storage.Staging.List) and the release commit (storage.Staging.Released).
 //   - NoteArtifact accepts every participant who took part (state.tookPart), the same rule as

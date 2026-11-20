@@ -265,11 +265,11 @@ type SessionCommandsServiceClient interface {
 	// it answers and completes the move after a restart.
 	//
 	// Before it releases, the hub searches the staged files for word-for-word quotes of sentences
-	// off the record. While it finds any, it refuses: it appends no event and answers without a
-	// result, with the places and a quote token. The caller releases anyway with the same command
-	// again and accept_quotes set to that token. The hub searches again and releases only if the
-	// search gives the same token; otherwise it refuses again with the new places and token. The
-	// hub changes no content.
+	// off the record. While it finds any, it refuses with failed_precondition and a QuoteRefusal
+	// error detail: the places and a quote token. It appends no event and does not remember the
+	// command as done. The caller releases anyway with the same command again and accept_quotes
+	// set to that token. The hub searches again and releases only if the search gives the same
+	// token; otherwise it refuses again with the new places and token. The hub changes no content.
 	ReleaseSession(context.Context, *commandsapi.ReleaseSessionRequest) (*commandsapi.ReleaseSessionResponse, error)
 	// ObjectToRelease holds the release of an ended session (concept-session-release): it appends
 	// release.objected, and the hub does not release the session when its grace period ends. Only a
@@ -349,11 +349,11 @@ type SessionCommandsServiceHandler interface {
 	// it answers and completes the move after a restart.
 	//
 	// Before it releases, the hub searches the staged files for word-for-word quotes of sentences
-	// off the record. While it finds any, it refuses: it appends no event and answers without a
-	// result, with the places and a quote token. The caller releases anyway with the same command
-	// again and accept_quotes set to that token. The hub searches again and releases only if the
-	// search gives the same token; otherwise it refuses again with the new places and token. The
-	// hub changes no content.
+	// off the record. While it finds any, it refuses with failed_precondition and a QuoteRefusal
+	// error detail: the places and a quote token. It appends no event and does not remember the
+	// command as done. The caller releases anyway with the same command again and accept_quotes
+	// set to that token. The hub searches again and releases only if the search gives the same
+	// token; otherwise it refuses again with the new places and token. The hub changes no content.
 	ReleaseSession(context.Context, *commandsapi.ReleaseSessionRequest) (*commandsapi.ReleaseSessionResponse, error)
 	// ObjectToRelease holds the release of an ended session (concept-session-release): it appends
 	// release.objected, and the hub does not release the session when its grace period ends. Only a

@@ -30,9 +30,15 @@ const (
 	CodeError     = "error"
 )
 
-// ErrorJSON is the result of a failed tool: {"error":{"code":…,"message":…}}.
-func ErrorJSON(code, message string) map[string]any {
-	return map[string]any{"error": map[string]string{"code": code, "message": message}}
+// ErrorJSON is the result of a failed tool: {"error":{"code":…,"message":…}}. detail adds
+// fields to the error object, for example "quotes" and "quoteToken" of a release refused because
+// of quotes.
+func ErrorJSON(code, message string, detail map[string]any) map[string]any {
+	e := map[string]any{"code": code, "message": message}
+	for k, v := range detail {
+		e[k] = v
+	}
+	return map[string]any{"error": e}
 }
 
 func ptr[T any](v T) *T { return &v }
@@ -84,7 +90,7 @@ var MeetingEnd = &sdk.Tool{Name: "meeting_end", Title: "End the meeting for ever
 
 // SessionRelease is the tool session_release.
 var SessionRelease = &sdk.Tool{Name: "session_release", Title: "Release an ended session", Annotations: Additive,
-	Description: `Release what an ended session created: its staged minutes, notes, decisions, documents and slides move into the artifact repository of the tenant, which every member reads. Only a human who took part may release; an agent is refused. Only do this when your human tells you to. While a staged file repeats a sentence off the record word for word, the hub refuses and returns {"refused": true, "quotes": [{"path", "line", "utteranceEventId"}], "quoteToken"}: tell your human about every place. Only if your human then decides to release anyway, call session_release again with acceptQuotes set to quoteToken. A release returns {"event", "duplicate", "quotes"}, with the quotes that were accepted.`}
+	Description: `Release what an ended session created: its staged minutes, notes, decisions, documents and slides move into the artifact repository of the tenant, which every member reads. Only a human who took part may release; an agent is refused. Only do this when your human tells you to. While a staged file repeats a sentence off the record word for word, the hub refuses with an error: {"error": {"code": "failed_precondition", "message", "quotes": [{"path", "line", "utteranceEventId"}], "quoteToken"}}. Nothing is released then; tell your human about every place. Only if your human then decides to release anyway, call session_release again with acceptQuotes set to quoteToken. A release returns {"event", "duplicate", "quotes"}, with the quotes that were accepted.`}
 
 // SessionHold is the tool session_hold.
 var SessionHold = &sdk.Tool{Name: "session_hold", Title: "Hold the release of an ended session", Annotations: Additive,

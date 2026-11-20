@@ -109,9 +109,9 @@ type Client interface {
 	// session (concept-session-release).
 	EndSession(ctx context.Context, sessionID string) (*sessioncommandsv1.EndSessionResponse, error)
 	// ReleaseSession releases what an ended session staged. Only a human who took part may. While
-	// a staged file quotes a sentence off the record word for word, the hub refuses: the answer
-	// has no result, but the places and a quote token. acceptQuotes is such a token: with it, the
-	// hub releases as long as the quotes have not changed.
+	// a staged file quotes a sentence off the record word for word, the hub refuses with an error
+	// that holds the places and a quote token (RefusalOf). acceptQuotes is such a token: with it,
+	// the hub releases as long as the quotes have not changed.
 	ReleaseSession(ctx context.Context, sessionID, acceptQuotes string) (*sessioncommandsv1.ReleaseSessionResponse, error)
 	// ObjectToRelease holds the release of an ended session until a human releases it.
 	ObjectToRelease(ctx context.Context, sessionID string) (*sessioncommandsv1.CommandResult, error)

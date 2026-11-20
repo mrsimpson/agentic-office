@@ -83,35 +83,44 @@ func EndJSON(res *sessioncommandsv1.EndSessionResponse) map[string]any {
 
 // ReleaseJSON is the output of a release: {"event", "duplicate", "quotes": [{"path", "line",
 // "utteranceEventId"}]}. A quote is a place where a staged file quotes a sentence off the record
-// word for word. A release that the hub refused because of quotes is {"refused": true, "quotes",
-// "quoteToken"}: the places, and the token that releases anyway.
+// word for word, here one that the release accepted.
 func ReleaseJSON(res *sessioncommandsv1.ReleaseSessionResponse) map[string]any {
-	quotes := []map[string]any{}
-	for _, q := range res.GetQuotes() {
-		quotes = append(quotes, map[string]any{"path": q.GetPath(), "line": q.GetLine(), "utteranceEventId": q.GetUtteranceEventId()})
-	}
-	if Refused(res) {
-		return map[string]any{"refused": true, "quotes": quotes, "quoteToken": res.GetQuoteToken()}
-	}
 	out := ResultJSON(res.GetResult())
-	out["quotes"] = quotes
+	out["quotes"] = quotesJSON(res.GetQuotes())
 	return out
 }
 
-// Refused reports whether the hub refused a release because staged files quote sentences off the
-// record.
-func Refused(res *sessioncommandsv1.ReleaseSessionResponse) bool {
-	return res.GetResult() == nil && res.GetQuoteToken() != ""
+func quotesJSON(qs []*sessioncommandsv1.Quote) []map[string]any {
+	quotes := []map[string]any{}
+	for _, q := range qs {
+		quotes = append(quotes, map[string]any{"path": q.GetPath(), "line": q.GetLine(), "utteranceEventId": q.GetUtteranceEventId()})
+	}
+	return quotes
+}
+
+// RefusalOf returns the places and the quote token of a release that the hub refused because
+// staged files quote sentences off the record, or nil when err is no such refusal.
+func RefusalOf(err error) *sessioncommandsv1.QuoteRefusal { return sessioncommandsv1.RefusalOf(err) }
+
+// ErrorDetailJSON returns the fields that the error object of err adds to "code" and "message":
+// for a release refused because of quotes, "quotes": [{"path", "line", "utteranceEventId"}] and
+// "quoteToken", the token that releases anyway. For other errors it returns nil.
+func ErrorDetailJSON(err error) map[string]any {
+	r := RefusalOf(err)
+	if r == nil {
+		return nil
+	}
+	return map[string]any{"quotes": quotesJSON(r.GetQuotes()), "quoteToken": r.GetQuoteToken()}
 }
 
 // RefusalText tells a human why the hub refused a release and how to release anyway.
-func RefusalText(sessionID string, res *sessioncommandsv1.ReleaseSessionResponse) string {
+func RefusalText(sessionID string, r *sessioncommandsv1.QuoteRefusal) string {
 	var b strings.Builder
 	b.WriteString("The release is refused: staged files quote sentences that are off the record, word for word.\n")
-	for _, q := range res.GetQuotes() {
+	for _, q := range r.GetQuotes() {
 		fmt.Fprintf(&b, "  %s\n", QuoteLine(q))
 	}
-	fmt.Fprintf(&b, "Correct these files, or release anyway with:\n  office session release %s --accept-quotes %s\n", sessionID, res.GetQuoteToken())
+	fmt.Fprintf(&b, "Correct these files, or release anyway with:\n  office session release %s --accept-quotes %s\n", sessionID, r.GetQuoteToken())
 	return b.String()
 }
 

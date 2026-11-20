@@ -214,9 +214,9 @@ func errorCode(err error) string {
 }
 
 // errorResult is a tool result with IsError set and the error object as text and as structured
-// content.
-func errorResult(code, msg string) *sdk.CallToolResult {
-	v := tools.ErrorJSON(code, msg)
+// content. detail adds fields to the error object (tools.ErrorJSON).
+func errorResult(code, msg string, detail map[string]any) *sdk.CallToolResult {
+	v := tools.ErrorJSON(code, msg, detail)
 	b, _ := json.Marshal(v)
 	return &sdk.CallToolResult{IsError: true, Content: []sdk.Content{&sdk.TextContent{Text: string(b)}}, StructuredContent: v}
 }
@@ -225,7 +225,7 @@ func errorResult(code, msg string) *sdk.CallToolResult {
 func okResult(v any) *sdk.CallToolResult {
 	b, err := json.Marshal(v)
 	if err != nil {
-		return errorResult(tools.CodeError, err.Error())
+		return errorResult(tools.CodeError, err.Error(), nil)
 	}
 	return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: string(b)}}, StructuredContent: json.RawMessage(b)}
 }
@@ -248,6 +248,6 @@ func inputErrors(next sdk.MethodHandler) sdk.MethodHandler {
 				msg = t.Text
 			}
 		}
-		return errorResult(tools.CodeUsage, msg), nil
+		return errorResult(tools.CodeUsage, msg, nil), nil
 	}
 }

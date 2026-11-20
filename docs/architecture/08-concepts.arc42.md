@@ -467,8 +467,8 @@ neutral one.
 4. Before every release, the meeting session searches the staged files for sentences off the
    record, word for word: sentences of at least three words, with case and spaces ignored. It
    holds the originals, and they never leave it. While it finds a quote, a release by a human is
-   refused and creates no event. The answer lists the places (file, line, event of the sentence)
-   and a token over the session and the exact quotes. The human corrects the files, or releases
+   refused with an error and creates no event. The error lists the places (file, line, event of
+   the sentence) and a token over the session and the exact quotes. The human corrects the files, or releases
    anyway with the token; the release goes through only if a new search gives the same token. If
    the grace period ends while quotes exist, the hub holds the session, so only a human can
    release it. A session without humans is released at its end all the same: nobody could confirm

@@ -906,9 +906,11 @@ office session release weekly --accept-quotes <token>   # release despite quotes
   --file plan.md`.
 - **Quotes off the record.** Before every release, the hub searches the staged files for
   sentences that are off the record, word for word (sentences of at least three words; case and
-  spaces do not count). If it finds one, it refuses the release. `office session release` then
-  prints each place (file, line and the event of the sentence, never the sentence) and a token,
-  and exits with 1. Correct the files and release again, or release anyway with
+  spaces do not count). If it finds one, it refuses the release with an error, and nothing is
+  released. `office session release` then prints each place (file, line and the event of the
+  sentence, never the sentence) and a token, and exits with 1. With `--json` it prints an error
+  object with the code `failed_precondition`, the places (`quotes`) and the token (`quoteToken`);
+  the MCP tool `session_release` returns the same error. Correct the files and release again, or release anyway with
   `--accept-quotes <token>`. The hub searches again and releases only if it finds exactly the same
   quotes; if a staged file changed in between, you get new places and a new token. The hub changes
   no content.

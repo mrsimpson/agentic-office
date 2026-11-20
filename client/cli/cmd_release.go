@@ -60,19 +60,20 @@ func cmdMeetingEnd(e *env, fs *flag.FlagSet) func([]string) error {
 		}
 		rel, err := c.ReleaseSession(e.ctx, sid, "")
 		if err != nil {
-			return fmt.Errorf("the session has ended, but the release failed: %w", err)
+			err = fmt.Errorf("the session has ended, but the release failed: %w", err)
+			if !e.json {
+				_ = e.printResult(end.GetResult())
+			}
+			return e.releaseFailed(sid, err)
 		}
 		if e.json {
 			out := coreapi.EndJSON(end)
 			out["released"] = coreapi.ReleaseJSON(rel)
 			e.printJSON(out)
-			if coreapi.Refused(rel) {
-				return errRefused
-			}
 			return nil
 		}
 		_ = e.printResult(end.GetResult())
-		return e.printRelease(sid, rel)
+		return e.printRelease(rel)
 	}
 }
 
@@ -91,16 +92,13 @@ func cmdSessionRelease(e *env, fs *flag.FlagSet) func([]string) error {
 		}
 		rel, err := c.ReleaseSession(e.ctx, sid, *accept)
 		if err != nil {
-			return err
+			return e.releaseFailed(sid, err)
 		}
 		if e.json {
 			e.printJSON(coreapi.ReleaseJSON(rel))
-			if coreapi.Refused(rel) {
-				return errRefused
-			}
 			return nil
 		}
-		return e.printRelease(sid, rel)
+		return e.printRelease(rel)
 	}
 }
 
@@ -128,17 +126,24 @@ func cmdSessionHold(e *env, fs *flag.FlagSet) func([]string) error {
 }
 
 // printRelease prints the result of a release and every quote of a sentence off the record that
-// it accepted, or the refusal because of quotes. A refusal returns errRefused.
-func (e *env) printRelease(sid string, rel *sessioncommandsv1.ReleaseSessionResponse) error {
-	if coreapi.Refused(rel) {
-		fmt.Fprint(e.stdout, coreapi.RefusalText(sid, rel))
-		return errRefused
-	}
+// it accepted.
+func (e *env) printRelease(rel *sessioncommandsv1.ReleaseSessionResponse) error {
 	_ = e.printResult(rel.GetResult())
 	for _, q := range rel.GetQuotes() {
 		fmt.Fprintf(e.stdout, "accepted: %s\n", coreapi.QuoteLine(q))
 	}
 	return nil
+}
+
+// releaseFailed returns the error of a failed release. Without --json, it prints a refusal
+// because of quotes, with the places and the command that releases anyway, and returns
+// errRefused. With --json, the error object carries the places and the token.
+func (e *env) releaseFailed(sid string, err error) error {
+	if r := coreapi.RefusalOf(err); r != nil && !e.json {
+		fmt.Fprint(e.stdout, coreapi.RefusalText(sid, r))
+		return errRefused
+	}
+	return err
 }
 
 // errRefused ends a command whose refusal is printed already. It exits with an error and prints
