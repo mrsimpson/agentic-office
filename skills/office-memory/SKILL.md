@@ -99,7 +99,8 @@ says. Write a note with your proposed change, link the page, and name the owner.
    you take it on. If someone already said so, leave it to them.
 2. After the meeting, wait until a human released its records (or the hub released them after the
    grace period). Then read the new sources: the minutes, the decisions and the notes of the
-   session. Never ingest a record whose release status is `pending` or `held`.
+   session. What is not released yet is only in the staging area of the session, not in your clone; never
+   ingest it.
 3. For every customer, project, person or topic they touch, find its page. Update it, or create
    it if none exists. One meeting often touches several pages.
 4. Cite the sources in each page, link the pages to each other, and update the overview page of
