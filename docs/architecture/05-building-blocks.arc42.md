@@ -724,6 +724,15 @@ The session logs of a tenant lie in their own repository, which only the meeting
 (`dec-off-the-record`), so no interface for participants reaches that repository: Git access does
 not serve it, and the archive does not read from it for them.
 
+What a session has not released lies in a third repository of the tenant, the staging repository
+(`dec-staging-repository`). It has the layout of the artifact repository and one area for each
+session that is not released: the staged files, the readers of the session and the state of its
+release. Git access does not serve it either. The release moves an area into the artifact
+repository in one commit, in which each file replaces its stub. The author of that commit is the
+human who released, or the hub, and the authors of the files are its co-authors. The commit names
+the session, and each step of a release is recorded, so a release that a restart cut off is
+completed and never done twice. The archive moves the files without reading their content.
+
 ```arc42
 :::building-block
 id: bb-archive
@@ -759,12 +768,27 @@ path: hub/archive/api
 
 The in-process interface of the archive: write a set of files as one commit, and list and read
 files as they are in the current commit, and list every name that ever lay in a directory, so that
-a part never gives a number again that a removed file had. The archive keeps two git repositories for each tenant, one for its artifacts and one for its
-session logs, and one for the hub itself, for the users, the tenants, the memberships and the system admins. Each
-repository has its own commit queue, so one tenant does not hold up another. A tenant repository is
-created with the tenant and stays when the tenant is removed. The artifact repository of a tenant
+a part never gives a number again that a removed file had. A change can also remove files. The
+archive keeps three git repositories for each tenant: one for its artifacts, one for its session
+logs and one for what sessions have not released (the staging repository). It keeps one more for
+the hub itself, for the users, the tenants, the memberships and the system admins. Each
+repository has its own commit queue, so one tenant does not hold up another. The repositories of a
+tenant are created with the tenant and stay when the tenant is removed. The artifact repository of a tenant
 starts with one first commit that holds no artifact, so the branch main exists from the start and
 every clone has something to follow (`dec-artifact-sync`).
+
+For the staging repository, a caller works on the area of a session:
+
+- open the area and write its readers and the state of its release (the deadline, and whether an
+  objection holds it);
+- write, change and remove files in the area, each change in one commit; a path belongs to one
+  area only;
+- read and list the files of an area, and list every area with its state;
+- release the area: close it for writes, move its files into the artifact repository in one
+  commit, then remove the area. A file replaces the stub at its path, and the stub of a removed
+  file goes away. A release that a restart cut off is completed by the next call.
+
+The stubs themselves belong to the parts of the types, not to the archive.
 
 ```arc42
 :::interface
@@ -820,6 +844,8 @@ The in-process interface for the parts of the hub that keep files of the archive
 records, tasks and slides parts). A part asks for the changes of the artifact repository of its
 tenant and gets the same changes that a participant gets through the changes stream: the
 artifacts that were created, changed or removed, after a commit of the archive or after a push.
+A part follows the staging repository of its tenant the same way: it gets the staged artifacts
+that were created, changed or removed, and nothing of the state of the areas.
 It needs no token. The part reloads the files that changed. A part that is slow never holds up a
 commit: the rule for the followers of the stream holds here too.
 

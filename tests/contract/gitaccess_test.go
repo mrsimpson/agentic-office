@@ -288,3 +288,47 @@ func TestGitAccessServesNoSessionLogs(t *testing.T) {
 		t.Error("an object of the clone holds the off-the-record sentence")
 	}
 }
+
+// Git access never serves the staging repository of a tenant (dec-staging-repository): a clone
+// holds nothing that is staged, and no address leads to the staging repository.
+func TestGitAccessServesNoStaging(t *testing.T) {
+	srv := contracttest.StartHub(t, nil)
+	ada := srv.Participant(t, "ada", "Ada", human)
+	staging := srv.TenantStagingDir(contracttest.DefaultTenant)
+	if _, err := os.Stat(filepath.Join(staging, "HEAD")); err != nil {
+		t.Fatalf("the tenant has no staging repository: %v", err)
+	}
+	// No part writes the staging repository yet, so the test puts a staged file there itself.
+	const secret = "Staged and not released."
+	contracttest.Edit(t, staging, "stage", func(work string) {
+		contracttest.WriteFile(t, work, "notes/000001.md", secret+"\n")
+	})
+
+	helper, work := gitHelper(t), t.TempDir()
+	clone := filepath.Join(work, "c")
+	if out, code := gitAs(t, srv, helper, tokenOf(t, ada), work, "clone", "-q", gitURL(srv, contracttest.DefaultTenant), clone); code != 0 {
+		t.Fatalf("clone: %d\n%s", code, out)
+	}
+	if objects := contracttest.Git(t, clone, "cat-file", "--batch-all-objects", "--batch"); strings.Contains(objects, secret) {
+		t.Error("the clone holds a staged file")
+	}
+	hc := srv.HTTPClient(t)
+	tenant := contracttest.DefaultTenant
+	for _, p := range []string{
+		"/git/staging/info/refs?service=git-upload-pack",
+		"/git/" + tenant + "/../../staging/" + tenant + "/info/refs?service=git-upload-pack",
+		"/git/%2e%2e/staging/" + tenant + "/info/refs?service=git-upload-pack",
+		"/git/" + tenant + "/staging/info/refs?service=git-upload-pack",
+	} {
+		req, _ := http.NewRequest(http.MethodGet, srv.URL+p, nil)
+		req.SetBasicAuth("office", tokenOf(t, ada))
+		res, err := hc.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != http.StatusNotFound {
+			t.Errorf("GET %s: status %d, want 404", p, res.StatusCode)
+		}
+	}
+}
