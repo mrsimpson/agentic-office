@@ -178,6 +178,10 @@ hub over everything up to it, so a subscriber always holds a signed head over it
 (`dec-signed-head-in-stream`). A cursor beyond the end of the log means that the hub lost events;
 the subscriber then offers its copy.
 
+The live stream ends with the end of the session. The events that an ended session still takes
+(changes of the release status, notices about artifacts and marks off the record) come only with a
+one-time request for the events after a cursor (`dec-session-end-milestone`).
+
 The interface owns the event log: the event types, the signed tree head and the code that builds
 and verifies the Merkle tree (`dec-merkle-log`). The other interfaces return events and tree heads
 of these types. The stored form of a session log is the same as the local one
