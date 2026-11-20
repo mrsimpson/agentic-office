@@ -353,7 +353,9 @@ sequenceDiagram
 A participant commits in a worktree and pushes the branch main with plain Git. Git access checks
 the token and the tenant before Git reads the upload. Then Git runs the rules of Git access on the
 new commits. The artifacts part passes the check of a changed file to the part of the hub that owns its
-schema; the diagram shows the records part. When all of them hold, Git moves main in one step, and Git access tells the archive,
+schema; the diagram shows the records part. For a file that the push changes or removes, Git
+access also asks the artifacts part whether the old file is the stub of a staged artifact, and
+refuses the push if it is. When all of them hold, Git moves main in one step, and Git access tells the archive,
 which tells the clients that follow the tenant. A push that breaks a rule is refused as a whole and
 shows the reason. A push on an old base is refused by Git, and the participant fetches and merges
 by hand first.
@@ -363,7 +365,7 @@ by hand first.
 id: rs-git-push
 title: Participant pushes a change with Git
 trigger: A participant pushes the branch main of the tenant repository
-involves: bb-git-access, bb-identity, bb-artifacts, bb-records, bb-tasks, bb-slides, bb-archive, bb-sync, bb-participant-client, bb-office-hub
+involves: bb-git-access, bb-identity, bb-artifacts, bb-records, bb-tasks, bb-slides, bb-documents, bb-archive, bb-sync, bb-participant-client, bb-office-hub
 :::
 ```
 
@@ -393,6 +395,8 @@ sequenceDiagram
     bb_artifacts->>bb_records: pass the check to the owner of the schema, here a record type
     bb_records-->>bb_artifacts: valid, or invalid with reasons
     bb_artifacts-->>bb_git_access: the answer of the owner
+    bb_git_access->>bb_artifacts: is the old file of a changed or removed path a stub?
+    bb_artifacts-->>bb_git_access: the owner of its schema recognises its stub, or not
     Note over bb_git_access: Git moves main in one step, or the push is refused with the reason
     bb_git_access->>bb_archive: main moved
     bb_archive-->>bb_records: changed artifacts, the part reloads its files

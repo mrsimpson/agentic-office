@@ -4,13 +4,13 @@
 //
 // How it works:
 //
-//   - The block owns no schema. Each part that owns artifact types names its schemas and checks
-//     its files through its own check interface (if-records-check, if-tasks-check,
-//     if-slides-check).
+//   - The block owns no schema. Each part that owns artifact types names its schemas, checks its
+//     files and recognises the stubs of its types through its own check interface
+//     (if-records-check, if-tasks-check, if-slides-check, if-documents-check).
 //   - The list parts holds one line for each of these parts. A new type needs a check in its own
 //     part and one line in this list. Two parts that name the same schema stop the start of the
 //     program, because the owner would be unclear.
-//   - Owner finds the check of a schema by its name. The interface of the block (package check,
+//   - Owner finds the part of a schema by its name. The interface of the block (package check,
 //     if-artifact-check) reads the schema name that a file names, asks Owner and passes the file
 //     on.
 package artifacts
@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"slices"
 
+	documentscheck "github.com/mrsimpson/agentic-office/hub/documents/check"
 	recordscheck "github.com/mrsimpson/agentic-office/hub/records/check"
 	slidescheck "github.com/mrsimpson/agentic-office/hub/slides/check"
 	taskscheck "github.com/mrsimpson/agentic-office/hub/tasks/check"
@@ -28,38 +29,51 @@ import (
 // plain words, or nothing when the file is valid.
 type Check func(schema, path string, content []byte) []string
 
-// part is a part of the hub that owns schemas.
-type part struct {
-	name     string
-	schemas  func() []string
-	validate Check
+// StubCheck reports whether content is the stub of a staged artifact of the schema
+// (concept-session-release).
+type StubCheck func(schema string, content []byte) bool
+
+// Part is what the artifacts part knows of a part of the hub that owns schemas.
+type Part struct {
+	Name     string
+	Validate Check
+	IsStub   StubCheck
 }
+
+type entry struct {
+	Part
+	schemas func() []string
+}
+
+// noStubs is the stub check of a part whose types are never staged.
+func noStubs(string, []byte) bool { return false }
 
 // parts is the fixed list of the owners of schemas. A new type adds one line.
-var parts = []part{
-	{"records", recordscheck.Schemas, recordscheck.Validate},
-	{"tasks", taskscheck.Schemas, taskscheck.Validate},
-	{"slides", slidescheck.Schemas, slidescheck.Validate},
+var parts = []entry{
+	{Part{"records", recordscheck.Validate, recordscheck.IsStub}, recordscheck.Schemas},
+	{Part{"tasks", taskscheck.Validate, noStubs}, taskscheck.Schemas},
+	{Part{"slides", slidescheck.Validate, func(_ string, c []byte) bool { return slidescheck.IsStub(c) }}, slidescheck.Schemas},
+	{Part{"documents", documentscheck.Validate, func(_ string, c []byte) bool { return documentscheck.IsStub(c) }}, documentscheck.Schemas},
 }
 
-// owners maps the name of a schema to the check of the part that owns it.
-var owners = func() map[string]Check {
-	m := map[string]Check{}
+// owners maps the name of a schema to the part that owns it.
+var owners = func() map[string]Part {
+	m := map[string]Part{}
 	for _, p := range parts {
 		for _, s := range p.schemas() {
-			if _, dup := m[s]; dup {
-				panic(fmt.Sprintf("artifacts: the schema %q has more than one owner (%s is one of them)", s, p.name))
+			if o, dup := m[s]; dup {
+				panic(fmt.Sprintf("artifacts: the schema %q has more than one owner (%s and %s)", s, o.Name, p.Name))
 			}
-			m[s] = p.validate
+			m[s] = p.Part
 		}
 	}
 	return m
 }()
 
-// Owner returns the check of the part that owns the schema, and false if no part owns it.
-func Owner(schema string) (Check, bool) {
-	c, ok := owners[schema]
-	return c, ok
+// Owner returns the part that owns the schema, and false if no part owns it.
+func Owner(schema string) (Part, bool) {
+	p, ok := owners[schema]
+	return p, ok
 }
 
 // Schemas returns the names of all schemas that a part owns, sorted.

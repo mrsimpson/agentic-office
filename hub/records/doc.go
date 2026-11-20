@@ -68,7 +68,8 @@
 //     repository at once, with the title, the ID and the first 60 characters of its text as the
 //     message. The staging area keeps the name before the stub is written; a crash in between
 //     leaves a staged record without a stub, and Open writes the stub. A stub whose path a push
-//     took first takes the staged file back, and the record gets the next ID.
+//     took first takes the staged file back (storage.Staging.TakeBack), so the area forgets the
+//     name and the release leaves the pushed file alone, and the record gets the next ID.
 //   - The meeting session stores the minutes while it holds the lock of the session. StoreMinutes
 //     therefore never asks the meeting session; it stages the minutes at once. All other calls
 //     ask the meeting session before they take a lock of the part, so the two never wait for

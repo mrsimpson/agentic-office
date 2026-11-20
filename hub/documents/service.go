@@ -6,9 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"path"
 	"slices"
-	"strings"
 	"sync"
 	"unicode/utf8"
 
@@ -22,9 +20,6 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/session/notice"
 	"github.com/mrsimpson/agentic-office/hub/session/release"
 )
-
-// Dir is the directory of the text documents in the archive.
-const Dir = "documents"
 
 // maxContent is the largest content of a document in bytes.
 const maxContent = 1 << 20
@@ -79,7 +74,7 @@ func Open(ctx context.Context, opts Options) (*Service, error) {
 		return nil, fmt.Errorf("documents: read the staging areas: %w", err)
 	}
 	for _, a := range areas {
-		files, err := opts.Staging.Read(ctx, a.Session, Dir)
+		files, err := opts.Staging.Read(ctx, a.Session, check.Dir)
 		if errors.Is(err, storage.ErrNoArea) {
 			continue
 		}
@@ -406,9 +401,9 @@ func (s *Service) stage(ctx context.Context, c tokencheck.Caller, p, content, se
 		return nil // the stub is there
 	}
 	if err := s.writeStub(ctx, p); err != nil {
-		// Take the staged file back. A push that put a file at this path first keeps it.
-		if _, rerr := s.opts.Staging.Commit(ctx, sessionID, storage.Change{Message: "Take back " + p,
-			Files: []storage.File{{Path: p, Remove: true}}}); rerr != nil {
+		// Take the staged file back, and the area forgets the path. A push that put a file at this
+		// path first keeps it, also at the release.
+		if rerr := s.opts.Staging.TakeBack(ctx, sessionID, p); rerr != nil {
 			s.opts.Logf("documents: take back the staged %s: %v", p, rerr)
 		}
 		if storage.IsConflict(err) {
@@ -554,8 +549,8 @@ func checkPath(p string) error {
 	if err := storage.CheckPath(p); err != nil {
 		return invalid(err.Error())
 	}
-	if !strings.HasPrefix(p, Dir+"/") || path.Ext(p) != ".md" {
-		return invalid("the path of a document is " + Dir + "/<name>.md")
+	if reason := check.PathProblem(p); reason != "" {
+		return invalid(reason)
 	}
 	return nil
 }

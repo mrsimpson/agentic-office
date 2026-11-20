@@ -172,6 +172,7 @@ func (h *hook) checkFiles(oldID, newID string) []string {
 	var (
 		problems []string
 		changes  []change
+		olds     []change // the old state of every path that the push changes or removes
 	)
 	parts := strings.Split(string(out), "\x00")
 	for i := 0; i+1 < len(parts); i += 2 {
@@ -179,7 +180,10 @@ func (h *hook) checkFiles(oldID, newID string) []string {
 		if len(meta) < 5 {
 			break
 		}
-		newMode, newBlob, status, p := meta[1], meta[3], meta[4], parts[i+1]
+		oldBlob, newMode, newBlob, status, p := meta[2], meta[1], meta[3], meta[4], parts[i+1]
+		if !isZero(oldBlob) {
+			olds = append(olds, change{p, oldBlob})
+		}
 		if reason := pathProblem(p); reason != "" {
 			problems = append(problems, reason)
 			continue
@@ -193,10 +197,97 @@ func (h *hook) checkFiles(oldID, newID string) []string {
 		}
 		changes = append(changes, change{p, newBlob})
 	}
+	problems = append(problems, h.checkStubs(olds)...)
 	if len(changes) > h.maxFiles {
 		return append(problems, fmt.Sprintf("the push changes %d files; at most %d files may change in one push", len(changes), h.maxFiles))
 	}
 	return append(problems, h.checkContents(changes)...)
+}
+
+// checkStubs refuses every change or removal of a path whose old file is the stub of a staged
+// artifact. The artifact check decides what a stub is. A file larger than a file may be is never
+// read, because no stub is that large.
+func (h *hook) checkStubs(olds []change) []string {
+	blobs, err := h.readBlobs(olds)
+	if err != nil {
+		return []string{"the files could not be read: " + err.Error()}
+	}
+	var problems []string
+	for i, c := range olds {
+		if blobs[i].content != nil && check.IsStub(c.path, blobs[i].content) {
+			problems = append(problems, fmt.Sprintf("%s is the stub of an artifact that waits for the release of its session; a push cannot change or remove it. Fetch, restore the file as it is on origin/main, and push again", c.path))
+		}
+	}
+	return problems
+}
+
+// blob is a file as readBlobs read it: its size, and its content when it was read.
+type blob struct {
+	size    int64
+	content []byte // nil when the file is larger than a file may be, or missing
+}
+
+// readBlobs reads the files of cs with one Git process for the sizes and one for the contents. The
+// sizes come first, so a file larger than a file may be is never read.
+func (h *hook) readBlobs(cs []change) ([]blob, error) {
+	out := make([]blob, len(cs))
+	if len(cs) == 0 {
+		return out, nil
+	}
+	var in bytes.Buffer
+	for _, c := range cs {
+		in.WriteString(c.blob + "\n")
+	}
+	sizes, err := runGit(bytes.NewReader(in.Bytes()), "cat-file", "--batch-check=%(objectsize)")
+	if err != nil {
+		return nil, err
+	}
+	var small []int
+	for i, field := range strings.Fields(string(sizes)) {
+		if i >= len(cs) {
+			break
+		}
+		out[i].size, _ = strconv.ParseInt(field, 10, 64)
+		if out[i].size <= h.maxFile {
+			small = append(small, i)
+		}
+	}
+	if len(small) == 0 {
+		return out, nil
+	}
+	in.Reset()
+	for _, i := range small {
+		in.WriteString(cs[i].blob + "\n")
+	}
+	cmd := exec.Command("git", "cat-file", "--batch")
+	cmd.Stdin = bytes.NewReader(in.Bytes())
+	pipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	// After a read error the process may still wait to write; stop it, so that Wait returns.
+	defer func() { _ = cmd.Process.Kill(); _ = cmd.Wait() }()
+	r := bufio.NewReader(pipe)
+	for _, i := range small {
+		header, err := r.ReadString('\n')
+		if err != nil {
+			return nil, err
+		}
+		f := strings.Fields(header)
+		if len(f) != 3 {
+			continue // the object is missing
+		}
+		size, _ := strconv.Atoi(f[2])
+		content := make([]byte, size+1) // the content and the line feed that follows it
+		if _, err := io.ReadFull(r, content); err != nil {
+			return nil, err
+		}
+		out[i].content = content[:size]
+	}
+	return out, nil
 }
 
 // pathProblem returns why a path is not an artifact path, or "".
@@ -220,73 +311,28 @@ func pathProblem(p string) string {
 	}
 }
 
-// checkContents reads the new content of the files with one Git process and checks each file with
-// the artifact check. The sizes come first, so that a large file is never read.
+// checkContents reads the new content of the files and checks each file with the artifact check.
+// A new file with the content of a stub is refused: only the hub writes stubs.
 func (h *hook) checkContents(changes []change) []string {
-	if len(changes) == 0 {
-		return nil
-	}
-	blobs := func(cs []change) *bytes.Reader {
-		var in bytes.Buffer
-		for _, c := range cs {
-			in.WriteString(c.blob + "\n")
-		}
-		return bytes.NewReader(in.Bytes())
-	}
-	sizes, err := runGit(blobs(changes), "cat-file", "--batch-check=%(objectsize)")
+	blobs, err := h.readBlobs(changes)
 	if err != nil {
 		return []string{"the files could not be read: " + err.Error()}
 	}
-	var (
-		problems []string
-		small    []change
-	)
-	for i, field := range strings.Fields(string(sizes)) {
-		if i >= len(changes) {
-			break
-		}
-		n, _ := strconv.ParseInt(field, 10, 64)
-		if n > h.maxFile {
-			problems = append(problems, fmt.Sprintf("%s is %d bytes; a file may have at most %d bytes", changes[i].path, n, h.maxFile))
-			continue
-		}
-		small = append(small, changes[i])
-	}
-	if len(small) == 0 {
-		return problems
-	}
-	cmd := exec.Command("git", "cat-file", "--batch")
-	cmd.Stdin = blobs(small)
-	pipe, err := cmd.StdoutPipe()
-	if err != nil {
-		return append(problems, err.Error())
-	}
-	if err := cmd.Start(); err != nil {
-		return append(problems, err.Error())
-	}
-	r := bufio.NewReader(pipe)
-	for _, c := range small {
-		header, err := r.ReadString('\n')
-		if err != nil {
-			problems = append(problems, "the files could not be read: "+err.Error())
-			break
-		}
-		f := strings.Fields(header)
-		if len(f) != 3 {
+	var problems []string
+	for i, c := range changes {
+		switch b := blobs[i]; {
+		case b.size > h.maxFile:
+			problems = append(problems, fmt.Sprintf("%s is %d bytes; a file may have at most %d bytes", c.path, b.size, h.maxFile))
+		case b.content == nil:
 			problems = append(problems, fmt.Sprintf("%s: the content is missing", c.path))
-			continue
-		}
-		size, _ := strconv.Atoi(f[2])
-		content := make([]byte, size+1) // the content and the line feed that follows it
-		if _, err := io.ReadFull(r, content); err != nil {
-			problems = append(problems, "the files could not be read: "+err.Error())
-			break
-		}
-		for _, reason := range check.Validate(c.path, content[:size]) {
-			problems = append(problems, fmt.Sprintf("%s: %s", c.path, reason))
+		case check.IsStub(c.path, b.content):
+			problems = append(problems, fmt.Sprintf("%s has the content of the stub of an artifact; only the hub writes stubs", c.path))
+		default:
+			for _, reason := range check.Validate(c.path, b.content) {
+				problems = append(problems, fmt.Sprintf("%s: %s", c.path, reason))
+			}
 		}
 	}
-	_ = cmd.Wait()
 	return problems
 }
 
