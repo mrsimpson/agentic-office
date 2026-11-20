@@ -83,7 +83,7 @@ func Open(ctx context.Context, opts Options) (*Repo, error) {
 	}
 	// Only the hub writes the repository. Files that a hub left when it died during a commit
 	// would block every later commit.
-	for _, f := range []string{"refs/heads/main.lock", "HEAD.lock", "packed-refs.lock", indexFile} {
+	for _, f := range []string{"refs/heads/main.lock", "HEAD.lock", "packed-refs.lock", indexFile, indexFile + ".lock"} {
 		if err := os.Remove(filepath.Join(dir, filepath.FromSlash(f))); err == nil {
 			r.logf("archive: removed %s of an interrupted commit in %s", f, dir)
 		} else if !errors.Is(err, os.ErrNotExist) {

@@ -319,8 +319,8 @@ message GetReleaseResponse {
   bool may_release = 4;
   // unreleased are the paths of the staged files of a released session that the release did not
   // release because their path in the artifact repository holds another file, ordered. They stay
-  // in the staging area, and only who may read the session gets them. A participant moves such a
-  // file to a new path by hand, through the interface of its type.
+  // in the staging area, and only who may read the session gets them, until a participant discards
+  // them through the removal of the interface of their type.
   repeated string unreleased = 5;
 }
 
