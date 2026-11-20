@@ -39,7 +39,11 @@
 //     form carries a command ID, so a form sent twice has one effect. When the hub refuses a
 //     release because staged files quote sentences off the record, the page reads the places from
 //     the error detail and shows a form "Release anyway" that sends the refused command again
-//     with the quote token. A member who may not read the session
+//     with the quote token. Next to each artifact that the release kept back (unreleased of
+//     GetRelease), the page has a form "Discard" that posts to .../discard with the path and the
+//     version that the page read. It calls the removal of the interface of the type that the
+//     directory of the path names (decisions, minutes, notes, slides or documents) with the
+//     session; the part of the type decides. A member who may not read the session
 //     gets 404 from the session stream; for a released session the page then shows only the
 //     release: who released, the co-authors of the release commit and the released artifacts.
 //   - The wiki of a tenant (wiki.go, concept-wiki) asks the view of the wiki (if-wiki-api) with

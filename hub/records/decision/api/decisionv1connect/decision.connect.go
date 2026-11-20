@@ -99,6 +99,9 @@ type DecisionServiceClient interface {
 	ChangeDecision(context.Context, *api.ChangeDecisionRequest) (*api.ChangeDecisionResponse, error)
 	// RemoveDecision removes a staged decision, with the same rules as ChangeDecision. Its number
 	// is not used again; the stub goes away with the release of the session.
+	// It also removes a staged decision that the release of its session kept back because its path
+	// was taken: a participant of the session who names it may remove it from the staging area,
+	// and from then on everyone reads the file that holds the path.
 	RemoveDecision(context.Context, *api.RemoveDecisionRequest) (*api.RemoveDecisionResponse, error)
 }
 
@@ -124,6 +127,9 @@ type DecisionServiceHandler interface {
 	ChangeDecision(context.Context, *api.ChangeDecisionRequest) (*api.ChangeDecisionResponse, error)
 	// RemoveDecision removes a staged decision, with the same rules as ChangeDecision. Its number
 	// is not used again; the stub goes away with the release of the session.
+	// It also removes a staged decision that the release of its session kept back because its path
+	// was taken: a participant of the session who names it may remove it from the staging area,
+	// and from then on everyone reads the file that holds the path.
 	RemoveDecision(context.Context, *api.RemoveDecisionRequest) (*api.RemoveDecisionResponse, error)
 }
 

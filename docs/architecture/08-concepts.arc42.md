@@ -484,8 +484,11 @@ neutral one.
    while a crash had left the path without a stub. That artifact is not released: the release
    reports the conflict with the path and the session, and releases the rest. The artifact stays
    in the staging area with the readers of the session; the area stays closed, and the session
-   counts as released. Its readers see the artifact as "not released: the path is taken", and a
-   participant moves it to a new path by hand, through the interface of its type.
+   counts as released. Its readers see the artifact as "not released: the path is taken". Every
+   participant of the session may discard it, as they may remove an artifact before the release.
+   When the last kept artifact goes, the area and its list of readers go too. From then on,
+   everyone reads the file that holds the path. To keep the artifact, a participant first creates
+   it again at a new path through the interface of its type, then discards it.
 6. Every member sees the artifacts, and the wiki can ingest them. A record no longer changes; other
    artifacts change like any other.
 

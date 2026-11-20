@@ -1388,7 +1388,8 @@ moves the area of a session into the artifact repository in one commit; the auth
 and its time record by whom and when the artifacts were released. An artifact replaces its path
 only if the artifact repository still holds exactly the recorded stub there, or no file. A path
 that holds anything else keeps its file: the artifact stays in the staging area, and the release
-reports the conflict with the path and the session and releases the rest. The meeting session
+reports the conflict with the path and the session and releases the rest. A participant discards
+such an artifact through the archive; the area goes with the last one. The meeting session
 decides when a session is released, and the archive moves the files and compares versions without
 reading their content.
 
@@ -1402,7 +1403,7 @@ every release lies in the staging repository, so the timers survive a restart wi
 of their own. Every member sees the names of staged artifacts and when a session writes, but not
 their content. The release never replaces a file that is not the recorded stub, whatever the order
 of the writes and wherever a crash cut them; the price is a staged artifact that a participant
-moves to a new path by hand when its path was taken.
+discards, or creates again at a new path first, when its path was taken.
 
 **Rejected:**
 
@@ -1420,6 +1421,10 @@ moves to a new path by hand when its path was taken.
   a new path: a document has no ID to take the next one from, and every part would need its own
   answer to the same race.
 - An archive that knows the content of a stub: it would have to know every type.
+- A move call that creates a kept artifact at a new path and discards it in one step: every type
+  interface would need it, and a create followed by a discard does the same.
+- Kept artifacts that stay for good as a record of what was not released: the readers of the
+  session could not read the file that holds the path through the archive read interface.
 - A message broker or a scheduler for the deadlines: the staging repository already keeps the
   state.
 

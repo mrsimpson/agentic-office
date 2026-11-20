@@ -86,10 +86,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if path != web.HomePath {
 		path = strings.TrimSuffix(path, "/")
 	}
-	// The forms of a session page: /portal/t/<tenant>/s/<session>/release or /object.
+	// The forms of a session page: /portal/t/<tenant>/s/<session>/release, /object or /discard.
 	if rest, ok := strings.CutPrefix(r.URL.EscapedPath(), web.TenantPrefix); ok {
 		if tenant, page, _ := strings.Cut(rest, "/"); strings.HasPrefix(page, "s/") {
-			if i := strings.LastIndex(page, "/"); i > 1 && (page[i+1:] == "release" || page[i+1:] == "object") {
+			if i := strings.LastIndex(page, "/"); i > 1 && (page[i+1:] == "release" || page[i+1:] == "object" || page[i+1:] == "discard") {
 				if r.Method != http.MethodPost {
 					w.Header().Set("Allow", http.MethodPost)
 					h.fail(w, http.StatusMethodNotAllowed, "Not allowed", "This address does not answer this method.")

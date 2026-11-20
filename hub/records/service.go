@@ -275,8 +275,9 @@ func (s *Service) tookPart(ctx context.Context, sessionID, pid string) error {
 	return nil
 }
 
-// releasing reports an error when the session is released but its staging area still exists: the
-// move of the area runs. The release status and the area disagree then, so a write waits.
+// releasing reports an error when the session is released but its staging area is still moving:
+// the release status and the area disagree then, so a write waits. It returns errReleased when the
+// area is gone or its release is done (the area keeps only what the release kept back).
 func (s *Service) releasing(ctx context.Context, sessionID string) error {
 	st, err := s.sessions.State(ctx, sessionID)
 	if errors.Is(err, release.ErrNoSession) {
@@ -288,7 +289,10 @@ func (s *Service) releasing(ctx context.Context, sessionID string) error {
 	if st.Status != release.Released {
 		return nil
 	}
-	if _, err := s.opts.Staging.Area(ctx, sessionID); err == nil {
+	if a, err := s.opts.Staging.Area(ctx, sessionID); err == nil {
+		if a.Release != nil && a.Release.Done {
+			return errReleased // the area keeps only what the release kept back
+		}
 		return connect.NewError(connect.CodeUnavailable, "the session is being released; repeat the command")
 	} else if !errors.Is(err, storage.ErrNoArea) {
 		return connect.NewError(connect.CodeInternal, "read the staging area: "+err.Error())
@@ -370,6 +374,26 @@ func edit[T record](ctx context.Context, s *Service, c *collection[T], who token
 	if id == 0 {
 		return zero, false, invalid("id is required")
 	}
+	if mutate == nil {
+		// A staged record that the release kept back because its path is taken goes on removal.
+		if sid := c.namedBy(id); sid != "" {
+			kept, err := keptBack(ctx, s.opts.Staging, sid, c.path(id))
+			if err != nil {
+				return zero, false, err
+			}
+			if kept {
+				if err := s.tookPart(ctx, sid, who.ParticipantID); err != nil {
+					return zero, false, connect.NewError(connect.CodePermissionDenied,
+						fmt.Sprintf("only a participant of the session of %s %d may remove it", c.kind, id))
+				}
+				if sessionID != sid {
+					return zero, false, connect.NewError(connect.CodeFailedPrecondition,
+						fmt.Sprintf("%s %d was not released with session %s; a removal must name that session", c.kind, id, sid))
+				}
+				return zero, false, c.discard(ctx, id, sid, cid, digest, storageAuthor(who.ParticipantID, who.DisplayName))
+			}
+		}
+	}
 	w := c.locate(id)
 	switch w.state {
 	case 0:
@@ -403,6 +427,19 @@ func edit[T record](ctx context.Context, s *Service, c *collection[T], who token
 	}
 	r, err := c.change(ctx, id, w.session, cid, digest, storageAuthor(who.ParticipantID, who.DisplayName), mutate)
 	return r, false, err
+}
+
+// keptBack reports whether the area of a session keeps the file at path p because its release
+// is done and the path was taken (concept-session-release).
+func keptBack(ctx context.Context, st storage.Staging, session, p string) (bool, error) {
+	a, err := st.Area(ctx, session)
+	if errors.Is(err, storage.ErrNoArea) {
+		return false, nil
+	}
+	if err != nil {
+		return false, connect.NewError(connect.CodeInternal, "read the staging area: "+err.Error())
+	}
+	return a.Release != nil && a.Release.Done && slices.Contains(a.Names, p), nil
 }
 
 // digest is the content of a change or a removal, for its idempotency.

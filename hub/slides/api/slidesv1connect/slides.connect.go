@@ -106,6 +106,9 @@ type SlidesServiceClient interface {
 	ChangeDeck(context.Context, *api.ChangeDeckRequest) (*api.ChangeDeckResponse, error)
 	// RemoveDeck removes a staged deck, with the same rules as ChangeDeck. Its ID is not used
 	// again; the stub goes away with the release of the session.
+	// It also removes a staged deck that the release of its session kept back because its path
+	// was taken: a participant of the session who names it may remove it from the staging area,
+	// and from then on everyone reads the file that holds the path.
 	RemoveDeck(context.Context, *api.RemoveDeckRequest) (*api.RemoveDeckResponse, error)
 }
 
@@ -133,6 +136,9 @@ type SlidesServiceHandler interface {
 	ChangeDeck(context.Context, *api.ChangeDeckRequest) (*api.ChangeDeckResponse, error)
 	// RemoveDeck removes a staged deck, with the same rules as ChangeDeck. Its ID is not used
 	// again; the stub goes away with the release of the session.
+	// It also removes a staged deck that the release of its session kept back because its path
+	// was taken: a participant of the session who names it may remove it from the staging area,
+	// and from then on everyone reads the file that holds the path.
 	RemoveDeck(context.Context, *api.RemoveDeckRequest) (*api.RemoveDeckResponse, error)
 }
 

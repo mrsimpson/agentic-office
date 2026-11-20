@@ -33,6 +33,10 @@
 //     and the client repeats it. A change of a released document goes to the artifact repository
 //     and is not held; a removal of a released document is refused (Git removes it). No call
 //     changes a stub, and no call writes the content of a stub.
+//   - A removal also discards a staged document that the release kept back because its path was
+//     taken (storage.Staging.Discard): the caller took part in the session, names it, and names the
+//     staged version as the base. A write that names a session whose release is done goes to the
+//     artifact repository.
 //   - The part asks the meeting session before it takes its lock, and it reads the path again
 //     under the lock: a write whose path changed meanwhile is aborted.
 //   - Open writes the missing stub of every staged document, which a crash between the two commits

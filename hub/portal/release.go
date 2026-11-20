@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"path"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -12,15 +14,26 @@ import (
 
 	archivev1 "github.com/mrsimpson/agentic-office/hub/archive/api"
 	"github.com/mrsimpson/agentic-office/hub/archive/api/archivev1connect"
+	documentv1 "github.com/mrsimpson/agentic-office/hub/documents/api"
+	"github.com/mrsimpson/agentic-office/hub/documents/api/documentv1connect"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	"github.com/mrsimpson/agentic-office/hub/portal/web"
+	decisionv1 "github.com/mrsimpson/agentic-office/hub/records/decision/api"
+	"github.com/mrsimpson/agentic-office/hub/records/decision/api/decisionv1connect"
+	minutesv1 "github.com/mrsimpson/agentic-office/hub/records/minutes/api"
+	"github.com/mrsimpson/agentic-office/hub/records/minutes/api/minutesv1connect"
+	notev1 "github.com/mrsimpson/agentic-office/hub/records/note/api"
+	"github.com/mrsimpson/agentic-office/hub/records/note/api/notev1connect"
 	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
 	"github.com/mrsimpson/agentic-office/hub/session/commandsapi/sessioncommandsv1connect"
+	slidesv1 "github.com/mrsimpson/agentic-office/hub/slides/api"
+	"github.com/mrsimpson/agentic-office/hub/slides/api/slidesv1connect"
 )
 
 // This file is the release of a session in the portal (concept-session-release): the status, the
-// staged or released artifacts, and the forms that release and object. The forms call the session
-// commands with the token of the user; the hub decides everything.
+// staged or released artifacts, the forms that release and object, and the form that discards an
+// artifact that the release kept back. The forms call the session commands, or the interface of
+// the type of the artifact, with the token of the user; the hub decides everything.
 
 // maxArtifactShown is the most bytes of one artifact that the page shows.
 const maxArtifactShown = 64 << 10
@@ -33,6 +46,9 @@ type releaseView struct {
 	MayRelease              bool
 	Waiting                 bool // an objection is possible
 	ReleasePath, ObjectPath string
+	// DiscardPath takes the form that discards an artifact that the release kept back; CSRF is
+	// the token of the forms.
+	DiscardPath, CSRF string
 	// ReleaseCommand and ObjectCommand are the command IDs of the forms, so a form that is sent
 	// twice has one effect (dec-idempotent-commands).
 	ReleaseCommand, ObjectCommand string
@@ -56,8 +72,10 @@ type artifactView struct {
 	Path, Content string
 	Staged        bool
 	// NotReleased marks a staged artifact that the release kept back because its path is taken.
-	NotReleased bool
-	Cut         bool // the page shows only the start of the artifact
+	// Its form "Discard" carries the version that the page read and its own command ID.
+	NotReleased      bool
+	Version, Command string
+	Cut              bool // the page shows only the start of the artifact
 }
 
 // pageExtra is what a form adds to the page of a session: a message, or the refusal of a release.
@@ -75,7 +93,7 @@ func release(ctx context.Context, cc *connect.Client, tenant, sid string) (*rele
 		return nil, err
 	}
 	v := &releaseView{MayRelease: res.GetMayRelease(), ReleasePath: web.ReleasePath(tenant, sid), ObjectPath: web.ObjectPath(tenant, sid),
-		ReleaseCommand: commandID(), ObjectCommand: commandID()}
+		DiscardPath: web.DiscardPath(tenant, sid), ReleaseCommand: commandID(), ObjectCommand: commandID()}
 	switch res.GetStatus().GetState() {
 	case sessioncommandsv1.ReleaseState_RELEASE_STATE_OPEN:
 		v.State = "open"
@@ -121,6 +139,9 @@ func release(ctx context.Context, cc *connect.Client, tenant, sid string) (*rele
 			return nil, err
 		}
 		a := artifactView{Path: p, Staged: f.GetFile().GetStaged(), NotReleased: unreleased[p]}
+		if a.NotReleased {
+			a.Version, a.Command = f.GetFile().GetVersion(), commandID()
+		}
 		content := f.GetFile().GetContent()
 		if len(content) > maxArtifactShown {
 			content, a.Cut = content[:maxArtifactShown], true
@@ -148,7 +169,8 @@ func (h *Handler) sessionAction(w http.ResponseWriter, r *http.Request, escapedT
 		h.fail(w, http.StatusNotFound, "Not found", "There is no such session for you.")
 		return
 	}
-	cmds := sessioncommandsv1connect.NewSessionCommandsServiceClient(connect.NewClient(h.opts.Hub, auth.StaticToken(token), auth.Tenant(tenant)))
+	cc := connect.NewClient(h.opts.Hub, auth.StaticToken(token), auth.Tenant(tenant))
+	cmds := sessioncommandsv1connect.NewSessionCommandsServiceClient(cc)
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 	cmd := r.PostForm.Get("command_id")
@@ -176,8 +198,63 @@ func (h *Handler) sessionAction(w http.ResponseWriter, r *http.Request, escapedT
 			return
 		}
 		done = "held"
+	case "discard":
+		if err := discard(ctx, cc, sid, c.me.ParticipantID, cmd, r.PostForm.Get("path"), r.PostForm.Get("version")); err != nil {
+			h.actionFailed(w, r, c, tenant, sid, err)
+			return
+		}
+		done = "discarded"
 	}
 	http.Redirect(w, r, web.SessionPath(tenant, sid)+"?done="+done, http.StatusSeeOther)
+}
+
+// discard removes a staged artifact that the release of a session kept back through the
+// interface of its type, which the directory of the path names: the removal of a staged record,
+// deck or document (concept-session-release). The hub decides whether the user may.
+func discard(ctx context.Context, cc *connect.Client, sid, pid, cmd, p, version string) error {
+	dir, file := path.Split(p)
+	number := func() (uint32, error) {
+		n, err := strconv.ParseUint(strings.TrimSuffix(file, path.Ext(file)), 10, 32)
+		if err != nil || n == 0 {
+			return 0, connect.NewError(connect.CodeInvalidArgument, "the portal cannot discard "+p)
+		}
+		return uint32(n), nil
+	}
+	switch dir {
+	case "decisions/":
+		id, err := number()
+		if err == nil {
+			_, err = decisionv1connect.NewDecisionServiceClient(cc).RemoveDecision(ctx, &decisionv1.RemoveDecisionRequest{
+				CommandId: cmd, Id: id, SessionId: sid, AuthorParticipantId: pid})
+		}
+		return err
+	case "minutes/":
+		id, err := number()
+		if err == nil {
+			_, err = minutesv1connect.NewMinutesServiceClient(cc).RemoveMinutes(ctx, &minutesv1.RemoveMinutesRequest{
+				CommandId: cmd, Id: id, SessionId: sid, AuthorParticipantId: pid})
+		}
+		return err
+	case "notes/":
+		id, err := number()
+		if err == nil {
+			_, err = notev1connect.NewNoteServiceClient(cc).RemoveNote(ctx, &notev1.RemoveNoteRequest{
+				CommandId: cmd, Id: id, SessionId: sid, AuthorParticipantId: pid})
+		}
+		return err
+	case "slides/":
+		id, err := number()
+		if err == nil {
+			_, err = slidesv1connect.NewSlidesServiceClient(cc).RemoveDeck(ctx, &slidesv1.RemoveDeckRequest{
+				CommandId: cmd, Id: "slides/" + strconv.FormatUint(uint64(id), 10), SessionId: sid, AuthorParticipantId: pid})
+		}
+		return err
+	case "documents/":
+		_, err := documentv1connect.NewDocumentServiceClient(cc).RemoveDocument(ctx, &documentv1.RemoveDocumentRequest{
+			Path: p, CommandId: cmd, SessionId: sid, BaseVersion: version})
+		return err
+	}
+	return connect.NewError(connect.CodeInvalidArgument, "the portal cannot discard "+p)
 }
 
 // actionFailed shows a refused release or objection on the page of the session, or the error page

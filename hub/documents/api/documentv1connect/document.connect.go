@@ -109,6 +109,9 @@ type DocumentServiceClient interface {
 	// RemoveDocument removes a staged document, with the same rules as ChangeDocument. It fails with
 	// failed_precondition for a released document: remove that one with Git. The stub goes away
 	// with the release of the session. It is idempotent by command_id while the hub runs.
+	// It also removes a staged document that the release of its session kept back because its
+	// path was taken: a participant of the session who names it and its staged version may remove
+	// it from the staging area, and from then on everyone reads the file that holds the path.
 	RemoveDocument(context.Context, *api.RemoveDocumentRequest) (*api.RemoveDocumentResponse, error)
 }
 
@@ -131,6 +134,9 @@ type DocumentServiceHandler interface {
 	// RemoveDocument removes a staged document, with the same rules as ChangeDocument. It fails with
 	// failed_precondition for a released document: remove that one with Git. The stub goes away
 	// with the release of the session. It is idempotent by command_id while the hub runs.
+	// It also removes a staged document that the release of its session kept back because its
+	// path was taken: a participant of the session who names it and its staged version may remove
+	// it from the staging area, and from then on everyone reads the file that holds the path.
 	RemoveDocument(context.Context, *api.RemoveDocumentRequest) (*api.RemoveDocumentResponse, error)
 }
 

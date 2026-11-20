@@ -44,7 +44,10 @@
 //   - ChangeDeck and RemoveDeck change or remove a staged deck for a participant of its session
 //     who names that session; the caller becomes the author of a change. A released deck, a stub
 //     and a deck of another session are refused. While the release moves the area, a write is
-//     unavailable. They are idempotent by command ID while the hub runs.
+//     unavailable. They are idempotent by command ID while the hub runs. RemoveDeck also discards a
+//     staged deck that the release kept back because its path was taken
+//     (storage.Staging.Discard), with the same check of the participant and the session. A render
+//     that names a session whose release is done goes to the artifact repository.
 //   - Reads: a staged deck shows its content to the readers of its session (the list of the area)
 //     and to tenant admins (by role); everyone else gets its stub, a deck with only id and stub. A
 //     removed staged deck is not found for a reader. Load serves the stage of a session: the staged

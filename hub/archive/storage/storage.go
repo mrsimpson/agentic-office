@@ -225,6 +225,13 @@ type Staging interface {
 	// not name changes nothing. It fails with ErrNoArea if the session has no area, and with
 	// ErrAreaClosed when a release of the area runs or ran.
 	TakeBack(ctx context.Context, session, path string) error
+	// Discard removes a file that a release kept back (see Release) from the area of a session in
+	// one commit, and the area forgets the path, its stub and its conflict. author is who
+	// discards; empty means the hub. When the last kept file goes, the area goes too, with its
+	// readers. From then on, every reader reads the file of the artifact repository at the path.
+	// The caller checks who may discard. It fails with ErrNoArea if the session has no area, and
+	// with ErrNotKept when the release of the area is not done or the area does not name the path.
+	Discard(ctx context.Context, session, path string, author Author) error
 	// Read returns the files of the area of a session under the directory dir, as
 	// Archive.Read does. A file of another area is not returned. It fails with ErrNoArea if the
 	// session has no area.
@@ -251,11 +258,14 @@ type Staging interface {
 	//     only the files that were not released (Area.Names); its release is done
 	//     (ReleaseState.Done).
 	//
+	// A participant discards a file that was not released (Discard).
+	//
 	// Every step is recorded in the staging repository. When a restart cut a release off,
 	// Release completes it: a step that was done is never done again, and the author recorded
 	// in step 1 stays, whatever author is given now. Release of an area whose release is done
-	// returns the same result again. It fails with ErrNoArea if the session has no area, also
-	// after a complete release without conflicts.
+	// returns the same result again, without the files that were discarded since. It fails with
+	// ErrNoArea if the session has no area, also after a complete release without conflicts and
+	// after the last kept file was discarded.
 	Release(ctx context.Context, session string, author Author) (ReleaseResult, error)
 	// Released returns the release commit of a session from the history of main in the artifact
 	// repository: the commit that names the session in its trailer "Office-Release". It fails
@@ -312,7 +322,7 @@ type Area struct {
 	// Names are the paths that ever lay in the area or got a stub through it, also those of
 	// removed files, ordered, except the paths that were taken back (TakeBack). The release
 	// removes the recorded stub of a name whose file is gone. After a release with conflicts, only
-	// the paths of the files that were not released are left.
+	// the paths of the files that were not released are left, until they are discarded (Discard).
 	Names []string
 	// Authors are the authors of the changes in the area, without duplicates, in the order of
 	// their first change. Changes by the hub add no author.
@@ -329,7 +339,7 @@ type ReleaseState struct {
 	// artifact repository; "" before, and when the release had nothing to write.
 	Commit string
 	// Done is set when the release is complete and the area stays only for the files that it
-	// could not release (Area.Names). Nothing changes such an area.
+	// could not release (Area.Names). Only Discard changes such an area.
 	Done bool
 }
 
@@ -338,3 +348,7 @@ var ErrNoArea = errors.New("archive: the session has no staging area")
 
 // ErrAreaClosed is the error for a write to an area whose release runs or ran.
 var ErrAreaClosed = errors.New("archive: the staging area is closed for its release")
+
+// ErrNotKept is the error of Staging.Discard for a path that is not a file that a done release of
+// the area kept back.
+var ErrNotKept = errors.New("archive: the path is not a staged file that the release of the area kept back")

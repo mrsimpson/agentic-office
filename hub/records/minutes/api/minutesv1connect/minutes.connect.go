@@ -99,6 +99,9 @@ type MinutesServiceClient interface {
 	ChangeMinutes(context.Context, *api.ChangeMinutesRequest) (*api.ChangeMinutesResponse, error)
 	// RemoveMinutes removes staged minutes, with the same rules as ChangeMinutes. Their number is
 	// not used again; the stub goes away with the release of the session.
+	// It also removes a staged minutes that the release of its session kept back because its path
+	// was taken: a participant of the session who names it may remove it from the staging area,
+	// and from then on everyone reads the file that holds the path.
 	RemoveMinutes(context.Context, *api.RemoveMinutesRequest) (*api.RemoveMinutesResponse, error)
 }
 
@@ -123,6 +126,9 @@ type MinutesServiceHandler interface {
 	ChangeMinutes(context.Context, *api.ChangeMinutesRequest) (*api.ChangeMinutesResponse, error)
 	// RemoveMinutes removes staged minutes, with the same rules as ChangeMinutes. Their number is
 	// not used again; the stub goes away with the release of the session.
+	// It also removes a staged minutes that the release of its session kept back because its path
+	// was taken: a participant of the session who names it may remove it from the staging area,
+	// and from then on everyone reads the file that holds the path.
 	RemoveMinutes(context.Context, *api.RemoveMinutesRequest) (*api.RemoveMinutesResponse, error)
 }
 

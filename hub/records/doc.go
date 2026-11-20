@@ -85,6 +85,12 @@
 //     caller the author and sets the time; it keeps the command_id of the record. A removed
 //     record keeps its stub until the release, which removes it, and its ID is never used again.
 //     Changes and removals are idempotent by command_id while the hub runs.
+//   - A staged record that the release kept back because its path was taken (the area of its
+//     session names it after a done release) goes with Remove*, for a participant of the session
+//     who names it: the part discards it from the area (storage.Staging.Discard), and from then on
+//     every reader sees the file of the artifact repository. A write that names a session whose
+//     release is done goes to the artifact repository, so a participant moves a kept record by
+//     recording it again and then removing it.
 //   - Reads: a staged record shows its content, with staged set, to the readers of the staging
 //     area of its session (storage.Area.Readers) and to tenant admins by their role
 //     (tokencheck.RoleTenantAdmin). Everyone else gets its stub: only the ID, with stub set. A

@@ -96,6 +96,9 @@ type NoteServiceClient interface {
 	ChangeNote(context.Context, *api.ChangeNoteRequest) (*api.ChangeNoteResponse, error)
 	// RemoveNote removes a staged note, with the same rules as ChangeNote. Its number is not used
 	// again; the stub goes away with the release of the session.
+	// It also removes a staged note that the release of its session kept back because its path
+	// was taken: a participant of the session who names it may remove it from the staging area,
+	// and from then on everyone reads the file that holds the path.
 	RemoveNote(context.Context, *api.RemoveNoteRequest) (*api.RemoveNoteResponse, error)
 }
 
@@ -121,6 +124,9 @@ type NoteServiceHandler interface {
 	ChangeNote(context.Context, *api.ChangeNoteRequest) (*api.ChangeNoteResponse, error)
 	// RemoveNote removes a staged note, with the same rules as ChangeNote. Its number is not used
 	// again; the stub goes away with the release of the session.
+	// It also removes a staged note that the release of its session kept back because its path
+	// was taken: a participant of the session who names it may remove it from the staging area,
+	// and from then on everyone reads the file that holds the path.
 	RemoveNote(context.Context, *api.RemoveNoteRequest) (*api.RemoveNoteResponse, error)
 }
 
