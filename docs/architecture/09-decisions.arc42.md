@@ -1249,8 +1249,8 @@ keeps its own interface for writing (`dec-records-per-type`).
   page never shows a member what only the participants of a session may read. The index, the
   backlinks and the search cover artifacts only.
 - **Sources are written once.** Minutes, decisions and notes are memories of something that
-  happened. They come into being as a side effect of a session or of other work, and they are never
-  changed afterwards. A correction is a new record that refers to the old one. The minutes are the
+  happened. They come into being as a side effect of a session or of other work. Once they are released
+  (`dec-session-release`), they never change. A correction is a new record that refers to the old one. The minutes are the
   bridge from a session to the wiki: participants write them from what was said, and every end of
   the session stores them as a new version, which every member reads once it is released; an
   earlier version stays. So
@@ -1280,7 +1280,9 @@ keeps its own interface for writing (`dec-records-per-type`).
 - **Each type describes its own files.** The part that owns a type gives the title, the summary
   and the outgoing links of its files, the same way it checks them. No part reads the fields of
   another type.
-- **A wiki part reads, it never writes.** It follows the changes of the archive (`if-archive-watch`)
+- **A wiki part reads, it never writes.** It reads only the artifact repository, never the
+  staging area, and it leaves stubs out of the index, the search and the ingest queue. It follows the
+  changes of the archive (`if-archive-watch`)
   for each tenant, like the other parts, and keeps a derived view: the index of all artifacts with
   title, summary and tags, the links and backlinks of every artifact, the broken links, the sources
   that no document cites yet, and a search by words without a model. Nothing of it is committed, and
@@ -1304,7 +1306,7 @@ keeps its own interface for writing (`dec-records-per-type`).
 **Consequences:** Notes are Markdown; `dec-yaml-git-storage` needs to say so once this decision is
 accepted. The note contract stays, and the note schema gains tags. Documents
 gain an optional schema for their front matter, owned by the documents part. Every part that owns a
-type gains a description of its files next to its check. Apart from the release, which gives time and replaces word-for-word quotes
+type gains a description of its files next to its check. Apart from the release, which gives time and shows word-for-word quotes
 (`dec-session-release`), nothing in the hub keeps a sentence off the record out of a record or a
 page: the rule binds the people and agents who write, and ingest copies statements into documents
 and into the history of every clone (`risk-retraction-leak`). A clone of the tenant repository opens as a wiki in ordinary
@@ -1403,8 +1405,11 @@ would share even more, and every sentence of it could have been off the record.
   is the human who released, or the hub when the grace period ended; its time is the time of the
   release. Because history is never rewritten, when and by whom an artifact was released never
   changes. Afterwards a record stays as it is, and other artifacts change like any other.
-- **The release survives a restart.** The staging area records the deadline of each held session,
-  set once when the session ends. The meeting session rebuilds its timers from it at start, and a
+- **The release survives a restart.** The stub is written before the staged artifact, and the
+  commit in the artifact repository is the release itself; cleaning up the staging area and the
+  event in the session log follow it and are repaired at start if they are missing. The staging
+  area records the deadline of each held session, set once when the session ends. A deadline that
+  passed while the hub was down is released at start. The meeting session rebuilds its timers from it at start, and a
   release that was cut off is completed, never done twice. Each change of the release status is an
   event in the session log.
 - **A session that is opened again** writes to its staging area again and needs a new release.

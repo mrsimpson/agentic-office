@@ -350,7 +350,7 @@ path: hub/records/minutes/api
 ### Notes
 
 Adds free notes, with or without a session, and lists them like the decisions. A note is a
-memory: it is written once and never changed; a correction is a new note that refers to the old
+memory: once it is released, it never changes; a correction is a new note that refers to the old
 one. Notes are sources of the wiki (`dec-wiki`, `concept-wiki`). A sentence that is off the record must not go into a
 note. Ingest copies notes into documents, so the hub cannot remove a sentence that is marked off
 the record later from those copies.

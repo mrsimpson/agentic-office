@@ -30,7 +30,10 @@ run meetings, use the skill office-assistant.
    `minutes_list` (or the same commands of the `office` CLI).
 3. Start at the overview pages of an area and follow the links. Search for the name and for
    other words that mean the same, also in other languages.
-4. Look at the front matter of a page before you trust it: a page with `status: reviewed` and a
+4. A file that says it waits for a release is a stub: its content comes later. Do not cite, change
+   or link it as if it were there, and do not lint it. If you took part in that meeting, read the
+   real artifact through the interfaces of the office.
+5. Look at the front matter of a page before you trust it: a page with `status: reviewed` and a
    recent review is more reliable than a `draft`.
 
 ## Record a source
