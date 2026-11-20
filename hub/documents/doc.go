@@ -19,8 +19,8 @@
 //     repeated. A removal adds no event.
 //   - Staging (concept-session-release): a create that names a session that is not released
 //     writes the document into the staging area of the session, then the stub of a document
-//     (package check) at the same path into the artifact repository, with the hub as the author
-//     and StubMessage. If the stub cannot be written, the staged file is taken back and the area
+//     (package check) at the same path into the artifact repository through the area
+//     (storage.Staging.Stub), with the hub as the author and StubMessage. If the stub cannot be written, the staged file is taken back and the area
 //     forgets the path. A path whose staged document the same session removed keeps its stub, and
 //     a create there writes only the staged file. A session that is released, or no session,
 //     writes into the artifact repository.
@@ -36,7 +36,8 @@
 //   - The part asks the meeting session before it takes its lock, and it reads the path again
 //     under the lock: a write whose path changed meanwhile is aborted.
 //   - Open writes the missing stub of every staged document, which a crash between the two commits
-//     of a create leaves.
+//     of a create leaves. When a push took the path, the document stays staged and the release
+//     keeps it back.
 //   - The documents are read through the archive read interface (if-archive-read), which shows a
 //     staged document only to the readers of its session.
 package documents

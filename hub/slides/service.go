@@ -382,7 +382,8 @@ func (s *Service) lenient(key, version string, err error) {
 // loadAll reads every deck file, in the artifact repository and in every staging area. With
 // strict, the first file that is not valid fails it (the start of the hub). Otherwise such a file
 // is logged and ignored, and a deck whose file is gone is removed. A staged deck without a stub,
-// which a crash between the two commits leaves, gets its stub.
+// which a crash between the two commits leaves, gets its stub. When a push took its path
+// meanwhile, the stub fails: the deck stays staged, and the release keeps it back.
 func (s *Service) loadAll(ctx context.Context, strict bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -393,15 +394,15 @@ func (s *Service) loadAll(ctx context.Context, strict bool) error {
 		return err
 	}
 	s.rmu.RLock()
-	var missing []uint64
-	for n := range s.stage {
+	missing := map[uint64]string{} // deck -> session
+	for n, st := range s.stage {
 		if _, ok := s.art[n]; !ok {
-			missing = append(missing, n)
+			missing[n] = st.session
 		}
 	}
 	s.rmu.RUnlock()
-	for _, n := range missing {
-		if err := s.writeStub(ctx, n); err != nil {
+	for n, session := range missing {
+		if err := s.writeStub(ctx, session, n); err != nil {
 			s.opts.Logf("slides: write the missing stub of %s: %v", check.FilePath(n, ".yaml"), err)
 			continue
 		}
@@ -410,9 +411,10 @@ func (s *Service) loadAll(ctx context.Context, strict bool) error {
 	return nil
 }
 
-// writeStub writes the stub of deck n into the artifact repository. The file must not exist yet.
-func (s *Service) writeStub(ctx context.Context, n uint64) error {
-	_, err := s.opts.Archive.Commit(context.WithoutCancel(ctx), storage.Change{Message: StubMessage,
+// writeStub writes the stub of deck n through the staging area of its session, so the area
+// records it (storage.Staging.Stub). The file must not exist yet.
+func (s *Service) writeStub(ctx context.Context, session string, n uint64) error {
+	_, err := s.opts.Staging.Stub(context.WithoutCancel(ctx), session, storage.Change{Message: StubMessage,
 		Files: []storage.File{{Path: check.FilePath(n, ".yaml"), Data: check.Stub(), Base: storage.NoFile}}})
 	return err
 }
@@ -959,7 +961,7 @@ func (s *Service) add(ctx context.Context, n uint64, d *slidesv1.Deck, to target
 	}
 	s.high = n
 	s.setName(n, to.session)
-	if err := s.writeStub(ctx, n); err != nil {
+	if err := s.writeStub(ctx, to.session, n); err != nil {
 		// Take the staged file back, and the area forgets the path. A push that put a file at this
 		// path first keeps it, also at the release.
 		if rerr := s.opts.Staging.TakeBack(ctx, to.session, p); rerr != nil {

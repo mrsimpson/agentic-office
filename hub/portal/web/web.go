@@ -280,7 +280,7 @@ var _ = template.Must(Page.New("release").Parse(`<h2>Release</h2>
 <dt>Release commit</dt><dd><code title="{{.ID}}" data-commit="{{.ID}}">{{.Short}}</code> <small>{{.Time}} UTC</small></dd>{{end}}
 </dl>
 <h2>{{if eq .State "released"}}Released artifacts{{else}}Staged artifacts{{end}}</h2>
-{{if .Artifacts}}<ol class="records">{{range .Artifacts}}<li data-artifact="{{.Path}}"{{if .Staged}} data-staged{{end}}><details><summary><code>{{.Path}}</code>{{if .Staged}} <span class="badge imported">staged</span>{{end}}</summary><pre class="artifact">{{.Content}}</pre>{{if .Cut}}<small>The page shows the start of the file only.</small>{{end}}</details></li>{{end}}</ol>{{else}}<p class="empty" data-empty="artifacts">{{if eq .State "released"}}The session released no artifact.{{else}}The session has staged no artifact.{{end}}</p>{{end}}`))
+{{if .Artifacts}}<ol class="records">{{range .Artifacts}}<li data-artifact="{{.Path}}"{{if .Staged}} data-staged{{end}}{{if .NotReleased}} data-not-released{{end}}><details><summary><code>{{.Path}}</code>{{if .NotReleased}} <span class="badge revoked">not released: the path is taken</span> <small>Move it to a new path by hand, through the interface of its type.</small>{{else if .Staged}} <span class="badge imported">staged</span>{{end}}</summary><pre class="artifact">{{.Content}}</pre>{{if .Cut}}<small>The page shows the start of the file only.</small>{{end}}</details></li>{{end}}</ol>{{else}}<p class="empty" data-empty="artifacts">{{if eq .State "released"}}The session released no artifact.{{else}}The session has staged no artifact.{{end}}</p>{{end}}`))
 
 // ErrorPage is the page for a missing, used or expired session or link. It shows no data. Fields:
 // Title, Message.

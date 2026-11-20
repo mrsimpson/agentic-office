@@ -34,20 +34,24 @@ type Staging struct {
 	repo      *Repo // the staging repository
 	artifacts *Repo // the artifact repository of the same tenant
 
-	releases sync.Mutex // one release at a time
+	// releases lets one release run at a time, and no stub be written while it runs (write lock);
+	// stubs take the read lock.
+	releases sync.RWMutex
 }
 
 var _ storage.Staging = (*Staging)(nil)
 
 // areaFile is the stored state of an area.
 type areaFile struct {
-	Session  string       `yaml:"session"`
-	Readers  []string     `yaml:"readers,omitempty"`
-	Deadline string       `yaml:"deadline,omitempty"` // RFC 3339, UTC
-	Held     bool         `yaml:"held,omitempty"`
-	Names    []string     `yaml:"names,omitempty"`
-	Authors  []authorFile `yaml:"authors,omitempty"`
-	Release  *releaseFile `yaml:"release,omitempty"`
+	Session  string   `yaml:"session"`
+	Readers  []string `yaml:"readers,omitempty"`
+	Deadline string   `yaml:"deadline,omitempty"` // RFC 3339, UTC
+	Held     bool     `yaml:"held,omitempty"`
+	Names    []string `yaml:"names,omitempty"`
+	// Stubs are the recorded stubs by path: the Git object ID of the stub that Stub wrote.
+	Stubs   map[string]string `yaml:"stubs,omitempty"`
+	Authors []authorFile      `yaml:"authors,omitempty"`
+	Release *releaseFile      `yaml:"release,omitempty"`
 }
 
 type authorFile struct {
@@ -58,6 +62,11 @@ type authorFile struct {
 type releaseFile struct {
 	Author *authorFile `yaml:"author,omitempty"` // nil: the hub
 	Commit string      `yaml:"commit,omitempty"`
+	// Kept are the names that the release did not release because their path is taken. Step 2
+	// records them with the commit.
+	Kept []string `yaml:"kept,omitempty"`
+	// Done is set by step 3 when the area stays for the kept names.
+	Done bool `yaml:"done,omitempty"`
 }
 
 // safeAreaName is the form of a session ID that is used as it is in the path of its area.
@@ -171,7 +180,7 @@ func (a *areaFile) public() storage.Area {
 		out.Authors = append(out.Authors, storage.Author{Name: au.Name, Email: au.Email})
 	}
 	if a.Release != nil {
-		out.Release = &storage.ReleaseState{Commit: a.Release.Commit}
+		out.Release = &storage.ReleaseState{Commit: a.Release.Commit, Done: a.Release.Done}
 		if a.Release.Author != nil {
 			out.Release.Author = storage.Author{Name: a.Release.Author.Name, Email: a.Release.Author.Email}
 		}
@@ -314,6 +323,135 @@ func (s *Staging) Commit(ctx context.Context, session string, c storage.Change) 
 	return s.repo.commitLocked(ctx, change, nil)
 }
 
+// Stub implements storage.Staging. It records the stubs before it writes them: a crash between
+// the two leaves a recorded version that the artifact repository does not hold, and the release
+// then writes the staged file only where the path holds no file.
+func (s *Staging) Stub(ctx context.Context, session string, c storage.Change) (string, error) {
+	if err := checkSession(session); err != nil {
+		return "", err
+	}
+	if err := checkChange(c); err != nil {
+		return "", err
+	}
+	for _, f := range c.Files {
+		if f.Remove {
+			return "", fmt.Errorf("archive: a stub of %s cannot remove a file", f.Path)
+		}
+	}
+	s.releases.RLock()
+	defer s.releases.RUnlock()
+	stubs := map[string]string{}
+	for _, f := range c.Files {
+		out, err := s.artifacts.runInput(ctx, f.Data, "hash-object", "--stdin")
+		if err != nil {
+			return "", err
+		}
+		stubs[f.Path] = strings.TrimSpace(string(out))
+	}
+	undo, err := s.recordStubs(ctx, session, stubs)
+	if err != nil {
+		return "", err
+	}
+	id, err := s.artifacts.Commit(ctx, c)
+	if err != nil {
+		if uerr := undo(context.WithoutCancel(ctx)); uerr != nil {
+			s.repo.logf("archive: forget the stubs of session %s that were not written: %v", areaName(session), uerr)
+		}
+		return "", err
+	}
+	return id, nil
+}
+
+// recordStubs records stubs (path -> object ID) in the area of a session in one commit. It returns
+// a function that restores what was recorded before for these paths.
+func (s *Staging) recordStubs(ctx context.Context, session string, stubs map[string]string) (func(context.Context) error, error) {
+	s.repo.turn.Lock()
+	defer s.repo.turn.Unlock()
+	head, err := s.repo.head(ctx)
+	if err != nil {
+		return nil, err
+	}
+	all, err := s.loadAll(ctx, head)
+	if err != nil {
+		return nil, err
+	}
+	var a *areaFile
+	owner := map[string]string{}
+	for _, x := range all {
+		if x.Session == session {
+			a = x
+		}
+		for _, n := range x.Names {
+			owner[n] = x.Session
+		}
+	}
+	if a == nil {
+		return nil, storage.ErrNoArea
+	}
+	if a.Release != nil {
+		return nil, storage.ErrAreaClosed
+	}
+	added := map[string]bool{}    // names that this call adds
+	before := map[string]string{} // the stubs that were recorded before
+	for p, v := range stubs {
+		if o, ok := owner[p]; ok && o != session {
+			cur, err := s.repo.rev(ctx, head+":"+p)
+			if err != nil {
+				return nil, err
+			}
+			return nil, &storage.ConflictError{Path: p, Current: cur}
+		}
+		if owner[p] == "" {
+			a.Names = append(a.Names, p)
+			added[p] = true
+		}
+		if a.Stubs == nil {
+			a.Stubs = map[string]string{}
+		}
+		before[p] = a.Stubs[p]
+		a.Stubs[p] = v
+	}
+	slices.Sort(a.Names)
+	if err := s.writeState(ctx, a, "Record stubs of the staging area of session "+areaName(session)); err != nil {
+		return nil, err
+	}
+	undo := func(ctx context.Context) error {
+		s.repo.turn.Lock()
+		defer s.repo.turn.Unlock()
+		head, err := s.repo.head(ctx)
+		if err != nil {
+			return err
+		}
+		a, err := s.load(ctx, head, session)
+		if err != nil || a == nil || a.Release != nil {
+			return err
+		}
+		for p, v := range stubs {
+			if a.Stubs[p] != v {
+				continue // recorded again in the meantime
+			}
+			if before[p] == "" {
+				delete(a.Stubs, p)
+			} else {
+				a.Stubs[p] = before[p]
+			}
+			if !added[p] {
+				continue
+			}
+			// A name that this call added goes again, unless a file was staged at it since.
+			if cur, err := s.repo.rev(ctx, head+":"+p); err != nil {
+				return err
+			} else if cur == "" {
+				if i, ok := slices.BinarySearch(a.Names, p); ok {
+					a.Names = slices.Delete(a.Names, i, i+1)
+				}
+			}
+		}
+		return s.writeState(ctx, a, "Forget stubs of the staging area of session "+areaName(session)+" that were not written")
+	}
+	return undo, nil
+}
+
 // TakeBack implements storage.Staging.
 func (s *Staging) TakeBack(ctx context.Context, session, p string) error {
 	if err := checkSession(session); err != nil {
@@ -343,6 +481,7 @@ func (s *Staging) TakeBack(ctx context.Context, session, p string) error {
 		return nil
 	}
 	a.Names = slices.Delete(a.Names, i, i+1)
+	delete(a.Stubs, p)
 	state, err := stateFile(a)
 	if err != nil {
 		return err
@@ -425,27 +564,32 @@ func (s *Staging) present(ctx context.Context, head string, names []string) ([]s
 }
 
 // Release implements storage.Staging.
-func (s *Staging) Release(ctx context.Context, session string, author storage.Author) (string, error) {
+func (s *Staging) Release(ctx context.Context, session string, author storage.Author) (storage.ReleaseResult, error) {
 	if err := checkSession(session); err != nil {
-		return "", err
+		return storage.ReleaseResult{}, err
 	}
 	if err := checkAuthor(author); err != nil {
-		return "", err
+		return storage.ReleaseResult{}, err
 	}
 	s.releases.Lock()
 	defer s.releases.Unlock()
 	a, err := s.close(ctx, session, author)
 	if err != nil {
-		return "", err
+		return storage.ReleaseResult{}, err
 	}
-	id, err := s.move(ctx, a)
-	if err != nil {
-		return "", err
+	if !a.Release.Done {
+		if err := s.move(ctx, a); err != nil {
+			return storage.ReleaseResult{}, err
+		}
+		if err := s.cleanUp(ctx, session); err != nil {
+			return storage.ReleaseResult{}, err
+		}
 	}
-	if err := s.cleanUp(ctx, session); err != nil {
-		return "", err
+	res := storage.ReleaseResult{Commit: a.Release.Commit}
+	for _, p := range a.Release.Kept {
+		res.Conflicts = append(res.Conflicts, storage.Conflict{Session: session, Path: p})
 	}
-	return id, nil
+	return res, nil
 }
 
 // close is step 1 of a release: it closes the area for writes and records the author. An area
@@ -478,49 +622,43 @@ func (s *Staging) close(ctx context.Context, session string, author storage.Auth
 }
 
 // move is step 2 of a release: it writes the files of the area into the artifact repository in
-// one commit and returns its ID, or "" when there was nothing to move. A release commit that is
-// recorded and already lies in the history of main is not made again.
-func (s *Staging) move(ctx context.Context, a *areaFile) (string, error) {
+// one commit and records its ID and the kept names in a.Release, with Commit "" when there was
+// nothing to write. A release commit that is recorded and already lies in the history of main is
+// not made again.
+//
+// A path is replaced only where the artifact repository holds the recorded stub or no file. The
+// change carries that version as the base of each file, so a push that takes a path while the
+// commit is built makes the commit fail with a conflict, and move decides again.
+func (s *Staging) move(ctx context.Context, a *areaFile) error {
 	if a.Release.Commit != "" {
 		landed, err := s.artifacts.onMain(ctx, a.Release.Commit)
 		if err != nil || landed {
-			return a.Release.Commit, err
+			return err
 		}
 	}
 	head, err := s.repo.head(ctx)
 	if err != nil {
-		return "", err
+		return err
 	}
 	// The area is closed, so its files do not change any more. Read them as they are.
-	var files []storage.File
+	staged := map[string][]byte{}
 	if len(a.Names) > 0 {
-		if files, err = s.repo.readAt(ctx, head, a.Names...); err != nil {
-			return "", err
+		files, err := s.repo.readAt(ctx, head, a.Names...)
+		if err != nil {
+			return err
+		}
+		for _, f := range files {
+			if _, ok := slices.BinarySearch(a.Names, f.Path); ok {
+				staged[f.Path] = f.Data
+			}
 		}
 	}
-	var change storage.Change
-	have := map[string]bool{}
-	for _, f := range files {
-		if _, ok := slices.BinarySearch(a.Names, f.Path); !ok {
-			continue
-		}
-		have[f.Path] = true
-		change.Files = append(change.Files, storage.File{Path: f.Path, Data: f.Data})
-	}
-	// The stub of a name whose file was removed from the area goes away.
-	for _, n := range a.Names {
-		if !have[n] {
-			change.Files = append(change.Files, storage.File{Path: n, Remove: true})
-		}
-	}
-	slices.SortFunc(change.Files, func(x, y storage.File) int { return strings.Compare(x.Path, y.Path) })
 	var by *storage.Author
-	if ra := a.Release.Author; ra != nil {
-		change.Author = storage.Author{Name: ra.Name, Email: ra.Email}
-		by = &change.Author
-	}
 	var msg strings.Builder
 	fmt.Fprintf(&msg, "Release session %s\n\n", areaName(a.Session))
+	if ra := a.Release.Author; ra != nil {
+		by = &storage.Author{Name: ra.Name, Email: ra.Email}
+	}
 	for _, au := range a.Authors {
 		if by != nil && au.Name == by.Name && au.Email == by.Email {
 			continue
@@ -528,36 +666,79 @@ func (s *Staging) move(ctx context.Context, a *areaFile) (string, error) {
 		fmt.Fprintf(&msg, "Co-authored-by: %s <%s>\n", au.Name, au.Email)
 	}
 	fmt.Fprintf(&msg, "%s: %s\n", releaseTrailer, areaName(a.Session))
-	change.Message = msg.String()
 
 	s.artifacts.turn.Lock()
 	defer s.artifacts.turn.Unlock()
-	built := ""
-	id, err := s.artifacts.commitLocked(ctx, change, func(id string) error {
-		// Record the commit before main moves to it: after a restart, the release looks for it
-		// in the history of main and never makes it twice.
-		built = id
-		return s.record(ctx, a, id)
-	})
-	if err != nil {
-		return "", err
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		change := storage.Change{Message: msg.String()}
+		if by != nil {
+			change.Author = *by
+		}
+		var kept []string
+		art, err := s.artifacts.head(ctx)
+		if err != nil {
+			return err
+		}
+		for _, n := range a.Names {
+			cur := ""
+			if art != "" {
+				if cur, err = s.artifacts.rev(ctx, art+":"+n); err != nil {
+					return err
+				}
+			}
+			stub := cur != "" && cur == a.Stubs[n]
+			data, have := staged[n]
+			switch {
+			case have && (cur == "" || stub):
+				base := cur
+				if cur == "" {
+					base = storage.NoFile
+				}
+				change.Files = append(change.Files, storage.File{Path: n, Data: data, Base: base})
+			case have:
+				kept = append(kept, n) // the path is taken
+			case stub:
+				// The stub of a name whose file was removed from the area goes away.
+				change.Files = append(change.Files, storage.File{Path: n, Remove: true, Base: cur})
+			}
+		}
+		built := ""
+		id := ""
+		if len(change.Files) > 0 {
+			id, err = s.artifacts.commitLocked(ctx, change, func(id string) error {
+				// Record the commit before main moves to it: after a restart, the release looks for
+				// it in the history of main and never makes it twice.
+				built = id
+				return s.record(ctx, a, id, kept)
+			})
+			if storage.IsConflict(err) {
+				continue // a push took a path in the meantime
+			}
+			if err != nil {
+				return err
+			}
+		}
+		if id == "" || id != built {
+			// The area changed nothing in the artifact repository.
+			return s.record(ctx, a, "", kept)
+		}
+		return nil
 	}
-	if id != built {
-		return "", nil // the area changed nothing in the artifact repository
-	}
-	return id, nil
+	return fmt.Errorf("archive: the release of session %s met %d pushes in a row; giving up", areaName(a.Session), maxAttempts)
 }
 
-// record writes the ID of the release commit into the state of the area.
-func (s *Staging) record(ctx context.Context, a *areaFile, id string) error {
+// record writes the ID of the release commit and the kept names into the state of the area.
+func (s *Staging) record(ctx context.Context, a *areaFile, id string, kept []string) error {
 	s.repo.turn.Lock()
 	defer s.repo.turn.Unlock()
 	a.Release.Commit = id
+	a.Release.Kept = kept
 	return s.writeState(ctx, a, "Record the release commit of session "+areaName(a.Session))
 }
 
-// cleanUp is step 3 of a release: it removes the files and the state of the area from the
-// staging repository in one commit.
+// cleanUp is step 3 of a release: it removes the released files from the staging repository in
+// one commit. Without kept names it removes the state of the area too; otherwise the area stays
+// with the kept names only, and its release is done.
 func (s *Staging) cleanUp(ctx context.Context, session string) error {
 	s.repo.turn.Lock()
 	defer s.repo.turn.Unlock()
@@ -569,14 +750,37 @@ func (s *Staging) cleanUp(ctx context.Context, session string) error {
 	if err != nil || a == nil {
 		return err
 	}
-	files := []storage.File{{Path: areaStatePath(session), Remove: true}}
+	var files []storage.File
+	message := "Clean up the staging area of session " + areaName(session) + " after its release"
+	if len(a.Release.Kept) == 0 {
+		files = append(files, storage.File{Path: areaStatePath(session), Remove: true})
+	} else {
+		message += "; keep the files whose path is taken"
+	}
+	var names []string
+	stubs := map[string]string{}
 	for _, n := range a.Names {
+		if slices.Contains(a.Release.Kept, n) {
+			names = append(names, n)
+			if v, ok := a.Stubs[n]; ok {
+				stubs[n] = v
+			}
+			continue
+		}
 		files = append(files, storage.File{Path: n, Remove: true})
 	}
-	_, err = s.repo.commitLocked(ctx, storage.Change{
-		Message: "Clean up the staging area of session " + areaName(session) + " after its release",
-		Files:   files,
-	}, nil)
+	if len(a.Release.Kept) > 0 {
+		a.Names, a.Stubs, a.Release.Done = names, stubs, true
+		if len(a.Stubs) == 0 {
+			a.Stubs = nil
+		}
+		state, err := stateFile(a)
+		if err != nil {
+			return err
+		}
+		files = append(files, state)
+	}
+	_, err = s.repo.commitLocked(ctx, storage.Change{Message: message, Files: files}, nil)
 	return err
 }
 
