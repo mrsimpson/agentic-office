@@ -46,6 +46,11 @@
 //   - Every file that was added or changed between the old main and the new main is checked with
 //     the artifact check (if-artifact-check). Only this final state counts, not each commit in
 //     between. The hook knows no schema.
+//   - No push changes or removes the stub of a staged artifact (concept-session-release). For every
+//     path that the push changes or removes, the hook reads the file as it was in the old main and
+//     asks the artifact check whether it is a stub (IsStub). A file next to a stub is not
+//     affected. No push writes the content of a stub either: only the hub writes stubs. The
+//     staging repository is never served, so a clone holds stubs, never staged content.
 //   - The size is limited (risk-push-size) by three options: MaxPushBytes for the pack
 //     (receive.maxInputSize), MaxFileBytes for one file and MaxFiles for the number of changed
 //     files. The defaults are 32 MiB, 1 MiB and 500 files; the hub program sets them with

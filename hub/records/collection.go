@@ -691,10 +691,12 @@ func (c *collection[T]) add(ctx context.Context, r T, same func(stored, r T) boo
 		_, err = c.arch.Commit(ctx, storage.Change{Message: StubMessage,
 			Files: []storage.File{{Path: p, Data: check.Stub(c.schema), Base: storage.NoFile}}})
 		if err != nil {
-			// Take the staged file back. A push that put a file at this path first keeps it.
-			if _, rerr := c.staging.Commit(ctx, to.session, storage.Change{Message: fmt.Sprintf("%s %d: taken back", c.title, id),
-				Files: []storage.File{{Path: p, Remove: true}}}); rerr != nil {
+			// Take the staged file back, and the area forgets the path. A push that put a file at
+			// this path first keeps it, also at the release.
+			if rerr := c.staging.TakeBack(ctx, to.session, p); rerr != nil {
 				c.logf("records: take back the staged %s: %v", p, rerr)
+			} else {
+				delete(c.names, p)
 			}
 			if storage.IsConflict(err) {
 				if err := c.reloadArt(ctx, []string{p}); err != nil {

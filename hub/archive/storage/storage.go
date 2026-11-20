@@ -202,6 +202,13 @@ type Staging interface {
 	// ErrNoArea if the session has no area, with ErrAreaClosed when a release of the area runs,
 	// and with a *ConflictError when a path holds a file of another area.
 	Commit(ctx context.Context, session string, c Change) (string, error)
+	// TakeBack removes the file at path from the area of a session in one commit, and the area
+	// forgets the path (Area.Names), so the release leaves that path in the artifact repository
+	// as it is. A part calls it when it could not write the stub of a file that it has just
+	// staged: the path may hold a file that someone else wrote, never a stub of this area. A path
+	// that the area does not name changes nothing. It fails with ErrNoArea if the session has no
+	// area, and with ErrAreaClosed when a release of the area runs.
+	TakeBack(ctx context.Context, session, path string) error
 	// Read returns the files of the area of a session under the directory dir, as
 	// Archive.Read does. A file of another area is not returned. It fails with ErrNoArea if the
 	// session has no area.
@@ -263,8 +270,9 @@ type Area struct {
 	// Session is the ID of the session.
 	Session string
 	AreaState
-	// Names are the paths that ever lay in the area, also those of removed files, ordered. The
-	// release removes the stub of a name whose file is gone.
+	// Names are the paths that ever lay in the area, also those of removed files, ordered, except
+	// the paths that were taken back (TakeBack). The release removes the stub of a name whose file
+	// is gone.
 	Names []string
 	// Authors are the authors of the changes in the area, without duplicates, in the order of
 	// their first change. Changes by the hub add no author.

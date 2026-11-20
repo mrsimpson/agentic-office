@@ -314,6 +314,46 @@ func (s *Staging) Commit(ctx context.Context, session string, c storage.Change) 
 	return s.repo.commitLocked(ctx, change, nil)
 }
 
+// TakeBack implements storage.Staging.
+func (s *Staging) TakeBack(ctx context.Context, session, p string) error {
+	if err := checkSession(session); err != nil {
+		return err
+	}
+	if err := storage.CheckPath(p); err != nil {
+		return err
+	}
+	s.repo.turn.Lock()
+	defer s.repo.turn.Unlock()
+	head, err := s.repo.head(ctx)
+	if err != nil {
+		return err
+	}
+	a, err := s.load(ctx, head, session)
+	if err != nil {
+		return err
+	}
+	if a == nil {
+		return storage.ErrNoArea
+	}
+	if a.Release != nil {
+		return storage.ErrAreaClosed
+	}
+	i, ok := slices.BinarySearch(a.Names, p)
+	if !ok {
+		return nil
+	}
+	a.Names = slices.Delete(a.Names, i, i+1)
+	state, err := stateFile(a)
+	if err != nil {
+		return err
+	}
+	_, err = s.repo.commitLocked(ctx, storage.Change{
+		Message: "Take " + p + " back from the staging area of session " + areaName(session),
+		Files:   []storage.File{{Path: p, Remove: true}, state},
+	}, nil)
+	return err
+}
+
 // Read implements storage.Staging.
 func (s *Staging) Read(ctx context.Context, session, dir string) ([]storage.File, error) {
 	if err := checkSession(session); err != nil {

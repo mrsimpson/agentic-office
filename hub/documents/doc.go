@@ -20,10 +20,10 @@
 //   - Staging (concept-session-release): a create that names a session that is not released
 //     writes the document into the staging area of the session, then the stub of a document
 //     (package check) at the same path into the artifact repository, with the hub as the author
-//     and StubMessage. If the stub cannot be written, the staged file is taken back. A path whose
-//     staged document the same session removed keeps its stub, and a create there writes only the
-//     staged file. A session that is released, or no session, writes into the artifact
-//     repository.
+//     and StubMessage. If the stub cannot be written, the staged file is taken back and the area
+//     forgets the path. A path whose staged document the same session removed keeps its stub, and
+//     a create there writes only the staged file. A session that is released, or no session,
+//     writes into the artifact repository.
 //   - The part keeps no documents in memory. At each write it reads what lies at the path: a
 //     document in the artifact repository (released), a staged document of the area that names
 //     the path, a removed staged document, or a stub that no area names. A document in the

@@ -43,6 +43,10 @@
 // method takes the commit queue of the staging repository for its whole read and write, and only
 // the archive writes this repository, so the state it reads is the state it builds on.
 //
+// A part that staged a file and then could not write its stub takes the file back (TakeBack): the
+// file goes away and the area forgets its name, because the path may hold a file that a push put
+// there in between. So the release never removes a file at a path whose stub was never written.
+//
 // The release runs one at a time per tenant and has three steps, each recorded:
 //
 //  1. Close: the state gets the release author; from now on writes and OpenArea fail with

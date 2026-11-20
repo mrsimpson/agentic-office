@@ -14,7 +14,8 @@
 // Every schema has a second form: the stub of a staged record (concept-session-release). A record
 // that waits for the release of its session lies in the staging area of the session, and its stub
 // lies at the same path in the artifact repository. Every stub of a schema has the same content
-// (Stub): it names no session, no time and no author. The check accepts exactly that content.
+// (Stub): it names no session, no time and no author. The check accepts exactly that content
+// at the path of a record of the type.
 package check
 
 import (
@@ -22,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
+	"strconv"
 	"strings"
 
 	"go.yaml.in/yaml/v3"
@@ -101,6 +103,20 @@ func IsStub(schema string, content []byte) bool {
 }
 
 func (t recordType) filePath(id uint32) string { return fmt.Sprintf("%s/%06d%s", t.dir, id, t.ext) }
+
+// isRecordPath reports whether p is the path of a record of the type with some ID.
+func (t recordType) isRecordPath(p string) bool {
+	p = path.Clean(p)
+	if path.Dir(p) != t.dir {
+		return false
+	}
+	base, ok := strings.CutSuffix(path.Base(p), t.ext)
+	if !ok {
+		return false
+	}
+	id, err := strconv.ParseUint(base, 10, 32)
+	return err == nil && id > 0 && t.filePath(uint32(id)) == p
+}
 
 // Ext returns the ending of the files of a schema: ".md" for notes, ".yaml" for the others. It is
 // empty if the schema is not one of this part.
@@ -222,6 +238,9 @@ func Validate(schema, filePath string, content []byte) []string {
 		return []string{fmt.Sprintf("a file of the schema %s must have the ending %s", schema, t.ext)}
 	}
 	if string(content) == t.stub {
+		if !t.isRecordPath(filePath) {
+			return []string{fmt.Sprintf("the stub of the schema %s belongs in %s/NNNNNN%s", schema, t.dir, t.ext)}
+		}
 		return nil
 	}
 	v, reason := t.fields(content)

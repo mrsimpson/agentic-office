@@ -313,6 +313,70 @@ func TestStagingReleaseCommit(t *testing.T) {
 	}
 }
 
+// Issue #217: a part stages a note, but a push puts a file at the same path before the stub is
+// written. The stub commit fails, and the part takes the staged file back and stages the next ID.
+// The area forgets the path it gave up, so the release keeps the pushed file. A file that the
+// session itself removed still loses its stub at the release.
+func TestStagingTakeBackKeepsAPushedFile(t *testing.T) {
+	f := newStaging(t)
+	ctx := stagingCtx(t)
+	if err := f.staging.OpenArea(ctx, "weekly", storage.AreaState{Readers: []string{"p-ada"}}); err != nil {
+		t.Fatal(err)
+	}
+	f.stage(t, "weekly", "notes/000031.md", "The agent's note.\n", authorAda)
+	// The push of a participant comes first.
+	if _, err := f.arch.Commit(ctx, storage.Change{Message: "pushed", Author: authorBen,
+		Files: []storage.File{{Path: "notes/000031.md", Data: []byte("Ben's own note.\n"), Base: storage.NoFile}}}); err != nil {
+		t.Fatal(err)
+	}
+	// The stub cannot be written now.
+	_, err := f.arch.Commit(ctx, storage.Change{Message: "Reserve a name",
+		Files: []storage.File{{Path: "notes/000031.md", Data: []byte("waits for a release\n"), Base: storage.NoFile}}})
+	if !storage.IsConflict(err) {
+		t.Fatalf("stub over a pushed file: %v, want a conflict", err)
+	}
+	if err := f.staging.TakeBack(ctx, "weekly", "notes/000031.md"); err != nil {
+		t.Fatal(err)
+	}
+	f.stage(t, "weekly", "notes/000032.md", "The agent's note.\n", authorAda)
+	f.stub(t, "notes/000032.md")
+	f.stage(t, "weekly", "notes/000033.md", "Removed later.\n", authorAda)
+	f.stub(t, "notes/000033.md")
+	if _, err := f.staging.Commit(ctx, "weekly", storage.Change{Message: "remove", Author: authorAda,
+		Files: []storage.File{{Path: "notes/000033.md", Remove: true}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	a, err := f.staging.Area(ctx, "weekly")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"notes/000032.md", "notes/000033.md"}; !slices.Equal(a.Names, want) {
+		t.Errorf("names %v, want %v", a.Names, want)
+	}
+	if list, err := f.staging.List(ctx, "weekly"); err != nil || !slices.Equal(list, []string{"notes/000032.md"}) {
+		t.Errorf("list %v, %v", list, err)
+	}
+	// A path that the area does not name changes nothing.
+	if err := f.staging.TakeBack(ctx, "weekly", "notes/000099.md"); err != nil {
+		t.Errorf("take back an unknown path: %v", err)
+	}
+	if err := f.staging.TakeBack(ctx, "nobody", "notes/000032.md"); !errors.Is(err, storage.ErrNoArea) {
+		t.Errorf("take back without an area: %v, want ErrNoArea", err)
+	}
+
+	if _, err := f.staging.Release(ctx, "weekly", authorAda); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"notes/000031.md": "Ben's own note.\n", "notes/000032.md": "The agent's note.\n"}
+	if got := f.artifacts(t, "notes"); !mapsEqual(got, want) {
+		t.Errorf("notes after the release %v, want %v", got, want)
+	}
+	if err := f.staging.TakeBack(ctx, "weekly", "notes/000032.md"); !errors.Is(err, storage.ErrNoArea) {
+		t.Errorf("take back after the release: %v, want ErrNoArea", err)
+	}
+}
+
 func mapsEqual(a, b map[string]string) bool {
 	if len(a) != len(b) {
 		return false
