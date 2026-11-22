@@ -20,6 +20,9 @@ import (
 // implements it. The stage reads only paths that the log of its own session names.
 type Artifacts interface {
 	Load(ctx context.Context, session string, req *archivev1.ReadFileRequest) (*archivev1.ReadFileResponse, error)
+	// Staged lists the files that the staging area of the session holds. The stage shows them as
+	// artifacts of its session, whether the log names them or not.
+	Staged(ctx context.Context, session string) ([]*archivev1.FileInfo, error)
 }
 
 // paperCSS styles the document inside its sandboxed frame.

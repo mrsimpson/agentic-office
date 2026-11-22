@@ -73,6 +73,46 @@ func (s *ReadService) Load(ctx context.Context, session string, req *archivev1.R
 	return s.read(ctx, req.GetPath(), func(a storage.Area) bool { return session != "" && a.Session == session })
 }
 
+// Staged lists the files that the area of a session holds, with their versions, ordered by path:
+// what the stage of that session may show next to the artifacts that its log names. It reads only
+// the area of the session it is given. A session without an area, for example one that is
+// released, has no staged files. It is for building blocks of the hub that take the session from
+// a token that they checked themselves, such as the stage.
+func (s *ReadService) Staged(ctx context.Context, session string) ([]*archivev1.FileInfo, error) {
+	if session == "" || s.staging == nil {
+		return nil, nil
+	}
+	names, err := s.staging.List(ctx, session)
+	if errors.Is(err, storage.ErrNoArea) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, "the staging area could not be read")
+	}
+	var dirs []string
+	for _, n := range names {
+		if d := path.Dir(n); !slices.Contains(dirs, d) {
+			dirs = append(dirs, d)
+		}
+	}
+	seen := map[string]bool{}
+	var out []*archivev1.FileInfo
+	for _, d := range dirs {
+		files, err := s.staging.Read(ctx, session, d)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, "the staging area could not be read")
+		}
+		for _, f := range files {
+			if !seen[f.Path] && isArtifactFile(f.Path) {
+				seen[f.Path] = true
+				out = append(out, &archivev1.FileInfo{Path: f.Path, Version: f.Version, Staged: true})
+			}
+		}
+	}
+	slices.SortFunc(out, func(a, b *archivev1.FileInfo) int { return strings.Compare(a.GetPath(), b.GetPath()) })
+	return out, nil
+}
+
 func (s *ReadService) read(ctx context.Context, p string, may mayRead) (*archivev1.ReadFileResponse, error) {
 	if err := checkReadable(p); err != nil {
 		return nil, err

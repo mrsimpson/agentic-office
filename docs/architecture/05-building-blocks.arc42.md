@@ -120,6 +120,8 @@ flowchart LR
     bb_stage -->|if-session-activity| bb_session_service
     bb_stage -->|if-slides-api| bb_slides
     bb_stage -->|if-auth-api| bb_identity
+    bb_stage -->|if-archive-read| bb_archive
+    bb_stage -->|if-archive-watch| bb_archive
     bb_tasks -->|if-archive-storage| bb_archive
     bb_tasks -->|if-archive-watch| bb_archive
     bb_identity -->|if-archive-storage| bb_archive
@@ -1404,12 +1406,17 @@ One web page per session, shown in the meeting by screen share. It shows the art
 the other artifacts as tabs, the transcript, and who is captured or paused, with the raised hands
 and what each agent is doing (`if-session-activity`) in the same list. The minutes are the first artifact of every session and stay in focus until
 someone focuses another artifact. Until there are minutes, the stage asks for an agent that takes
-them. It marks an imported session with its source and never shows it as live. It is only a view of
-the session log and has no logic of its own: it reads an artifact straight from the archive
-(`if-archive-read`) and renders it by its schema (`dec-artifacts`), and only paths that the log of
-its own session names. It reads the decks through the slides interface. A staged artifact of its own
-session shows its content, read from the staging area through the same interfaces; a staged
-artifact of another session shows as its stub (`concept-session-release`).
+them. It marks an imported session with its source and never shows it as live. It is a view of
+everything that happens inside a session and has no logic of its own. It builds that view from the
+session log and from the staging area of its own session. The log names the artifacts that
+participants created, changed or focused. The staging area holds the artifacts that the session
+staged, whichever part wrote them, so the stage lists them without a notice from that part, and it
+reads the area again when it changes (`if-archive-watch`). It reads an artifact straight from the
+archive (`if-archive-read`) and renders it by its schema (`dec-artifacts`); it reads only the
+staging area of its own session, which the stage link names, never a path that another session
+staged. It reads the decks through the slides interface. A staged artifact of its own session
+shows its content; a staged artifact of another session shows as its stub
+(`concept-session-release`).
 
 ```arc42
 :::building-block
@@ -1417,7 +1424,7 @@ id: bb-stage
 title: Stage
 technology: Go, rendered by the hub / server-sent events
 parent: bb-office-hub
-requires: if-session-stream, if-session-activity, if-slides-api, if-auth-api, if-archive-read
+requires: if-session-stream, if-session-activity, if-slides-api, if-auth-api, if-archive-read, if-archive-watch
 implements: concept-transparency, concept-session-release
 path: hub/stage
 :::

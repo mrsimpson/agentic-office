@@ -9,10 +9,16 @@
 //   - The token must be a stage link token for this session (Identity creates the link). No
 //     token, or an unknown or expired token, gives 401 with an error page. A participant token or
 //     a link for another session gives 403. The error pages show no session data.
-//   - The stage is only a view of the session log. For every open page it subscribes to the
-//     session stream in-process, through the token check, with the token of the link. So it has
-//     exactly the rights of the link. It builds its view from the events and has no state or
-//     logic of its own.
+//   - The stage is a view of everything that happens inside a session. For every open page it
+//     subscribes to the session stream in-process, through the token check, with the token of
+//     the link. So it has exactly the rights of the link. It builds its view from the events and
+//     from the staging area of its own session, and has no state or logic of its own.
+//   - The staging area: the stage lists the files that the session staged as artifacts next to
+//     those that the log names, whichever part wrote them. It reads the area again when the
+//     staging repository changes (if-archive-watch). A deck file "slides/000042.yaml" is the
+//     deck "slides/42"; the stored minutes are not listed because the minutes are the first tab
+//     already. The session comes from the stage link and from nothing else: the stage reads no
+//     staging area of another session.
 //   - The page is rendered on the server with an empty view. A small inline script opens the
 //     event stream. Every event of the stream is named after a region of the page (status,
 //     origin, participants, hands, artifact, minutes, utterances) and carries the inner HTML of that

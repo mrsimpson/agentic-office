@@ -15,6 +15,7 @@ import (
 
 	"connectrpc.com/connect/v2"
 
+	"github.com/mrsimpson/agentic-office/hub/archive/watch"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	sessionactivityv1 "github.com/mrsimpson/agentic-office/hub/session/activityapi"
 	"github.com/mrsimpson/agentic-office/hub/session/activityapi/sessionactivityv1connect"
@@ -40,6 +41,10 @@ type StageLink struct {
 	// Artifacts reads the artifacts of the tenant of the link by their path (if-archive-read). Nil
 	// means the stage shows a note instead.
 	Artifacts Artifacts
+	// Staging reports the changes of the staging repository of the tenant (if-archive-watch). The
+	// stage reads the staged files of its session again after each report. Nil means the stage
+	// reads them once, when the page opens.
+	Staging watch.Watcher
 }
 
 // Options configure a Handler.
@@ -194,6 +199,24 @@ func (h *Handler) events(w http.ResponseWriter, r *http.Request, sid, token stri
 	acts := make(chan []*sessionactivityv1.Activity)
 	go h.watchActivity(ctx, token, sid, acts)
 
+	// What the staging area of the session holds is part of the session, next to the log. The
+	// watch is registered before the first read, so no change is lost between the two.
+	staged := make(chan struct{}, 1)
+	if link.Staging != nil {
+		if sub, err := link.Staging.Watch(); err == nil {
+			defer sub.Close()
+			go func() {
+				for range sub.Changes() {
+					select {
+					case staged <- struct{}{}:
+					default:
+					}
+				}
+			}()
+		}
+	}
+	restage := true
+
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprint(w, "retry: 2000\n\n")
@@ -235,13 +258,21 @@ func (h *Handler) events(w http.ResponseWriter, r *http.Request, sid, token stri
 				pending = true
 				timer.Reset(coalesce)
 			}
+		case <-staged:
+			restage = true
+			if !pending {
+				pending = true
+				timer.Reset(coalesce)
+			}
 		case <-timer.C:
 			pending = false
 			v.live = true
+			restage = v.restage(ctx, sid, link.Artifacts, restage)
 			v.refresh(ctx, sid, link.Slides, link.Artifacts)
 			send()
 		case err := <-errc:
 			v.live = true
+			restage = v.restage(ctx, sid, link.Artifacts, restage)
 			v.refresh(ctx, sid, link.Slides, link.Artifacts)
 			switch {
 			case errors.Is(err, io.EOF):

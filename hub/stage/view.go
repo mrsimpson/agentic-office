@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"path"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 
 	"connectrpc.com/connect/v2"
 
+	archivev1 "github.com/mrsimpson/agentic-office/hub/archive/api"
 	sessionactivityv1 "github.com/mrsimpson/agentic-office/hub/session/activityapi"
 	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
 )
@@ -303,12 +305,59 @@ func (e *artifactEntry) Focused() bool {
 	return e.Path == e.v.focus
 }
 
-// Label is the name of the tab: "Minutes", or the last part of the path.
+// Label is the name of the tab: "Minutes", the file name of a document, or the path of any other
+// artifact, so that "decisions/000001.yaml" and "notes/000001.md" stay apart.
 func (e *artifactEntry) Label() string {
-	if e.Path == MinutesID {
+	switch {
+	case e.Path == MinutesID:
 		return "Minutes"
+	case strings.HasPrefix(e.Path, "documents/"):
+		return path.Base(e.Path)
 	}
-	return path.Base(e.Path)
+	return e.Path
+}
+
+// stagedID returns the artifact ID of a staged file, and false for a file that the stage does not
+// list: the stored minutes, because the minutes are the first tab already. A deck file
+// "slides/000042.yaml" is the deck "slides/42".
+func stagedID(p string) (string, bool) {
+	switch dir := path.Dir(p); dir {
+	case "minutes":
+		return "", false
+	case "slides":
+		n, err := strconv.ParseUint(strings.TrimSuffix(path.Base(p), path.Ext(p)), 10, 64)
+		if err != nil {
+			return "", false
+		}
+		return slidesPrefix + strconv.FormatUint(n, 10), true
+	}
+	return p, true
+}
+
+// restage reads the staged files of the session when due is true and returns whether it must try
+// again: it could not read them. The stage keeps what it has, and the next report tries again.
+func (v *view) restage(ctx context.Context, session string, files Artifacts, due bool) bool {
+	if !due || files == nil {
+		return false
+	}
+	staged, err := files.Staged(ctx, session)
+	if err != nil {
+		return true
+	}
+	v.setStaged(staged)
+	return false
+}
+
+// setStaged adds the files of the staging area of the session as artifacts, in the order of their
+// paths after those that the log named first. A tab stays when its file leaves the area: the
+// release moves the files into the archive, and they are still what the session made. The version
+// of the file is the reload key of the artifact in focus, so a staged change shows without an event.
+func (v *view) setStaged(files []*archivev1.FileInfo) {
+	for _, f := range files {
+		if id, ok := stagedID(f.GetPath()); ok {
+			v.entry(id).version = f.GetVersion()
+		}
+	}
 }
 
 // entry returns the entry of a path and adds it when the log names the path for the first time.

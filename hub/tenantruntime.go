@@ -11,6 +11,7 @@ import (
 	"connectrpc.com/connect/v2"
 
 	"github.com/mrsimpson/agentic-office/hub/archive"
+	"github.com/mrsimpson/agentic-office/hub/archive/watch"
 	"github.com/mrsimpson/agentic-office/hub/documents"
 	"github.com/mrsimpson/agentic-office/hub/identity/tokencheck"
 	"github.com/mrsimpson/agentic-office/hub/records"
@@ -32,6 +33,8 @@ type tenantRuntime struct {
 	// repository (dec-artifacts).
 	documents   *documents.Service
 	archiveRead *archive.ReadService
+	// stagingWatcher reports the changes of the staging repository to the stage.
+	stagingWatcher watch.Watcher
 	// archiveChanges tells the followers of the tenant which artifacts changed (dec-artifact-sync).
 	archiveChanges *archive.ChangesService
 	// wiki is the derived view of the wiki of the tenant (concept-wiki); it only reads.
@@ -91,6 +94,7 @@ func (r *runtimes) get(ctx context.Context, tenant string) (*tenantRuntime, erro
 	if err != nil {
 		return nil, fmt.Errorf("tenant %s: %w", tenant, err)
 	}
+	rt.stagingWatcher = stagingWatcher
 	if rt.records, err = records.Open(ctx, records.Options{Archive: arch, Watcher: watcher, Staging: staging,
 		StagingWatcher: stagingWatcher, Logf: logf}); err != nil {
 		return nil, err

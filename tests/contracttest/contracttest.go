@@ -525,12 +525,37 @@ func RunIn(t testing.TB, dir, name string, env []string, stdin io.Reader, args .
 // OFFICE_* variables of the developer or the cloud session (for example OFFICE_HUB or
 // OFFICE_TENANT). The office reads its configuration from them, so they would reach a hub other
 // than the test hub, or change what a test checks. A test sets the variables it needs itself.
+//
+// It also keeps the user of the machine out of the tests:
+//   - HOME is an empty directory. On macOS the configuration folder follows HOME and ignores
+//     XDG_CONFIG_HOME, so without it a program would read the real user file of the developer.
+//     A test that needs a home directory sets HOME itself.
+//   - XDG_DATA_HOME stays where the real one is, so that the models of the ears are found.
+//   - LC_ALL is C, so that the output of Git and other tools is English, which the tests check.
 func Environ() []string {
+	homeOnce.Do(func() {
+		realHome, _ = os.UserHomeDir()
+		emptyHome, _ = os.MkdirTemp("", "office-contracttest-home-")
+	})
 	var out []string
+	hasData := false
 	for _, kv := range os.Environ() {
-		if !strings.HasPrefix(kv, "OFFICE_") {
+		switch {
+		case strings.HasPrefix(kv, "OFFICE_"), strings.HasPrefix(kv, "HOME="), strings.HasPrefix(kv, "LC_"),
+			strings.HasPrefix(kv, "LANG="), strings.HasPrefix(kv, "LANGUAGE="):
+		default:
+			hasData = hasData || strings.HasPrefix(kv, "XDG_DATA_HOME=")
 			out = append(out, kv)
 		}
 	}
+	out = append(out, "HOME="+emptyHome, "LC_ALL=C")
+	if !hasData && realHome != "" {
+		out = append(out, "XDG_DATA_HOME="+filepath.Join(realHome, ".local", "share"))
+	}
 	return out
 }
+
+var (
+	homeOnce            sync.Once
+	realHome, emptyHome string
+)
