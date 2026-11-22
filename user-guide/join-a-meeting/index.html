@@ -218,19 +218,24 @@ minutes, decisions, notes or documents; the hub does not check this.</p>
 <p>Other commands for the meeting: <code dir="auto">meeting pause</code> and <code dir="auto">meeting resume</code>, <code dir="auto">signal turn-end</code>,
 <code dir="auto">signal silence-long</code> and <code dir="auto">signal addressed</code> for agents and scripts, <code dir="auto">hand raise</code>.</p>
 <div class="sl-heading-wrapper level-h2"><h2 id="show-the-stage">Show the stage</h2><a class="sl-anchor-link" href="#show-the-stage"><span aria-hidden="true" class="sl-anchor-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="m12.11 15.39-3.88 3.88a2.52 2.52 0 0 1-3.5 0 2.47 2.47 0 0 1 0-3.5l3.88-3.88a1 1 0 1 0-1.42-1.42l-3.88 3.89a4.48 4.48 0 0 0 6.33 6.33l3.89-3.88a1 1 0 0 0-1.42-1.42m8.58-12.08a4.49 4.49 0 0 0-6.33 0l-3.89 3.88a1 1 0 1 0 1.42 1.42l3.88-3.88a2.52 2.52 0 0 1 3.5 0 2.47 2.47 0 0 1 0 3.5l-3.88 3.88a1 1 0 0 0 0 1.42 1 1 0 0 0 1.42 0l3.88-3.89a4.49 4.49 0 0 0 0-6.33M8.83 15.17a1 1 0 0 0 .71.29 1 1 0 0 0 .71-.29l4.92-4.92a1 1 0 1 0-1.42-1.42l-4.92 4.92a1 1 0 0 0 0 1.42"></path></svg></span><span class="sr-only" data-pagefind-ignore>Section titled “Show the stage”</span></a></div>
-<p>The stage shows the meeting in two columns:</p>
+<p>The stage shows the participants in its header and the meeting in two columns below.</p>
 <ul>
+<li><strong>Header:</strong> every participant as a small sign with initials: round for a human, square for an
+agent. A red ring means captured, a yellow ring paused. A number on the sign is a raised hand,
+in the order the hands went up; the counter next to the signs shows how many are raised. A
+blue dot on an agent means it is working. Point at a sign, or move to it with the Tab key, to
+see the name, the capture status, the topic of the hand and what an agent does: “working”,
+“working: fetch” with the kind or office tool it calls (never what it fetches or searches),
+“waiting”, or “answered only in its own chat” when its reply reached nobody. Agents run with
+<code dir="auto">office agent run</code>.</li>
 <li><strong>Left:</strong> the artifact in focus, large. The <strong>minutes</strong> are the first artifact: they are in
 focus until someone focuses another artifact. Until there are minutes, the stage asks you to
 bring in an agent that takes them (see <a href="/agentic-office/user-guide/bring-in-an-agent/">Bring in an agent</a>). When a session
 has more than one artifact, tabs appear above, with the minutes first. Below is a log of who
 created, changed or focused which artifact.</li>
-<li><strong>Right:</strong> the participants with their capture status (captured, paused, not captured), agents
-marked as agents, and a hand with a number for everyone who raised their hand, in the order they
-raised it. Under the name of an agent that runs with <code dir="auto">office agent run</code>, the stage shows what
-it does: “working”, “working: fetch” with the kind or office tool it calls (never what it
-fetches or searches), “waiting”, or “answered only in its own chat” when its reply reached
-nobody. Below it is the transcript of the latest sentences.</li>
+<li><strong>Right:</strong> the transcript. It scrolls on its own and follows new sentences while you are at its
+end. If you scroll up to read, it keeps your place and shows <strong>New messages</strong>, which takes you
+back to the end.</li>
 </ul>
 <p>The stage is dark or light, as your computer is set. One person creates a link, opens it in a
 browser and shares the window in your meeting tool (Zoom, Teams, Meet, Jitsi):</p>
