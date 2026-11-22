@@ -277,6 +277,54 @@ addresses: qg-usability
 :::
 ```
 
+## Speech output on the client with a voice profile per participant
+
+**Context:** Agents contribute only as text (`dec-text-first`). A human who cannot or does not
+want to read the stage cannot follow an agent. Voice models are large, and the audio of a
+meeting is confidential, so a cloud engine is not an option (`dec-models-in-client`).
+**Decision:** The client of a human who asks for speech output when joining reads the
+utterances of the other participants aloud, with a local engine that it starts on demand and stops
+on leave. The decision has these parts:
+
+- A participant record carries an optional voice profile: language, gender or style, and a
+  preferred voice ID. It is a hint. The client maps it to the nearest installed voice and breaks
+  ties between participants in a fixed way, so listeners can tell speakers apart.
+- The `say` command takes an optional language code. Without it, the client derives the language
+  from the text.
+- The engine sits behind one provider interface of the client. The first engine is a local neural
+  engine; the speech output of the operating system is the fallback. The model is chosen and
+  downloaded like the speech model (`dec-model-download`).
+- A client plays one utterance at a time, in order, and drops utterances that wait too long.
+  Each client queues for itself, so two clients may hear a different order.
+- By default the client reads agents only, never the words of its own human. An agent is read
+  aloud only while it has the floor, unless the human chose to read everything.
+- While the client plays speech, and for a short time after, the ears do not transcribe, so the
+  speech is never taken as the words of the human (`dec-local-single-ear`). When the human starts
+  to speak, the client stops playing and clears the queue.
+- Before it speaks, the client leaves out code blocks and tool output and shortens links.
+
+**Consequences:** Speech output needs no change of the hub except the voice profile and the
+language code. The audio stays on the device. The client carries a second model next to Whisper:
+more disk, memory and processor load. The mute of the ears must also hold with loudspeakers,
+which `con-headset-only` excludes for now. The licences of the engine, the model and the voices
+must be checked before release. `dec-text-first` says that speech output comes through the
+audio of the screen share; this decision replaces that way with playing on the client, so
+`dec-text-first` needs a change once the maintainer agrees. OPEN: the first engine (Piper or
+Kokoro); whether the speaker is a building block of its own; how long an utterance may wait.
+**Rejected:** a cloud engine (confidentiality); an engine in pure Go (no mature neural engine,
+robotic voices); one shared stream through the screen share (echo, no choice of voice per
+listener); playing several speakers at the same time (not understandable).
+
+```arc42
+:::decision
+id: dec-speech-output
+title: Speech output on the client with a voice profile per participant
+status: proposed
+date: 2026-11-22
+addresses: qg-usability, qg-confidentiality, con-headset-only, risk-speaker-mode
+:::
+```
+
 ## Gateway as a CLI
 
 **Decision:** At first, the gateway is a CLI. It shows what was recorded and sent, and it lets the
