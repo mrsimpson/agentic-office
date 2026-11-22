@@ -24,6 +24,7 @@ import (
 
 	documentv1 "github.com/mrsimpson/agentic-office/hub/documents/api"
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
+	decisionv1 "github.com/mrsimpson/agentic-office/hub/records/decision/api"
 	notev1 "github.com/mrsimpson/agentic-office/hub/records/note/api"
 	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
 	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
@@ -243,6 +244,13 @@ func (s *stageStream) count(name string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.counts[name]
+}
+
+// region returns the latest inner HTML of a region.
+func (s *stageStream) region(name string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.latest[name]
 }
 
 // wait waits until cond is true for the latest HTML of region and returns the parsed region.
@@ -887,4 +895,140 @@ func TestStageShowsActivity(t *testing.T) {
 	s.wait("participants", "no activity after bot left", func(n *html.Node) bool {
 		return participantEl(n, bot) != nil && activityOf(n, bot) == nil
 	})
+}
+
+// TestStageListsStagedArtifactsOfRecords: what a session stages while it runs is on the stage,
+// whatever the type: a decision, a note and a document each get a tab without anybody focusing
+// them, and the log of the artifacts names who staged them. This reproduces the bug that the
+// portal listed three staged artifacts of a running session while the stage showed only the
+// document, because only the documents told the session about their writes.
+func TestStageListsStagedArtifactsOfRecords(t *testing.T) {
+	m := newStageMeeting(t, "-release-grace-period", "1h")
+	st := openStage(t, m.srv, m.link)
+	bot := m.joinAs("Minute Bot", sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_AGENT, false)
+	a := m.actors[bot]
+
+	if d, err := a.Decision.RecordDecision(m.ctx(), &decisionv1.RecordDecisionRequest{CommandId: coreapi.NewCommandID(),
+		Text: "We hire a product lead.", AuthorParticipantId: bot, SessionId: m.sid}); err != nil || !d.GetDecision().GetStaged() {
+		t.Fatalf("staged decision: %v, %v", d, err)
+	}
+	if n, err := a.Note.AddNote(m.ctx(), &notev1.AddNoteRequest{CommandId: coreapi.NewCommandID(), Text: "Ask the bank.",
+		AuthorParticipantId: bot, SessionId: m.sid}); err != nil || !n.GetNote().GetStaged() {
+		t.Fatalf("staged note: %v, %v", n, err)
+	}
+	if d, err := createDocIn(t, a, m.sid, "documents/plan.md", "# Plan\n"); err != nil || !d.GetStaged() {
+		t.Fatalf("staged document: %v, %v", d, err)
+	}
+
+	deckReq := budgetDeck()
+	deckReq.SessionId = m.sid
+	deck := render(t, a, deckReq)
+	if !deck.GetStaged() {
+		t.Fatalf("the deck is not staged: %v", deck)
+	}
+
+	want := []string{"minutes", "decisions/000001.yaml", "notes/000001.md", "documents/plan.md", deck.GetId()}
+	st.wait("artifacts", "a tab for every staged artifact", func(n *html.Node) bool {
+		tabs := findAll(n, withAttr("data-artifact", ""))
+		got := map[string]bool{}
+		for _, tab := range tabs {
+			p, _ := attr(tab, "data-artifact")
+			got[p] = true
+		}
+		for _, p := range want {
+			if !got[p] {
+				return false
+			}
+		}
+		return true
+	})
+
+	// A staged decision shows its content when it is focused.
+	if _, err := a.Commands.FocusArtifact(m.ctx(), &sessioncommandsv1.FocusArtifactRequest{SessionId: m.sid,
+		CommandId: coreapi.NewCommandID(), ParticipantId: bot, ArtifactId: "decisions/000001.yaml"}); err != nil {
+		t.Fatal(err)
+	}
+	st.wait("artifact", "the staged decision", func(n *html.Node) bool {
+		frames := findAll(n, byTag("iframe"))
+		if len(frames) != 1 {
+			return false
+		}
+		doc, _ := attr(frames[0], "srcdoc")
+		return strings.Contains(doc, "We hire a product lead.")
+	})
+
+	// A change of a staged artifact in focus shows without a new focus or a notice.
+	if _, err := a.Decision.ChangeDecision(m.ctx(), &decisionv1.ChangeDecisionRequest{CommandId: coreapi.NewCommandID(), Id: 1,
+		Text: "We hire two product leads.", AuthorParticipantId: bot, SessionId: m.sid}); err != nil {
+		t.Fatal(err)
+	}
+	st.wait("artifact", "the changed decision", func(n *html.Node) bool {
+		frames := findAll(n, byTag("iframe"))
+		if len(frames) != 1 {
+			return false
+		}
+		doc, _ := attr(frames[0], "srcdoc")
+		return strings.Contains(doc, "two product leads")
+	})
+}
+
+// TestStageShowsNothingOfOtherSessions: the stage of a session lists and shows what its own
+// session staged and nothing that another session of the tenant staged. A focus on the path of
+// another session's staged artifact shows its stub, never its content.
+func TestStageShowsNothingOfOtherSessions(t *testing.T) {
+	srv := contracttest.StartHub(t, nil, "-release-grace-period", "1h")
+	a := newStageMeetingOn(t, srv)
+	b := newStageMeetingOn(t, srv)
+	botA := a.joinAs("Bot A", sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_AGENT, false)
+	botB := b.joinAs("Bot B", sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_AGENT, false)
+
+	// Session B stages first, so its records have the numbers 1.
+	if _, err := b.actors[botB].Decision.RecordDecision(b.ctx(), &decisionv1.RecordDecisionRequest{CommandId: coreapi.NewCommandID(),
+		Text: "Secret decision of B.", AuthorParticipantId: botB, SessionId: b.sid}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.actors[botB].Note.AddNote(b.ctx(), &notev1.AddNoteRequest{CommandId: coreapi.NewCommandID(),
+		Text: "Secret note of B.", AuthorParticipantId: botB, SessionId: b.sid}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := createDocIn(t, b.actors[botB], b.sid, "documents/secret-b.md", "# Secret document of B\n"); err != nil {
+		t.Fatal(err)
+	}
+	// Session A stages its own decision (number 2).
+	if _, err := a.actors[botA].Decision.RecordDecision(a.ctx(), &decisionv1.RecordDecisionRequest{CommandId: coreapi.NewCommandID(),
+		Text: "Decision of A.", AuthorParticipantId: botA, SessionId: a.sid}); err != nil {
+		t.Fatal(err)
+	}
+
+	st := openStage(t, srv, a.link)
+	tabsOf := func(n *html.Node) map[string]bool {
+		got := map[string]bool{}
+		for _, tab := range findAll(n, withAttr("data-artifact", "")) {
+			p, _ := attr(tab, "data-artifact")
+			got[p] = true
+		}
+		return got
+	}
+	n := st.wait("artifacts", "the decision of A as a tab", func(n *html.Node) bool { return tabsOf(n)["decisions/000002.yaml"] })
+	for _, p := range []string{"decisions/000001.yaml", "notes/000001.md", "documents/secret-b.md"} {
+		if tabsOf(n)[p] {
+			t.Errorf("the stage of session A lists %s of session B", p)
+		}
+	}
+
+	// A focus on a path of session B shows the stub or a note, never the content of B.
+	for _, p := range []string{"decisions/000001.yaml", "notes/000001.md", "documents/secret-b.md"} {
+		if _, err := a.actors[botA].Commands.FocusArtifact(a.ctx(), &sessioncommandsv1.FocusArtifactRequest{SessionId: a.sid,
+			CommandId: coreapi.NewCommandID(), ParticipantId: botA, ArtifactId: p}); err != nil {
+			t.Fatal(err)
+		}
+		st.wait("artifact", "the artifact "+p+" shown", func(n *html.Node) bool {
+			return len(findAll(n, withAttr("data-artifact", p))) > 0
+		})
+		for _, region := range []string{"artifact", "artifacts"} {
+			if s := st.region(region); strings.Contains(s, "Secret") {
+				t.Errorf("after the focus on %s, the region %s shows content of session B:\n%s", p, region, s)
+			}
+		}
+	}
 }

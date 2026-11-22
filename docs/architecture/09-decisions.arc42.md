@@ -1080,8 +1080,8 @@ author read; the hub refuses it when the artifact has changed since. A session r
 artifacts and exactly one has the focus. The minutes are the first artifact and keep the focus
 until another artifact gets it. The archive stores every change in one commit, and the rule for
 off the record applies when an artifact is created. The archive offers an interface to read
-artifacts by path (`if-archive-read`); the stage reads through it, and only paths that the log of
-its own session names; for a staged artifact it reads the staging area of its own session. **Consequences:** The stage chooses its renderer by the schema. The session
+artifacts by path (`if-archive-read`); the stage reads through it, the paths that the log of its own
+session names and the staged files of its own session, and nothing that another session staged. **Consequences:** The stage chooses its renderer by the schema. The session
 log needs events for created, changed and focused artifacts. Decisions, minutes, notes, slides and
 tasks keep their interfaces and each has a schema; what they share is the path, the schema
 reference, the commit per change, the version check and the focus. **Rejected:** schemas defined

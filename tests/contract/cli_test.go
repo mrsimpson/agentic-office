@@ -6,9 +6,11 @@ package contract
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -138,6 +140,14 @@ func killAtEnd(t *testing.T, pid int) {
 // alive reports whether a process runs. A zombie counts as ended.
 func alive(pid int) bool {
 	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if errors.Is(err, os.ErrNotExist) {
+		if _, perr := os.Stat("/proc/self/stat"); perr != nil {
+			// No /proc (macOS): ask ps for the state of the process.
+			out, _ := exec.Command("ps", "-o", "stat=", "-p", strconv.Itoa(pid)).Output()
+			st := strings.TrimSpace(string(out))
+			return st != "" && st[0] != 'Z'
+		}
+	}
 	if err != nil {
 		return false
 	}
