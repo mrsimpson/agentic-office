@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/mrsimpson/agentic-office/client/agentrunner/acpclient"
@@ -103,7 +104,11 @@ func Run(ctx context.Context, o Options) error {
 
 	// The skills injector (dec-skills): the harness finds the skills when it starts.
 	injectSkills(o.Cwd, logf)
-	h, err := acpclient.Start(o.Harness, o.Cwd, o.Stderr, logf, acpclient.Rule{Globs: o.Allow})
+	harness, err := absCommand(o.Harness)
+	if err != nil {
+		return err
+	}
+	h, err := acpclient.Start(harness, o.Cwd, o.Stderr, logf, acpclient.Rule{Globs: o.Allow})
 	if err != nil {
 		return err
 	}
@@ -456,3 +461,17 @@ func absEnv(name, value string) acp.EnvVariable { return acp.EnvVariable{Name: n
 
 // lookupOffice returns the path of the running office binary, for the MCP server.
 func lookupOffice() (string, error) { return os.Executable() }
+
+// absCommand makes a harness command that is a relative path (it has a separator, for example
+// ./harness) absolute against the current directory, so that it keeps its meaning when the
+// harness starts in another directory. A bare name is looked up in the PATH as before.
+func absCommand(command []string) ([]string, error) {
+	if !strings.ContainsRune(command[0], filepath.Separator) || filepath.IsAbs(command[0]) {
+		return command, nil
+	}
+	abs, err := filepath.Abs(command[0])
+	if err != nil {
+		return nil, err
+	}
+	return append([]string{abs}, command[1:]...), nil
+}

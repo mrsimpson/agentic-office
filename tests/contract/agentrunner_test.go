@@ -286,3 +286,21 @@ func TestAgentRunnerCwd(t *testing.T) {
 		}
 	}
 }
+
+// TestAgentRunnerRelativeHarness: a relative path of the harness command is relative to the
+// folder where the runner is started, not to --cwd.
+func TestAgentRunnerRelativeHarness(t *testing.T) {
+	m := newMachine(t)
+	bot := m.user("bot", "Bot", "agent")
+	start, cwd := t.TempDir(), t.TempDir()
+	rel, err := filepath.Rel(start, contracttest.ACPDouble(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := filepath.Join(t.TempDir(), "acp-record.jsonl")
+	contracttest.StartIn(t, start, "office", append(bot.env, "ACP_DOUBLE_RECORD="+rec),
+		"agent", "run", "--session", newSession(), "--cwd", cwd, "--", rel)
+	contracttest.WaitACPRecord(t, rec, 10*time.Second, func(r contracttest.ACPRecord) bool {
+		return r.Kind() == "session/new"
+	})
+}

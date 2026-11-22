@@ -1171,7 +1171,8 @@ exactly the calls whose title matches one of the patterns; case does not matter.
 harness itself for what it may do without asking.
 
 `--cwd DIR` sets the base folder of the agent: the harness starts in it and works in it. The
-default is the current folder. A relative path in the harness command is relative to this folder.
+default is the current folder. A relative path in the harness command, such as `./harness`, is
+relative to the folder where you run the command, not to `--cwd`.
 
 ### Give each agent a role
 
