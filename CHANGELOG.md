@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.1](https://github.com/mrsimpson/agentic-office/compare/v0.4.0...v0.4.1) (2026-11-22)
+
+
+### Features
+
+* **stage:** participants as small signs in the header, a transcript that scrolls ([#264](https://github.com/mrsimpson/agentic-office/issues/264)) ([a486af7](https://github.com/mrsimpson/agentic-office/commit/a486af71c76fea4eb5c7b55e85e3441038758b0a))
+
+
+### Bug fixes
+
+* **stage:** show the staged artifacts of the session on its stage ([#268](https://github.com/mrsimpson/agentic-office/issues/268)) ([c8ba062](https://github.com/mrsimpson/agentic-office/commit/c8ba062a3531c97cbae149c18d9ba1c1c43227fc)), closes [#267](https://github.com/mrsimpson/agentic-office/issues/267)
+
 ## [0.4.0](https://github.com/mrsimpson/agentic-office/compare/v0.3.1...v0.4.0) (2026-11-20)
 
 
