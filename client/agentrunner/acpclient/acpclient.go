@@ -41,12 +41,14 @@ type Harness struct {
 }
 
 // Start starts the harness command with its own process group, so that stopping it also
-// stops its children (for example node under npx). Its stderr goes to stderr.
-func Start(command []string, stderr io.Writer, logf func(string, ...any), allow Rule) (*Harness, error) {
+// stops its children (for example node under npx). Its stderr goes to stderr. The harness runs
+// in the directory dir; empty: in the current directory of this process.
+func Start(command []string, dir string, stderr io.Writer, logf func(string, ...any), allow Rule) (*Harness, error) {
 	if len(command) == 0 {
 		return nil, errors.New("no harness command")
 	}
 	cmd := exec.Command(command[0], command[1:]...)
+	cmd.Dir = dir
 	cmd.Stderr = stderr
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	in, err := cmd.StdinPipe()

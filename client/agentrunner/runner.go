@@ -36,7 +36,8 @@ type Options struct {
 	// Allow are patterns for tool calls that the runner allows when the harness asks; "*" stands
 	// for any text. Empty: the office tools only (dec-agent-runner-delivery).
 	Allow []string
-	// Cwd is the working directory of the ACP session. Empty: the current directory.
+	// Cwd is the base directory of the harness: the harness process starts there and the ACP
+	// session uses it as its working directory. Empty: the current directory.
 	Cwd string
 	// Office is the office binary that the harness starts as the MCP server. Empty: this
 	// program.
@@ -102,7 +103,7 @@ func Run(ctx context.Context, o Options) error {
 
 	// The skills injector (dec-skills): the harness finds the skills when it starts.
 	injectSkills(o.Cwd, logf)
-	h, err := acpclient.Start(o.Harness, o.Stderr, logf, acpclient.Rule{Globs: o.Allow})
+	h, err := acpclient.Start(o.Harness, o.Cwd, o.Stderr, logf, acpclient.Rule{Globs: o.Allow})
 	if err != nil {
 		return err
 	}

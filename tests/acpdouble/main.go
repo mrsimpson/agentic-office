@@ -176,7 +176,8 @@ func (d *double) handle(m message) {
 	case "initialize":
 		var p map[string]any
 		_ = json.Unmarshal(m.Params, &p)
-		d.record(map[string]any{"kind": "initialize", "params": p})
+		wd, _ := os.Getwd()
+		d.record(map[string]any{"kind": "initialize", "params": p, "cwd": wd})
 		d.reply(m.ID, map[string]any{"protocolVersion": 1, "agentCapabilities": map[string]any{},
 			"agentInfo": map[string]any{"name": "acpdouble", "version": "1"}, "authMethods": []any{}})
 	case "session/new":

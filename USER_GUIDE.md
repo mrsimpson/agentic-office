@@ -1170,7 +1170,8 @@ allows the call of an office tool, such as `mcp__office__utterance_say`, unless 
 exactly the calls whose title matches one of the patterns; case does not matter. Configure the
 harness itself for what it may do without asking.
 
-`--cwd DIR` sets the folder of the agent's session; the default is the current folder.
+`--cwd DIR` sets the base folder of the agent: the harness starts in it and works in it. The
+default is the current folder. A relative path in the harness command is relative to this folder.
 
 ### Give each agent a role
 

@@ -259,3 +259,30 @@ func TestAgentRunnerSessionEnds(t *testing.T) {
 		t.Errorf("last prompt:\n%s", last)
 	}
 }
+
+// TestAgentRunnerCwd: with --cwd, the runner starts the harness in that folder and opens the ACP
+// session there.
+func TestAgentRunnerCwd(t *testing.T) {
+	m := newMachine(t)
+	bot := m.user("bot", "Bot", "agent")
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, rec := bot.agentRun(t, newSession(), "--cwd", dir)
+	_, recs := contracttest.WaitACPRecord(t, rec, 10*time.Second, func(r contracttest.ACPRecord) bool {
+		return r.Kind() == "session/new"
+	})
+	for _, r := range recs {
+		switch r.Kind() {
+		case "initialize":
+			if r["cwd"] != dir {
+				t.Errorf("the harness runs in %v, want %s", r["cwd"], dir)
+			}
+		case "session/new":
+			if cwd := r["params"].(map[string]any)["cwd"]; cwd != dir {
+				t.Errorf("session/new: cwd %v, want %s", cwd, dir)
+			}
+		}
+	}
+}
