@@ -17,8 +17,9 @@ import (
 	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
 )
 
-// recentUtterances is how many utterances the stage shows.
-const recentUtterances = 8
+// recentUtterances is how many utterances the stage shows in its transcript, which scrolls. The
+// stage sends the whole region on every change, so the number stays bounded.
+const recentUtterances = 500
 
 // view is what the stage knows about one session. It is built from the session stream only.
 type view struct {

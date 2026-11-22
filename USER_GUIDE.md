@@ -575,19 +575,24 @@ Other commands for the meeting: `meeting pause` and `meeting resume`, `signal tu
 
 ### Show the stage
 
-The stage shows the meeting in two columns:
+The stage shows the participants in its header and the meeting in two columns below.
 
+- **Header:** every participant as a small sign with initials: round for a human, square for an
+  agent. A red ring means captured, a yellow ring paused. A number on the sign is a raised hand,
+  in the order the hands went up; the counter next to the signs shows how many are raised. A
+  blue dot on an agent means it is working. Point at a sign, or move to it with the Tab key, to
+  see the name, the capture status, the topic of the hand and what an agent does: "working",
+  "working: fetch" with the kind or office tool it calls (never what it fetches or searches),
+  "waiting", or "answered only in its own chat" when its reply reached nobody. Agents run with
+  `office agent run`.
 - **Left:** the artifact in focus, large. The **minutes** are the first artifact: they are in
   focus until someone focuses another artifact. Until there are minutes, the stage asks you to
   bring in an agent that takes them (see [Bring in an agent](#4-bring-in-an-agent)). When a session
   has more than one artifact, tabs appear above, with the minutes first. Below is a log of who
   created, changed or focused which artifact.
-- **Right:** the participants with their capture status (captured, paused, not captured), agents
-  marked as agents, and a hand with a number for everyone who raised their hand, in the order they
-  raised it. Under the name of an agent that runs with `office agent run`, the stage shows what
-  it does: "working", "working: fetch" with the kind or office tool it calls (never what it
-  fetches or searches), "waiting", or "answered only in its own chat" when its reply reached
-  nobody. Below it is the transcript of the latest sentences.
+- **Right:** the transcript. It scrolls on its own and follows new sentences while you are at its
+  end. If you scroll up to read, it keeps your place and shows **New messages**, which takes you
+  back to the end.
 
 The stage is dark or light, as your computer is set. One person creates a link, opens it in a
 browser and shares the window in your meeting tool (Zoom, Teams, Meet, Jitsi):
