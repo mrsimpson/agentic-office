@@ -35,13 +35,27 @@ var ErrorPage = template.Must(template.New("error").Parse(`<!DOCTYPE html>
 <body class="error"><main><h1>{{.Title}}</h1><p id="error" data-status="{{.Status}}">{{.Message}}</p></main></body></html>
 `))
 
-// Script opens the event stream and replaces each region with the HTML the server rendered.
+// Script opens the event stream and replaces each region with the HTML the server rendered. The
+// transcript is a scroll box: it follows new utterances while the reader is at its end; a reader
+// who scrolled up keeps the place and gets a button that jumps to the end.
 const Script = `(function () {
   var main = document.getElementById("stage");
   var status = document.getElementById("status");
+  var log = document.getElementById("utterances");
+  var jump = document.getElementById("jump");
+  function atEnd() { return log.scrollHeight - log.scrollTop - log.clientHeight < 32; }
+  function toEnd() { log.scrollTop = log.scrollHeight; jump.hidden = true; }
+  log.addEventListener("scroll", function () { if (atEnd()) { jump.hidden = true; } });
+  jump.addEventListener("click", toEnd);
+  toEnd();
   var es = new EventSource(main.getAttribute("data-events"));
-  ["status", "origin", "participants", "artifacts", "artifact", "artifactlog", "utterances"].forEach(function (name) {
+  ["status", "origin", "participants", "artifacts", "artifact", "artifactlog"].forEach(function (name) {
     es.addEventListener(name, function (e) { document.getElementById(name).innerHTML = e.data; });
+  });
+  es.addEventListener("utterances", function (e) {
+    var follow = atEnd(), top = log.scrollTop;
+    log.innerHTML = e.data;
+    if (follow) { toEnd(); } else { log.scrollTop = top; jump.hidden = false; }
   });
   es.addEventListener("end", function () { es.close(); });
   es.onerror = function () {
@@ -62,11 +76,13 @@ const css = `
 * { box-sizing: border-box; }
 html { font-size: clamp(16px, 1.25vw, 30px); }
 body { margin: 0; background: var(--bg); color: var(--text); font-family: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif; line-height: 1.5; -webkit-font-smoothing: antialiased; }
-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 1.1rem 2.4rem; border-bottom: 1px solid var(--line); }
-.brand { display: flex; align-items: center; gap: 0.8rem; }
+body:not(.error) { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
+header { flex: none; display: flex; justify-content: space-between; align-items: center; gap: 1rem 2rem; padding: 0.9rem 2.4rem; border-bottom: 1px solid var(--line); }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.brand { flex: none; display: flex; align-items: center; gap: 0.8rem; }
 .logo { width: 1.1rem; height: 1.1rem; border-radius: 50%; background: var(--ink); }
 .eyebrow, h2 { margin: 0; font-size: 0.7rem; font-weight: 500; letter-spacing: 0.13em; text-transform: uppercase; color: var(--muted); }
-header .side { display: flex; align-items: center; gap: 1.2rem; }
+header .side { flex: none; display: flex; align-items: center; gap: 1.2rem; }
 #portal { color: var(--muted); font-size: 0.85rem; text-decoration: underline; text-underline-offset: 0.2em; }
 header h1 { margin: 0; font-size: 1.1rem; font-weight: 600; }
 #status span { display: inline-flex; align-items: center; gap: 0.45em; padding: 0.15em 0.8em; border-radius: 99px; font-size: 0.8rem; font-weight: 500; border: 1px solid currentColor; }
@@ -75,10 +91,17 @@ header h1 { margin: 0; font-size: 1.1rem; font-weight: 600; }
 #status [data-status="imported"] { color: var(--imp); }
 #status [data-status="ended"], #status [data-status="stopped"] { color: var(--warn); }
 #status [data-status="connecting"] { color: var(--muted); }
-main.stage { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 3.2rem; padding: 2rem 2.4rem 3rem; }
-.left, .right { display: flex; flex-direction: column; gap: 2.2rem; min-width: 0; }
+#origin { flex: none; }
+main.stage { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 3.2rem; padding: 1.6rem 2.4rem 1.6rem; }
+.left, .right { display: flex; flex-direction: column; gap: 2.2rem; min-width: 0; min-height: 0; }
+.left { overflow-y: auto; }
 section { padding: 0; }
-.right section, #artifactlog { border-top: 1px solid var(--line); padding-top: 1rem; }
+#artifactlog { border-top: 1px solid var(--line); padding-top: 1rem; }
+.transcript { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.transcript h2 { flex: none; padding-bottom: 0.6rem; margin-bottom: 0; border-bottom: 1px solid var(--line); }
+#utterances { flex: 1; min-height: 0; overflow-y: auto; padding: 0.8rem 0.4rem 1rem 0; }
+#jump { position: absolute; left: 50%; bottom: 1rem; transform: translateX(-50%); padding: 0.45rem 1.1rem; border: 0; border-radius: 99px; background: var(--ink); color: var(--on-ink); font: inherit; font-size: 0.85rem; font-weight: 600; cursor: pointer; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2); }
+#jump[hidden] { display: none; }
 h2 { margin-bottom: 0.8rem; display: flex; align-items: center; gap: 0.6rem; }
 ul, ol { margin: 0; padding: 0; list-style: none; }
 li { padding: 0.3rem 0; }
@@ -97,14 +120,27 @@ section:empty { display: none; }
 .avatar.agent { border-radius: 0; }
 .name { font-weight: 600; }
 .nameline { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
-.participants li { display: grid; grid-template-columns: auto 1fr 3.4rem auto; align-items: center; gap: 0.2rem 0.8rem; padding: 0.45rem 0; border-bottom: 1px solid var(--line); }
-.participants li:last-child { border-bottom: 0; }
-.participants .who { display: flex; flex-direction: column; min-width: 0; }
-.participants .topic { color: var(--muted); font-size: 0.85rem; overflow-wrap: anywhere; }
-.participants .hand-col { text-align: center; }
-.participants .activity { color: var(--muted); font-size: 0.85rem; }
-.participants .activity.working { color: var(--live); }
-.participants .activity.unspoken { color: var(--warn); }
+#participants { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 0.9rem; }
+#participants .empty { font-size: 0.85rem; }
+.people { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem; }
+.person { position: relative; padding: 0.2rem; border-radius: 50%; outline-offset: 2px; }
+.person .avatar { width: 2.2rem; height: 2.2rem; background: var(--bg); }
+.person.captured .avatar { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--rec); }
+.person.paused .avatar { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--warn); }
+.person.imported .avatar { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--imp); }
+.person.left .avatar { opacity: 0.4; }
+.person .hand { position: absolute; top: -0.2rem; right: -0.3rem; min-width: 1.1rem; height: 1.1rem; padding: 0 0.3rem; justify-content: center; font-size: 0.65rem; line-height: 1.1rem; background: var(--warn); color: #fff; }
+.act-dot { position: absolute; right: 0; bottom: 0; width: 0.7rem; height: 0.7rem; border-radius: 50%; border: 2px solid var(--bg); background: var(--muted); }
+.act-dot.working { background: var(--imp); animation: pulse 1.4s ease-in-out infinite; }
+.act-dot.unspoken { background: var(--warn); }
+@keyframes pulse { 50% { box-shadow: 0 0 0 0.35rem transparent, 0 0 0 0.2rem var(--imp); } }
+@media (prefers-reduced-motion: reduce) { .act-dot.working { animation: none; } }
+.person .card { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.person:hover .card, .person:focus .card { clip: auto; width: max-content; max-width: 20rem; height: auto; overflow: visible; top: calc(100% + 0.5rem); left: 50%; transform: translateX(-50%); z-index: 5; display: flex; flex-direction: column; gap: 0.15rem; padding: 0.6rem 0.8rem; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15); font-size: 0.85rem; }
+.card .topic { color: var(--muted); white-space: normal; }
+.card .activity { color: var(--muted); }
+.card .activity.working { color: var(--imp); }
+.card .activity.unspoken { color: var(--warn); }
 .hand, .hands-count { white-space: nowrap; display: inline-flex; align-items: center; gap: 0.25em; font-size: 0.8rem; font-weight: 600; padding: 0.05em 0.6em; border-radius: 99px; background: var(--ink); color: var(--on-ink); letter-spacing: 0; text-transform: none; }
 #artifact { padding: 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--bg); }
 #artifact iframe { display: block; width: 100%; height: 55vh; border: 0; background: #fff; }
@@ -138,6 +174,15 @@ section:empty { display: none; }
 .right .minutes-body { font-size: 1rem; line-height: 1.6; max-height: 40vh; overflow: auto; }
 .right .minutes-body h1 { font-size: 1.3rem; }
 .utterances li { display: flex; gap: 0.8rem; align-items: flex-start; }
+@media (max-width: 52rem) {
+  body:not(.error) { height: auto; display: block; }
+  header { flex-wrap: wrap; padding: 0.8rem 1rem; }
+  #participants { order: 3; flex-basis: 100%; justify-content: flex-start; }
+  .people { justify-content: flex-start; }
+  main.stage { display: flex; flex-direction: column; gap: 2rem; padding: 1.2rem 1rem; }
+  .left { overflow: visible; }
+  #utterances { max-height: 70vh; }
+}
 .utterances .line { min-width: 0; }
 .utterances time, .corrected { color: var(--muted); font-size: 0.8rem; }
 #origin .imported { margin: 1.2rem 2.4rem 0; padding: 0.8rem 1.2rem; border: 1px solid var(--imp); border-radius: 6px; color: var(--imp); white-space: pre-line; }
@@ -154,7 +199,7 @@ var Page = template.Must(template.New("page").Parse(`<!DOCTYPE html>
 <meta name="referrer" content="no-referrer">
 <title>{{.Session}} · Agentic office stage</title><style>` + css + `</style></head>
 <body>
-<header><div class="brand"><div class="logo"></div><div><div class="eyebrow">Agentic office</div><h1>Session <span id="session">{{.Session}}</span></h1></div></div><div class="side">{{with .Portal}}<a id="portal" href="{{.}}" rel="noreferrer" target="_blank">Open in portal</a>{{end}}<div id="status">{{.Regions.status}}</div></div></header>
+<header><div class="brand"><div class="logo"></div><div><div class="eyebrow">Agentic office</div><h1>Session <span id="session">{{.Session}}</span></h1></div></div><section id="participants" aria-label="Participants">{{.Regions.participants}}</section><div class="side">{{with .Portal}}<a id="portal" href="{{.}}" rel="noreferrer" target="_blank">Open in portal</a>{{end}}<div id="status">{{.Regions.status}}</div></div></header>
 <div id="origin">{{.Regions.origin}}</div>
 <noscript><p class="note">This page needs JavaScript for live updates.</p></noscript>
 <main id="stage" class="stage" data-events="{{.Events}}">
@@ -166,8 +211,10 @@ var Page = template.Must(template.New("page").Parse(`<!DOCTYPE html>
 <section id="artifactlog" class="artifact-log" aria-label="Artifact log">{{.Regions.artifactlog}}</section>
 </div>
 <div class="right">
-<section id="participants">{{.Regions.participants}}</section>
-<section id="utterances" aria-live="polite">{{.Regions.utterances}}</section>
+<section class="transcript" aria-label="Transcript"><h2>Transcript</h2>
+<div id="utterances" class="scroll" aria-live="polite" tabindex="0">{{.Regions.utterances}}</div>
+<button id="jump" type="button" hidden>New messages &#8595;</button>
+</section>
 </div>
 </main>
 <script>{{.Script}}</script>
@@ -193,10 +240,10 @@ The office did not see this conversation happen. The hub's signature proves who 
 
 {{define "name"}}<span class="name">{{.Name}}</span>{{if .Agent}} <span class="badge agent" data-kind="agent">agent</span>{{end}}{{end}}
 
-{{define "participants"}}<h2>Participants{{if .HandCount}} <span class="hands-count" data-hands="{{.HandCount}}" title="Raised hands">&#9995; {{.HandCount}}</span>{{end}}</h2>
-{{if .Participants}}<ul class="participants">
-{{range .Participants}}<li data-participant="{{.ID}}" data-kind="{{if .Agent}}agent{{else}}human{{end}}" data-capture="{{.Status}}"{{if .HandNumber}} data-hand="{{.HandNumber}}"{{end}}>{{template "avatar" .}}<span class="who"><span class="nameline">{{template "name" .}}</span>{{if .HandTopic}}<span class="topic">{{.HandTopic}}</span>{{end}}{{with .Activity}}<span class="activity {{.State}}" data-activity="{{.State}}"{{if .Tool}} data-tool="{{.Tool}}"{{end}}>{{.Text}}</span>{{end}}</span><span class="hand-col">{{if .HandNumber}}<span class="hand" title="Raised hand">&#9995; {{.HandNumber}}</span>{{end}}</span><span class="capture {{.Status}}">{{.StatusText}}</span></li>
-{{end}}</ul>{{else}}<p class="empty">Nobody has joined yet.</p>{{end}}{{end}}
+{{define "participants"}}<h2 class="sr-only">Participants</h2>
+{{if .Participants}}<ul class="people">
+{{range .Participants}}<li class="person {{.Status}}" tabindex="0" data-participant="{{.ID}}" data-kind="{{if .Agent}}agent{{else}}human{{end}}" data-capture="{{.Status}}"{{if .HandNumber}} data-hand="{{.HandNumber}}"{{end}}>{{template "avatar" .}}{{if .HandNumber}}<span class="hand" aria-hidden="true">{{.HandNumber}}</span>{{end}}{{with .Activity}}<span class="act-dot {{.State}}" aria-hidden="true"></span>{{end}}<span class="card"><span class="nameline">{{template "name" .}}</span><span class="capture {{.Status}}">{{.StatusText}}</span>{{if .HandNumber}}<span class="topic">Raised hand {{.HandNumber}}{{if .HandTopic}}: {{.HandTopic}}{{end}}</span>{{end}}{{with .Activity}}<span class="activity {{.State}}" data-activity="{{.State}}"{{if .Tool}} data-tool="{{.Tool}}"{{end}}>{{.Text}}</span>{{end}}</span></li>
+{{end}}</ul>{{if .HandCount}}<span class="hands-count" data-hands="{{.HandCount}}" title="Raised hands">&#9995; {{.HandCount}}</span>{{end}}{{else}}<p class="empty">Nobody has joined yet.</p>{{end}}{{end}}
 
 {{define "artifact"}}{{if .ShowsMinutes}}{{template "minutes-main" .}}{{else}}{{with .Artifact}}{{if .ID}}<div class="art-head"><span class="eyebrow">Now showing</span><span class="art-id">{{.ID}}</span></div>
 {{end}}{{if .Content}}<iframe title="{{.ID}}" data-artifact="{{.ID}}" sandbox="" referrerpolicy="no-referrer" srcdoc="{{.Content}}"></iframe>
@@ -220,8 +267,7 @@ The office did not see this conversation happen. The hub's signature proves who 
 {{range .Artifacts}}<li class="tab{{if .Focused}} focused{{end}}" role="tab" aria-selected="{{.Focused}}" data-artifact="{{.Path}}" title="{{.Path}}">{{.Label}}</li>
 {{end}}</ul>{{end}}{{end}}
 
-{{define "utterances"}}<h2>Transcript</h2>
-{{if .Utterances}}<ol class="utterances">
+{{define "utterances"}}{{if .Utterances}}<ol class="utterances">
 {{range .Utterances}}<li data-utterance="{{.EventID}}" data-participant="{{.Speaker.ID}}">{{template "avatar" .Speaker}}<span class="line">{{template "name" .Speaker}}: {{if not .OriginalTime.IsZero}}<time datetime="{{.OriginalTime.Format "2006-01-02T15:04:05Z07:00"}}">{{.OriginalTime.Format "2006-01-02 15:04"}} UTC</time> {{end}}<span class="text">{{.Text}}</span>{{if .Corrected}} <span class="corrected">(corrected)</span>{{end}}</span></li>
 {{end}}</ol>{{else}}<p class="empty">Nothing said yet.</p>{{end}}{{end}}
 `))
