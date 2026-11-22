@@ -239,7 +239,7 @@ func openStageEvents(t *testing.T, srv *contracttest.Hub, link string) *stageEve
 // capture status of participant, and returns when the test received it.
 func (s *stageEvents) waitCapture(t *testing.T, participant, status string, from time.Time) time.Time {
 	t.Helper()
-	re := regexp.MustCompile(`<li data-participant="` + regexp.QuoteMeta(participant) + `"[^>]*data-capture="` +
+	re := regexp.MustCompile(`<li [^>]*data-participant="` + regexp.QuoteMeta(participant) + `"[^>]*data-capture="` +
 		regexp.QuoteMeta(status) + `"`)
 	deadline := time.Now().Add(10 * time.Second)
 	for {

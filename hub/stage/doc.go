@@ -44,8 +44,8 @@
 //   - Staged artifacts (concept-session-release): the stage reads as the stage of its session. A
 //     staged file or deck of its own session shows its content, read from the staging area; a
 //     staged file of another session shows its stub, and a staged deck of another session a note.
-//   - Minutes: the text of the last minutes.updated. Utterances: the last eight that are not
-//     off the record, with corrections applied. An imported utterance shows its original time
+//   - Minutes: the text of the last minutes.updated. Utterances: the last 500 that are not
+//     off the record, with corrections applied, in a transcript that scrolls. An imported utterance shows its original time
 //     (UTC). A off the record utterance disappears.
 //   - Activities (dec-agent-activity): next to the stream of the log, the stage watches the
 //     activities of the participants (if-session-activity) with the same token: "working",

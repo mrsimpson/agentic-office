@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -371,6 +372,19 @@ func TestStagePageNeedsStageLink(t *testing.T) {
 		if len(findAll(doc, withAttr("id", id))) != 1 {
 			t.Errorf("page has no region #%s", id)
 		}
+	}
+	// The participants sit in the header (#251). The transcript is a scroll box of its own, with a
+	// hidden button that jumps to its end (#252).
+	if hs := findAll(doc, byTag("header")); len(hs) != 1 || len(findAll(hs[0], withAttr("id", "participants"))) != 1 {
+		t.Errorf("the participants are not in the header")
+	}
+	if u := findAll(doc, withAttr("id", "utterances")); len(u) != 1 || !strings.Contains(attrOf(u[0], "class"), "scroll") {
+		t.Errorf("the transcript is not a scroll box")
+	}
+	if j := findAll(doc, withAttr("id", "jump")); len(j) != 1 || j[0].Data != "button" {
+		t.Errorf("the transcript has no button that jumps to its end")
+	} else if _, hidden := attr(j[0], "hidden"); !hidden {
+		t.Errorf("the jump button shows before anything is new")
 	}
 	// No external assets: no element loads anything from an address.
 	for _, n := range findAll(doc, func(n *html.Node) bool { _, s := attr(n, "src"); _, h := attr(n, "href"); return s || h }) {
@@ -1031,4 +1045,18 @@ func TestStageShowsNothingOfOtherSessions(t *testing.T) {
 			}
 		}
 	}
+}
+
+// TestStageShowsTheWholeTranscript: the transcript keeps the earlier utterances of a session, not
+// only the last few, so a reader can scroll back (#252).
+func TestStageShowsTheWholeTranscript(t *testing.T) {
+	m := newStageMeeting(t)
+	ada := m.joinAs("Ada", sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_HUMAN, true)
+	for i := 1; i <= 20; i++ {
+		m.say(ada, fmt.Sprintf("Point %d of the agenda.", i))
+	}
+	st := openStage(t, m.srv, m.link)
+	st.wait("utterances", "all twenty utterances", func(n *html.Node) bool {
+		return len(findAll(n, withAttr("data-utterance", ""))) == 20 && strings.Contains(text(n), "Point 1 of the agenda.")
+	})
 }
