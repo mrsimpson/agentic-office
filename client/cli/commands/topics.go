@@ -27,8 +27,8 @@ var topics = map[string]string{
 Configuration: flags, variables and files
 
 Every command takes these flags. An environment variable sets the default of its flag; the
-file key sets it below that. <config> is ~/.config on Linux (or $XDG_CONFIG_HOME) and
-~/Library/Application Support on macOS.
+file key sets it below that. <config> is $XDG_CONFIG_HOME if it is set to an absolute path,
+else ~/.config on Linux and ~/Library/Application Support on macOS.
 
   Flag            Variable             File key       Default
   --hub-profile   OFFICE_HUB_PROFILE   hub-profile    none; names a hub profile that sets the four values below
