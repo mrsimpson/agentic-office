@@ -1160,8 +1160,16 @@ of a model with its reason or its probabilities, and what the agent wrote in its
 
 **When the runner stops.** After the meeting ended, it sends a last prompt, lets the agent finish
 its work and stops. It also stops when the agent itself leaves the meeting, on Ctrl+C or SIGTERM,
-and when the harness stops by itself, which is an error (exit code 1). It then stops the harness:
+and when the harness stops for good, which is an error (exit code 1). It then stops the harness:
 it closes its input, then sends SIGTERM and at last SIGKILL to its process group.
+
+**When the harness fails.** If the harness stops, or a prompt fails (for example `Internal error`
+or `Kiro failed to generate a response` from the model service), the runner starts the harness
+again and logs `starting it again`. It tells the agent that it was restarted, so the agent reads
+the state of its documents, such as the minutes, before it changes them. It delivers again what
+the failed prompt carried; nothing is lost. It does this at most three times within ten minutes.
+A harness that fails before the agent has ended its first turn is a setup error, such as a missing
+login: the runner does not start it again and ends with an error.
 
 **What the agent may do.** The harness asks the runner before it uses a tool. By default the
 runner allows the office tools and rejects everything else, for example shell commands or edits

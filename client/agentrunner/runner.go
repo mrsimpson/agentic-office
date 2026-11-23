@@ -102,36 +102,99 @@ func Run(ctx context.Context, o Options) error {
 
 	// The skills injector (dec-skills): the harness finds the skills when it starts.
 	injectSkills(o.Cwd, logf)
-	h, err := acpclient.Start(o.Harness, o.Stderr, logf, acpclient.Rule{Globs: o.Allow})
-	if err != nil {
+	r := &runner{o: o, wake: wake, m: m, logf: logf, self: m.joined.ParticipantID,
+		start: m.joined.Result.GetEvent().GetId(), names: map[string]participant{},
+		office: acp.McpServerStdio{Name: "office", Command: o.Office, Args: []string{"mcp", "--session", o.Session},
+			Env: []acp.EnvVariable{absEnv(coreapi.EnvHub, cfg.Hub), absEnv(coreapi.EnvCACert, cfg.CACert),
+				absEnv(coreapi.EnvKey, cfg.KeyFile), absEnv(coreapi.EnvRuntimeDir, cfg.RuntimeDir), absEnv(coreapi.EnvTenant, cfg.Tenant)}}}
+	if err := r.startHarness(ctx); err != nil {
 		return err
 	}
 	defer func() {
-		h.Stop()
+		r.h.Stop()
 		logf("harness stopped")
 	}()
-	office := acp.McpServerStdio{Name: "office", Command: o.Office, Args: []string{"mcp", "--session", o.Session},
-		Env: []acp.EnvVariable{absEnv(coreapi.EnvHub, cfg.Hub), absEnv(coreapi.EnvCACert, cfg.CACert),
-			absEnv(coreapi.EnvKey, cfg.KeyFile), absEnv(coreapi.EnvRuntimeDir, cfg.RuntimeDir), absEnv(coreapi.EnvTenant, cfg.Tenant)}}
-	if err := h.Open(ctx, o.Cwd, office, o.Version); err != nil {
-		return err
-	}
 
 	logf("%s", wake)
-	r := &runner{o: o, wake: wake, m: m, h: h, logf: logf, self: m.joined.ParticipantID,
-		start: m.joined.Result.GetEvent().GetId(), names: map[string]participant{}}
 	// The activity of the agent for the stage (dec-agent-activity).
 	r.rep = newReporter(sessionactivityv1connect.NewSessionActivityServiceClient(m.client.Connection()),
 		o.Session, r.self, logf)
 	go r.rep.run(ctx)
-	h.OnToolCall(func(title string, kind acp.ToolKind) {
-		r.rep.set(activity{working: true, tool: shortToolName(title, kind)})
-	})
 	err = r.loop(ctx)
 	if errors.Is(err, context.Canceled) && ctx.Err() != nil {
 		return nil
 	}
 	return err
+}
+
+// startHarness starts the harness and opens its ACP session with the office MCP server. The
+// harness becomes the harness of the runner.
+func (r *runner) startHarness(ctx context.Context) error {
+	h, err := acpclient.Start(r.o.Harness, r.o.Stderr, r.logf, acpclient.Rule{Globs: r.o.Allow})
+	if err != nil {
+		return err
+	}
+	h.OnToolCall(func(title string, kind acp.ToolKind) {
+		r.rep.set(activity{working: true, tool: shortToolName(title, kind)})
+	})
+	r.h = h
+	if err := h.Open(ctx, r.o.Cwd, r.office, r.o.Version); err != nil {
+		h.Stop()
+		r.logf("harness stopped")
+		return err
+	}
+	return nil
+}
+
+const (
+	// maxRestarts is how often the runner starts a failing harness again within restartWindow.
+	// After that, the harness is broken for good, and the run ends with its error.
+	maxRestarts   = 3
+	restartWindow = 10 * time.Minute
+	// restartPause is the wait before the first restart; each further restart within the window
+	// waits one pause longer.
+	restartPause = 2 * time.Second
+)
+
+// restart replaces a harness that stopped or failed a prompt (for example "Internal error" of
+// its model service) by a new one, and gives the new harness what the old one did not get: the
+// utterances of the prompt that failed. It reports whether the run goes on. It does not restart
+// when ctx has ended, when the agent has left the session, when no turn of the agent has ended
+// well yet (that is a setup error), or after too many restarts in a short time.
+func (r *runner) restart(ctx context.Context, cause error) bool {
+	if ctx.Err() != nil || r.d.left || !r.healthy {
+		return false
+	}
+	now := time.Now()
+	recent := r.restarts[:0]
+	for _, t := range r.restarts {
+		if now.Sub(t) < restartWindow {
+			recent = append(recent, t)
+		}
+	}
+	r.restarts = recent
+	if len(r.restarts) >= maxRestarts {
+		r.logf("the harness failed %d times within %s; giving up", maxRestarts+1, restartWindow)
+		return false
+	}
+	r.restarts = append(r.restarts, now)
+	pause := time.Duration(len(r.restarts)) * restartPause
+	r.logf("WARNING: the harness failed: %v; starting it again in %s (restart %d of %d within %s)",
+		cause, pause, len(r.restarts), maxRestarts, restartWindow)
+	r.rep.set(activity{})
+	r.h.Stop()
+	select {
+	case <-time.After(pause):
+	case <-ctx.Done():
+		return false
+	}
+	if err := r.startHarness(ctx); err != nil {
+		r.logf("could not start the harness again: %v", err)
+		return false
+	}
+	r.d.requeue(r.inflight)
+	r.inflight = batch{}
+	return true
 }
 
 // absConfig makes the file paths of cfg absolute, because the MCP server runs in another
@@ -158,15 +221,17 @@ type participant struct {
 
 // runner is the state of one run.
 type runner struct {
-	o     Options
-	wake  wakeStrategy
-	m     *meeting
-	h     *acpclient.Harness
-	logf  func(string, ...any)
-	self  string // participant ID of the agent
-	start uint32 // the join event of the agent; what came before is history
-	names map[string]participant
-	d     delivery
+	o    Options
+	wake wakeStrategy
+	m    *meeting
+	h    *acpclient.Harness
+	logf func(string, ...any)
+	// office is the MCP server that every harness of this run gets.
+	office acp.McpServerStdio
+	self   string // participant ID of the agent
+	start  uint32 // the join event of the agent; what came before is history
+	names  map[string]participant
+	d      delivery
 	// The check of the model of the wake strategy (dec-wake-check-per-utterance). At most one
 	// runs at a time.
 	checkDue bool // an utterance or a turn.end waits for a check
@@ -176,11 +241,20 @@ type runner struct {
 	spoke bool
 	// rep reports the activity of the agent to the hub.
 	rep *reporter
+	// inflight is what the running prompt delivers. If the harness fails during that prompt, the
+	// agent did not get it, and the runner delivers it again to the new harness.
+	inflight batch
+	// healthy: a turn of the agent has ended without an error. Before that, a failing harness is a
+	// setup error (no login, no model) and ends the run at once.
+	healthy bool
+	// restarts are the times of the recent restarts of the harness.
+	restarts []time.Time
 }
 
 // turn is the end of one prompt.
 type turn struct {
 	acpclient.Turn
+	h     *acpclient.Harness // the harness that ran the prompt
 	err   error
 	final bool // the last prompt after session.ended
 	asked bool // the prompt that asked the agent to speak an unspoken reply
@@ -212,23 +286,43 @@ func (r *runner) loop(ctx context.Context) error {
 	done := make(chan turn, 1)
 	checked := make(chan check, 1)
 	busy := true
-	r.send(ctx, done, r.firstPrompt(), turn{})
+	r.send(ctx, done, r.firstPrompt(false), turn{})
+	// restartAgent starts the harness again after a failure and sends the agent a prompt that tells it
+	// what happened. It reports whether the run goes on.
+	restartAgent := func(cause error) bool {
+		if !r.restart(ctx, cause) {
+			return false
+		}
+		busy = true
+		r.send(ctx, done, r.firstPrompt(true), turn{})
+		return true
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-r.h.Done():
-			return r.h.ExitError()
+			if cause := r.h.ExitError(); !restartAgent(cause) {
+				return cause
+			}
 		case err := <-ferr:
 			if err == nil {
 				err = ctx.Err()
 			}
 			return fmt.Errorf("follow the local log: %w", err)
 		case t := <-done:
+			if t.h != r.h {
+				break // the end of a prompt of a harness that the runner has replaced
+			}
 			busy = false
 			if t.err != nil {
-				return fmt.Errorf("prompt: %w", t.err)
+				cause := fmt.Errorf("prompt: %w", t.err)
+				if !restartAgent(cause) {
+					return cause
+				}
+				break
 			}
+			r.healthy, r.inflight = true, batch{}
 			r.logf("the agent ended its turn (%s)", t.Stop)
 			if t.final {
 				return nil
@@ -272,7 +366,8 @@ func (r *runner) loop(ctx context.Context) error {
 		case r.d.ended:
 			r.logf("the session ended; sending the last prompt")
 			busy = true
-			r.send(ctx, done, r.finalPrompt(r.d.take()), turn{final: true})
+			r.inflight = r.d.take()
+			r.send(ctx, done, r.finalPrompt(r.inflight), turn{final: true})
 		case r.d.wake:
 			b := r.d.take()
 			r.checkDue = false // everything pending goes to the agent now
@@ -282,6 +377,7 @@ func (r *runner) loop(ctx context.Context) error {
 			first, last := b.span()
 			r.logf("waking the agent with %d utterances (events %d to %d)", len(b.utterances), first, last)
 			busy = true
+			r.inflight = b
 			r.send(ctx, done, r.wakePrompt(b), turn{})
 		default:
 			r.startCheck(ctx, checked)
@@ -360,8 +456,9 @@ func (r *runner) judge(c check) {
 func (r *runner) send(ctx context.Context, done chan<- turn, text string, t turn) {
 	r.spoke = false
 	r.rep.set(activity{working: true})
+	t.h = r.h
 	go func() {
-		t.Turn, t.err = r.h.Prompt(ctx, text)
+		t.Turn, t.err = t.h.Prompt(ctx, text)
 		done <- t
 	}()
 }

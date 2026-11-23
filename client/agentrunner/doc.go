@@ -52,6 +52,13 @@
 //     renews the report before it expires. A failing report is logged once and never stops it.
 //   - After session.ended, it sends a last prompt with what is left and stops when the agent
 //     has ended that turn.
-//   - It stops after the agent's own participant.left, when ctx ends or when
-//     the harness stops (an error). Then it stops the harness.
+//   - If the harness stops or fails a prompt (for example "Internal error" of its model service)
+//     after a turn of the agent has ended well, it starts a new harness (runner.go, restart): it
+//     opens a new ACP session and sends a first prompt that says the harness was restarted, so
+//     that the agent reads the state of its documents before it changes them. It delivers again
+//     the utterances that the failed prompt carried, except sentences that went off the record
+//     meanwhile. It restarts at most three times within ten minutes, with a growing pause. A
+//     harness that fails before any turn ended well is a setup error and ends the run at once.
+//   - It stops after the agent's own participant.left, when ctx ends or when the harness stops
+//     for good (an error, after the restarts). Then it stops the harness.
 package agentrunner

@@ -15,8 +15,11 @@
 //     (kind execute) and never runs it; `please reply "TEXT"` streams TEXT as the agent's reply
 //     in its chat; `please always reply "TEXT"` streams TEXT at the end of this and every later
 //     prompt; `please wait DURATION` sleeps, so the agent is busy; `please hold` records
-//     "hold" and waits until the file ACP_DOUBLE_RELEASE exists. Then it ends the turn. Without
-//     `please reply`, the turn has no reply text.
+//     "hold" and waits until the file ACP_DOUBLE_RELEASE exists; `please crash` records "crash"
+//     and exits at once, without an answer, as a harness does when its model service fails. If the
+//     file ACP_DOUBLE_CRASH_MARKER is set, it crashes only when that file does not exist, and
+//     creates it first: the harness that the runner starts again does not crash. Then it ends the
+//     turn. Without `please reply`, the turn has no reply text.
 //   - session/cancel: ends a waiting prompt with the stop reason cancelled.
 //   - End of stdin: records "exit" and exits.
 //
@@ -224,7 +227,7 @@ func (d *double) handle(m message) {
 	}
 }
 
-var instruction = regexp.MustCompile(`please (say|run|reply|always reply) "([^"]*)"|please wait ([0-9a-z.]+)|please (hold)`)
+var instruction = regexp.MustCompile(`please (say|run|reply|always reply) "([^"]*)"|please wait ([0-9a-z.]+)|please (hold|crash)`)
 
 func (d *double) prompt(m message) {
 	var p struct {
@@ -263,6 +266,15 @@ func (d *double) prompt(m message) {
 		case in[1] == "reply":
 			d.sendUpdate(p.SessionID, map[string]any{"sessionUpdate": "agent_message_chunk",
 				"content": map[string]any{"type": "text", "text": in[2]}})
+		case in[4] == "crash":
+			if m := os.Getenv("ACP_DOUBLE_CRASH_MARKER"); m != "" {
+				if _, err := os.Stat(m); err == nil {
+					continue // it crashed before
+				}
+				_ = os.WriteFile(m, nil, 0o600)
+			}
+			d.record(map[string]any{"kind": "crash", "n": n})
+			os.Exit(3)
 		case in[4] == "hold":
 			d.record(map[string]any{"kind": "hold", "n": n})
 			release := os.Getenv("ACP_DOUBLE_RELEASE")
