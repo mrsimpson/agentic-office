@@ -141,11 +141,12 @@ office key create        # prints "public key: …"
 
 ### Start the hub with the binary
 
-On the server. `CFG` is where the programs keep their files: `~/.config/agentic-office` on Linux,
-`~/Library/Application Support/agentic-office` on macOS. The first line sets it for both:
+On the server. `CFG` is where the programs keep their files: `$XDG_CONFIG_HOME/agentic-office` if you set that
+variable, else `~/.config/agentic-office` on Linux and
+`~/Library/Application Support/agentic-office` on macOS. The first line sets it for all three:
 
 ```sh
-CFG="$([ "$(uname)" = Darwin ] && echo "$HOME/Library/Application Support" || echo "${XDG_CONFIG_HOME:-$HOME/.config}")/agentic-office"
+CFG="${XDG_CONFIG_HOME:-$([ "$(uname)" = Darwin ] && echo "$HOME/Library/Application Support" || echo "$HOME/.config")}/agentic-office"
 office-hub keygen ~/office-hub/signing.key           # once; keep the file safe and back it up
 mkdir -p "$CFG/hub"
 office-hub -signing-key ~/office-hub/signing.key -addr 0.0.0.0:8740 \
@@ -383,7 +384,7 @@ Your private key stays in `$CFG/client/key.pem`. It never leaves your computer. 
 folder of the client on your computer:
 
 ```sh
-CFG="$([ "$(uname)" = Darwin ] && echo "$HOME/Library/Application Support" || echo "${XDG_CONFIG_HOME:-$HOME/.config}")/agentic-office"
+CFG="${XDG_CONFIG_HOME:-$([ "$(uname)" = Darwin ] && echo "$HOME/Library/Application Support" || echo "$HOME/.config")}/agentic-office"
 ```
 
 ### Work with several hubs
@@ -1063,7 +1064,7 @@ On the computer where the agents run, create one key per agent. The example crea
 three agents:
 
 ```sh
-CFG="$([ "$(uname)" = Darwin ] && echo "$HOME/Library/Application Support" || echo "${XDG_CONFIG_HOME:-$HOME/.config}")/agentic-office"
+CFG="${XDG_CONFIG_HOME:-$([ "$(uname)" = Darwin ] && echo "$HOME/Library/Application Support" || echo "$HOME/.config")}/agentic-office"
 for a in claude opencode kiro; do
   office key create --key "$CFG/agents/$a/key.pem"
 done
@@ -1413,7 +1414,8 @@ The commands above are long. Put the options into a file instead, and start the 
 `office agent run` alone. The file is YAML. There are two places for it:
 
 - your **user file**, `config.yaml` in your configuration folder, next to your key:
-  `~/.config/agentic-office/client/config.yaml` on Linux,
+  `$XDG_CONFIG_HOME/agentic-office/client/config.yaml` if you set that variable, else
+  `~/.config/agentic-office/client/config.yaml` on Linux and
   `~/Library/Application Support/agentic-office/client/config.yaml` on a Mac. Use it for what
   holds for all your projects, for example your decision model;
 - the **project file**, `.office/config.yaml` in the folder where you start the command. Use it

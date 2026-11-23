@@ -182,8 +182,8 @@ var helpTable = buildHelp([]Help{
 		Details: `Creates the private key of this participant if there is none, and prints the public key.
 An existing key is never changed.
 The key file is <config>/agentic-office/client/key.pem, or the file of --key (OFFICE_KEY).
-<config> is ~/.config on Linux (or $XDG_CONFIG_HOME) and ~/Library/Application Support on
-macOS. The private key never leaves your computer. Send the public key to an admin, who
+<config> is $XDG_CONFIG_HOME if it is set to an absolute path, else ~/.config on Linux and
+~/Library/Application Support on macOS. The private key never leaves your computer. Send the public key to an admin, who
 registers it. Several participants on one computer, for example a human and an agent, use
 one key file each.`,
 		Examples: []string{"office key create", "office key create --key ~/agents/bot/key.pem   # a key for an agent"}},

@@ -176,6 +176,9 @@ func (h *Handler) serveGit(w http.ResponseWriter, r *http.Request, tenant, dir s
 		"GIT_CONFIG_NOSYSTEM=1",
 		"GIT_CONFIG_GLOBAL=" + os.DevNull,
 		"GIT_TERMINAL_PROMPT=0",
+		// Git answers in English on every host, whatever the language of the system. Clients
+		// show these messages to their users and match on them.
+		"LC_ALL=C",
 		// The participant and the tenant come from the token check and the address, never from
 		// the client. The hook reads them from here.
 		"REMOTE_USER=" + caller.ParticipantID,

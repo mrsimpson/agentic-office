@@ -44,8 +44,8 @@ through its interfaces:
   same setup: `office hub add` (fingerprint from the log of the hub, confirmation, a wrong
   fingerprint, a certificate of a trusted authority), `hub list` and `hub remove`, the order of
   the layers with profiles, and the errors. `tests/e2e/hubprofile_test.go` works with two hubs
-  from one client through profiles. The helpers of the contract and end-to-end tests point `XDG_CONFIG_HOME` to an empty folder, so a
-  user file of the host never takes part. No real harness and no model run in the
+  from one client through profiles. The helpers of the contract and end-to-end tests point `XDG_CONFIG_HOME` to an empty folder, which the client honors on
+  every system, so a user file of the host never takes part. No real harness and no model run in the
   tests.
 - `tests/contract/cli_test.go` and `replicator_test.go` run the real `office` binary and check
   its output and the local log it leaves, including kills of the replicator and torn lines.

@@ -133,7 +133,7 @@ func StartIn(t testing.TB, dir, name string, env []string, args ...string) *Proc
 	t.Helper()
 	cmd := exec.Command(Binary(t, name), args...)
 	cmd.Env = append(Environ(), env...)
-	cmd.Dir = dir
+	setDir(cmd, dir)
 	// An own pipe for stdout, not StdoutPipe: Wait closes the pipes it created, and output that
 	// the test has not read yet would be lost when the process exits.
 	stdout, stdoutW, err := os.Pipe()
@@ -510,7 +510,7 @@ func RunIn(t testing.TB, dir, name string, env []string, stdin io.Reader, args .
 	defer cancel()
 	cmd := exec.CommandContext(ctx, Binary(t, name), args...)
 	cmd.Env = append(Environ(), env...)
-	cmd.Dir = dir
+	setDir(cmd, dir)
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr, cmd.Stdin = &out, &errb, stdin
 	err := cmd.Run()
@@ -521,15 +521,26 @@ func RunIn(t testing.TB, dir, name string, env []string, stdin io.Reader, args .
 	return out.String(), errb.String(), cmd.ProcessState.ExitCode()
 }
 
+// setDir runs cmd in dir ("" for the directory of the test) and sets PWD to it. Go does that only
+// for a command without an own environment. Without PWD, a program that asks for its working
+// directory gets the resolved path, which differs from dir where a temporary folder lies below a
+// link (on macOS /var is a link to /private/var).
+func setDir(cmd *exec.Cmd, dir string) {
+	cmd.Dir = dir
+	if dir != "" {
+		cmd.Env = append(cmd.Env, "PWD="+dir)
+	}
+}
+
 // Environ is the environment of the test process for a program that a test starts, without the
 // OFFICE_* variables of the developer or the cloud session (for example OFFICE_HUB or
 // OFFICE_TENANT). The office reads its configuration from them, so they would reach a hub other
 // than the test hub, or change what a test checks. A test sets the variables it needs itself.
 //
 // It also keeps the user of the machine out of the tests:
-//   - HOME is an empty directory. On macOS the configuration folder follows HOME and ignores
-//     XDG_CONFIG_HOME, so without it a program would read the real user file of the developer.
-//     A test that needs a home directory sets HOME itself.
+//   - HOME is an empty directory, so that a program does not read or write the real home of the
+//     developer. A test that needs a home directory sets HOME itself. A test that needs a
+//     configuration folder sets XDG_CONFIG_HOME, which the client honors on every system.
 //   - XDG_DATA_HOME stays where the real one is, so that the models of the ears are found.
 //   - LC_ALL is C, so that the output of Git and other tools is English, which the tests check.
 func Environ() []string {

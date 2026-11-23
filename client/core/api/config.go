@@ -78,13 +78,17 @@ func (c Config) Env() []string {
 		EnvRuntimeDir + "=" + c.RuntimeDir, EnvTenant + "=" + c.Tenant}
 }
 
-// ClientConfigDir is the configuration folder of the client: <config dir>/agentic-office/client,
-// where <config dir> is $XDG_CONFIG_HOME or ~/.config on Linux and ~/Library/Application Support
-// on macOS. It holds the key, the hub certificate and the user configuration file.
+// ClientConfigDir is the configuration folder of the client: <config dir>/agentic-office/client.
+// <config dir> is $XDG_CONFIG_HOME on every system if it is set to an absolute path. Otherwise it
+// is the configuration folder of the system: ~/.config on Linux and ~/Library/Application Support
+// on macOS. The folder holds the key, the hub certificate and the user configuration file.
 func ClientConfigDir() string {
-	d, err := os.UserConfigDir()
-	if err != nil {
-		d = "."
+	d := os.Getenv("XDG_CONFIG_HOME")
+	if !filepath.IsAbs(d) {
+		var err error
+		if d, err = os.UserConfigDir(); err != nil {
+			d = "."
+		}
 	}
 	return filepath.Join(d, "agentic-office", "client")
 }

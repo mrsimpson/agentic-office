@@ -88,7 +88,12 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/wiki/api/wikiv1connect"
 )
 
+// defaultDataDir is <config>/agentic-office/hub. <config> is $XDG_CONFIG_HOME on every system if
+// it is set to an absolute path, else the configuration folder of the system.
 func defaultDataDir() string {
+	if d := os.Getenv("XDG_CONFIG_HOME"); filepath.IsAbs(d) {
+		return filepath.Join(d, "agentic-office", "hub")
+	}
 	if d, err := os.UserConfigDir(); err == nil {
 		return filepath.Join(d, "agentic-office", "hub")
 	}
@@ -136,7 +141,7 @@ func keygen(args []string) {
 // The flags are package variables so that the help can list them before the hub starts.
 var (
 	addr            = flag.String("addr", "127.0.0.1:8740", "listen address (port 0 picks a free port)")
-	dataDir         = flag.String("data-dir", defaultDataDir(), "data directory: the TLS certificate and the Git repositories of the hub and the tenants; <config>/agentic-office/hub by default, where <config> is ~/.config or $XDG_CONFIG_HOME on Linux and ~/Library/Application Support on macOS")
+	dataDir         = flag.String("data-dir", defaultDataDir(), "data directory: the TLS certificate and the Git repositories of the hub and the tenants; <config>/agentic-office/hub by default, where <config> is $XDG_CONFIG_HOME if it is set to an absolute path, else ~/.config on Linux and ~/Library/Application Support on macOS")
 	certFile        = flag.String("tls-cert", "", "TLS certificate (PEM, may include the chain); default <data-dir>/tls.crt")
 	keyFile         = flag.String("tls-key", "", "TLS private key (PEM); default <data-dir>/tls.key")
 	tlsHosts        = flag.String("tls-hosts", "localhost,127.0.0.1,::1,"+osHostname(), "host names and IPs of a new self-signed certificate; participants must reach the hub by one of them. A start with -tls-hosts fails if the existing self-signed certificate misses one")
