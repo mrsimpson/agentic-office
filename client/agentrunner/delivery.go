@@ -141,3 +141,38 @@ func (d *delivery) take() batch {
 	d.wake, d.topicClosed, d.addressed = false, false, ""
 	return b
 }
+
+// requeue puts the utterances of a batch back in front of the pending ones, because the agent
+// did not get them: the harness failed during the prompt that carried them. An utterance that
+// went off the record meanwhile stays out, and so does its notice. The next prompt delivers the
+// rest.
+func (d *delivery) requeue(b batch) {
+	off := map[uint32]bool{}
+	for _, id := range d.offNotices {
+		off[id] = true
+	}
+	var back []utterance
+	for _, u := range b.utterances {
+		delete(d.delivered, u.id)
+		if off[u.id] {
+			continue
+		}
+		back = append(back, u)
+	}
+	var notices []uint32
+	for _, id := range d.offNotices {
+		if d.delivered[id] {
+			notices = append(notices, id)
+		}
+	}
+	d.offNotices = notices
+	d.pending = append(back, d.pending...)
+	if d.turnBy == "" {
+		d.turnBy = b.turnBy
+	}
+	d.topicClosed = d.topicClosed || b.topicClosed
+	if d.addressed == "" {
+		d.addressed = b.addressed
+	}
+	d.wake = d.wake || len(d.pending) > 0
+}

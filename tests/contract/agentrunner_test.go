@@ -18,13 +18,14 @@ import (
 
 // agentRun starts "office agent run" for u with the ACP test double as the harness, in a new
 // working directory. It returns the process and the record file of the double. A prompt with
-// "please hold" waits until the file <record file>.release exists.
+// "please hold" waits until the file <record file>.release exists. A prompt with "please crash"
+// makes the harness exit, once: the harness that the runner starts after that does not.
 func (u *officeUser) agentRun(t *testing.T, sid string, flags ...string) (*contracttest.Process, string) {
 	t.Helper()
 	rec := filepath.Join(t.TempDir(), "acp-record.jsonl")
 	args := append([]string{"agent", "run", "--session", sid}, flags...)
 	args = append(args, "--", contracttest.ACPDouble(t))
-	p := contracttest.StartIn(t, t.TempDir(), "office", append(u.env, "ACP_DOUBLE_RECORD="+rec, "ACP_DOUBLE_RELEASE="+rec+".release"), args...)
+	p := contracttest.StartIn(t, t.TempDir(), "office", append(u.env, "ACP_DOUBLE_RECORD="+rec, "ACP_DOUBLE_RELEASE="+rec+".release", "ACP_DOUBLE_CRASH_MARKER="+rec+".crashed"), args...)
 	return p, rec
 }
 
@@ -257,5 +258,83 @@ func TestAgentRunnerSessionEnds(t *testing.T) {
 	}
 	if last := ps[1]; !strings.Contains(last, "has ended") || !strings.Contains(last, "Ada (human): Final words.") {
 		t.Errorf("last prompt:\n%s", last)
+	}
+}
+
+// TestAgentRunnerRestartsHarness: a harness that stops while it works on a prompt (its model
+// service failed) does not end the run. The runner starts a new harness, tells the agent what
+// happened, and delivers again what the failed prompt carried. Nothing is lost.
+func TestAgentRunnerRestartsHarness(t *testing.T) {
+	m := newMachine(t)
+	ada, bot := m.user("ada", "Ada", "human"), m.user("bot", "Bot", "agent")
+	sid := newSession()
+	adaLog := ada.join(sid).LogPath
+	p, rec := bot.agentRun(t, sid, "--role", `please say "ready"`)
+	waitUtterance(t, adaLog, "bot", "ready")
+
+	ada.ok("say", `Bot, please crash. Then please say "back again".`, "--session", sid)
+	ada.ok("signal", "turn-end", "--session", sid)
+	waitUtterance(t, adaLog, "bot", "back again")
+
+	select {
+	case <-p.Done():
+		t.Fatalf("the runner stopped:\n%s", p.Stderr())
+	default:
+	}
+	if !strings.Contains(p.Stderr(), "starting it again") {
+		t.Errorf("the runner did not say that it restarts the harness:\n%s", p.Stderr())
+	}
+	recs := contracttest.ReadACPRecords(t, rec)
+	starts, crashes := 0, 0
+	for _, r := range recs {
+		switch r.Kind() {
+		case "start":
+			starts++
+		case "crash":
+			crashes++
+		}
+	}
+	if starts != 2 || crashes != 1 {
+		t.Errorf("want 2 harness starts and 1 crash, got %d and %d", starts, crashes)
+	}
+	// The prompts: the first prompt, the wake prompt that crashed the harness, the first prompt of
+	// the new harness (restarted), and the same utterance once more.
+	ps := promptTexts(recs)
+	if len(ps) != 4 {
+		t.Fatalf("want 4 prompts, got %d:\n%s", len(ps), strings.Join(ps, "\n---\n"))
+	}
+	if !strings.Contains(ps[2], "I started it again") || strings.Contains(ps[2], "Ada (human)") {
+		t.Errorf("prompt of the new harness:\n%s", ps[2])
+	}
+	if !strings.Contains(ps[1], "Ada (human): Bot, please crash.") || !strings.Contains(ps[3], "Ada (human): Bot, please crash.") {
+		t.Errorf("the utterance did not come again:\n%s\n---\n%s", ps[1], ps[3])
+	}
+}
+
+// TestAgentRunnerNoRestartAtSetup: a harness that fails before any turn of the agent has ended
+// is a setup error (no login, no model). The runner does not start it again; it ends at once.
+func TestAgentRunnerNoRestartAtSetup(t *testing.T) {
+	m := newMachine(t)
+	bot := m.user("bot", "Bot", "agent")
+	p, rec := bot.agentRun(t, newSession(), "--role", "please crash")
+	select {
+	case <-p.Done():
+	case <-time.After(20 * time.Second):
+		t.Fatalf("the runner did not stop:\n%s", p.Stderr())
+	}
+	if code := p.Cmd.ProcessState.ExitCode(); code != 1 {
+		t.Errorf("exit %d, want 1:\n%s", code, p.Stderr())
+	}
+	if strings.Contains(p.Stderr(), "starting it again") {
+		t.Errorf("the runner started the harness again:\n%s", p.Stderr())
+	}
+	starts := 0
+	for _, r := range contracttest.ReadACPRecords(t, rec) {
+		if r.Kind() == "start" {
+			starts++
+		}
+	}
+	if starts != 1 {
+		t.Errorf("want 1 harness start, got %d", starts)
 	}
 }

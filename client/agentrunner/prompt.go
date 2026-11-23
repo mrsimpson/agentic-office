@@ -5,8 +5,9 @@ import (
 	"strings"
 )
 
-// firstPrompt tells the agent its role and how the meeting works.
-func (r *runner) firstPrompt() string {
+// firstPrompt tells the agent its role and how the meeting works. restarted: the runner started
+// the harness again after a failure, so the agent remembers nothing of its earlier turns.
+func (r *runner) firstPrompt(restarted bool) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "You take part in the meeting %q of the agentic office as the participant %q, an agent.\n\n",
 		r.o.Session, r.self)
@@ -26,6 +27,12 @@ func (r *runner) firstPrompt() string {
 	b.WriteString("- Never use or repeat a sentence that is off the record.\n")
 	fmt.Fprintf(&b, "- The local log of the session is the file %s (one JSON line per event). Read it if you need earlier events.\n",
 		r.m.joined.Paths.Log)
+	if restarted {
+		b.WriteString("\nThe harness that ran you stopped with an error, and I started it again. You remember nothing of your earlier turns in this chat, but the meeting is not new: do not repeat what your role asks you to do at the start of the meeting. ")
+		b.WriteString("If your role keeps a document, for example the minutes, read its current state with the tools of the office before you change it, so that you do not replace it with less. ")
+		b.WriteString("If you need earlier events, read the local log. If I have not sent you anything new yet, end your turn without text. If the meeting has ended meanwhile, I tell you in my next message.")
+		return b.String()
+	}
 	b.WriteString("\nIf your role asks you to do something at the start of the meeting, do it now. Otherwise end your turn.")
 	return b.String()
 }
