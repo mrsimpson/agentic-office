@@ -97,8 +97,8 @@ that <code dir="auto">key-env</code> names, errors with file, line and key, and 
 same setup: <code dir="auto">office hub add</code> (fingerprint from the log of the hub, confirmation, a wrong
 fingerprint, a certificate of a trusted authority), <code dir="auto">hub list</code> and <code dir="auto">hub remove</code>, the order of
 the layers with profiles, and the errors. <code dir="auto">tests/e2e/hubprofile_test.go</code> works with two hubs
-from one client through profiles. The helpers of the contract and end-to-end tests point <code dir="auto">XDG_CONFIG_HOME</code> to an empty folder, so a
-user file of the host never takes part. No real harness and no model run in the
+from one client through profiles. The helpers of the contract and end-to-end tests point <code dir="auto">XDG_CONFIG_HOME</code> to an empty folder, which the client honors on
+every system, so a user file of the host never takes part. No real harness and no model run in the
 tests.</li>
 <li><code dir="auto">tests/contract/cli_test.go</code> and <code dir="auto">replicator_test.go</code> run the real <code dir="auto">office</code> binary and check
 its output and the local log it leaves, including kills of the replicator and torn lines.</li>

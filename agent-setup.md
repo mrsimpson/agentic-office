@@ -73,7 +73,7 @@ office hub add main <hub address> --tenant <tenant> --default < /dev/null
 ## 3. Create the keys
 
 ```sh
-CFG="$([ "$(uname)" = Darwin ] && echo "$HOME/Library/Application Support" || echo "${XDG_CONFIG_HOME:-$HOME/.config}")/agentic-office"
+CFG="${XDG_CONFIG_HOME:-$([ "$(uname)" = Darwin ] && echo "$HOME/Library/Application Support" || echo "$HOME/.config")}/agentic-office"
 office key create
 office key create --key "$CFG/agents/<agent>/key.pem"      # once per agent
 ```
