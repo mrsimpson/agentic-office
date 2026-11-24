@@ -348,6 +348,7 @@ func main() {
 		PublicURL: *publicURL, Archive: repos.Hub(), Bootstrap: bootstrap, BootstrapErr: bootstrapErr, Logf: log.Printf,
 		TenantFreeServices: []string{tenantv1connect.TenantServiceName},
 		StageProcedures: []string{sessionstreamv1connect.SessionStreamServiceSubscribeProcedure,
+			sessionstreamv1connect.SessionStreamServiceGetEventsProcedure,
 			sessionactivityv1connect.SessionActivityServiceWatchActivityProcedure}})
 	if err != nil {
 		log.Fatal(err)

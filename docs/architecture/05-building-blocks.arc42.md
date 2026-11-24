@@ -633,7 +633,9 @@ path: hub/portal
 
 ### Stage view
 
-A browser view of one session, opened by a link.
+A browser view of one session, opened by a link. The page follows the session through a stream
+of its regions. It can also read one artifact of the session at a time, for the own focus of the
+browser; that read changes nothing in the session.
 
 ```arc42
 :::interface
@@ -1417,6 +1419,11 @@ staging area of its own session, which the stage link names, never a path that a
 staged. It reads the decks through the slides interface. A staged artifact of its own session
 shows its content; a staged artifact of another session shows as its stub
 (`concept-session-release`).
+
+A viewer can open another artifact of the session in the own browser by its tab. That changes
+only this browser: the focus of the session stays, and nobody else's view changes. While a
+browser shows its own artifact, the tab of the shared focus pulses when the session focuses
+another artifact, and a click on it follows the session again. The stage link stays read-only.
 
 ```arc42
 :::building-block

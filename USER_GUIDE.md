@@ -589,8 +589,10 @@ The stage shows the participants in its header and the meeting in two columns be
 - **Left:** the artifact in focus, large. The **minutes** are the first artifact: they are in
   focus until someone focuses another artifact. Until there are minutes, the stage asks you to
   bring in an agent that takes them (see [Bring in an agent](#4-bring-in-an-agent)). When a session
-  has more than one artifact, tabs appear above, with the minutes first. Below is a log of who
-  created, changed or focused which artifact.
+  has more than one artifact, tabs appear above, with the minutes first; a green dot marks the one
+  in focus for the session. Click a tab to read that artifact in your own browser only: nobody
+  else's view changes. If the session then focuses another artifact, its tab pulses; click it to
+  follow the session again. Below is a log of who created, changed or focused which artifact.
 - **Right:** the transcript. It scrolls on its own and follows new sentences while you are at its
   end. If you scroll up to read, it keeps your place and shows **New messages**, which takes you
   back to the end.
