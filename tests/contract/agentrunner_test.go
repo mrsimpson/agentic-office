@@ -122,7 +122,7 @@ func TestAgentRunnerHarness(t *testing.T) {
 			}
 		case "prompt":
 			if r["n"] == float64(1) {
-				for _, want := range []string{sid, role, "utterance_say", "off the record"} {
+				for _, want := range []string{sid, role, "utterance_say", "off the record", "stage_focus"} {
 					if !strings.Contains(r.Text(), want) {
 						t.Errorf("first prompt lacks %q:\n%s", want, r.Text())
 					}
