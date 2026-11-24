@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.2](https://github.com/mrsimpson/agentic-office/compare/v0.4.1...v0.4.2) (2026-11-24)
+
+
+### Features
+
+* **agentrunner:** agents present an artifact on the stage after they worked on it ([#275](https://github.com/mrsimpson/agentic-office/issues/275)) ([6d3614b](https://github.com/mrsimpson/agentic-office/commit/6d3614b2989b86c67bb3549a582ceccc38ecc63a)), closes [#273](https://github.com/mrsimpson/agentic-office/issues/273)
+* **stage:** tabs open an artifact in the own browser; a new shared focus pulses ([#276](https://github.com/mrsimpson/agentic-office/issues/276)) ([e4981e5](https://github.com/mrsimpson/agentic-office/commit/e4981e59b0838db6e9f9d32ea8ebd516af13d39c)), closes [#274](https://github.com/mrsimpson/agentic-office/issues/274)
+
+
+### Bug fixes
+
+* **client,hub:** honor XDG_CONFIG_HOME on every system and run the tests on macOS ([#269](https://github.com/mrsimpson/agentic-office/issues/269)) ([a0a7fed](https://github.com/mrsimpson/agentic-office/commit/a0a7feda52565d1b3ac77fd660bbcf88aa8da856)), closes [#266](https://github.com/mrsimpson/agentic-office/issues/266)
+* **client:** restart a failed harness and deliver again what it missed ([#272](https://github.com/mrsimpson/agentic-office/issues/272)) ([ecd82fb](https://github.com/mrsimpson/agentic-office/commit/ecd82fb8bd227e95e4e50a1021f9ed02f18e8fac)), closes [#271](https://github.com/mrsimpson/agentic-office/issues/271)
+
 ## [0.4.1](https://github.com/mrsimpson/agentic-office/compare/v0.4.0...v0.4.1) (2026-11-22)
 
 
