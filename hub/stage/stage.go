@@ -75,8 +75,10 @@ func New(opts Options) *Handler {
 	return &Handler{opts: opts}
 }
 
-// ServeHTTP serves GET <web.PathPrefix><session>?token=… (the page) and
-// GET <web.PathPrefix><session>/events?token=… (the event stream).
+// ServeHTTP serves GET <web.PathPrefix><session>?token=… (the page),
+// GET <web.PathPrefix><session>/events?token=… (the event stream) and
+// GET <web.PathPrefix><session>/artifact?token=…&path=… (one artifact of the session, for the own
+// focus of a browser).
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	hdr := w.Header()
 	// The token is in the URL: never send it on, never cache the page.
@@ -91,7 +93,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	escaped, sub, _ := strings.Cut(rest, "/")
 	sid, err := url.PathUnescape(escaped)
-	if err != nil || sid == "" || (sub != "" && sub != "events") {
+	if err != nil || sid == "" || (sub != "" && sub != "events" && sub != "artifact") {
 		h.fail(w, http.StatusNotFound, "Not found", "There is no stage at this address.")
 		return
 	}
@@ -106,8 +108,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, status, title, msg)
 		return
 	}
-	if sub == "events" {
+	switch sub {
+	case "events":
 		h.events(w, r, sid, token, link)
+		return
+	case "artifact":
+		h.artifact(w, r, sid, token, link)
 		return
 	}
 	h.page(w, r, sid, token)
@@ -148,8 +154,10 @@ func (h *Handler) fail(w http.ResponseWriter, status int, title, msg string) {
 func (h *Handler) page(w http.ResponseWriter, r *http.Request, sid, token string) {
 	w.Header().Set("Content-Security-Policy", web.PageCSP)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	events := web.PathPrefix + url.PathEscape(sid) + "/events?" + url.Values{"token": {token}}.Encode()
-	_ = web.Page.Execute(w, map[string]any{"Session": sid, "Events": events,
+	q := "?" + url.Values{"token": {token}}.Encode()
+	events := web.PathPrefix + url.PathEscape(sid) + "/events" + q
+	artifact := web.PathPrefix + url.PathEscape(sid) + "/artifact" + q
+	_ = web.Page.Execute(w, map[string]any{"Session": sid, "Events": events, "Artifact": artifact,
 		"Portal": portalLink(r.URL.Query().Get("portal")), "Regions": newView().renderAll(), "Script": template.JS(web.Script)})
 }
 
@@ -295,6 +303,50 @@ func (h *Handler) events(w http.ResponseWriter, r *http.Request, sid, token stri
 			return
 		}
 	}
+}
+
+// artifact answers the artifact region for one artifact of the session: what the page shows when
+// its viewer opens a tab for the own browser only (if-stage-web). It reads the log of the session
+// with the token of the stage link to learn which artifacts the session has, and shows only those.
+// It changes nothing: the focus of the session stays where it is.
+func (h *Handler) artifact(w http.ResponseWriter, r *http.Request, sid, token string, link StageLink) {
+	p := r.URL.Query().Get("path")
+	ctx := r.Context()
+	client := sessionstreamv1connect.NewSessionStreamServiceClient(connect.NewClient(h.opts.Session, auth.StaticToken(token)))
+	v := newView()
+	var after uint32
+	for {
+		res, err := client.GetEvents(ctx, &sessionstreamv1.GetEventsRequest{SessionId: sid, AfterEventId: after})
+		if err != nil {
+			h.streamError(w, err)
+			return
+		}
+		for _, ev := range res.GetEvents() {
+			v.apply(ev)
+			after = ev.GetId()
+		}
+		if !res.GetMore() || len(res.GetEvents()) == 0 {
+			break
+		}
+	}
+	v.restage(ctx, sid, link.Artifacts, true)
+	known := false
+	for _, e := range v.Artifacts() {
+		known = known || e.Path == p
+	}
+	if !known {
+		h.fail(w, http.StatusNotFound, "Not found", "The session has no such artifact.")
+		return
+	}
+	v.focus = p
+	if p == MinutesID {
+		v.focus = ""
+	}
+	v.loaded = ""
+	v.refresh(ctx, sid, link.Slides, link.Artifacts)
+	w.Header().Set("Content-Security-Policy", web.ErrorCSP)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprint(w, v.render("artifact"))
 }
 
 // watchActivity sends the activities of the session to acts until ctx ends or the watch fails.

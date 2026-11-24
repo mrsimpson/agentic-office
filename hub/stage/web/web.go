@@ -5,6 +5,9 @@
 //
 //	GET /stage/<escaped session>?token=<token>         the page
 //	GET /stage/<escaped session>/events?token=<token>  server-sent events for the page
+//	GET /stage/<escaped session>/artifact?token=<token>&path=<path>
+//	                                                   the artifact region for one artifact of the
+//	                                                   session, for the own focus of a browser
 //
 // The page has regions (Regions). Every event of the stream is named after a region and carries
 // the inner HTML of that region; the one inline script (Script) only replaces the region. An
@@ -38,10 +41,47 @@ var ErrorPage = template.Must(template.New("error").Parse(`<!DOCTYPE html>
 // Script opens the event stream and replaces each region with the HTML the server rendered. The
 // transcript is a scroll box: it follows new utterances while the reader is at its end; a reader
 // who scrolled up keeps the place and gets a button that jumps to the end.
+//
+// A click on a tab sets the own focus of this browser: the page fetches that artifact from the
+// artifact address and shows it instead of the shared focus, which it keeps for later. Nothing
+// changes for anyone else. While the own focus is set, the tab of the shared focus pulses after
+// each change of the shared focus. A click on the tab of the shared focus follows the session again.
 const Script = `(function () {
   var main = document.getElementById("stage");
   var status = document.getElementById("status");
   var log = document.getElementById("utterances");
+  var tabs = document.getElementById("artifacts");
+  var shown = document.getElementById("artifact");
+  var own = null, shared = null, sharedHTML = shown.innerHTML, pulse = null;
+  function sharedFocus() { var f = tabs.querySelector(".tab.focused"); return f ? f.getAttribute("data-artifact") : null; }
+  function mark() {
+    tabs.querySelectorAll(".tab").forEach(function (el) {
+      var p = el.getAttribute("data-artifact");
+      el.classList.toggle("own", own !== null && p === own);
+      el.classList.toggle("pulse", own !== null && p === pulse);
+      el.setAttribute("aria-selected", String(own === null ? el.classList.contains("focused") : p === own));
+    });
+  }
+  function follow() { own = null; pulse = null; shown.innerHTML = sharedHTML; mark(); }
+  function open(p) {
+    if (p === sharedFocus()) { follow(); return; }
+    own = p; pulse = null; mark();
+    load(p);
+  }
+  function load(p) {
+    fetch(main.getAttribute("data-artifact") + "&path=" + encodeURIComponent(p), { credentials: "same-origin" })
+      .then(function (r) { return r.ok ? r.text() : Promise.reject(r.status); })
+      .then(function (html) { if (own === p) { shown.innerHTML = html; } })
+      .catch(function () { if (own === p) { shown.innerHTML = '<p class="note">This artifact cannot be shown here.</p>'; } });
+  }
+  function pick(e) {
+    var el = e.target.closest(".tab");
+    if (!el || (e.type === "keydown" && e.key !== "Enter" && e.key !== " ")) { return; }
+    e.preventDefault();
+    open(el.getAttribute("data-artifact"));
+  }
+  tabs.addEventListener("click", pick);
+  tabs.addEventListener("keydown", pick);
   var jump = document.getElementById("jump");
   function atEnd() { return log.scrollHeight - log.scrollTop - log.clientHeight < 32; }
   function toEnd() { log.scrollTop = log.scrollHeight; jump.hidden = true; }
@@ -49,13 +89,26 @@ const Script = `(function () {
   jump.addEventListener("click", toEnd);
   toEnd();
   var es = new EventSource(main.getAttribute("data-events"));
-  ["status", "origin", "participants", "artifacts", "artifact", "artifactlog"].forEach(function (name) {
+  ["status", "origin", "participants", "artifactlog"].forEach(function (name) {
     es.addEventListener(name, function (e) { document.getElementById(name).innerHTML = e.data; });
   });
+  es.addEventListener("artifacts", function (e) {
+    tabs.innerHTML = e.data;
+    var now = sharedFocus();
+    if (own !== null && now !== shared) { pulse = now; }
+    if (own !== null && own === now) { follow(); }
+    shared = now;
+    mark();
+  });
+  es.addEventListener("artifactlog", function () { if (own !== null) { load(own); } });
+  es.addEventListener("artifact", function (e) {
+    sharedHTML = e.data;
+    if (own === null) { shown.innerHTML = e.data; }
+  });
   es.addEventListener("utterances", function (e) {
-    var follow = atEnd(), top = log.scrollTop;
+    var stay = atEnd(), top = log.scrollTop;
     log.innerHTML = e.data;
-    if (follow) { toEnd(); } else { log.scrollTop = top; jump.hidden = false; }
+    if (stay) { toEnd(); } else { log.scrollTop = top; jump.hidden = false; }
   });
   es.addEventListener("end", function () { es.close(); });
   es.onerror = function () {
@@ -165,6 +218,14 @@ section:empty { display: none; }
 .tabs { display: flex; flex-wrap: wrap; gap: 0.2rem; border-bottom: 1px solid var(--line); }
 .tab { padding: 0.5rem 1.1rem; color: var(--muted); font-size: 0.85rem; border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0; margin-bottom: -1px; }
 .tab.focused { color: var(--text); border-color: var(--line); background: var(--bg); font-weight: 600; }
+.tab { cursor: pointer; }
+.tab:hover { color: var(--text); }
+.tabs:has(.own) .tab.focused { border-color: transparent; font-weight: 400; color: var(--muted); }
+.tab.focused::after { content: ""; display: inline-block; width: 0.4rem; height: 0.4rem; margin-left: 0.45rem; border-radius: 50%; background: var(--live); vertical-align: middle; }
+.tabs .tab.own { color: var(--text); border-color: var(--line); background: var(--bg); font-weight: 600; }
+.tab.pulse { animation: tabpulse 1.2s ease-in-out infinite; color: var(--text); }
+@keyframes tabpulse { 50% { background: var(--soft); box-shadow: 0 0 0 0.2rem var(--live) inset; } }
+@media (prefers-reduced-motion: reduce) { .tab.pulse { animation: none; box-shadow: 0 0 0 0.15rem var(--live) inset; } }
 #artifacts:not(:empty) + #artifact { border-top-left-radius: 0; border-top-color: var(--line); }
 .artifact-log li { display: flex; gap: 0.8rem; align-items: baseline; font-size: 0.9rem; border-bottom: 1px solid var(--line); }
 .artifact-log li:last-child { border-bottom: 0; }
@@ -202,7 +263,7 @@ var Page = template.Must(template.New("page").Parse(`<!DOCTYPE html>
 <header><div class="brand"><div class="logo"></div><div><div class="eyebrow">Agentic office</div><h1>Session <span id="session">{{.Session}}</span></h1></div></div><section id="participants" aria-label="Participants">{{.Regions.participants}}</section><div class="side">{{with .Portal}}<a id="portal" href="{{.}}" rel="noreferrer" target="_blank">Open in portal</a>{{end}}<div id="status">{{.Regions.status}}</div></div></header>
 <div id="origin">{{.Regions.origin}}</div>
 <noscript><p class="note">This page needs JavaScript for live updates.</p></noscript>
-<main id="stage" class="stage" data-events="{{.Events}}">
+<main id="stage" class="stage" data-events="{{.Events}}" data-artifact="{{.Artifact}}">
 <div class="left">
 <div class="viewer">
 <section id="artifacts" aria-label="Artifacts of the session">{{.Regions.artifacts}}</section>
@@ -264,7 +325,7 @@ The office did not see this conversation happen. The hub's signature proves who 
 {{end}}</ol>{{end}}{{end}}
 
 {{define "artifacts"}}{{if gt (len .Artifacts) 1}}<ul class="tabs" role="tablist">
-{{range .Artifacts}}<li class="tab{{if .Focused}} focused{{end}}" role="tab" aria-selected="{{.Focused}}" data-artifact="{{.Path}}" title="{{.Path}}">{{.Label}}</li>
+{{range .Artifacts}}<li class="tab{{if .Focused}} focused{{end}}" role="tab" tabindex="0" aria-selected="{{.Focused}}" data-artifact="{{.Path}}" title="{{.Path}}">{{.Label}}</li>
 {{end}}</ul>{{end}}{{end}}
 
 {{define "utterances"}}{{if .Utterances}}<ol class="utterances">

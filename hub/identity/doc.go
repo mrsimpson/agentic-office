@@ -20,7 +20,8 @@
 //     start the operator names the first one with -first-system-admin ID=PUBLIC_KEY. There is no
 //     file of admin keys.
 //   - Stage links: any participant can create a read-only link for one session. Its token allows
-//     only SessionStreamService/Subscribe for that session, until it expires (-stage-link-ttl).
+//     only the procedures that the wiring names (Options.StageProcedures: reading the log of that
+//     session and watching its activities), until it expires (-stage-link-ttl).
 //   - Users, keys and memberships are YAML files in the hub repository (system/users and
 //     system/memberships, through if-archive-storage). Identity is the only writer. Every change
 //     and the loaded repository are checked against the rules of the user API (see user.proto);

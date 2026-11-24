@@ -1060,3 +1060,97 @@ func TestStageShowsTheWholeTranscript(t *testing.T) {
 		return len(findAll(n, withAttr("data-utterance", ""))) == 20 && strings.Contains(text(n), "Point 1 of the agenda.")
 	})
 }
+
+// artifactURL is the address of one artifact of the session of a stage link (if-stage-web), for
+// the own focus of a browser.
+func artifactURL(t *testing.T, link, path string) string {
+	t.Helper()
+	u, err := url.Parse(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.RawPath = u.EscapedPath() + "/artifact"
+	u.Path += "/artifact"
+	q := u.Query()
+	q.Set("path", path)
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+// TestStageOpensAnArtifactForOneBrowser: with the stage link, a browser reads any artifact of the
+// session for its own focus (#274): a document that is not in focus, and the minutes. The read
+// changes nothing: the focus of the session stays. A path that the session does not have, a
+// document of another session, no token and the link of another session show nothing.
+func TestStageOpensAnArtifactForOneBrowser(t *testing.T) {
+	m := newStageMeeting(t)
+	bot := m.joinAs("Minute Bot", sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_AGENT, false)
+	a := m.actors[bot]
+	for path, text := range map[string]string{"documents/plan.md": "# Plan\n", "documents/notes.md": "# Notes of the day\n"} {
+		if _, err := a.Document.CreateDocument(m.ctx(), &documentv1.CreateDocumentRequest{Path: path, Content: text,
+			CommandId: coreapi.NewCommandID(), SessionId: m.sid}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := a.Commands.FocusArtifact(m.ctx(), &sessioncommandsv1.FocusArtifactRequest{SessionId: m.sid,
+		CommandId: coreapi.NewCommandID(), ParticipantId: bot, ArtifactId: "documents/plan.md"}); err != nil {
+		t.Fatal(err)
+	}
+	focused := func() int {
+		res, err := m.reader.Stream.GetEvents(m.ctx(), &sessionstreamv1.GetEventsRequest{SessionId: m.sid, Limit: 1000})
+		if err != nil {
+			t.Fatal(err)
+		}
+		n := 0
+		for _, ev := range res.GetEvents() {
+			if ev.GetArtifactFocused() != nil {
+				n++
+			}
+		}
+		return n
+	}
+	before := focused()
+
+	// The page names the address.
+	_, body := get(t, m.srv, m.link)
+	mains := findAll(parseDoc(t, body), withAttr("id", "stage"))
+	if addr, _ := attr(mains[0], "data-artifact"); !strings.Contains(addr, "/artifact?token=") {
+		t.Errorf("the page does not name the artifact address: %q", addr)
+	}
+
+	// A document that is not in focus, and the minutes.
+	res, body := get(t, m.srv, artifactURL(t, m.link, "documents/notes.md"))
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, `data-artifact="documents/notes.md"`) || !strings.Contains(body, "Notes of the day") {
+		t.Fatalf("own focus on the notes: status %d, %s (%s)", res.StatusCode, body, artifactURL(t, m.link, "documents/notes.md"))
+	}
+	if !strings.Contains(res.Header.Get("Content-Security-Policy"), "default-src 'none'") {
+		t.Errorf("artifact headers: %v", res.Header)
+	}
+	if res, body := get(t, m.srv, artifactURL(t, m.link, "minutes")); res.StatusCode != http.StatusOK || !strings.Contains(body, `data-placeholder="minutes"`) {
+		t.Errorf("own focus on the minutes: status %d, %s", res.StatusCode, body)
+	}
+	if n := focused(); n != before {
+		t.Errorf("reading an artifact changed the focus of the session: %d focus events, want %d", n, before)
+	}
+
+	// Nothing that the session does not have.
+	other := newStageMeetingOn(t, m.srv)
+	writer := other.joinAs("Ada", sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_HUMAN, false)
+	if _, err := other.actors[writer].Document.CreateDocument(m.ctx(), &documentv1.CreateDocumentRequest{Path: "documents/secret.md",
+		Content: "# Secret\n", CommandId: coreapi.NewCommandID(), SessionId: other.sid}); err != nil {
+		t.Fatal(err)
+	}
+	for name, c := range map[string]struct {
+		link string
+		want int
+	}{
+		"a path the session does not have": {artifactURL(t, m.link, "documents/nothing.md"), http.StatusNotFound},
+		"a document of another session":    {artifactURL(t, m.link, "documents/secret.md"), http.StatusNotFound},
+		"no token":                         {artifactURL(t, withToken(t, m.link, ""), "documents/plan.md"), http.StatusUnauthorized},
+		"the link of another session":      {artifactURL(t, withToken(t, m.link, stageToken(t, other.link)), "documents/plan.md"), http.StatusForbidden},
+	} {
+		res, body := get(t, m.srv, c.link)
+		if res.StatusCode != c.want || strings.Contains(body, "Secret") || strings.Contains(body, "Plan") {
+			t.Errorf("%s: status %d, want %d: %s", name, res.StatusCode, c.want, body)
+		}
+	}
+}
