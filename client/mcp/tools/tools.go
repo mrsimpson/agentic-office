@@ -140,7 +140,7 @@ var MinutesUpdate = &sdk.Tool{Name: "minutes_update", Title: "Update the minutes
 
 // StageFocus is the tool stage_focus.
 var StageFocus = &sdk.Tool{Name: "stage_focus", Title: "Show an artifact on the stage", Annotations: Additive,
-	Description: `Show an artifact on the stage for everyone (artifact.focused), for example the id of a deck from slides_render. Returns {"event", "duplicate"}.`}
+	Description: `Show an artifact on the stage for everyone (artifact.focused): the id of a deck from slides_render, the path of a document or a record (documents/plan.md, decisions/3.md), or "minutes" for the minutes. Use it to present an artifact after you created or changed it in the meeting, and say in the meeting what you changed; do not take the stage while someone else presents. Returns {"event", "duplicate"}.`}
 
 // StageLink is the tool stage_link.
 var StageLink = &sdk.Tool{Name: "stage_link", Title: "Create a stage link", Annotations: Additive,
