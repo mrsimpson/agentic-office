@@ -1476,8 +1476,11 @@ addresses: qg-usability, con-no-intelligence
 local file and its identity is a private key in a local folder. Other members of a tenant cannot
 use it. Most agents are meant for a whole team. **Decision:** A team agent belongs to a tenant. It
 is an actor of its own with a stable ID and has no private key. Its definition (role, wake
-strategy, the tools it may use) is kept by Tenants in the repository of the tenant, holds no
-secret, and every member may read and change it. Every member may run the agent: they prove their
+strategy, the tools it may use) is configuration of the tenant, not an artifact: it is no result
+of a session and has no staging, no focus and no place in the wiki. Tenants keeps it in its own
+area of the repository of the tenant, checks every write against a schema that the hub ships, and
+holds no secret in it. Every member may read and change it, through the Tenant API; no push
+changes it. Every member may run the agent: they prove their
 own key and ask Identity for a token as the agent. The token names the agent and the operator. A
 team agent is in a session at most once; a second join is refused with "already joined".
 Everything that depends on the computer stays local and is never shared: the harness command, the
@@ -1488,7 +1491,8 @@ distributed, so removing a member needs no key rotation. A session shows who run
 same model can later carry agents that do not run on the computer of a member. Because every
 member may change a definition, a change can steer an agent that another member runs; the
 confirmation of a changed definition is the protection (`risk-shared-agent-definition`).
-**Rejected:** a definition for each user with a key for each user (no shared identity); a private
+**Rejected:** a definition as an artifact type (an artifact is a result of a session, and a
+definition is configuration; it would also open the push and the wiki to it); a definition for each user with a key for each user (no shared identity); a private
 key that is shared and encrypted for each member (removing a member needs a new key, a member keeps
 what they decrypted, and a session cannot show who runs the agent); a signed delegation (a larger
 change at Identity than a token as the agent). OPEN: finer rights, for example a role or a list for

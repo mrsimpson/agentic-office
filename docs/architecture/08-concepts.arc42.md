@@ -212,7 +212,8 @@ the hub repository and refuses to start on a violation.
 
 **Repository.** A tenant has one git repository for its artifacts, with a directory for each kind
 of content, one for its session logs, and one for what its sessions have not released
-(`dec-staging-repository`). Every session, record, task and slide deck belongs to exactly one tenant, and the archive
+(`dec-staging-repository`). One more area holds the definitions of its team agents
+(`dec-team-agents`); it is configuration, not an artifact, and only the hub writes it. Every session, record, task and slide deck belongs to exactly one tenant, and the archive
 writes to the repository of that tenant only (`dec-yaml-git-storage`).
 
 **Separation.** Every call of the meeting session, the records, the tasks, the slides and the

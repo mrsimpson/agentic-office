@@ -1510,9 +1510,11 @@ tasks and slides live only in the git repository of the tenant and are visible o
 Only a system admin creates, lists and removes tenants. Tenants does not keep the tenant records or
 the memberships: Identity owns them and Tenants asks Identity through the tenant roster. Creating
 a tenant also creates its repository (`if-archive-storage`). Tenants keeps the definition of each
-team agent of a tenant in the repository of the tenant (`dec-team-agents`): the role, the wake
-strategy and the tools the agent may use, never a secret and never anything that depends on one
-computer. Every change is one commit. Synchronisation with
+team agent of a tenant (`dec-team-agents`) in its own area of the repository of the tenant: the
+role, the wake strategy and the tools the agent may use, never a secret and never anything that
+depends on one computer. A definition is configuration, not an artifact. Tenants checks every
+write against a schema that the hub ships, and every change is one commit. Only Tenants writes
+the area, so no push changes it. Synchronisation with
 remotes is not part of this stage.
 
 ```arc42
