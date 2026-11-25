@@ -19,10 +19,13 @@ type AgentOptions struct {
 	Role    string
 	Harness []string // the harness command and its arguments
 	Allow   []string // patterns of tool calls to allow; empty: the office tools only
-	Cwd     string
-	Office  string // this binary, for the MCP server of the harness
-	Version string
-	Stderr  io.Writer
+	// AlsoAllow are patterns of tool calls to allow in addition, for the tools that the
+	// definition of a team agent names.
+	AlsoAllow []string
+	Cwd       string
+	Office    string // this binary, for the MCP server of the harness
+	Version   string
+	Stderr    io.Writer
 	// Wake is the wake strategy (dec-agent-runner-delivery): WakeTurnEnd, WakeLLM or
 	// WakeDecisionModel.
 	Wake string
@@ -112,6 +115,8 @@ func cmdAgentRun(e *env, fs *flag.FlagSet) func([]string) error {
 	decideModel := fs.String("decide-model", "", "the model name for --decide-url (agent.wake.model)")
 	decideThreshold := fs.Float64("decide-threshold", 0.5, "with --wake "+WakeDecisionModel+": the probability from which an answer counts as yes (agent.wake.threshold)")
 	decideTimeout := fs.Duration("decide-timeout", 10*time.Second, "after this time without an answer, a check of the model has failed (agent.wake.timeout)")
+	teamAgent := fs.String("team-agent", "", "run the team agent of this tenant with this ID: its role, tools and wake strategy come from its definition, and the agent writes as the team agent (see office help team-agent run)")
+	confirm := fs.String("confirm", "", "with --team-agent: the version of the definition that you confirm, so that the runner does not ask")
 	topicTask := fs.String("topic-task", "", "the task of the role when a block of topics has ended (with --wake "+WakeLLM+" or "+WakeDecisionModel+") (agent.topic-task)")
 	return func(args []string) error {
 		set := map[string]bool{}
@@ -125,6 +130,12 @@ func cmdAgentRun(e *env, fs *flag.FlagSet) func([]string) error {
 			return usagef("--decide-threshold must be above 0 and at most 1")
 		case set["decide-timeout"] && *decideTimeout <= 0:
 			return usagef("--decide-timeout must be positive")
+		case set["team-agent"] && *teamAgent == "":
+			return usagef("--team-agent needs the ID of a team agent")
+		case set["confirm"] && !set["team-agent"]:
+			return usagef("--confirm goes with --team-agent")
+		case set["team-agent"] && (set["role"] || set["role-file"]):
+			return usagef("a team agent has its role in its definition: give no --role and no --role-file")
 		}
 		if _, ok := wakeKeys[*wake]; set["wake"] && !ok {
 			return usagef("--wake must be %s, %s or %s", WakeTurnEnd, WakeLLM, WakeDecisionModel)
@@ -139,6 +150,34 @@ func cmdAgentRun(e *env, fs *flag.FlagSet) func([]string) error {
 		}
 		if v := os.Getenv(EnvSession); v != "" {
 			s.apply(layer{src: source{Kind: sourceEnv, From: EnvSession}, values: map[string]any{keySession: v}})
+		}
+		agentCfg := e.cfg
+		var teamAllow []string
+		if *teamAgent != "" {
+			if e.cfg.Tenant == "" {
+				return usagef("a team agent belongs to a tenant: pass --tenant or set tenant in a configuration file")
+			}
+			c, err := e.client()
+			if err != nil {
+				return err
+			}
+			def, err := c.AgentDefinition(e.ctx, *teamAgent)
+			if err != nil {
+				return err
+			}
+			if err := confirmDefinition(e, def, *confirm); err != nil {
+				return err
+			}
+			agentCfg.TeamAgent, agentCfg.DefinitionVersion = def.Agent, def.Version
+			teamAllow = def.Allow
+			values := map[string]any{keyRole: def.Role}
+			if def.Strategy != "" {
+				values[keyStrategy] = def.Strategy
+			}
+			if def.Threshold > 0 {
+				values[keyThreshold] = def.Threshold
+			}
+			s.apply(layer{src: source{Kind: sourceDefinition, From: "the definition of the team agent " + def.Agent}, values: values})
 		}
 		flagValues := map[string]any{"session": e.session, "role": *role, "role-file": *roleFile,
 			"allow": []string(allow), "cwd": *cwd, "topic-task": *topicTask, "wake": *wake,
@@ -185,8 +224,8 @@ func cmdAgentRun(e *env, fs *flag.FlagSet) func([]string) error {
 		}
 		threshold, _ := s[keyThreshold].Value.(float64)
 		timeout, _ := s[keyTimeout].Value.(time.Duration)
-		return RunAgent(e.ctx, AgentOptions{Config: e.cfg, Session: session, Role: r, Harness: harness,
-			Allow: s.list(keyAllow), Cwd: s.str(keyCwd), Office: office, Version: Version, Stderr: e.stderr,
+		return RunAgent(e.ctx, AgentOptions{Config: agentCfg, Session: session, Role: r, Harness: harness,
+			Allow: s.list(keyAllow), AlsoAllow: teamAllow, Cwd: s.str(keyCwd), Office: office, Version: Version, Stderr: e.stderr,
 			Wake: s.str(keyStrategy), DecideCommand: s.str(keyCommand), DecideURL: s.str(keyURL),
 			DecideModel: s.str(keyModel), DecideKey: key, DecideThreshold: threshold, DecideTimeout: timeout,
 			TopicTask: s.str(keyTopicTask)})

@@ -1515,7 +1515,7 @@ without a human; definitions across tenants.
 :::decision
 id: dec-team-agents
 title: Team agents: one shared identity without a shared key
-status: proposed
+status: accepted
 date: 2026-11-25
 addresses: qg-usability, qg-confidentiality, risk-shared-agent-definition
 :::

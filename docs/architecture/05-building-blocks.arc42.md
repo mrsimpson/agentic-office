@@ -1847,7 +1847,9 @@ session and one agent, it:
   agent from the clone or from the archive, starts it only after the user has confirmed the
   definition, again when the definition has changed since, and names the confirmed version in the
   request for the token. The harness, the working directory and the credentials of a model
-  always come from the computer of the agent launcher;
+  always come from the computer of the agent launcher. The runner keeps the token of the agent
+  fresh in a private file that it hands to the MCP server of the harness, so the harness gets the
+  token of the agent and never the key of the agent launcher;
 - joins the session as the agent and runs the log replicator in its own process, so it follows
   the local log of the agent;
 - hands the harness, with its skills injector, the skills that every agent of a tenant needs

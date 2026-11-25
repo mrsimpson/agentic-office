@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/mrsimpson/agentic-office/client/agentrunner/acpclient"
@@ -36,6 +37,9 @@ type Options struct {
 	// Allow are patterns for tool calls that the runner allows when the harness asks; "*" stands
 	// for any text. Empty: the office tools only (dec-agent-runner-delivery).
 	Allow []string
+	// AlsoAllow are patterns that allow tool calls in addition to the rule that Allow gives, for
+	// example the tools that the definition of a team agent names.
+	AlsoAllow []string
 	// Cwd is the working directory of the ACP session. Empty: the current directory.
 	Cwd string
 	// Office is the office binary that the harness starts as the MCP server. Empty: this
@@ -102,11 +106,23 @@ func Run(ctx context.Context, o Options) error {
 
 	// The skills injector (dec-skills): the harness finds the skills when it starts.
 	injectSkills(o.Cwd, logf)
+	// The harness of a team agent gets the token of the agent in a file and never the key of the
+	// agent launcher (dec-team-agents).
+	officeEnv := []acp.EnvVariable{absEnv(coreapi.EnvHub, cfg.Hub), absEnv(coreapi.EnvCACert, cfg.CACert),
+		absEnv(coreapi.EnvRuntimeDir, cfg.RuntimeDir), absEnv(coreapi.EnvTenant, cfg.Tenant)}
+	if cfg.TeamAgent != "" {
+		tokenFile, err := keepTokenFile(ctx, m, cfg, logf)
+		if err != nil {
+			return err
+		}
+		officeEnv = append(officeEnv, absEnv(coreapi.EnvTokenFile, tokenFile))
+	} else {
+		officeEnv = append(officeEnv, absEnv(coreapi.EnvKey, cfg.KeyFile))
+	}
 	r := &runner{o: o, wake: wake, m: m, logf: logf, self: m.joined.ParticipantID,
 		start: m.joined.Result.GetEvent().GetId(), names: map[string]participant{},
 		office: acp.McpServerStdio{Name: "office", Command: o.Office, Args: []string{"mcp", "--session", o.Session},
-			Env: []acp.EnvVariable{absEnv(coreapi.EnvHub, cfg.Hub), absEnv(coreapi.EnvCACert, cfg.CACert),
-				absEnv(coreapi.EnvKey, cfg.KeyFile), absEnv(coreapi.EnvRuntimeDir, cfg.RuntimeDir), absEnv(coreapi.EnvTenant, cfg.Tenant)}}}
+			Env: officeEnv}}
 	if err := r.startHarness(ctx); err != nil {
 		return err
 	}
@@ -130,7 +146,7 @@ func Run(ctx context.Context, o Options) error {
 // startHarness starts the harness and opens its ACP session with the office MCP server. The
 // harness becomes the harness of the runner.
 func (r *runner) startHarness(ctx context.Context) error {
-	h, err := acpclient.Start(r.o.Harness, r.o.Stderr, r.logf, acpclient.Rule{Globs: r.o.Allow})
+	h, err := acpclient.Start(r.o.Harness, r.o.Stderr, r.logf, acpclient.Rule{Globs: r.o.Allow, Also: r.o.AlsoAllow})
 	if err != nil {
 		return err
 	}
@@ -211,6 +227,46 @@ func absConfig(cfg coreapi.Config) (coreapi.Config, error) {
 		*p = a
 	}
 	return cfg, nil
+}
+
+// keepTokenFile writes the token of the team agent into a file in the runtime directory that only
+// the user reads, and keeps it fresh until ctx ends. The MCP server of the harness reads it, so
+// the harness has the token of the agent and not the key of the agent launcher (dec-team-agents).
+func keepTokenFile(ctx context.Context, m *meeting, cfg coreapi.Config, logf func(string, ...any)) (string, error) {
+	dir := filepath.Join(cfg.RuntimeDir, "tokens")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	file := filepath.Join(dir, cfg.TeamAgent+"-"+tokenFileName(m.joined.SessionID)+".json")
+	if err := m.client.WriteTokenFile(ctx, file); err != nil {
+		return "", err
+	}
+	go func() {
+		defer func() { _ = os.Remove(file) }()
+		t := time.NewTicker(20 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				if err := m.client.WriteTokenFile(ctx, file); err != nil && ctx.Err() == nil {
+					logf("the token of the team agent could not be renewed: %v", err)
+				}
+			}
+		}
+	}()
+	return file, nil
+}
+
+// tokenFileName makes a session ID fit a file name.
+func tokenFileName(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.' {
+			return r
+		}
+		return '_'
+	}, s)
 }
 
 // participant is what the runner knows of a participant from participant.joined.

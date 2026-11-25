@@ -1207,6 +1207,73 @@ each other. For example:
 All three can run in the meeting `weekly` at the same time. Each agent hears the others: the
 runner also tells it what the other agents said, and that they are agents.
 
+### Share an agent with the team
+
+A **team agent** belongs to a tenant, not to a person. It has no key of its own, so there is
+no key to copy around: every member of the tenant can start it, and it writes under its own name.
+Use it for the agents that the whole team wants, for example the minute taker.
+
+Three steps bring a team agent to your team:
+
+1. A tenant admin creates the agent. The agent ID is a participant ID: it is unique in the whole
+   hub, and it is never used again.
+
+   ```bash
+   office team-agent create minutes --name "Minutes keeper" --tenant acme
+   office team-agent list --tenant acme       # every member can list them
+   ```
+
+2. Any member writes the definition: a YAML file at `agents/minutes.yaml` in the clone of the
+   tenant (see [Work on files in a local directory](#work-on-files-in-a-local-directory)), and
+   pushes it with Git. The hub checks the file against the schema `office.agent.v1`, and Git
+   keeps every version.
+
+   ```yaml
+   schema: office.agent.v1
+   role: |
+     You are the minute taker. Keep the minutes with minutes_update after each topic.
+     Answer when someone asks what was decided. Otherwise stay silent.
+   allow: [fetch]           # optional: tool titles to allow besides the office tools
+   wake:                    # optional
+     strategy: turn-end     # turn-end (default), llm or decision-model
+   ```
+
+   The file holds only what the team shares: the role, the extra tools and the wake strategy.
+   Any other field is refused, so a definition cannot carry a command, a folder, an address or
+   a key. These stay on your computer: the harness command, `--cwd`, and the model of a wake
+   strategy (`--decide-cmd`, `--decide-url`, `--decide-model`).
+
+3. Any member starts the agent. You become its **agent launcher**:
+
+   ```bash
+   office agent run --session weekly --team-agent minutes --tenant acme -- opencode acp
+   ```
+
+   The first time, and whenever the definition has changed since you confirmed it, the runner
+   shows the definition (with the added tools first) and asks `Run it? [y/N]`. Read it: the
+   role and the tools decide what the agent does with your files and tools. In a script, give the
+   version that you confirm: `--confirm VERSION` (the runner prints it when it asks).
+
+What you can rely on:
+
+- **Your key stays yours.** The runner asks the hub for a token as the agent. The harness gets
+  only that token, never your key.
+- **You can see who runs what.** The join of the agent in the session names you and the
+  version of the definition. The commits and records of the agent carry the same: for example
+  `Minutes keeper (agent launcher Ada, definition 3f9a1c0b2d4e)`.
+- **One agent launcher for each session.** If someone else already runs `minutes` in the
+  session, your runner stops with "already joined". After that runner has left, you can start it.
+  The same agent can run in other sessions at the same time.
+- **No agent changes a definition.** A push of an agent that changes `agents/*.yaml` is refused,
+  so an agent cannot rewrite its own role or the role of another agent. Members change it, with
+  their own keys.
+- **Leaving ends it.** The token of the agent stops working at once when you leave the tenant,
+  when your key is revoked, or when a tenant admin removes the agent
+  (`office team-agent remove minutes`).
+
+Any member can change a definition, and the change reaches everyone who starts the agent next.
+That is why the runner asks again after a change. Read the question each time.
+
 ### Teach the agent the memory of the team
 
 The office ships a skill, `office-memory`, that tells an agent how to read and write the memory of

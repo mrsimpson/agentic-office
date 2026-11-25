@@ -807,8 +807,26 @@ process: it stops when the client closes the connection, when you leave or after
 call meeting_join again to restart it. The tool descriptions explain the log file and the
 event types to the agent.`,
 		Examples: []string{`claude mcp add office -e OFFICE_KEY="$HOME/.config/agentic-office/agent/key.pem" -- office mcp`}},
+	{Name: "team-agent create", Group: groupAgents, Summary: "create a team agent of the tenant",
+		Usage: "team-agent create <agent> [--name NAME]",
+		Details: `Only a tenant admin of the tenant may call it. A team agent belongs to the tenant, not to a
+person, and has no key: every member of the tenant can start it with "office agent run
+--team-agent" (see "office help agent run"). The agent ID is a participant ID, so it is
+unique in the whole hub and never used again. The definition of the agent is a file of the
+tenant, agents/<agent>.yaml, that members change with Git (see "office help agent run").
+--name is the display name (default: the agent ID).`,
+		Examples: []string{`office team-agent create minutes --name "Minutes keeper" --tenant acme`}},
+	{Name: "team-agent list", Group: groupAgents, Summary: "list the team agents of the tenant",
+		Usage:    "team-agent list",
+		Details:  "Every member of the tenant may call it. A removed team agent shows as removed.",
+		Examples: []string{"office team-agent list --tenant acme"}},
+	{Name: "team-agent remove", Group: groupAgents, Summary: "end a team agent of the tenant",
+		Usage: "team-agent remove <agent>",
+		Details: `Only a tenant admin of the tenant may call it. The tokens of the agent stop working at once.
+The record stays and the agent ID is never used again.`,
+		Examples: []string{"office team-agent remove minutes --tenant acme"}},
 	{Name: "agent run", Group: groupAgents, Summary: "keep an agent in a meeting and wake it when it is needed",
-		Usage: "agent run --session S [--role T | --role-file F] [--allow PATTERN]... [--cwd DIR] [wake flags] -- <harness command>",
+		Usage: "agent run --session S [--role T | --role-file F | --team-agent AGENT [--confirm VERSION]] [--allow PATTERN]... [--cwd DIR] [wake flags] -- <harness command>",
 		Details: `Claude Code, opencode and Kiro work in turns: they finish a turn and wait. The runner starts the
 harness (the program after "--") as an Agent Client Protocol (ACP) agent, hands it the office
 tools of this meeting, tells it its role and wakes it. It joins the session with this key
@@ -837,10 +855,35 @@ a call of an office tool unless its kind is execute, edit, delete or move, and r
 other call. With --allow it allows exactly the calls whose title matches one of the patterns
 (* is any text, case is ignored; --allow '*' allows everything).
 
+Team agent: with --team-agent AGENT the runner starts the team agent of the tenant (create it with
+"office team-agent create"). You are its agent launcher: you prove your own key, and the hub
+gives the runner a token as the agent. The agent joins and writes under its own name; its
+commits and records name you and the version of its definition. The harness gets only the token
+of the agent, never your key, and every start of the same agent in the same session by another
+member is refused ("already joined"). The role, the extra tools and the wake strategy come from
+the definition, a YAML file of the tenant at agents/<agent>.yaml with the schema office.agent.v1:
+
+  schema: office.agent.v1
+  role: You keep the minutes of the weekly.
+  allow: [fetch]            # patterns of tool titles to allow besides the office tools; optional
+  wake:                     # optional
+    strategy: turn-end      # turn-end, llm or decision-model
+    threshold: 0.5          # for decision-model
+
+Members change the file with Git in their clone of the tenant ("office sync"); the hub checks the
+schema and refuses a push of an agent that changes it. The definition holds no command, no
+working directory, no address and no key: the harness, --cwd, --decide-cmd, --decide-url and
+the key of a model stay on your computer. The first time, and whenever the definition has
+changed since you confirmed it, the runner shows it and asks "Run it? [y/N]". --confirm VERSION
+confirms that version without a question (the runner names it when it asks). Give no --role and
+no --role-file with --team-agent. The tools of the definition are allowed in addition to the rule
+that --allow or the default gives.
+
 Harness commands: opencode acp; kiro-cli acp; npx -y @agentclientprotocol/claude-agent-acp (the
 ACP adapter of Claude Code; needs Node.js). Log in with the harness itself first: the runner does
 not authenticate a harness.`,
 		Examples: []string{`office agent run --session weekly --role "You keep the minutes." -- opencode acp`,
+			`office agent run --session weekly --team-agent minutes --tenant acme -- opencode acp`,
 			"office agent run --session weekly --role-file minutes.md --wake llm --decide-url http://127.0.0.1:11434/v1 --decide-model qwen3:4b -- kiro-cli acp"}},
 
 	// Other.
