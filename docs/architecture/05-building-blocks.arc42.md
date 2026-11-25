@@ -168,6 +168,9 @@ human must confirm the quotes found, with the token of the refusal; the release 
 if a new search finds the same quotes. An ended session takes only the events that
 `dec-session-end-milestone` names.
 
+An ended session that is not released also takes the trim, the delete and the restore
+(`dec-session-trim-delete`), from every human who took part and from every tenant admin.
+
 The interface also tells the readers of a session (`concept-multi-tenancy`) its release: the
 status and deadline, the staged files, whether the caller may release or object now, and, once
 released, the release commit and the staged files that the release kept back. Every other member
@@ -289,7 +292,8 @@ The sessions of a tenant that the caller may read (`concept-multi-tenancy`), the
 name, the start, the end or that the session runs, the participants, and whether it was imported.
 A system admin is no member of a tenant and sees none. The list covers running sessions and ended
 sessions that only the archive holds; it reads a stored log only after it verified it against its
-signed tree head. The events of one session come from the session stream.
+signed tree head. A deleted session is left out unless the caller asks for it (`dec-session-trim-delete`). The events
+of one session come from the session stream.
 
 ```arc42
 :::interface

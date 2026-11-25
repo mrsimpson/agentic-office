@@ -7,11 +7,13 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
 	"golang.org/x/net/html"
 
+	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
 	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
 	"github.com/mrsimpson/agentic-office/hub/session/streamapi/events"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
@@ -223,5 +225,72 @@ func TestPortalShowsArtifactNotReleased(t *testing.T) {
 	}
 	if f, err := readFile(t, m.a(dora), "documents/taken.md"); err != nil || f.GetStaged() || string(f.GetContent()) != "# Ben\n\nBen's own file.\n" {
 		t.Errorf("read of the pushed file by a member: %v, %v", f, err)
+	}
+}
+
+// An ended session that nobody released can be trimmed and deleted in the portal
+// (dec-session-trim-delete). The trim cuts the transcript and the stored minutes at the chosen
+// sentence; the delete takes the session out of the list of the tenant until it is restored.
+// An agent gets no forms.
+func TestPortalTrimAndDelete(t *testing.T) {
+	m := newMeetingArgs(t, "-release-grace-period", "1h")
+	ada := m.join("Ada", kHuman)
+	bot := m.join("Bot", kAgent)
+	first := m.say(ada, "The meeting is cancelled.")
+	setMinutes := func(text string) {
+		if _, err := m.s(ada).UpdateMinutes(m.ctx(), &sessioncommandsv1.UpdateMinutesRequest{SessionId: m.sid,
+			CommandId: coreapi.NewCommandID(), ParticipantId: ada, Text: text}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	setMinutes("# Minutes\n\nCancelled.")
+	m.say(ada, "Everybody forgot the meeting.")
+	setMinutes("# Minutes\n\nA long discussion that never happened.")
+	m.end(ada)
+	tenant := contracttest.DefaultTenant
+	page := m.srv.URL + "/portal/t/" + tenant + "/s/" + url.PathEscape(m.sid)
+	b, _, _ := openPortal(t, m.srv, m.a(ada), tenant)
+
+	// An agent gets no forms.
+	ab, _, _ := openPortal(t, m.srv, m.a(bot), tenant)
+	if _, doc, _ := portalPage(t, ab, page); len(findAll(doc, withAttr("data-form", "trim"))) != 0 {
+		t.Error("an agent got the trim form")
+	}
+
+	// Trim after the first sentence.
+	_, doc, _ := portalPage(t, b, page)
+	trim := formOf(t, doc, "trim")
+	// The minutes after the first sentence (event first+1) belong to it.
+	trim.Set("last_event_id", strconv.Itoa(int(first.GetId())+1))
+	res, body := post(t, b, page+"/trim", trim)
+	doc = parseDoc(t, body)
+	if res.StatusCode != http.StatusOK || len(findAll(doc, withAttr("data-trimmed", ""))) != 1 {
+		t.Fatalf("after the trim: status %d\n%s", res.StatusCode, text(doc))
+	}
+	if len(findAll(doc, withAttr("data-utterance", ""))) != 1 || strings.Contains(body, "forgot the meeting") {
+		t.Errorf("the transcript shows what the trim cut off\n%s", text(doc))
+	}
+	if minutes := text(one(t, doc, "data-minutes", "")); !strings.Contains(minutes, "Cancelled.") || strings.Contains(minutes, "never happened") {
+		t.Errorf("the minutes after the trim: %q", minutes)
+	}
+
+	// Delete: the session leaves the list, and comes back with "show deleted".
+	list := m.srv.URL + "/portal/t/" + tenant + "/"
+	_, doc, _ = portalPage(t, b, page)
+	if res, _ := post(t, b, page+"/delete", formOf(t, doc, "delete")); res.StatusCode != http.StatusOK {
+		t.Fatalf("delete: status %d", res.StatusCode)
+	}
+	if _, doc, _ := portalPage(t, b, list); len(findAll(doc, withAttr("data-session", m.sid))) != 0 {
+		t.Error("a deleted session is in the list")
+	}
+	if _, doc, _ := portalPage(t, b, list+"?deleted=1"); len(findAll(doc, withAttr("data-deleted", ""))) == 0 {
+		t.Error("the list with deleted sessions does not show it")
+	}
+	_, doc, _ = portalPage(t, b, page)
+	if res, _ := post(t, b, page+"/restore", formOf(t, doc, "restore")); res.StatusCode != http.StatusOK {
+		t.Fatalf("restore: status %d", res.StatusCode)
+	}
+	if _, doc, _ := portalPage(t, b, list); len(findAll(doc, withAttr("data-session", m.sid))) != 1 {
+		t.Error("a restored session is not in the list")
 	}
 }

@@ -2673,6 +2673,330 @@ func (x *OfferLogResponse) GetTreeHead() *streamapi.SignedTreeHead {
 	return nil
 }
 
+type TrimSessionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	CommandId     string                 `protobuf:"bytes,2,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
+	ParticipantId string                 `protobuf:"bytes,3,opt,name=participant_id,json=participantId,proto3" json:"participant_id,omitempty"`
+	// last_event_id is the last event that counts.
+	LastEventId   uint32 `protobuf:"varint,4,opt,name=last_event_id,json=lastEventId,proto3" json:"last_event_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TrimSessionRequest) Reset() {
+	*x = TrimSessionRequest{}
+	mi := &file_office_sessioncommands_v1_commands_proto_msgTypes[44]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TrimSessionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TrimSessionRequest) ProtoMessage() {}
+
+func (x *TrimSessionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_office_sessioncommands_v1_commands_proto_msgTypes[44]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TrimSessionRequest.ProtoReflect.Descriptor instead.
+func (*TrimSessionRequest) Descriptor() ([]byte, []int) {
+	return file_office_sessioncommands_v1_commands_proto_rawDescGZIP(), []int{44}
+}
+
+func (x *TrimSessionRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *TrimSessionRequest) GetCommandId() string {
+	if x != nil {
+		return x.CommandId
+	}
+	return ""
+}
+
+func (x *TrimSessionRequest) GetParticipantId() string {
+	if x != nil {
+		return x.ParticipantId
+	}
+	return ""
+}
+
+func (x *TrimSessionRequest) GetLastEventId() uint32 {
+	if x != nil {
+		return x.LastEventId
+	}
+	return 0
+}
+
+type TrimSessionResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// result is the session.trimmed event.
+	Result        *CommandResult `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TrimSessionResponse) Reset() {
+	*x = TrimSessionResponse{}
+	mi := &file_office_sessioncommands_v1_commands_proto_msgTypes[45]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TrimSessionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TrimSessionResponse) ProtoMessage() {}
+
+func (x *TrimSessionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_office_sessioncommands_v1_commands_proto_msgTypes[45]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TrimSessionResponse.ProtoReflect.Descriptor instead.
+func (*TrimSessionResponse) Descriptor() ([]byte, []int) {
+	return file_office_sessioncommands_v1_commands_proto_rawDescGZIP(), []int{45}
+}
+
+func (x *TrimSessionResponse) GetResult() *CommandResult {
+	if x != nil {
+		return x.Result
+	}
+	return nil
+}
+
+type DeleteSessionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	CommandId     string                 `protobuf:"bytes,2,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
+	ParticipantId string                 `protobuf:"bytes,3,opt,name=participant_id,json=participantId,proto3" json:"participant_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteSessionRequest) Reset() {
+	*x = DeleteSessionRequest{}
+	mi := &file_office_sessioncommands_v1_commands_proto_msgTypes[46]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteSessionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteSessionRequest) ProtoMessage() {}
+
+func (x *DeleteSessionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_office_sessioncommands_v1_commands_proto_msgTypes[46]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteSessionRequest.ProtoReflect.Descriptor instead.
+func (*DeleteSessionRequest) Descriptor() ([]byte, []int) {
+	return file_office_sessioncommands_v1_commands_proto_rawDescGZIP(), []int{46}
+}
+
+func (x *DeleteSessionRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *DeleteSessionRequest) GetCommandId() string {
+	if x != nil {
+		return x.CommandId
+	}
+	return ""
+}
+
+func (x *DeleteSessionRequest) GetParticipantId() string {
+	if x != nil {
+		return x.ParticipantId
+	}
+	return ""
+}
+
+type DeleteSessionResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// result is the session.deleted event.
+	Result        *CommandResult `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteSessionResponse) Reset() {
+	*x = DeleteSessionResponse{}
+	mi := &file_office_sessioncommands_v1_commands_proto_msgTypes[47]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteSessionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteSessionResponse) ProtoMessage() {}
+
+func (x *DeleteSessionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_office_sessioncommands_v1_commands_proto_msgTypes[47]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteSessionResponse.ProtoReflect.Descriptor instead.
+func (*DeleteSessionResponse) Descriptor() ([]byte, []int) {
+	return file_office_sessioncommands_v1_commands_proto_rawDescGZIP(), []int{47}
+}
+
+func (x *DeleteSessionResponse) GetResult() *CommandResult {
+	if x != nil {
+		return x.Result
+	}
+	return nil
+}
+
+type RestoreSessionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	CommandId     string                 `protobuf:"bytes,2,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
+	ParticipantId string                 `protobuf:"bytes,3,opt,name=participant_id,json=participantId,proto3" json:"participant_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RestoreSessionRequest) Reset() {
+	*x = RestoreSessionRequest{}
+	mi := &file_office_sessioncommands_v1_commands_proto_msgTypes[48]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RestoreSessionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RestoreSessionRequest) ProtoMessage() {}
+
+func (x *RestoreSessionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_office_sessioncommands_v1_commands_proto_msgTypes[48]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RestoreSessionRequest.ProtoReflect.Descriptor instead.
+func (*RestoreSessionRequest) Descriptor() ([]byte, []int) {
+	return file_office_sessioncommands_v1_commands_proto_rawDescGZIP(), []int{48}
+}
+
+func (x *RestoreSessionRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *RestoreSessionRequest) GetCommandId() string {
+	if x != nil {
+		return x.CommandId
+	}
+	return ""
+}
+
+func (x *RestoreSessionRequest) GetParticipantId() string {
+	if x != nil {
+		return x.ParticipantId
+	}
+	return ""
+}
+
+type RestoreSessionResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// result is the session.restored event.
+	Result        *CommandResult `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RestoreSessionResponse) Reset() {
+	*x = RestoreSessionResponse{}
+	mi := &file_office_sessioncommands_v1_commands_proto_msgTypes[49]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RestoreSessionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RestoreSessionResponse) ProtoMessage() {}
+
+func (x *RestoreSessionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_office_sessioncommands_v1_commands_proto_msgTypes[49]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RestoreSessionResponse.ProtoReflect.Descriptor instead.
+func (*RestoreSessionResponse) Descriptor() ([]byte, []int) {
+	return file_office_sessioncommands_v1_commands_proto_rawDescGZIP(), []int{49}
+}
+
+func (x *RestoreSessionResponse) GetResult() *CommandResult {
+	if x != nil {
+		return x.Result
+	}
+	return nil
+}
+
 var File_office_sessioncommands_v1_commands_proto protoreflect.FileDescriptor
 
 const file_office_sessioncommands_v1_commands_proto_rawDesc = "" +
@@ -2877,13 +3201,38 @@ const file_office_sessioncommands_v1_commands_proto_rawDesc = "" +
 	"\ttree_head\x18\x04 \x01(\v2'.office.sessionstream.v1.SignedTreeHeadR\btreeHead\"t\n" +
 	"\x10OfferLogResponse\x12\x1a\n" +
 	"\baccepted\x18\x01 \x01(\bR\baccepted\x12D\n" +
-	"\ttree_head\x18\x02 \x01(\v2'.office.sessionstream.v1.SignedTreeHeadR\btreeHead*\x94\x01\n" +
+	"\ttree_head\x18\x02 \x01(\v2'.office.sessionstream.v1.SignedTreeHeadR\btreeHead\"\x9d\x01\n" +
+	"\x12TrimSessionRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x1d\n" +
+	"\n" +
+	"command_id\x18\x02 \x01(\tR\tcommandId\x12%\n" +
+	"\x0eparticipant_id\x18\x03 \x01(\tR\rparticipantId\x12\"\n" +
+	"\rlast_event_id\x18\x04 \x01(\rR\vlastEventId\"W\n" +
+	"\x13TrimSessionResponse\x12@\n" +
+	"\x06result\x18\x01 \x01(\v2(.office.sessioncommands.v1.CommandResultR\x06result\"{\n" +
+	"\x14DeleteSessionRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x1d\n" +
+	"\n" +
+	"command_id\x18\x02 \x01(\tR\tcommandId\x12%\n" +
+	"\x0eparticipant_id\x18\x03 \x01(\tR\rparticipantId\"Y\n" +
+	"\x15DeleteSessionResponse\x12@\n" +
+	"\x06result\x18\x01 \x01(\v2(.office.sessioncommands.v1.CommandResultR\x06result\"|\n" +
+	"\x15RestoreSessionRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x1d\n" +
+	"\n" +
+	"command_id\x18\x02 \x01(\tR\tcommandId\x12%\n" +
+	"\x0eparticipant_id\x18\x03 \x01(\tR\rparticipantId\"Z\n" +
+	"\x16RestoreSessionResponse\x12@\n" +
+	"\x06result\x18\x01 \x01(\v2(.office.sessioncommands.v1.CommandResultR\x06result*\x94\x01\n" +
 	"\fReleaseState\x12\x1d\n" +
 	"\x19RELEASE_STATE_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12RELEASE_STATE_OPEN\x10\x01\x12\x19\n" +
 	"\x15RELEASE_STATE_WAITING\x10\x02\x12\x16\n" +
 	"\x12RELEASE_STATE_HELD\x10\x03\x12\x1a\n" +
-	"\x16RELEASE_STATE_RELEASED\x10\x042\xc9\x10\n" +
+	"\x16RELEASE_STATE_RELEASED\x10\x042\xa2\x13\n" +
 	"\x16SessionCommandsService\x12W\n" +
 	"\x04Join\x12&.office.sessioncommands.v1.JoinRequest\x1a'.office.sessioncommands.v1.JoinResponse\x12Z\n" +
 	"\x05Leave\x12'.office.sessioncommands.v1.LeaveRequest\x1a(.office.sessioncommands.v1.LeaveResponse\x12x\n" +
@@ -2898,7 +3247,10 @@ const file_office_sessioncommands_v1_commands_proto_rawDesc = "" +
 	"\n" +
 	"EndSession\x12,.office.sessioncommands.v1.EndSessionRequest\x1a-.office.sessioncommands.v1.EndSessionResponse\x12u\n" +
 	"\x0eReleaseSession\x120.office.sessioncommands.v1.ReleaseSessionRequest\x1a1.office.sessioncommands.v1.ReleaseSessionResponse\x12x\n" +
-	"\x0fObjectToRelease\x121.office.sessioncommands.v1.ObjectToReleaseRequest\x1a2.office.sessioncommands.v1.ObjectToReleaseResponse\x12i\n" +
+	"\x0fObjectToRelease\x121.office.sessioncommands.v1.ObjectToReleaseRequest\x1a2.office.sessioncommands.v1.ObjectToReleaseResponse\x12l\n" +
+	"\vTrimSession\x12-.office.sessioncommands.v1.TrimSessionRequest\x1a..office.sessioncommands.v1.TrimSessionResponse\x12r\n" +
+	"\rDeleteSession\x12/.office.sessioncommands.v1.DeleteSessionRequest\x1a0.office.sessioncommands.v1.DeleteSessionResponse\x12u\n" +
+	"\x0eRestoreSession\x120.office.sessioncommands.v1.RestoreSessionRequest\x1a1.office.sessioncommands.v1.RestoreSessionResponse\x12i\n" +
 	"\n" +
 	"GetRelease\x12,.office.sessioncommands.v1.GetReleaseRequest\x1a-.office.sessioncommands.v1.GetReleaseResponse\x12l\n" +
 	"\vGetTreeHead\x12-.office.sessioncommands.v1.GetTreeHeadRequest\x1a..office.sessioncommands.v1.GetTreeHeadResponse\x12\x84\x01\n" +
@@ -2920,7 +3272,7 @@ func file_office_sessioncommands_v1_commands_proto_rawDescGZIP() []byte {
 }
 
 var file_office_sessioncommands_v1_commands_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_office_sessioncommands_v1_commands_proto_msgTypes = make([]protoimpl.MessageInfo, 44)
+var file_office_sessioncommands_v1_commands_proto_msgTypes = make([]protoimpl.MessageInfo, 50)
 var file_office_sessioncommands_v1_commands_proto_goTypes = []any{
 	(ReleaseState)(0),                   // 0: office.sessioncommands.v1.ReleaseState
 	(*CommandResult)(nil),               // 1: office.sessioncommands.v1.CommandResult
@@ -2967,27 +3319,33 @@ var file_office_sessioncommands_v1_commands_proto_goTypes = []any{
 	(*GetHubKeyResponse)(nil),           // 42: office.sessioncommands.v1.GetHubKeyResponse
 	(*OfferLogRequest)(nil),             // 43: office.sessioncommands.v1.OfferLogRequest
 	(*OfferLogResponse)(nil),            // 44: office.sessioncommands.v1.OfferLogResponse
-	(*streamapi.Event)(nil),             // 45: office.sessionstream.v1.Event
-	(streamapi.ParticipantKind)(0),      // 46: office.sessionstream.v1.ParticipantKind
-	(streamapi.Modality)(0),             // 47: office.sessionstream.v1.Modality
-	(*timestamppb.Timestamp)(nil),       // 48: google.protobuf.Timestamp
-	(*streamapi.TurnEnd)(nil),           // 49: office.sessionstream.v1.TurnEnd
-	(*streamapi.SilenceLong)(nil),       // 50: office.sessionstream.v1.SilenceLong
-	(*streamapi.Addressed)(nil),         // 51: office.sessionstream.v1.Addressed
-	(*streamapi.SignedTreeHead)(nil),    // 52: office.sessionstream.v1.SignedTreeHead
+	(*TrimSessionRequest)(nil),          // 45: office.sessioncommands.v1.TrimSessionRequest
+	(*TrimSessionResponse)(nil),         // 46: office.sessioncommands.v1.TrimSessionResponse
+	(*DeleteSessionRequest)(nil),        // 47: office.sessioncommands.v1.DeleteSessionRequest
+	(*DeleteSessionResponse)(nil),       // 48: office.sessioncommands.v1.DeleteSessionResponse
+	(*RestoreSessionRequest)(nil),       // 49: office.sessioncommands.v1.RestoreSessionRequest
+	(*RestoreSessionResponse)(nil),      // 50: office.sessioncommands.v1.RestoreSessionResponse
+	(*streamapi.Event)(nil),             // 51: office.sessionstream.v1.Event
+	(streamapi.ParticipantKind)(0),      // 52: office.sessionstream.v1.ParticipantKind
+	(streamapi.Modality)(0),             // 53: office.sessionstream.v1.Modality
+	(*timestamppb.Timestamp)(nil),       // 54: google.protobuf.Timestamp
+	(*streamapi.TurnEnd)(nil),           // 55: office.sessionstream.v1.TurnEnd
+	(*streamapi.SilenceLong)(nil),       // 56: office.sessionstream.v1.SilenceLong
+	(*streamapi.Addressed)(nil),         // 57: office.sessionstream.v1.Addressed
+	(*streamapi.SignedTreeHead)(nil),    // 58: office.sessionstream.v1.SignedTreeHead
 }
 var file_office_sessioncommands_v1_commands_proto_depIdxs = []int32{
-	45, // 0: office.sessioncommands.v1.CommandResult.event:type_name -> office.sessionstream.v1.Event
-	46, // 1: office.sessioncommands.v1.JoinRequest.kind:type_name -> office.sessionstream.v1.ParticipantKind
+	51, // 0: office.sessioncommands.v1.CommandResult.event:type_name -> office.sessionstream.v1.Event
+	52, // 1: office.sessioncommands.v1.JoinRequest.kind:type_name -> office.sessionstream.v1.ParticipantKind
 	1,  // 2: office.sessioncommands.v1.JoinResponse.result:type_name -> office.sessioncommands.v1.CommandResult
 	1,  // 3: office.sessioncommands.v1.LeaveResponse.result:type_name -> office.sessioncommands.v1.CommandResult
-	47, // 4: office.sessioncommands.v1.SubmitUtteranceRequest.modality:type_name -> office.sessionstream.v1.Modality
-	48, // 5: office.sessioncommands.v1.SubmitUtteranceRequest.transcribed_at:type_name -> google.protobuf.Timestamp
+	53, // 4: office.sessioncommands.v1.SubmitUtteranceRequest.modality:type_name -> office.sessionstream.v1.Modality
+	54, // 5: office.sessioncommands.v1.SubmitUtteranceRequest.transcribed_at:type_name -> google.protobuf.Timestamp
 	1,  // 6: office.sessioncommands.v1.SubmitUtteranceResponse.result:type_name -> office.sessioncommands.v1.CommandResult
 	1,  // 7: office.sessioncommands.v1.MarkOffTheRecordResponse.result:type_name -> office.sessioncommands.v1.CommandResult
-	49, // 8: office.sessioncommands.v1.SubmitSignalRequest.turn_end:type_name -> office.sessionstream.v1.TurnEnd
-	50, // 9: office.sessioncommands.v1.SubmitSignalRequest.silence_long:type_name -> office.sessionstream.v1.SilenceLong
-	51, // 10: office.sessioncommands.v1.SubmitSignalRequest.addressed:type_name -> office.sessionstream.v1.Addressed
+	55, // 8: office.sessioncommands.v1.SubmitSignalRequest.turn_end:type_name -> office.sessionstream.v1.TurnEnd
+	56, // 9: office.sessioncommands.v1.SubmitSignalRequest.silence_long:type_name -> office.sessionstream.v1.SilenceLong
+	57, // 10: office.sessioncommands.v1.SubmitSignalRequest.addressed:type_name -> office.sessionstream.v1.Addressed
 	1,  // 11: office.sessioncommands.v1.SubmitSignalResponse.result:type_name -> office.sessioncommands.v1.CommandResult
 	1,  // 12: office.sessioncommands.v1.PauseResponse.result:type_name -> office.sessioncommands.v1.CommandResult
 	1,  // 13: office.sessioncommands.v1.ResumeResponse.result:type_name -> office.sessioncommands.v1.CommandResult
@@ -2997,63 +3355,72 @@ var file_office_sessioncommands_v1_commands_proto_depIdxs = []int32{
 	1,  // 17: office.sessioncommands.v1.EndSessionResponse.result:type_name -> office.sessioncommands.v1.CommandResult
 	24, // 18: office.sessioncommands.v1.EndSessionResponse.release:type_name -> office.sessioncommands.v1.ReleaseStatus
 	0,  // 19: office.sessioncommands.v1.ReleaseStatus.state:type_name -> office.sessioncommands.v1.ReleaseState
-	48, // 20: office.sessioncommands.v1.ReleaseStatus.deadline:type_name -> google.protobuf.Timestamp
+	54, // 20: office.sessioncommands.v1.ReleaseStatus.deadline:type_name -> google.protobuf.Timestamp
 	1,  // 21: office.sessioncommands.v1.ReleaseSessionResponse.result:type_name -> office.sessioncommands.v1.CommandResult
 	28, // 22: office.sessioncommands.v1.ReleaseSessionResponse.quotes:type_name -> office.sessioncommands.v1.Quote
 	28, // 23: office.sessioncommands.v1.QuoteRefusal.quotes:type_name -> office.sessioncommands.v1.Quote
 	1,  // 24: office.sessioncommands.v1.ObjectToReleaseResponse.result:type_name -> office.sessioncommands.v1.CommandResult
 	24, // 25: office.sessioncommands.v1.GetReleaseResponse.status:type_name -> office.sessioncommands.v1.ReleaseStatus
 	33, // 26: office.sessioncommands.v1.GetReleaseResponse.commit:type_name -> office.sessioncommands.v1.ReleaseCommit
-	48, // 27: office.sessioncommands.v1.ReleaseCommit.time:type_name -> google.protobuf.Timestamp
+	54, // 27: office.sessioncommands.v1.ReleaseCommit.time:type_name -> google.protobuf.Timestamp
 	34, // 28: office.sessioncommands.v1.ReleaseCommit.released_by:type_name -> office.sessioncommands.v1.CommitAuthor
 	34, // 29: office.sessioncommands.v1.ReleaseCommit.authors:type_name -> office.sessioncommands.v1.CommitAuthor
-	52, // 30: office.sessioncommands.v1.GetTreeHeadResponse.tree_head:type_name -> office.sessionstream.v1.SignedTreeHead
-	45, // 31: office.sessioncommands.v1.OfferLogRequest.events:type_name -> office.sessionstream.v1.Event
-	52, // 32: office.sessioncommands.v1.OfferLogRequest.tree_head:type_name -> office.sessionstream.v1.SignedTreeHead
-	52, // 33: office.sessioncommands.v1.OfferLogResponse.tree_head:type_name -> office.sessionstream.v1.SignedTreeHead
-	2,  // 34: office.sessioncommands.v1.SessionCommandsService.Join:input_type -> office.sessioncommands.v1.JoinRequest
-	4,  // 35: office.sessioncommands.v1.SessionCommandsService.Leave:input_type -> office.sessioncommands.v1.LeaveRequest
-	6,  // 36: office.sessioncommands.v1.SessionCommandsService.SubmitUtterance:input_type -> office.sessioncommands.v1.SubmitUtteranceRequest
-	8,  // 37: office.sessioncommands.v1.SessionCommandsService.MarkOffTheRecord:input_type -> office.sessioncommands.v1.MarkOffTheRecordRequest
-	10, // 38: office.sessioncommands.v1.SessionCommandsService.SubmitSignal:input_type -> office.sessioncommands.v1.SubmitSignalRequest
-	12, // 39: office.sessioncommands.v1.SessionCommandsService.Pause:input_type -> office.sessioncommands.v1.PauseRequest
-	14, // 40: office.sessioncommands.v1.SessionCommandsService.Resume:input_type -> office.sessioncommands.v1.ResumeRequest
-	16, // 41: office.sessioncommands.v1.SessionCommandsService.RaiseHand:input_type -> office.sessioncommands.v1.RaiseHandRequest
-	18, // 42: office.sessioncommands.v1.SessionCommandsService.UpdateMinutes:input_type -> office.sessioncommands.v1.UpdateMinutesRequest
-	20, // 43: office.sessioncommands.v1.SessionCommandsService.FocusArtifact:input_type -> office.sessioncommands.v1.FocusArtifactRequest
-	22, // 44: office.sessioncommands.v1.SessionCommandsService.EndSession:input_type -> office.sessioncommands.v1.EndSessionRequest
-	25, // 45: office.sessioncommands.v1.SessionCommandsService.ReleaseSession:input_type -> office.sessioncommands.v1.ReleaseSessionRequest
-	29, // 46: office.sessioncommands.v1.SessionCommandsService.ObjectToRelease:input_type -> office.sessioncommands.v1.ObjectToReleaseRequest
-	31, // 47: office.sessioncommands.v1.SessionCommandsService.GetRelease:input_type -> office.sessioncommands.v1.GetReleaseRequest
-	35, // 48: office.sessioncommands.v1.SessionCommandsService.GetTreeHead:input_type -> office.sessioncommands.v1.GetTreeHeadRequest
-	37, // 49: office.sessioncommands.v1.SessionCommandsService.GetConsistencyProof:input_type -> office.sessioncommands.v1.GetConsistencyProofRequest
-	39, // 50: office.sessioncommands.v1.SessionCommandsService.GetInclusionProof:input_type -> office.sessioncommands.v1.GetInclusionProofRequest
-	41, // 51: office.sessioncommands.v1.SessionCommandsService.GetHubKey:input_type -> office.sessioncommands.v1.GetHubKeyRequest
-	43, // 52: office.sessioncommands.v1.SessionCommandsService.OfferLog:input_type -> office.sessioncommands.v1.OfferLogRequest
-	3,  // 53: office.sessioncommands.v1.SessionCommandsService.Join:output_type -> office.sessioncommands.v1.JoinResponse
-	5,  // 54: office.sessioncommands.v1.SessionCommandsService.Leave:output_type -> office.sessioncommands.v1.LeaveResponse
-	7,  // 55: office.sessioncommands.v1.SessionCommandsService.SubmitUtterance:output_type -> office.sessioncommands.v1.SubmitUtteranceResponse
-	9,  // 56: office.sessioncommands.v1.SessionCommandsService.MarkOffTheRecord:output_type -> office.sessioncommands.v1.MarkOffTheRecordResponse
-	11, // 57: office.sessioncommands.v1.SessionCommandsService.SubmitSignal:output_type -> office.sessioncommands.v1.SubmitSignalResponse
-	13, // 58: office.sessioncommands.v1.SessionCommandsService.Pause:output_type -> office.sessioncommands.v1.PauseResponse
-	15, // 59: office.sessioncommands.v1.SessionCommandsService.Resume:output_type -> office.sessioncommands.v1.ResumeResponse
-	17, // 60: office.sessioncommands.v1.SessionCommandsService.RaiseHand:output_type -> office.sessioncommands.v1.RaiseHandResponse
-	19, // 61: office.sessioncommands.v1.SessionCommandsService.UpdateMinutes:output_type -> office.sessioncommands.v1.UpdateMinutesResponse
-	21, // 62: office.sessioncommands.v1.SessionCommandsService.FocusArtifact:output_type -> office.sessioncommands.v1.FocusArtifactResponse
-	23, // 63: office.sessioncommands.v1.SessionCommandsService.EndSession:output_type -> office.sessioncommands.v1.EndSessionResponse
-	26, // 64: office.sessioncommands.v1.SessionCommandsService.ReleaseSession:output_type -> office.sessioncommands.v1.ReleaseSessionResponse
-	30, // 65: office.sessioncommands.v1.SessionCommandsService.ObjectToRelease:output_type -> office.sessioncommands.v1.ObjectToReleaseResponse
-	32, // 66: office.sessioncommands.v1.SessionCommandsService.GetRelease:output_type -> office.sessioncommands.v1.GetReleaseResponse
-	36, // 67: office.sessioncommands.v1.SessionCommandsService.GetTreeHead:output_type -> office.sessioncommands.v1.GetTreeHeadResponse
-	38, // 68: office.sessioncommands.v1.SessionCommandsService.GetConsistencyProof:output_type -> office.sessioncommands.v1.GetConsistencyProofResponse
-	40, // 69: office.sessioncommands.v1.SessionCommandsService.GetInclusionProof:output_type -> office.sessioncommands.v1.GetInclusionProofResponse
-	42, // 70: office.sessioncommands.v1.SessionCommandsService.GetHubKey:output_type -> office.sessioncommands.v1.GetHubKeyResponse
-	44, // 71: office.sessioncommands.v1.SessionCommandsService.OfferLog:output_type -> office.sessioncommands.v1.OfferLogResponse
-	53, // [53:72] is the sub-list for method output_type
-	34, // [34:53] is the sub-list for method input_type
-	34, // [34:34] is the sub-list for extension type_name
-	34, // [34:34] is the sub-list for extension extendee
-	0,  // [0:34] is the sub-list for field type_name
+	58, // 30: office.sessioncommands.v1.GetTreeHeadResponse.tree_head:type_name -> office.sessionstream.v1.SignedTreeHead
+	51, // 31: office.sessioncommands.v1.OfferLogRequest.events:type_name -> office.sessionstream.v1.Event
+	58, // 32: office.sessioncommands.v1.OfferLogRequest.tree_head:type_name -> office.sessionstream.v1.SignedTreeHead
+	58, // 33: office.sessioncommands.v1.OfferLogResponse.tree_head:type_name -> office.sessionstream.v1.SignedTreeHead
+	1,  // 34: office.sessioncommands.v1.TrimSessionResponse.result:type_name -> office.sessioncommands.v1.CommandResult
+	1,  // 35: office.sessioncommands.v1.DeleteSessionResponse.result:type_name -> office.sessioncommands.v1.CommandResult
+	1,  // 36: office.sessioncommands.v1.RestoreSessionResponse.result:type_name -> office.sessioncommands.v1.CommandResult
+	2,  // 37: office.sessioncommands.v1.SessionCommandsService.Join:input_type -> office.sessioncommands.v1.JoinRequest
+	4,  // 38: office.sessioncommands.v1.SessionCommandsService.Leave:input_type -> office.sessioncommands.v1.LeaveRequest
+	6,  // 39: office.sessioncommands.v1.SessionCommandsService.SubmitUtterance:input_type -> office.sessioncommands.v1.SubmitUtteranceRequest
+	8,  // 40: office.sessioncommands.v1.SessionCommandsService.MarkOffTheRecord:input_type -> office.sessioncommands.v1.MarkOffTheRecordRequest
+	10, // 41: office.sessioncommands.v1.SessionCommandsService.SubmitSignal:input_type -> office.sessioncommands.v1.SubmitSignalRequest
+	12, // 42: office.sessioncommands.v1.SessionCommandsService.Pause:input_type -> office.sessioncommands.v1.PauseRequest
+	14, // 43: office.sessioncommands.v1.SessionCommandsService.Resume:input_type -> office.sessioncommands.v1.ResumeRequest
+	16, // 44: office.sessioncommands.v1.SessionCommandsService.RaiseHand:input_type -> office.sessioncommands.v1.RaiseHandRequest
+	18, // 45: office.sessioncommands.v1.SessionCommandsService.UpdateMinutes:input_type -> office.sessioncommands.v1.UpdateMinutesRequest
+	20, // 46: office.sessioncommands.v1.SessionCommandsService.FocusArtifact:input_type -> office.sessioncommands.v1.FocusArtifactRequest
+	22, // 47: office.sessioncommands.v1.SessionCommandsService.EndSession:input_type -> office.sessioncommands.v1.EndSessionRequest
+	25, // 48: office.sessioncommands.v1.SessionCommandsService.ReleaseSession:input_type -> office.sessioncommands.v1.ReleaseSessionRequest
+	29, // 49: office.sessioncommands.v1.SessionCommandsService.ObjectToRelease:input_type -> office.sessioncommands.v1.ObjectToReleaseRequest
+	45, // 50: office.sessioncommands.v1.SessionCommandsService.TrimSession:input_type -> office.sessioncommands.v1.TrimSessionRequest
+	47, // 51: office.sessioncommands.v1.SessionCommandsService.DeleteSession:input_type -> office.sessioncommands.v1.DeleteSessionRequest
+	49, // 52: office.sessioncommands.v1.SessionCommandsService.RestoreSession:input_type -> office.sessioncommands.v1.RestoreSessionRequest
+	31, // 53: office.sessioncommands.v1.SessionCommandsService.GetRelease:input_type -> office.sessioncommands.v1.GetReleaseRequest
+	35, // 54: office.sessioncommands.v1.SessionCommandsService.GetTreeHead:input_type -> office.sessioncommands.v1.GetTreeHeadRequest
+	37, // 55: office.sessioncommands.v1.SessionCommandsService.GetConsistencyProof:input_type -> office.sessioncommands.v1.GetConsistencyProofRequest
+	39, // 56: office.sessioncommands.v1.SessionCommandsService.GetInclusionProof:input_type -> office.sessioncommands.v1.GetInclusionProofRequest
+	41, // 57: office.sessioncommands.v1.SessionCommandsService.GetHubKey:input_type -> office.sessioncommands.v1.GetHubKeyRequest
+	43, // 58: office.sessioncommands.v1.SessionCommandsService.OfferLog:input_type -> office.sessioncommands.v1.OfferLogRequest
+	3,  // 59: office.sessioncommands.v1.SessionCommandsService.Join:output_type -> office.sessioncommands.v1.JoinResponse
+	5,  // 60: office.sessioncommands.v1.SessionCommandsService.Leave:output_type -> office.sessioncommands.v1.LeaveResponse
+	7,  // 61: office.sessioncommands.v1.SessionCommandsService.SubmitUtterance:output_type -> office.sessioncommands.v1.SubmitUtteranceResponse
+	9,  // 62: office.sessioncommands.v1.SessionCommandsService.MarkOffTheRecord:output_type -> office.sessioncommands.v1.MarkOffTheRecordResponse
+	11, // 63: office.sessioncommands.v1.SessionCommandsService.SubmitSignal:output_type -> office.sessioncommands.v1.SubmitSignalResponse
+	13, // 64: office.sessioncommands.v1.SessionCommandsService.Pause:output_type -> office.sessioncommands.v1.PauseResponse
+	15, // 65: office.sessioncommands.v1.SessionCommandsService.Resume:output_type -> office.sessioncommands.v1.ResumeResponse
+	17, // 66: office.sessioncommands.v1.SessionCommandsService.RaiseHand:output_type -> office.sessioncommands.v1.RaiseHandResponse
+	19, // 67: office.sessioncommands.v1.SessionCommandsService.UpdateMinutes:output_type -> office.sessioncommands.v1.UpdateMinutesResponse
+	21, // 68: office.sessioncommands.v1.SessionCommandsService.FocusArtifact:output_type -> office.sessioncommands.v1.FocusArtifactResponse
+	23, // 69: office.sessioncommands.v1.SessionCommandsService.EndSession:output_type -> office.sessioncommands.v1.EndSessionResponse
+	26, // 70: office.sessioncommands.v1.SessionCommandsService.ReleaseSession:output_type -> office.sessioncommands.v1.ReleaseSessionResponse
+	30, // 71: office.sessioncommands.v1.SessionCommandsService.ObjectToRelease:output_type -> office.sessioncommands.v1.ObjectToReleaseResponse
+	46, // 72: office.sessioncommands.v1.SessionCommandsService.TrimSession:output_type -> office.sessioncommands.v1.TrimSessionResponse
+	48, // 73: office.sessioncommands.v1.SessionCommandsService.DeleteSession:output_type -> office.sessioncommands.v1.DeleteSessionResponse
+	50, // 74: office.sessioncommands.v1.SessionCommandsService.RestoreSession:output_type -> office.sessioncommands.v1.RestoreSessionResponse
+	32, // 75: office.sessioncommands.v1.SessionCommandsService.GetRelease:output_type -> office.sessioncommands.v1.GetReleaseResponse
+	36, // 76: office.sessioncommands.v1.SessionCommandsService.GetTreeHead:output_type -> office.sessioncommands.v1.GetTreeHeadResponse
+	38, // 77: office.sessioncommands.v1.SessionCommandsService.GetConsistencyProof:output_type -> office.sessioncommands.v1.GetConsistencyProofResponse
+	40, // 78: office.sessioncommands.v1.SessionCommandsService.GetInclusionProof:output_type -> office.sessioncommands.v1.GetInclusionProofResponse
+	42, // 79: office.sessioncommands.v1.SessionCommandsService.GetHubKey:output_type -> office.sessioncommands.v1.GetHubKeyResponse
+	44, // 80: office.sessioncommands.v1.SessionCommandsService.OfferLog:output_type -> office.sessioncommands.v1.OfferLogResponse
+	59, // [59:81] is the sub-list for method output_type
+	37, // [37:59] is the sub-list for method input_type
+	37, // [37:37] is the sub-list for extension type_name
+	37, // [37:37] is the sub-list for extension extendee
+	0,  // [0:37] is the sub-list for field type_name
 }
 
 func init() { file_office_sessioncommands_v1_commands_proto_init() }
@@ -3072,7 +3439,7 @@ func file_office_sessioncommands_v1_commands_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_office_sessioncommands_v1_commands_proto_rawDesc), len(file_office_sessioncommands_v1_commands_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   44,
+			NumMessages:   50,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

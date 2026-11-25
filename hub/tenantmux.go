@@ -145,6 +145,30 @@ func (m commandsMux) ObjectToRelease(ctx context.Context, req *commandsapi.Objec
 	return rt.sessions.ObjectToRelease(ctx, req)
 }
 
+func (m commandsMux) TrimSession(ctx context.Context, req *commandsapi.TrimSessionRequest) (*commandsapi.TrimSessionResponse, error) {
+	rt, err := m.forCall(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return rt.sessions.TrimSession(ctx, req)
+}
+
+func (m commandsMux) DeleteSession(ctx context.Context, req *commandsapi.DeleteSessionRequest) (*commandsapi.DeleteSessionResponse, error) {
+	rt, err := m.forCall(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return rt.sessions.DeleteSession(ctx, req)
+}
+
+func (m commandsMux) RestoreSession(ctx context.Context, req *commandsapi.RestoreSessionRequest) (*commandsapi.RestoreSessionResponse, error) {
+	rt, err := m.forCall(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return rt.sessions.RestoreSession(ctx, req)
+}
+
 func (m commandsMux) GetRelease(ctx context.Context, req *commandsapi.GetReleaseRequest) (*commandsapi.GetReleaseResponse, error) {
 	rt, err := m.forCall(ctx)
 	if err != nil {

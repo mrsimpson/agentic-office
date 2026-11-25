@@ -24,6 +24,7 @@ type user struct {
 	ParticipantID string
 	Name          string
 	SystemAdmin   bool
+	Human         bool
 	Memberships   []*identityv1.TenantMembership
 }
 
@@ -32,7 +33,7 @@ func userOf(w *identityv1.WhoAmIResponse) *user {
 	if name == "" {
 		name = w.GetParticipantId()
 	}
-	return &user{ParticipantID: w.GetParticipantId(), Name: name, SystemAdmin: w.GetSystemAdmin(), Memberships: w.GetMemberships()}
+	return &user{ParticipantID: w.GetParticipantId(), Name: name, SystemAdmin: w.GetSystemAdmin(), Human: w.GetKind() == identityv1.ActorKind_ACTOR_KIND_HUMAN, Memberships: w.GetMemberships()}
 }
 
 // membership returns the active membership of the user in a tenant.
@@ -146,13 +147,14 @@ func (h *Handler) tenant(w http.ResponseWriter, r *http.Request, escaped, page s
 		list := sessionlistv1connect.NewSessionListServiceClient(connect.NewClient(h.opts.Hub, auth.StaticToken(ck.Value), auth.Tenant(tenant)))
 		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 		defer cancel()
-		res, err := list.ListSessions(ctx, &sessionlistv1.ListSessionsRequest{})
+		res, err := list.ListSessions(ctx, &sessionlistv1.ListSessionsRequest{IncludeDeleted: r.URL.Query().Get("deleted") == "1"})
 		if err != nil {
 			h.denied(w, err)
 			return
 		}
 		h.page(w, c.me, web.TenantPath(tenant), tenant, map[string]any{"Title": tenant, "Section": "Tenant", "Mode": "tenant",
-			"Tenant": tenant, "Role": roleName(m), "Sessions": sessionRows(tenant, res.GetSessions())})
+			"Tenant": tenant, "Role": roleName(m), "Sessions": sessionRows(tenant, res.GetSessions()),
+			"ShowDeleted": r.URL.Query().Get("deleted") == "1", "TenantHref": web.TenantPath(tenant)})
 	case "members":
 		if !m.GetTenantAdmin() {
 			h.fail(w, http.StatusForbidden, "Not allowed", "Only a tenant admin sees the members of the tenant.")
@@ -188,6 +190,7 @@ func (h *Handler) tenant(w http.ResponseWriter, r *http.Request, escaped, page s
 type sessionRow struct {
 	SessionId, Href, Started, Ended string
 	Running, Imported               bool
+	Deleted, Trimmed                bool
 	Participants                    []participantChip
 }
 
@@ -202,7 +205,8 @@ func sessionRows(tenant string, ss []*sessionlistv1.Session) []sessionRow {
 	var rows []sessionRow
 	for _, s := range ss {
 		row := sessionRow{SessionId: s.GetSessionId(), Href: web.SessionPath(tenant, s.GetSessionId()), Started: s.GetStartedAt().AsTime().UTC().Format(layout),
-			Running: s.GetEndedAt() == nil, Imported: s.GetImported()}
+			Running: s.GetEndedAt() == nil, Imported: s.GetImported(),
+			Deleted: s.GetDeleted(), Trimmed: s.GetTrimmedAfterEventId() != 0}
 		if !row.Running {
 			row.Ended = s.GetEndedAt().AsTime().UTC().Format(layout)
 		}

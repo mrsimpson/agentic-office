@@ -34,9 +34,12 @@ const (
 )
 
 type ListSessionsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// include_deleted adds the deleted sessions (dec-session-trim-delete). Without it, they are
+	// left out.
+	IncludeDeleted bool `protobuf:"varint,1,opt,name=include_deleted,json=includeDeleted,proto3" json:"include_deleted,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ListSessionsRequest) Reset() {
@@ -67,6 +70,13 @@ func (x *ListSessionsRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use ListSessionsRequest.ProtoReflect.Descriptor instead.
 func (*ListSessionsRequest) Descriptor() ([]byte, []int) {
 	return file_office_sessionlist_v1_list_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *ListSessionsRequest) GetIncludeDeleted() bool {
+	if x != nil {
+		return x.IncludeDeleted
+	}
+	return false
 }
 
 type ListSessionsResponse struct {
@@ -123,9 +133,14 @@ type Session struct {
 	// imported is set for a session that was imported (dec-session-import).
 	Imported bool `protobuf:"varint,4,opt,name=imported,proto3" json:"imported,omitempty"`
 	// participants are everyone who joined the session, in the order of their first join.
-	Participants  []*Participant `protobuf:"bytes,5,rep,name=participants,proto3" json:"participants,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Participants []*Participant `protobuf:"bytes,5,rep,name=participants,proto3" json:"participants,omitempty"`
+	// deleted is set for a session that was deleted and not restored (dec-session-trim-delete).
+	Deleted bool `protobuf:"varint,6,opt,name=deleted,proto3" json:"deleted,omitempty"`
+	// trimmed_after_event_id is the last event that counts, or 0 if the session is not trimmed
+	// (dec-session-trim-delete).
+	TrimmedAfterEventId uint32 `protobuf:"varint,7,opt,name=trimmed_after_event_id,json=trimmedAfterEventId,proto3" json:"trimmed_after_event_id,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *Session) Reset() {
@@ -191,6 +206,20 @@ func (x *Session) GetParticipants() []*Participant {
 		return x.Participants
 	}
 	return nil
+}
+
+func (x *Session) GetDeleted() bool {
+	if x != nil {
+		return x.Deleted
+	}
+	return false
+}
+
+func (x *Session) GetTrimmedAfterEventId() uint32 {
+	if x != nil {
+		return x.TrimmedAfterEventId
+	}
+	return 0
 }
 
 type Participant struct {
@@ -266,10 +295,11 @@ var File_office_sessionlist_v1_list_proto protoreflect.FileDescriptor
 
 const file_office_sessionlist_v1_list_proto_rawDesc = "" +
 	"\n" +
-	" office/sessionlist/v1/list.proto\x12\x15office.sessionlist.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a$office/sessionstream/v1/events.proto\"\x15\n" +
-	"\x13ListSessionsRequest\"R\n" +
+	" office/sessionlist/v1/list.proto\x12\x15office.sessionlist.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a$office/sessionstream/v1/events.proto\">\n" +
+	"\x13ListSessionsRequest\x12'\n" +
+	"\x0finclude_deleted\x18\x01 \x01(\bR\x0eincludeDeleted\"R\n" +
 	"\x14ListSessionsResponse\x12:\n" +
-	"\bsessions\x18\x01 \x03(\v2\x1e.office.sessionlist.v1.SessionR\bsessions\"\xfe\x01\n" +
+	"\bsessions\x18\x01 \x03(\v2\x1e.office.sessionlist.v1.SessionR\bsessions\"\xcd\x02\n" +
 	"\aSession\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x129\n" +
@@ -277,7 +307,9 @@ const file_office_sessionlist_v1_list_proto_rawDesc = "" +
 	"started_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x125\n" +
 	"\bended_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\aendedAt\x12\x1a\n" +
 	"\bimported\x18\x04 \x01(\bR\bimported\x12F\n" +
-	"\fparticipants\x18\x05 \x03(\v2\".office.sessionlist.v1.ParticipantR\fparticipants\"\xb1\x01\n" +
+	"\fparticipants\x18\x05 \x03(\v2\".office.sessionlist.v1.ParticipantR\fparticipants\x12\x18\n" +
+	"\adeleted\x18\x06 \x01(\bR\adeleted\x123\n" +
+	"\x16trimmed_after_event_id\x18\a \x01(\rR\x13trimmedAfterEventId\"\xb1\x01\n" +
 	"\vParticipant\x12%\n" +
 	"\x0eparticipant_id\x18\x01 \x01(\tR\rparticipantId\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12<\n" +

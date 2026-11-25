@@ -158,6 +158,11 @@ type state struct {
 	released   bool
 	releasedBy string
 	held       bool
+	// The trim and the delete of an ended session (dec-session-trim-delete): trimmedAt is the last
+	// event that counts, or 0 without a trim; deleted is set by session.deleted until
+	// session.restored.
+	trimmedAt uint32
+	deleted   bool
 	// readers are the participants who may read the staging area of the session: everyone who
 	// ever joined, and the importer, in the order of their first event.
 	readers      []string
@@ -258,6 +263,15 @@ func (st *state) apply(ev *sessionstreamv1.Event) error {
 		st.released, st.releasedBy, st.held = true, ev.GetActorParticipantId(), false
 	case *sessionstreamv1.Event_ReleaseObjected:
 		st.held = true
+	case *sessionstreamv1.Event_SessionTrimmed:
+		st.trimmedAt = p.SessionTrimmed.GetLastEventId()
+		if st.trimmedAt >= st.endedID {
+			st.trimmedAt = 0
+		}
+	case *sessionstreamv1.Event_SessionDeleted:
+		st.deleted = true
+	case *sessionstreamv1.Event_SessionRestored:
+		st.deleted = false
 	case *sessionstreamv1.Event_SessionImported:
 		st.importer, st.importing = ev.GetActorParticipantId(), true
 		st.importerKind = p.SessionImported.GetImporterKind()
@@ -402,7 +416,9 @@ type command struct {
 	// tookPart makes the command accept every participant who took part in the session (see
 	// state.tookPart), also one who left, instead of a participant who is in the session now.
 	tookPart bool
-	build    func(st *state, c Caller) (*sessionstreamv1.Event, error)
+	// orAdmin lets a tenant admin run a tookPart command without having taken part.
+	orAdmin bool
+	build   func(st *state, c Caller) (*sessionstreamv1.Event, error)
 }
 
 // run carries out a command once (dec-idempotent-commands).
@@ -512,7 +528,7 @@ func (s *Service) runLocked(ctx context.Context, c command, isJoin bool) (*sessi
 			return nil, false, err
 		}
 	case c.tookPart:
-		if !st.tookPart(c.participantID) {
+		if !st.tookPart(c.participantID) && !(c.orAdmin && caller.TenantAdmin) {
 			return nil, false, notFound("participant_id did not take part in this session")
 		}
 	default:

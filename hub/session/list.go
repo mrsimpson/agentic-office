@@ -37,6 +37,12 @@ func (ss *summaries) get(sid string) *summary {
 	return ss.m[sid]
 }
 
+func (ss *summaries) drop(sid string) {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	delete(ss.m, sid)
+}
+
 func (ss *summaries) put(sid string, s *summary) {
 	ss.mu.Lock()
 	defer ss.mu.Unlock()
@@ -54,6 +60,7 @@ func summarize(sid string, evs []*sessionstreamv1.Event) *summary {
 	}
 	sum := &summary{s: &sessionlistv1.Session{SessionId: sid, StartedAt: evs[0].GetTime()}}
 	seen := map[string]bool{}
+	var endedID uint32
 	for _, ev := range evs {
 		switch {
 		case ev.GetSessionImported() != nil:
@@ -72,6 +79,16 @@ func summarize(sid string, evs []*sessionstreamv1.Event) *summary {
 				DisplayName: name, Kind: j.GetKind(), Imported: j.GetImported()})
 		case ev.GetSessionEnded() != nil:
 			sum.s.EndedAt, sum.finished = ev.GetTime(), true
+			endedID = ev.GetId()
+		case ev.GetSessionTrimmed() != nil:
+			sum.s.TrimmedAfterEventId = ev.GetSessionTrimmed().GetLastEventId()
+			if endedID != 0 && sum.s.TrimmedAfterEventId >= endedID {
+				sum.s.TrimmedAfterEventId = 0
+			}
+		case ev.GetSessionDeleted() != nil:
+			sum.s.Deleted = true
+		case ev.GetSessionRestored() != nil:
+			sum.s.Deleted = false
 		}
 	}
 	return sum
@@ -92,7 +109,7 @@ func (sum *summary) visible(c Caller) bool {
 }
 
 // ListSessions implements the session list (if-session-list).
-func (s *Service) ListSessions(ctx context.Context, _ *sessionlistv1.ListSessionsRequest) (*sessionlistv1.ListSessionsResponse, error) {
+func (s *Service) ListSessions(ctx context.Context, req *sessionlistv1.ListSessionsRequest) (*sessionlistv1.ListSessionsResponse, error) {
 	c, err := s.auth.Caller(ctx)
 	if err != nil {
 		return nil, err
@@ -131,7 +148,7 @@ func (s *Service) ListSessions(ctx context.Context, _ *sessionlistv1.ListSession
 	}
 	res := &sessionlistv1.ListSessionsResponse{}
 	add := func(sum *summary) {
-		if sum != nil && sum.visible(c) {
+		if sum != nil && sum.visible(c) && (req.GetIncludeDeleted() || !sum.s.GetDeleted()) {
 			res.Sessions = append(res.Sessions, sum.s)
 		}
 	}

@@ -172,6 +172,9 @@ type Event struct {
 	//	*Event_SessionEnded
 	//	*Event_ReleaseObjected
 	//	*Event_SessionReleased
+	//	*Event_SessionTrimmed
+	//	*Event_SessionDeleted
+	//	*Event_SessionRestored
 	//	*Event_SessionImported
 	//	*Event_ImportCompleted
 	Payload       isEvent_Payload `protobuf_oneof:"payload"`
@@ -427,6 +430,33 @@ func (x *Event) GetSessionReleased() *SessionReleased {
 	return nil
 }
 
+func (x *Event) GetSessionTrimmed() *SessionTrimmed {
+	if x != nil {
+		if x, ok := x.Payload.(*Event_SessionTrimmed); ok {
+			return x.SessionTrimmed
+		}
+	}
+	return nil
+}
+
+func (x *Event) GetSessionDeleted() *SessionDeleted {
+	if x != nil {
+		if x, ok := x.Payload.(*Event_SessionDeleted); ok {
+			return x.SessionDeleted
+		}
+	}
+	return nil
+}
+
+func (x *Event) GetSessionRestored() *SessionRestored {
+	if x != nil {
+		if x, ok := x.Payload.(*Event_SessionRestored); ok {
+			return x.SessionRestored
+		}
+	}
+	return nil
+}
+
 func (x *Event) GetSessionImported() *SessionImported {
 	if x != nil {
 		if x, ok := x.Payload.(*Event_SessionImported); ok {
@@ -519,12 +549,25 @@ type Event_SessionEnded struct {
 
 type Event_ReleaseObjected struct {
 	// Release of what the session staged (concept-session-release). These events, notices about
-	// artifacts and marks off the record are the only events after session.ended.
+	// artifacts, marks off the record, trims and deletes are the only events after session.ended.
 	ReleaseObjected *ReleaseObjected `protobuf:"bytes,45,opt,name=release_objected,json=releaseObjected,proto3,oneof"` // "release.objected"
 }
 
 type Event_SessionReleased struct {
 	SessionReleased *SessionReleased `protobuf:"bytes,46,opt,name=session_released,json=sessionReleased,proto3,oneof"` // "session.released"
+}
+
+type Event_SessionTrimmed struct {
+	// Trim and delete of an ended session (dec-session-trim-delete)
+	SessionTrimmed *SessionTrimmed `protobuf:"bytes,47,opt,name=session_trimmed,json=sessionTrimmed,proto3,oneof"` // "session.trimmed"
+}
+
+type Event_SessionDeleted struct {
+	SessionDeleted *SessionDeleted `protobuf:"bytes,48,opt,name=session_deleted,json=sessionDeleted,proto3,oneof"` // "session.deleted"
+}
+
+type Event_SessionRestored struct {
+	SessionRestored *SessionRestored `protobuf:"bytes,49,opt,name=session_restored,json=sessionRestored,proto3,oneof"` // "session.restored"
 }
 
 type Event_SessionImported struct {
@@ -571,6 +614,12 @@ func (*Event_SessionEnded) isEvent_Payload() {}
 func (*Event_ReleaseObjected) isEvent_Payload() {}
 
 func (*Event_SessionReleased) isEvent_Payload() {}
+
+func (*Event_SessionTrimmed) isEvent_Payload() {}
+
+func (*Event_SessionDeleted) isEvent_Payload() {}
+
+func (*Event_SessionRestored) isEvent_Payload() {}
 
 func (*Event_SessionImported) isEvent_Payload() {}
 
@@ -1735,11 +1784,137 @@ func (x *SignedTreeHead) GetPublicKey() []byte {
 	return nil
 }
 
+// SessionTrimmed says that the events after last_event_id no longer count (dec-session-trim-delete).
+// The actor is the human or tenant admin who trimmed the session. A later trim replaces an earlier
+// one; a trim at or after session.ended removes the cut. The log keeps every event; readers
+// apply the latest trim.
+type SessionTrimmed struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// last_event_id is the last event that counts. It is at least 1 and at most the ID of the last
+	// event before the trim.
+	LastEventId   uint32 `protobuf:"varint,1,opt,name=last_event_id,json=lastEventId,proto3" json:"last_event_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SessionTrimmed) Reset() {
+	*x = SessionTrimmed{}
+	mi := &file_office_sessionstream_v1_events_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SessionTrimmed) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SessionTrimmed) ProtoMessage() {}
+
+func (x *SessionTrimmed) ProtoReflect() protoreflect.Message {
+	mi := &file_office_sessionstream_v1_events_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SessionTrimmed.ProtoReflect.Descriptor instead.
+func (*SessionTrimmed) Descriptor() ([]byte, []int) {
+	return file_office_sessionstream_v1_events_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *SessionTrimmed) GetLastEventId() uint32 {
+	if x != nil {
+		return x.LastEventId
+	}
+	return 0
+}
+
+// SessionDeleted marks the session as deleted (dec-session-trim-delete). The actor is the human or
+// tenant admin who deleted it. A deleted session leaves the session list, the stage and the wiki
+// until a session.restored event follows.
+type SessionDeleted struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SessionDeleted) Reset() {
+	*x = SessionDeleted{}
+	mi := &file_office_sessionstream_v1_events_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SessionDeleted) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SessionDeleted) ProtoMessage() {}
+
+func (x *SessionDeleted) ProtoReflect() protoreflect.Message {
+	mi := &file_office_sessionstream_v1_events_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SessionDeleted.ProtoReflect.Descriptor instead.
+func (*SessionDeleted) Descriptor() ([]byte, []int) {
+	return file_office_sessionstream_v1_events_proto_rawDescGZIP(), []int{23}
+}
+
+// SessionRestored removes the mark of session.deleted (dec-session-trim-delete).
+type SessionRestored struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SessionRestored) Reset() {
+	*x = SessionRestored{}
+	mi := &file_office_sessionstream_v1_events_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SessionRestored) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SessionRestored) ProtoMessage() {}
+
+func (x *SessionRestored) ProtoReflect() protoreflect.Message {
+	mi := &file_office_sessionstream_v1_events_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SessionRestored.ProtoReflect.Descriptor instead.
+func (*SessionRestored) Descriptor() ([]byte, []int) {
+	return file_office_sessionstream_v1_events_proto_rawDescGZIP(), []int{24}
+}
+
 var File_office_sessionstream_v1_events_proto protoreflect.FileDescriptor
 
 const file_office_sessionstream_v1_events_proto_rawDesc = "" +
 	"\n" +
-	"$office/sessionstream/v1/events.proto\x12\x17office.sessionstream.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x9c\x0f\n" +
+	"$office/sessionstream/v1/events.proto\x12\x17office.sessionstream.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x9b\x11\n" +
 	"\x05Event\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\rR\x02id\x12\x1d\n" +
 	"\n" +
@@ -1769,7 +1944,10 @@ const file_office_sessionstream_v1_events_proto_rawDesc = "" +
 	"\x13participant_resumed\x18+ \x01(\v2+.office.sessionstream.v1.ParticipantResumedH\x00R\x12participantResumed\x12L\n" +
 	"\rsession_ended\x18, \x01(\v2%.office.sessionstream.v1.SessionEndedH\x00R\fsessionEnded\x12U\n" +
 	"\x10release_objected\x18- \x01(\v2(.office.sessionstream.v1.ReleaseObjectedH\x00R\x0freleaseObjected\x12U\n" +
-	"\x10session_released\x18. \x01(\v2(.office.sessionstream.v1.SessionReleasedH\x00R\x0fsessionReleased\x12U\n" +
+	"\x10session_released\x18. \x01(\v2(.office.sessionstream.v1.SessionReleasedH\x00R\x0fsessionReleased\x12R\n" +
+	"\x0fsession_trimmed\x18/ \x01(\v2'.office.sessionstream.v1.SessionTrimmedH\x00R\x0esessionTrimmed\x12R\n" +
+	"\x0fsession_deleted\x180 \x01(\v2'.office.sessionstream.v1.SessionDeletedH\x00R\x0esessionDeleted\x12U\n" +
+	"\x10session_restored\x181 \x01(\v2(.office.sessionstream.v1.SessionRestoredH\x00R\x0fsessionRestored\x12U\n" +
 	"\x10session_imported\x182 \x01(\v2(.office.sessionstream.v1.SessionImportedH\x00R\x0fsessionImported\x12U\n" +
 	"\x10import_completed\x183 \x01(\v2(.office.sessionstream.v1.ImportCompletedH\x00R\x0fimportCompletedB\t\n" +
 	"\apayload\"\xb4\x02\n" +
@@ -1841,7 +2019,11 @@ const file_office_sessionstream_v1_events_proto_rawDesc = "" +
 	"\troot_hash\x18\x03 \x01(\fR\brootHash\x12\x1c\n" +
 	"\tsignature\x18\x04 \x01(\fR\tsignature\x12\x1d\n" +
 	"\n" +
-	"public_key\x18\x05 \x01(\fR\tpublicKey*k\n" +
+	"public_key\x18\x05 \x01(\fR\tpublicKey\"4\n" +
+	"\x0eSessionTrimmed\x12\"\n" +
+	"\rlast_event_id\x18\x01 \x01(\rR\vlastEventId\"\x10\n" +
+	"\x0eSessionDeleted\"\x11\n" +
+	"\x0fSessionRestored*k\n" +
 	"\x0fParticipantKind\x12 \n" +
 	"\x1cPARTICIPANT_KIND_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16PARTICIPANT_KIND_HUMAN\x10\x01\x12\x1a\n" +
@@ -1864,7 +2046,7 @@ func file_office_sessionstream_v1_events_proto_rawDescGZIP() []byte {
 }
 
 var file_office_sessionstream_v1_events_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_office_sessionstream_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
+var file_office_sessionstream_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
 var file_office_sessionstream_v1_events_proto_goTypes = []any{
 	(ParticipantKind)(0),          // 0: office.sessionstream.v1.ParticipantKind
 	(Modality)(0),                 // 1: office.sessionstream.v1.Modality
@@ -1890,11 +2072,14 @@ var file_office_sessionstream_v1_events_proto_goTypes = []any{
 	(*SessionReleased)(nil),       // 21: office.sessionstream.v1.SessionReleased
 	(*ImportCompleted)(nil),       // 22: office.sessionstream.v1.ImportCompleted
 	(*SignedTreeHead)(nil),        // 23: office.sessionstream.v1.SignedTreeHead
-	(*timestamppb.Timestamp)(nil), // 24: google.protobuf.Timestamp
-	(*durationpb.Duration)(nil),   // 25: google.protobuf.Duration
+	(*SessionTrimmed)(nil),        // 24: office.sessionstream.v1.SessionTrimmed
+	(*SessionDeleted)(nil),        // 25: office.sessionstream.v1.SessionDeleted
+	(*SessionRestored)(nil),       // 26: office.sessionstream.v1.SessionRestored
+	(*timestamppb.Timestamp)(nil), // 27: google.protobuf.Timestamp
+	(*durationpb.Duration)(nil),   // 28: google.protobuf.Duration
 }
 var file_office_sessionstream_v1_events_proto_depIdxs = []int32{
-	24, // 0: office.sessionstream.v1.Event.time:type_name -> google.protobuf.Timestamp
+	27, // 0: office.sessionstream.v1.Event.time:type_name -> google.protobuf.Timestamp
 	3,  // 1: office.sessionstream.v1.Event.utterance_final:type_name -> office.sessionstream.v1.UtteranceFinal
 	4,  // 2: office.sessionstream.v1.Event.utterance_off_the_record:type_name -> office.sessionstream.v1.UtteranceOffTheRecord
 	5,  // 3: office.sessionstream.v1.Event.utterance_corrected:type_name -> office.sessionstream.v1.UtteranceCorrected
@@ -1913,20 +2098,23 @@ var file_office_sessionstream_v1_events_proto_depIdxs = []int32{
 	18, // 16: office.sessionstream.v1.Event.session_ended:type_name -> office.sessionstream.v1.SessionEnded
 	20, // 17: office.sessionstream.v1.Event.release_objected:type_name -> office.sessionstream.v1.ReleaseObjected
 	21, // 18: office.sessionstream.v1.Event.session_released:type_name -> office.sessionstream.v1.SessionReleased
-	19, // 19: office.sessionstream.v1.Event.session_imported:type_name -> office.sessionstream.v1.SessionImported
-	22, // 20: office.sessionstream.v1.Event.import_completed:type_name -> office.sessionstream.v1.ImportCompleted
-	1,  // 21: office.sessionstream.v1.UtteranceFinal.modality:type_name -> office.sessionstream.v1.Modality
-	24, // 22: office.sessionstream.v1.UtteranceFinal.transcribed_at:type_name -> google.protobuf.Timestamp
-	24, // 23: office.sessionstream.v1.UtteranceFinal.original_time:type_name -> google.protobuf.Timestamp
-	25, // 24: office.sessionstream.v1.SilenceLong.duration:type_name -> google.protobuf.Duration
-	0,  // 25: office.sessionstream.v1.ParticipantJoined.kind:type_name -> office.sessionstream.v1.ParticipantKind
-	23, // 26: office.sessionstream.v1.SessionEnded.tree_head:type_name -> office.sessionstream.v1.SignedTreeHead
-	0,  // 27: office.sessionstream.v1.SessionImported.importer_kind:type_name -> office.sessionstream.v1.ParticipantKind
-	28, // [28:28] is the sub-list for method output_type
-	28, // [28:28] is the sub-list for method input_type
-	28, // [28:28] is the sub-list for extension type_name
-	28, // [28:28] is the sub-list for extension extendee
-	0,  // [0:28] is the sub-list for field type_name
+	24, // 19: office.sessionstream.v1.Event.session_trimmed:type_name -> office.sessionstream.v1.SessionTrimmed
+	25, // 20: office.sessionstream.v1.Event.session_deleted:type_name -> office.sessionstream.v1.SessionDeleted
+	26, // 21: office.sessionstream.v1.Event.session_restored:type_name -> office.sessionstream.v1.SessionRestored
+	19, // 22: office.sessionstream.v1.Event.session_imported:type_name -> office.sessionstream.v1.SessionImported
+	22, // 23: office.sessionstream.v1.Event.import_completed:type_name -> office.sessionstream.v1.ImportCompleted
+	1,  // 24: office.sessionstream.v1.UtteranceFinal.modality:type_name -> office.sessionstream.v1.Modality
+	27, // 25: office.sessionstream.v1.UtteranceFinal.transcribed_at:type_name -> google.protobuf.Timestamp
+	27, // 26: office.sessionstream.v1.UtteranceFinal.original_time:type_name -> google.protobuf.Timestamp
+	28, // 27: office.sessionstream.v1.SilenceLong.duration:type_name -> google.protobuf.Duration
+	0,  // 28: office.sessionstream.v1.ParticipantJoined.kind:type_name -> office.sessionstream.v1.ParticipantKind
+	23, // 29: office.sessionstream.v1.SessionEnded.tree_head:type_name -> office.sessionstream.v1.SignedTreeHead
+	0,  // 30: office.sessionstream.v1.SessionImported.importer_kind:type_name -> office.sessionstream.v1.ParticipantKind
+	31, // [31:31] is the sub-list for method output_type
+	31, // [31:31] is the sub-list for method input_type
+	31, // [31:31] is the sub-list for extension type_name
+	31, // [31:31] is the sub-list for extension extendee
+	0,  // [0:31] is the sub-list for field type_name
 }
 
 func init() { file_office_sessionstream_v1_events_proto_init() }
@@ -1953,6 +2141,9 @@ func file_office_sessionstream_v1_events_proto_init() {
 		(*Event_SessionEnded)(nil),
 		(*Event_ReleaseObjected)(nil),
 		(*Event_SessionReleased)(nil),
+		(*Event_SessionTrimmed)(nil),
+		(*Event_SessionDeleted)(nil),
+		(*Event_SessionRestored)(nil),
 		(*Event_SessionImported)(nil),
 		(*Event_ImportCompleted)(nil),
 	}
@@ -1962,7 +2153,7 @@ func file_office_sessionstream_v1_events_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_office_sessionstream_v1_events_proto_rawDesc), len(file_office_sessionstream_v1_events_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   22,
+			NumMessages:   25,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -26,6 +26,8 @@ import (
 	"github.com/mrsimpson/agentic-office/hub/records/note/api/notev1connect"
 	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
 	"github.com/mrsimpson/agentic-office/hub/session/commandsapi/sessioncommandsv1connect"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
+	"github.com/mrsimpson/agentic-office/hub/session/streamapi/sessionstreamv1connect"
 	slidesv1 "github.com/mrsimpson/agentic-office/hub/slides/api"
 	"github.com/mrsimpson/agentic-office/hub/slides/api/slidesv1connect"
 )
@@ -198,6 +200,37 @@ func (h *Handler) sessionAction(w http.ResponseWriter, r *http.Request, escapedT
 			return
 		}
 		done = "held"
+	case "trim":
+		last, perr := strconv.ParseUint(r.PostForm.Get("last_event_id"), 10, 32)
+		if perr != nil {
+			h.actionFailed(w, r, c, tenant, sid, connect.NewError(connect.CodeInvalidArgument, "choose the last sentence that counts"))
+			return
+		}
+		if _, err := cmds.TrimSession(ctx, &sessioncommandsv1.TrimSessionRequest{SessionId: sid, CommandId: cmd,
+			ParticipantId: c.me.ParticipantID, LastEventId: uint32(last)}); err != nil {
+			h.actionFailed(w, r, c, tenant, sid, err)
+			return
+		}
+		// The stored minutes follow the cut: they are written again from the log up to it.
+		if err := rebuildMinutes(ctx, cc, sid, c.me.ParticipantID, cmd); err != nil {
+			h.actionFailed(w, r, c, tenant, sid, err)
+			return
+		}
+		done = "trimmed"
+	case "delete":
+		if _, err := cmds.DeleteSession(ctx, &sessioncommandsv1.DeleteSessionRequest{SessionId: sid, CommandId: cmd,
+			ParticipantId: c.me.ParticipantID}); err != nil {
+			h.actionFailed(w, r, c, tenant, sid, err)
+			return
+		}
+		done = "deleted"
+	case "restore":
+		if _, err := cmds.RestoreSession(ctx, &sessioncommandsv1.RestoreSessionRequest{SessionId: sid, CommandId: cmd,
+			ParticipantId: c.me.ParticipantID}); err != nil {
+			h.actionFailed(w, r, c, tenant, sid, err)
+			return
+		}
+		done = "restored"
 	case "discard":
 		if err := discard(ctx, cc, sid, c.me.ParticipantID, cmd, r.PostForm.Get("path"), r.PostForm.Get("version")); err != nil {
 			h.actionFailed(w, r, c, tenant, sid, err)
@@ -272,4 +305,59 @@ func (h *Handler) actionFailed(w http.ResponseWriter, r *http.Request, c *backen
 		return
 	}
 	h.sessionPage(w, r, c, tenant, sid, pageExtra{status: status, error: messageOf(err)})
+}
+
+// rebuildMinutes writes the stored minutes of a trimmed session again from the log up to the cut
+// (dec-session-trim-delete): the last running minutes that count, or no minutes if none counts. A
+// trim that removes the cut brings the last running minutes back. Without stored minutes, nothing
+// happens. The minutes interface decides whether the user may change them.
+func rebuildMinutes(ctx context.Context, cc *connect.Client, sid, pid, cmd string) error {
+	stream := sessionstreamv1connect.NewSessionStreamServiceClient(cc)
+	var evs []*sessionstreamv1.Event
+	for after := uint32(0); ; {
+		res, err := stream.GetEvents(ctx, &sessionstreamv1.GetEventsRequest{SessionId: sid, AfterEventId: after, Limit: 1000})
+		if err != nil {
+			return err
+		}
+		evs = append(evs, res.GetEvents()...)
+		if !res.GetMore() || len(res.GetEvents()) == 0 {
+			break
+		}
+		after = res.GetEvents()[len(res.GetEvents())-1].GetId()
+	}
+	var endID, cut uint32
+	for _, ev := range evs {
+		switch p := ev.GetPayload().(type) {
+		case *sessionstreamv1.Event_SessionEnded:
+			endID = ev.GetId()
+		case *sessionstreamv1.Event_SessionTrimmed:
+			if cut = p.SessionTrimmed.GetLastEventId(); cut >= endID {
+				cut = 0
+			}
+		}
+	}
+	want := ""
+	for _, ev := range evs {
+		if m := ev.GetMinutesUpdated(); m != nil && (cut == 0 || ev.GetId() <= cut) {
+			want = m.GetText()
+		}
+	}
+	client := minutesv1connect.NewMinutesServiceClient(cc)
+	stored, err := listAll(func(after uint32) ([]*minutesv1.Minutes, error) {
+		res, err := client.ListMinutes(ctx, &minutesv1.ListMinutesRequest{AfterId: after, SessionId: sid, Limit: 100})
+		return res.GetMinutes(), err
+	}, (*minutesv1.Minutes).GetId)
+	if err != nil || len(stored) == 0 {
+		return err
+	}
+	last := stored[len(stored)-1]
+	switch {
+	case strings.TrimSpace(want) == "":
+		_, err = client.RemoveMinutes(ctx, &minutesv1.RemoveMinutesRequest{CommandId: cmd + "/minutes", Id: last.GetId(),
+			SessionId: sid, AuthorParticipantId: pid})
+	case want != last.GetText():
+		_, err = client.ChangeMinutes(ctx, &minutesv1.ChangeMinutesRequest{CommandId: cmd + "/minutes", Id: last.GetId(),
+			SessionId: sid, Text: want, AuthorParticipantId: pid})
+	}
+	return err
 }

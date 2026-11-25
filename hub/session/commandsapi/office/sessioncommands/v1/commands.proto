@@ -62,6 +62,20 @@ service SessionCommandsService {
   // human releases it then. Who may object: as for ReleaseSession. A session that is held or
   // released fails with failed_precondition.
   rpc ObjectToRelease(ObjectToReleaseRequest) returns (ObjectToReleaseResponse);
+  // TrimSession appends session.trimmed (dec-session-trim-delete): the events after last_event_id
+  // no longer count. Only an ended session takes it (failed_precondition), and it never ends a
+  // session. Who may trim: a human who took part in the session (also one who left, and the
+  // participant who imported it) and a tenant admin; an agent gets permission_denied, everyone
+  // else not_found. A released session fails with failed_precondition. last_event_id must be an
+  // event of the log (invalid_argument); an ID at or after session.ended removes the cut.
+  rpc TrimSession(TrimSessionRequest) returns (TrimSessionResponse);
+  // DeleteSession appends session.deleted (dec-session-trim-delete). Only an ended session takes
+  // it, from the same callers as TrimSession. A released session and a session that is deleted
+  // already fail with failed_precondition.
+  rpc DeleteSession(DeleteSessionRequest) returns (DeleteSessionResponse);
+  // RestoreSession appends session.restored and removes the mark of a deleted session. Same
+  // callers as TrimSession. A session that is not deleted fails with failed_precondition.
+  rpc RestoreSession(RestoreSessionRequest) returns (RestoreSessionResponse);
   // GetRelease returns the release of a session (concept-session-release). Who may read the
   // session, as the session stream decides (stream.proto), gets the release status, the paths of
   // the staged files and, once the session is released, its release commit. Every other member of
@@ -412,4 +426,39 @@ message OfferLogResponse {
   bool accepted = 1;
   // tree_head is the signed tree head of the log of the hub after the offer.
   office.sessionstream.v1.SignedTreeHead tree_head = 2;
+}
+
+message TrimSessionRequest {
+  string session_id = 1;
+  string command_id = 2;
+  string participant_id = 3;
+  // last_event_id is the last event that counts.
+  uint32 last_event_id = 4;
+}
+
+message TrimSessionResponse {
+  // result is the session.trimmed event.
+  CommandResult result = 1;
+}
+
+message DeleteSessionRequest {
+  string session_id = 1;
+  string command_id = 2;
+  string participant_id = 3;
+}
+
+message DeleteSessionResponse {
+  // result is the session.deleted event.
+  CommandResult result = 1;
+}
+
+message RestoreSessionRequest {
+  string session_id = 1;
+  string command_id = 2;
+  string participant_id = 3;
+}
+
+message RestoreSessionResponse {
+  // result is the session.restored event.
+  CommandResult result = 1;
 }

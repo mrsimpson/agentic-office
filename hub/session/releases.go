@@ -673,6 +673,9 @@ func (s *Service) findQuotes(ctx context.Context, sid string, st *state) ([]*ses
 		return nil, "", err
 	}
 	for _, ev := range evs {
+		if st.trimmedAt != 0 && ev.GetId() > st.trimmedAt {
+			break // what the trim cut off never reaches an artifact (dec-session-trim-delete)
+		}
 		u := st.utterances[ev.GetId()]
 		if ev.GetUtteranceFinal() == nil || u == nil || !u.offTheRecord {
 			continue

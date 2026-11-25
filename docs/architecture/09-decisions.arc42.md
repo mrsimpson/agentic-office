@@ -841,6 +841,32 @@ addresses: qg-usability, risk-imported-conversation
 :::
 ```
 
+## A session is trimmed or deleted by events, never by rewriting the log
+
+**Context:** A meeting is cancelled after a few sentences, or nobody ends it, and the minutes hold
+far too much. Humans want to delete such a session, or cut it off at a chosen sentence. The log of a
+session only grows and is signed (`dec-merkle-log`). **Decision:** A trim and a delete are recorded
+in the log, like every other change of a session. Readers apply them; the log itself stays as it
+was. Both can be undone. They apply to an ended session that is not released, and they never end a
+session. Humans who took part and tenant admins may do them; agents may not. What the session
+already staged or released stays as it is. **Consequences:** The log, its signatures and the
+restore from peers stay valid. The cut-off sentences stay in the session log, which only the
+participants, the importer and the tenant admins read (`concept-session-release`); the tenant never
+sees them. The minutes and the search for sentences off the record before a release follow the trim.
+**Rejected:** cutting events out of the log (a log only grows); a second, edited copy of the log
+(two sources of truth); a trim that ends a running session on its own (the end stays a visible
+step); allowing only tenant admins (a meeting that nobody ended would wait for an admin).
+
+```arc42
+:::decision
+id: dec-session-trim-delete
+title: A session is trimmed or deleted by events, never by rewriting the log
+status: accepted
+date: 2026-11-25
+addresses: qg-usability
+:::
+```
+
 ## An own JSON format for imported conversations, read by the client
 
 **Context:** Conversations come from many tools, each with its own export. The import interface
