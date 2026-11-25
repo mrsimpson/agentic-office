@@ -734,6 +734,51 @@ sequenceDiagram
     bb_git_access-->>bb_cli: push accepted, or refused with the reason
 ```
 
+## A team agent runs on a server
+
+A tenant admin has registered a key for the team agent "minutes", and a member has written its
+definition. An operator puts the key on a server and starts the runner there, with the version of
+the definition that the operator confirms. The client core signs the challenge with the key of the
+agent, as for any participant, and gets a token for the agent itself. It reads the definition and
+checks that the version is the one that the operator named; the runner stops if it is not. The
+agent has no agent launcher, so the runner asks for no token as the agent. The runner joins the
+session as the agent, and the join names no agent launcher. If a member already runs the same team
+agent in this session with a token as the agent, the meeting session refuses the join with "already
+joined". The harness of the agent gets the key, as the harness of a personal agent does.
+
+```arc42
+:::runtime-scenario
+id: rs-team-agent-server
+title: A team agent runs on a server
+trigger: An operator starts the runner of a team agent with the key of the agent
+involves: bb-agent-runner, bb-client-core, bb-identity, bb-session-service, bb-participant-client, bb-office-hub
+:::
+```
+
+```arc42
+:::diagram
+id: seq-team-agent-server
+notation: mermaid-sequence
+scenario: rs-team-agent-server
+aliases: bb_agent_runner=bb-agent-runner, bb_client_core=bb-client-core, bb_identity=bb-identity, bb_session_service=bb-session-service
+:::
+```
+
+```mermaid
+sequenceDiagram
+    participant bb_agent_runner as Agent runner
+    participant bb_client_core as Client core
+    participant bb_identity as Identity
+    participant bb_session_service as Meeting session
+    bb_agent_runner->>bb_client_core: start team agent minutes with its own key, version named
+    bb_client_core->>bb_identity: prove the key of the agent
+    bb_identity-->>bb_client_core: token for the agent, no agent launcher
+    bb_client_core-->>bb_agent_runner: definition and its version
+    bb_agent_runner->>bb_agent_runner: the version is the one that the operator named, or stop
+    bb_agent_runner->>bb_session_service: join session as the agent
+    bb_session_service-->>bb_agent_runner: joined, or already joined
+```
+
 ## A team agent stops
 
 A team agent stops working at once, and without a new key, when one of three things happens: a

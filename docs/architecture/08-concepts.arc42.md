@@ -136,7 +136,10 @@ act on behalf of a human; it acts as itself. A team agent is the one exception t
 (see below).
 
 **Team agents.** A team agent belongs to a tenant, not to a person, and has no private key
-(`dec-team-agents`). Every member of the tenant may run it. A member proves their own key as
+(`dec-team-agents`). Every member of the tenant may run it. For a run without a human, for example
+on a server, a tenant admin registers a key for the agent; it then authenticates like any
+participant, works in its tenant as a member who is no tenant admin, and has no agent launcher.
+A tenant admin revokes the key like any key, and the agent ends at once. A member proves their own key as
 usual and asks Identity for a token as the team agent. Identity checks the membership and issues a
 short-lived token. The token names two things: the agent, which is the actor in every session, and
 the member who starts it, the agent launcher, and the version of the definition that the
@@ -165,7 +168,7 @@ key; tokens bound to it stop working when they expire, at the latest.
 `concept-multi-tenancy`.
 
 **Out of scope for the first stage:** acting on behalf of someone else (delegation; a team agent
-does not act on behalf of its agent launcher), team agents that run without a human, self-service
+does not act on behalf of its agent launcher), self-service
 enrollment, encryption of stored data (OPEN).
 
 ```arc42

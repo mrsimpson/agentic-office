@@ -498,7 +498,11 @@ func (s *Service) runLocked(ctx context.Context, c command, isJoin bool) (*sessi
 		// another agent launcher started is refused (dec-team-agents).
 		if pt != nil && !pt.left {
 			if l := pt.joined.GetParticipantJoined().GetAgentLauncher(); l != caller.AgentLauncher {
-				return nil, false, precondition("already joined: the team agent " + c.participantID + " is in this session, started by " + l)
+				by := "started with its own key"
+				if l != "" {
+					by = "started by " + l
+				}
+				return nil, false, precondition("already joined: the team agent " + c.participantID + " is in this session, " + by)
 			}
 			return &sessioncommandsv1.CommandResult{Event: pt.joined, Duplicate: true}, false, nil
 		}

@@ -134,11 +134,13 @@ func confirmDefinition(e *env, def *coreapi.AgentDefinition, confirm string) err
 	all := readConfirmations()
 	key := confirmationKey(e.cfg, def.Agent)
 	old, had := all[key]
-	if had && old.Version == def.Version {
-		return nil
-	}
+	// A version that the agent launcher names has to be the one that is there, also when it was
+	// confirmed before: a server starts only with the version that its operator named.
 	if confirm != "" && confirm != def.Version {
 		return usagef("--confirm names the version %s, but the definition of %s is at version %s", confirm, def.Agent, def.Version)
+	}
+	if had && old.Version == def.Version {
+		return nil
 	}
 	if confirm == "" {
 		fmt.Fprintf(e.stderr, "The definition of the team agent %s is at version %s.\n", def.Agent, def.Version)

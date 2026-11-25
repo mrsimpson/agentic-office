@@ -252,11 +252,11 @@ tenant always keeps at least one tenant admin. A system admin cannot be a member
 		Examples: []string{"office admin member list acme"}},
 	{Name: "admin key add", Group: groupAdmin, Summary: "add a public key to a user",
 		Usage:    "admin key add <user> <public-key>",
-		Details:  "You may add a key to yourself; a system admin may add a key to any user. A user can have several keys.",
+		Details:  "You may add a key to yourself; a system admin may add a key to any user; a tenant admin may add a key to a team agent of their tenant (for a run without a human, see \"office help agent run\"). A user can have several keys.",
 		Examples: []string{`office admin key add ada "$PUBLIC_KEY"`}},
 	{Name: "admin key revoke", Group: groupAdmin, Summary: "revoke a key; its tokens stop working at once",
 		Usage:    "admin key revoke <key-id>",
-		Details:  "The key ID is the one that \"office key show\" prints. The last key of a user cannot be revoked.",
+		Details:  "The key ID is the one that \"office key show\" prints. You may revoke your own keys; a system admin may revoke any key; a tenant admin may revoke a key of a team agent of their tenant. The last key of a user cannot be revoked, but the last key of a team agent can: the agent then ends.",
 		Examples: []string{"office admin key revoke SHA256:abc123"}},
 
 	// Hubs and configuration.
@@ -875,7 +875,15 @@ schema and refuses a push of an agent that changes it. The definition holds no c
 working directory, no address and no key: the harness, --cwd, --decide-cmd, --decide-url and
 the key of a model stay on your computer. The first time, and whenever the definition has
 changed since you confirmed it, the runner shows it and asks "Run it? [y/N]". --confirm VERSION
-confirms that version without a question (the runner names it when it asks). Give no --role and
+confirms that version without a question (the runner names it when it asks).
+
+Without a human, for example on a server: a tenant admin registers a key for the team agent
+("office key create" on the server, then "office admin key add <agent> <public-key>" by the
+tenant admin). Start the runner with that key (OFFICE_KEY or --key) and --team-agent AGENT
+--confirm VERSION. The runner joins as the agent with its own key, as a personal agent does, takes
+its role from the same definition, and the harness gets that key. There is no agent launcher: what
+the agent writes names only the agent. The runner stops when the definition is not at the version
+that you named; without --confirm it asks, and without a terminal it stops. Give no --role and
 no --role-file with --team-agent. The tools of the definition are allowed in addition to the rule
 that --allow or the default gives.
 

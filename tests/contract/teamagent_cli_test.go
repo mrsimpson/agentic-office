@@ -7,6 +7,7 @@ package contract
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -199,5 +200,59 @@ func TestTeamAgentRemovedStopsRunner(t *testing.T) {
 	case <-run.Done():
 	case <-time.After(60 * time.Second):
 		t.Fatalf("the runner of a removed team agent did not stop:\n%s", run.Stderr())
+	}
+}
+
+// A team agent runs without a human, with a key that a tenant admin registered for it: the runner
+// joins as the agent with that key, as for a personal agent, and takes its role from the same
+// definition. Its join names no agent launcher, and the harness gets the key, not a token file.
+func TestTeamAgentRunWithOwnKey(t *testing.T) {
+	m := newMachine(t)
+	ada := m.user("ada", "Ada", "human")
+	ada.ok("team-agent", "create", "minutes")
+	keyFile := filepath.Join(t.TempDir(), "minutes.pem")
+	agent := m.userWithKey(keyFile)
+	created := agent.ok("key", "create")
+	ada.ok("admin", "key", "add", "minutes", created["publicKey"].(string))
+
+	adaActor := ada.actorOf(t)
+	p := newPusher(t, m.srv, adaActor, "Ada", contracttest.DefaultTenant)
+	p.commitFile("agents/minutes.yaml", "schema: office.agent.v1\nrole: |\n  please say \"Minutes keeper on a server.\"\n")
+	p.mustPush()
+	version := definitionVersion(t, adaActor, "minutes")
+	sid := newSession()
+	adaLog := ada.join(sid).LogPath
+
+	// The definition has to be confirmed, also on a server.
+	_, errOut, code := agent.run("agent", "run", "--session", sid, "--team-agent", "minutes", "--", contracttest.ACPDouble(t))
+	if code == 0 || !strings.Contains(errOut, version) {
+		t.Fatalf("a definition that is not confirmed: exit %d\n%s", code, errOut)
+	}
+
+	_, rec := agent.agentRun(t, sid, "--team-agent", "minutes", "--confirm", version)
+	lines := waitUtterance(t, adaLog, "minutes", "Minutes keeper on a server.")
+	// A server starts only with the version that its operator names, also after it started once.
+	_, errOut, code = agent.run("agent", "run", "--session", sid, "--team-agent", "minutes", "--confirm", "an-older-version", "--", contracttest.ACPDouble(t))
+	if code == 0 || !strings.Contains(errOut, "an-older-version") {
+		t.Fatalf("a version that is not the current one: exit %d\n%s", code, errOut)
+	}
+	for _, l := range lines {
+		if j := l.ev.GetParticipantJoined(); j != nil && j.GetParticipantId() == "minutes" && (j.GetAgentLauncher() != "" || j.GetDefinitionVersion() != "") {
+			t.Errorf("the join of a team agent with its own key names a launcher: %v", j)
+		}
+	}
+	_, recs := contracttest.WaitACPRecord(t, rec, 10*time.Second, func(r contracttest.ACPRecord) bool { return r.Kind() == "session/new" })
+	for _, r := range recs {
+		if r.Kind() != "session/new" {
+			continue
+		}
+		env := map[string]string{}
+		for _, e := range r["params"].(map[string]any)["mcpServers"].([]any)[0].(map[string]any)["env"].([]any) {
+			kv := e.(map[string]any)
+			env[kv["name"].(string)] = kv["value"].(string)
+		}
+		if env["OFFICE_KEY"] != keyFile || env["OFFICE_TOKEN_FILE"] != "" {
+			t.Errorf("the harness of a team agent with a key gets its key, and no token file: %v", env)
+		}
 	}
 }

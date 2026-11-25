@@ -266,6 +266,13 @@ func (s *Service) CheckToken(tok string) (Caller, error) {
 	}
 	c := Caller{ParticipantID: k.userID, DisplayName: u.DisplayName, Kind: callerKind(kindOf(u.Kind)), KeyID: t.keyID,
 		SystemAdmin: u.SystemAdmin, Expires: t.expires, Done: t.done}
+	if u.Team != "" {
+		// A team agent with a key of its own (dec-team-agents): it works in its tenant, as a member
+		// who is not a tenant admin, and has no agent launcher.
+		c.TeamTenant = u.Team
+		c.Tenants = []tokencheck.Membership{{TenantID: u.Team, Role: tokencheck.RoleMember}}
+		return c, nil
+	}
 	for mk, m := range s.st.members {
 		if mk.user == k.userID && m.active(now) {
 			role := tokencheck.RoleMember
