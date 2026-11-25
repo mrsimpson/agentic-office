@@ -11,8 +11,11 @@ import (
 	"testing"
 	"time"
 
+	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
 	archivev1 "github.com/mrsimpson/agentic-office/hub/archive/api"
 	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
+	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
+	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
 	"github.com/mrsimpson/agentic-office/tests/contracttest"
 )
 
@@ -167,5 +170,34 @@ func TestTeamAgentDefinitionChanged(t *testing.T) {
 	_, errOut, code := ada.run("agent", "run", "--session", sid, "--team-agent", "minutes", "--", contracttest.ACPDouble(t))
 	if code == 0 || !strings.Contains(errOut, v2) || !strings.Contains(errOut, "adds tools") || !strings.Contains(errOut, "fetch, shell") {
 		t.Fatalf("a changed definition: exit %d\n%s", code, errOut)
+	}
+}
+
+// A runner of a team agent stops when a tenant admin removes the agent: its token ends at once, and
+// the runner cannot get a new one.
+func TestTeamAgentRemovedStopsRunner(t *testing.T) {
+	m := newMachine(t)
+	ada, bob := m.user("ada", "Ada", "human"), m.user("bob", "Bob", "human")
+	ada.ok("team-agent", "create", "minutes")
+	adaActor := ada.actorOf(t)
+	p := newPusher(t, m.srv, adaActor, "Ada", contracttest.DefaultTenant)
+	p.commitFile("agents/minutes.yaml", "schema: office.agent.v1\nrole: You keep the minutes. please say \"Minutes keeper here.\"\n")
+	p.mustPush()
+	version := definitionVersion(t, adaActor, "minutes")
+	sid := newSession()
+	adaLog := ada.join(sid).LogPath
+
+	run, _ := bob.agentRun(t, sid, "--team-agent", "minutes", "--confirm", version)
+	waitUtterance(t, adaLog, "minutes", "Minutes keeper here.")
+	ada.ok("team-agent", "remove", "minutes")
+	// Someone speaks, so that the runner has a reason to call the hub.
+	if _, err := ada.actorOf(t).Commands.SubmitUtterance(ctx10(t), &sessioncommandsv1.SubmitUtteranceRequest{SessionId: sid,
+		CommandId: coreapi.NewCommandID(), ParticipantId: "ada", Text: "Are you still there?", Modality: sessionstreamv1.Modality_MODALITY_TEXT}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-run.Done():
+	case <-time.After(60 * time.Second):
+		t.Fatalf("the runner of a removed team agent did not stop:\n%s", run.Stderr())
 	}
 }
