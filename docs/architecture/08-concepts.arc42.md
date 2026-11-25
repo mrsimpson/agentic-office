@@ -139,8 +139,11 @@ act on behalf of a human; it acts as itself. A team agent is the one exception t
 (`dec-team-agents`). Every member of the tenant may run it. A member proves their own key as
 usual and asks Identity for a token as the team agent. Identity checks the membership and issues a
 short-lived token. The token names two things: the agent, which is the actor in every session, and
-the member who runs it, the operator. The agent still acts as itself, not as the operator. The
-operator is recorded so that a session can show who runs the agent. A team agent is in a session
+the member who starts it, the agent launcher, and the version of the definition that the
+launcher confirmed. The agent still acts as itself, not as the agent launcher. The launcher and the
+version are recorded, in the token and in the author of what the agent writes, so that a session
+can show who runs the agent and which definition it follows. No agent changes the definition of a
+team agent or of any other agent. A team agent is in a session
 at most once: another join of the same team agent to the same session is refused with
 "already joined". A member who leaves the tenant gets no further token as the team agent; tokens
 that exist stop working when they expire.
@@ -162,7 +165,7 @@ key; tokens bound to it stop working when they expire, at the latest.
 `concept-multi-tenancy`.
 
 **Out of scope for the first stage:** acting on behalf of someone else (delegation; a team agent
-does not act on behalf of its operator), team agents that run without a human operator, self-service
+does not act on behalf of its agent launcher), team agents that run without a human, self-service
 enrollment, encryption of stored data (OPEN).
 
 ```arc42
@@ -212,8 +215,8 @@ the hub repository and refuses to start on a violation.
 
 **Repository.** A tenant has one git repository for its artifacts, with a directory for each kind
 of content, one for its session logs, and one for what its sessions have not released
-(`dec-staging-repository`). One more area holds the definitions of its team agents
-(`dec-team-agents`); it is configuration, not an artifact, and only the hub writes it. Every session, record, task and slide deck belongs to exactly one tenant, and the archive
+(`dec-staging-repository`). The definitions of its team agents are files in the same repository
+(`dec-team-agents`); they are configuration, not artifacts, and no agent changes them. Every session, record, task and slide deck belongs to exactly one tenant, and the archive
 writes to the repository of that tenant only (`dec-yaml-git-storage`).
 
 **Separation.** Every call of the meeting session, the records, the tasks, the slides and the

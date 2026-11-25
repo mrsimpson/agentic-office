@@ -238,20 +238,20 @@ Every member of the tenant may run it and change its definition.
 :::glossary-term
 id: term-team-agent
 title: Team agent
-definition: An agent that belongs to a tenant, has no private key and is run by any member of the tenant with a token as the agent; its definition is shared in the tenant
+definition: An agent that belongs to a tenant, has no private key and is run by any member of the tenant with a token as the agent; its definition is a versioned file with a schema in the repository of the tenant, and no agent changes it
 :::
 ```
 
-## Operator
+## Agent launcher
 
-The member who runs a team agent on their computer. The token as the team agent names the
-operator, so a session can show who runs the agent.
+The member who starts a team agent on their own computer. The token as the team agent names the
+agent launcher and the version of the definition, so a session can show who runs the agent.
 
 ```arc42
 :::glossary-term
-id: term-operator
-title: Operator
-definition: The member of a tenant who runs a team agent on their own computer; the token as the team agent names the operator
+id: term-agent-launcher
+title: Agent launcher
+definition: The member of a tenant who starts a team agent on their own computer; the token as the team agent names the agent launcher and the version of the definition that the agent launcher confirmed
 :::
 ```
 
