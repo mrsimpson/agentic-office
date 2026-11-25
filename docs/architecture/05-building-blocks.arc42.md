@@ -160,11 +160,9 @@ only these commands, notices about artifacts and, until the release, a mark off 
 (`dec-session-end-milestone`); the hub stores such an event before it answers. Ending and releasing
 in one step are two calls, one event each.
 
-An ended session also takes the trim and the delete (`dec-session-trim-delete`), from every human
-who took part, also after leaving, and from every tenant admin; an agent is refused. A trim names
-the last event that counts, a delete marks the session as deleted, and a restore removes the mark.
-Neither ends a session, and a running or released session refuses both. Each call is one event. The search for
-sentences off the record before a release looks only at what counts after the trim.
+An ended session that is not released also takes the trim, the delete and the restore
+(`dec-session-trim-delete`), from every human who took part and from every tenant admin. They never
+end a session, and the search for sentences off the record before a release follows the trim.
 
 Before it releases, the hub searches the staged files for sentences off the record, word for word.
 While it finds one, it refuses with an error, like every other refusal of the release, and creates
@@ -216,8 +214,7 @@ hub over everything up to it, so a subscriber always holds a signed head over it
 (`dec-signed-head-in-stream`). A cursor beyond the end of the log means that the hub lost events;
 the subscriber then offers its copy.
 
-Trim, delete and restore are events of the log; the stream hands them out like every other event
-and every reader applies them (`dec-session-trim-delete`). The live stream ends with the end of the session. The events that an ended session still takes
+Trim, delete and restore are events of the log (`dec-session-trim-delete`). The live stream ends with the end of the session. The events that an ended session still takes
 (changes of the release status, notices about artifacts, marks off the record, trims and deletes) come only with a
 one-time request for the events after a cursor (`dec-session-end-milestone`). A change of the
 release status without an actor comes from the hub: a release when the grace period ends, or a
@@ -305,8 +302,7 @@ the start, the end or that the session runs, the participants, and whether it wa
 session is visible to everyone who joined it, to the participant who imported it, and to the
 tenant admins of its tenant. A system admin is no member of a tenant and sees none. The list
 covers running sessions and ended sessions that only the archive holds; it reads a stored log only
-after it verified it against its signed tree head. A deleted session is left out until it is restored (`dec-session-trim-delete`), except for the
-tenant admins and the participants who ask for the deleted ones. The events of one session come from the session
+after it verified it against its signed tree head. A deleted session is left out unless the caller asks for it (`dec-session-trim-delete`). The events of one session come from the session
 stream.
 
 ```arc42

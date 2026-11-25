@@ -856,25 +856,18 @@ addresses: qg-usability, risk-imported-conversation
 ## A session is trimmed or deleted by events, never by rewriting the log
 
 **Context:** A meeting is cancelled after a few sentences, or nobody ends it, and the minutes hold
-far too much. Humans want to delete such a session and to cut it off at a chosen sentence, in the
-portal. The log of a session only grows and is signed (`dec-merkle-log`), and peers replicate it.
-**Decision:** A trim and a delete are events at the end of the log, created through the session
-commands. A trim names the last event that counts. A delete marks the session as deleted; a restore
-removes the mark. A later trim replaces an earlier one, and a trim that names the last event
-removes the cut. Only an ended session that is not released takes these commands
-(`dec-session-end-milestone`), and they never end a session themselves: a meeting that nobody ended
-is ended first, then trimmed. Every human who took part and every tenant admin may call them; an
-agent is refused. Readers apply the latest trim and delete: the portal shows only what counts, and a
-deleted session leaves the session list until it is restored. The stored minutes are written again
-from the log up to the cut. A session that is released takes neither command. Artifacts that exist
-already, staged or released, stay as they are. **Consequences:** The log, its tree heads and the
-restore from peers stay unchanged and verifiable, and both actions are reversible. The cut-off
-sentences stay in the session log, which only the participants, the importer and the tenant admins
-read (`concept-session-release`); the tenant never sees them. The search for sentences off the
-record before a release looks only at what counts after the trim. **Rejected:** cutting events out of the log (the tree
-heads promise that a log only grows); a second, edited copy of the log (two sources of truth); a
-trim that ends a running session on its own (the end stays a separate, visible step); allowing only
-tenant admins (a meeting that nobody ended would wait for an admin).
+far too much. Humans want to delete such a session, or cut it off at a chosen sentence. The log of a
+session only grows and is signed (`dec-merkle-log`). **Decision:** A trim and a delete are recorded
+in the log, like every other change of a session. Readers apply them; the log itself stays as it
+was. Both can be undone. They apply to an ended session that is not released, and they never end a
+session. Humans who took part and tenant admins may do them; agents may not. What the session
+already staged or released stays as it is. **Consequences:** The log, its signatures and the
+restore from peers stay valid. The cut-off sentences stay in the session log, which only the
+participants, the importer and the tenant admins read (`concept-session-release`); the tenant never
+sees them. The minutes and the search for sentences off the record before a release follow the trim.
+**Rejected:** cutting events out of the log (a log only grows); a second, edited copy of the log
+(two sources of truth); a trim that ends a running session on its own (the end stays a visible
+step); allowing only tenant admins (a meeting that nobody ended would wait for an admin).
 
 ```arc42
 :::decision
