@@ -880,7 +880,7 @@ tenant admins (a meeting that nobody ended would wait for an admin).
 :::decision
 id: dec-session-trim-delete
 title: A session is trimmed or deleted by events, never by rewriting the log
-status: proposed
+status: accepted
 date: 2026-11-25
 addresses: qg-usability
 :::
