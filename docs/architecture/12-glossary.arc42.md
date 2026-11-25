@@ -44,7 +44,7 @@ What a participant is doing right now, shown on the stage.
 :::glossary-term
 id: term-activity
 title: Activity
-definition: The short-lived state of a participant, such as an agent that works with a tool, waits, or ended its turn with a reply that nobody heard; kept by the hub in memory only, never in the session log
+definition: What a participant is doing right now, such as working with a tool, waiting, or ending its turn with a reply that nobody heard; short-lived and never part of the session log
 :::
 ```
 
@@ -56,7 +56,7 @@ The web view of the hub for every user.
 :::glossary-term
 id: term-portal
 title: Portal
-definition: The web view of the hub for every user, opened by a one-time link from the CLI; it shows the sessions, records, tasks, slides and documents that the key of the user may see, and the administration to admins
+definition: The web view of the hub for every user; it shows what the key of the user may see
 :::
 ```
 
@@ -153,7 +153,7 @@ tenant and names its schema (`dec-artifacts`).
 :::glossary-term
 id: term-artifact
 title: Artifact
-definition: Anything that the stage can show by its path in the tenant repository, for example the slide deck slides/42
+definition: A file in the repository of the tenant, identified by its path, that names its schema and that the stage can show, for example a slide deck
 :::
 ```
 
@@ -171,13 +171,13 @@ definition: The main directory of a local clone of the tenant repository; the cl
 
 ## Slide deck
 
-One type of record of the hub, and the first type of artifact.
+One type of artifact of the hub.
 
 ```arc42
 :::glossary-term
 id: term-slide-deck
 title: Slide deck
-definition: A set of slides (title, bullets, speaker notes) that the hub renders deterministically to one HTML document; the hub keeps its input and the rendered document in the archive
+definition: A set of slides (title, bullets, speaker notes) that the hub renders deterministically for the stage; the hub keeps its input in the archive
 :::
 ```
 
@@ -189,7 +189,7 @@ What the hub keeps for the team, one type per interface (`dec-records-per-type`)
 :::glossary-term
 id: term-record
 title: Record
-definition: A decision, the minutes of a session or a note that the hub stores in the archive, with its author and whether the author is a human or an agent; it replaces the earlier journal entry
+definition: A decision, the minutes of a session or a note that the hub stores in the archive, with its author and whether the author is a human or an agent
 :::
 ```
 
@@ -526,5 +526,113 @@ How the wiki stays healthy (`concept-wiki`).
 id: term-wiki-lint
 title: Lint of the wiki
 definition: An agent checks the documents of the wiki for contradictions, outdated statements, missing links and missing pages, and fixes or reports what it finds
+:::
+```
+
+## Reader of a session
+
+Who may read a session (`concept-multi-tenancy`).
+
+```arc42
+:::glossary-term
+id: term-session-reader
+title: Reader of a session
+definition: Everyone who ever joined the session, the participant who imported it, the tenant admins of its tenant, and a stage link of the session
+:::
+```
+
+## Staging area
+
+Where the artifacts of a session wait (`concept-session-release`).
+
+```arc42
+:::glossary-term
+id: term-staging-area
+title: Staging area
+definition: The place of one session in the staging repository of its tenant: the artifacts the session created that are not released yet, read only by the readers of the session and its stage
+:::
+```
+
+## Stub
+
+What stands in the artifact repository for a staged artifact (`concept-session-release`).
+
+```arc42
+:::glossary-term
+id: term-stub
+title: Stub
+definition: A file with the name of a staged artifact that says only that the artifact waits for a release; it keeps the name free and lets links work
+:::
+```
+
+## Release
+
+How the artifacts of a session reach every member (`concept-session-release`).
+
+```arc42
+:::glossary-term
+id: term-release
+title: Release
+definition: The step that moves the staging area of a session into the artifact repository in one commit, by a human who took part or by the hub when the grace period ends
+:::
+```
+
+## Release status
+
+The state of a session on its way to the release (`concept-session-release`).
+
+```arc42
+:::glossary-term
+id: term-release-status
+title: Release status
+definition: Open while the session runs, waiting until its deadline, held after an objection or because of quotes off the record, or released
+:::
+```
+
+## Grace period
+
+The time between the end of a session and its release (`concept-session-release`).
+
+```arc42
+:::glossary-term
+id: term-grace-period
+title: Grace period
+definition: The time after the end of a session with humans in which a speaker can still take a sentence off the record; 24 hours unless the tenant sets another length
+:::
+```
+
+## Source
+
+The first layer of the wiki (`concept-wiki`).
+
+```arc42
+:::glossary-term
+id: term-source
+title: Source
+definition: A record that the wiki draws on: minutes, a decision or a note; it never changes once released
+:::
+```
+
+## Page
+
+The second layer of the wiki (`concept-wiki`).
+
+```arc42
+:::glossary-term
+id: term-page
+title: Page
+definition: A document of the wiki that humans and agents write and change, with links to other pages and to sources
+:::
+```
+
+## Hint
+
+A remark of the hub about a write that never refuses it (`concept-wiki`).
+
+```arc42
+:::glossary-term
+id: term-hint
+title: Hint
+definition: A remark in the answer to a write or a push, such as a link that leads nowhere; the write is accepted all the same
 :::
 ```

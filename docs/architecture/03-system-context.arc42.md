@@ -59,10 +59,11 @@ flowchart LR
 ## Human participant
 
 A team member in a meeting. They use the CLI like an agent does: show artifacts, raise a hand,
-edit minutes. With `--mic` they also switch on the ears. Their speech is then transcribed
+edit minutes. With the microphone they also switch on the ears. Their speech is then transcribed
 locally, and the terminal shows what was captured and sent. One person opens the stage in a
 browser and shares it in the meeting. They can also read and change the artifacts of their tenant
-with plain Git in a local clone (`dec-artifact-sync`).
+with plain Git in a local clone (`dec-artifact-sync`), and read sessions, artifacts and the wiki
+in the portal.
 
 ```arc42
 :::actor
@@ -70,7 +71,7 @@ id: actor-human
 title: Human participant
 type: person
 description: Speaks (optionally transcribed), uses the CLI, shares the stage
-requires: if-cli, if-audio-in, if-local-log, if-stage-web, if-git-access
+requires: if-cli, if-audio-in, if-local-log, if-stage-web, if-git-access, if-portal-web
 :::
 ```
 
@@ -86,11 +87,6 @@ example Claude Code through its ACP adapter, opencode or Kiro. Then the agent ru
 starts the harness, opens one ACP session for the meeting and sends it what was said
 (`dec-agent-runner-acp`). The harness answers as the ACP agent, and the client is the ACP client.
 The agent still acts through the office tools, which the runner hands to the harness session.
-
-The agent follows the conventions of the office from its skills (`dec-skills`): the office
-assistant skill when it helps a human to use the office, and the office memory skill when it reads
-or writes the memory of the team. In the runner, the harness gets the office memory skill from the
-runner; without the runner, its human installs it.
 
 ```arc42
 :::actor
@@ -143,8 +139,8 @@ requires: if-forwarding-judge
 
 Runs one tenant: the group of people of one organisation and the git repository where the tenant
 keeps its information. A tenant admin adds users to the tenant and removes them, and gives the
-tenant admin role to other members. Every tenant has at least one tenant admin. In the portal a
-tenant admin sees every session of the tenant and its members (`dec-web-portal`).
+tenant admin role to other members. Every tenant has at least one tenant admin. A tenant admin
+uses the portal (`if-portal-web`).
 
 ```arc42
 :::actor
@@ -160,8 +156,8 @@ requires: if-user-api, if-portal-web
 
 Runs the whole hub. A system admin creates and removes tenants, names the first tenant admin of a
 tenant, creates users and registers their keys, and names other system admins. A system admin does
-not read the contents of a tenant and is never a member of one. The administration lies in the
-portal, in sections that only system admins see (`dec-web-portal`).
+not read the contents of a tenant and is never a member of one. A system admin uses the portal
+(`if-portal-web`).
 
 ```arc42
 :::actor
