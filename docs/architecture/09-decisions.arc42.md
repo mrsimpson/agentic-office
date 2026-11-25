@@ -861,18 +861,20 @@ portal. The log of a session only grows and is signed (`dec-merkle-log`), and pe
 **Decision:** A trim and a delete are events at the end of the log, created through the session
 commands. A trim names the last event that counts. A delete marks the session as deleted; a restore
 removes the mark. A later trim replaces an earlier one, and a trim that names the last event
-removes the cut. Every human who took part and every tenant admin may call them; an agent is
-refused. Every reader applies the latest trim and delete: the session list, the stage, the portal
-and the minutes show only what counts, and a deleted session leaves the list, the stage and the
-wiki until it is restored. The minutes are built again up to the cut. Artifacts that exist
+removes the cut. Only an ended session takes these commands, as it takes the release commands
+(`dec-session-end-milestone`), and they never end a session themselves: a meeting that nobody ended
+is ended first, then trimmed. Every human who took part and every tenant admin may call them; an
+agent is refused. Every reader applies the latest trim and delete: the session list, the stage, the
+portal and the minutes show only what counts, and a deleted session leaves the list, the stage and
+the wiki until it is restored. The minutes are built again up to the cut. Artifacts that exist
 already, staged or released, stay as they are. **Consequences:** The log, its tree heads and the
 restore from peers stay unchanged and verifiable, and both actions are reversible. The cut-off
 sentences stay in the session log, which only the participants, the importer and the tenant admins
-read (`concept-session-release`); the tenant never sees them. OPEN: whether a running session must
-end first, and what a trim means for the search for sentences off the record before a release. **Rejected:** cutting events
-out of the log (the tree heads promise that a log only grows); a second, edited copy of the log
-(two sources of truth); allowing only tenant admins (a meeting that nobody ended would wait for an
-admin).
+read (`concept-session-release`); the tenant never sees them. OPEN: what a trim means for the search
+for sentences off the record before a release. **Rejected:** cutting events out of the log (the tree
+heads promise that a log only grows); a second, edited copy of the log (two sources of truth); a
+trim that ends a running session on its own (the end stays a separate, visible step); allowing only
+tenant admins (a meeting that nobody ended would wait for an admin).
 
 ```arc42
 :::decision
