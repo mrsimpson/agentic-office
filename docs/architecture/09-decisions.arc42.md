@@ -429,8 +429,9 @@ addresses: risk-connect-maturity, risk-whisper-latency, qg-performance
 ## Local key pairs, one actor per agent
 
 **Context:** Participants and agents must prove who they are. We want no secrets stored on the
-hub. **Decision:** Every participant, including every agent, has its own Ed25519 key pair,
-created locally. Only the public key is sent to the hub. In the first stage, keys are registered
+hub. **Decision:** Every participant, including every personal agent, has its own Ed25519 key
+pair, created locally. A team agent is the one exception: it has no key pair and runs with a token
+that a member asks for with their own key (`dec-team-agents`). Only the public key is sent to the hub. In the first stage, keys are registered
 by hand at first contact. Agents act as themselves, not on behalf of a human. The stage is opened
 with a read-only link. A participant can have several keys (several devices), and an admin can
 remove a key. **Proposed details:** challenge and response with a short-lived access token bound
@@ -1115,10 +1116,11 @@ there, and a check in the clone stops commits there. Local work happens in workt
 branches, and the participant pushes with plain Git. The office CLI sets up, updates and follows
 the clone and passes no other Git command on. The hub accepts a push only when it moves main
 forward without rewriting history, when the author of every new commit is the participant of the
-token, when only artifact files change, and when each
+token, when only artifact files and the definitions of team agents change, when no agent changes a
+definition, and when each
 file with a schema is valid against the schema that it names; a file without a schema only has to be valid Markdown
 or YAML. The schema belongs to its type: the part of the hub that owns a type owns its schemas and
-checks its files. A small part of the hub knows which type owns which schema and hands a check
+checks its files; Tenants owns the schema of the definition of a team agent (`dec-team-agents`). A small part of the hub knows which type owns which schema and hands a check
 to it, and Git access knows no schema. Git refuses a push on an old base,
 which is the base version of the interfaces. The tenant has a second repository for its session logs, which Git access never serves, because
 the logs hold the original of sentences that are off the record (`dec-off-the-record`), and a third
@@ -1467,5 +1469,56 @@ title: Skills carry the conventions of the office to every agent
 status: proposed
 date: 2026-11-20
 addresses: qg-usability, con-no-intelligence
+:::
+```
+
+## Team agents: one shared identity without a shared key
+
+**Context:** An agent exists only on the computer of its creator today: its definition is in a
+local file and its identity is a private key in a local folder. Other members of a tenant cannot
+use it. Most agents are meant for a whole team. **Decision:** A team agent belongs to a tenant. It
+is an actor of its own with a stable ID and has no private key. Its definition (role, wake
+strategy, the tools it may use) is a file in the repository of the tenant. The file names its
+schema and the version of the schema, so that a third party can read it, and Git keeps its
+versions. It is configuration of the tenant, not an artifact: it is no result of a session and has
+no staging, no focus and no place in the wiki. Members read and change it with the file
+interfaces that they use for every file of the tenant, the clone and Git access
+(`dec-artifact-sync`). Tenants owns the schema and checks the file. The file holds no secret and
+nothing that depends on one computer or one hub. No agent may change a definition: the push of an
+agent that changes one is refused. Every member of the tenant may run a team agent. The agent
+launcher, the member who starts the agent, reads the definition, confirms it, and asks Identity for
+a token as the agent. The request names the version of the definition that the launcher
+confirmed, and Identity puts it into the token as a claim. The token names the agent, the agent
+launcher and the version. The author of what the agent writes names all three, so every change
+shows which definition it followed. A run keeps its version; a change of the definition takes
+effect at the next start, after the launcher has confirmed it again. A team agent is in a session
+at most once; a second join is refused with "already joined". The harness command, the working
+directory and the credentials of a model stay on the computer of the launcher and are never
+shared. A personal agent keeps its own key pair (`dec-auth-keypair`). **Consequences:** Nothing
+secret is distributed, so removing a member needs no key rotation. A session shows who runs an
+agent and which definition it follows. The same model can later carry agents that do not run on the
+computer of a member. Every member may change a definition, so a change can steer an agent that
+another member launches; the confirmation of a changed definition protects the launcher and is a
+check of the client, not of the hub (`risk-shared-agent-definition`). The rule of the push that
+refuses agents needs the kind of the author, which the token check gives. **Rejected:** a
+definition as an artifact type (an artifact is a result of a session and a definition is
+configuration); a definition in the documents interface (a Markdown page of the wiki); an area that
+only Tenants writes (members could not use the file interfaces); a definition for each user with a
+key for each user (no shared identity); a private key that is shared and encrypted for each member
+(removing a member needs a new key, a member keeps what they decrypted, and a session cannot show
+who runs the agent); a signed delegation (a larger change at Identity than a token as the agent).
+OPEN: the check and the description of the definition are two interfaces of Tenants, like the
+interfaces of the other owners of a schema, and are added to chapter 5 together with their code
+(issue #278), because a modelled interface needs its package; finer rights, for example a role or a
+list for each agent; team agents that run without a human; definitions across tenants; whether
+unknown fields of a definition are refused or ignored.
+
+```arc42
+:::decision
+id: dec-team-agents
+title: Team agents: one shared identity without a shared key
+status: proposed
+date: 2026-11-25
+addresses: qg-usability, qg-confidentiality, risk-shared-agent-definition
 :::
 ```

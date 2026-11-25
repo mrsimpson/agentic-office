@@ -130,9 +130,23 @@ category: privacy
 
 ## Identity and access
 
-**Actors and keys.** Every participant is its own actor with its own key pair: each human
-device and each agent. The key pair is created locally. Only the public key leaves the device. An
-agent does not act on behalf of a human; it acts as itself.
+**Actors and keys.** Every human device and every personal agent is its own actor with its own key
+pair. The key pair is created locally. Only the public key leaves the device. An agent does not
+act on behalf of a human; it acts as itself. A team agent is the one exception to the key pair
+(see below).
+
+**Team agents.** A team agent belongs to a tenant, not to a person, and has no private key
+(`dec-team-agents`). Every member of the tenant may run it. A member proves their own key as
+usual and asks Identity for a token as the team agent. Identity checks the membership and issues a
+short-lived token. The token names two things: the agent, which is the actor in every session, and
+the member who starts it, the agent launcher, and the version of the definition that the
+launcher confirmed. The agent still acts as itself, not as the agent launcher. The launcher and the
+version are recorded, in the token and in the author of what the agent writes, so that a session
+can show who runs the agent and which definition it follows. No agent changes the definition of a
+team agent or of any other agent. A team agent is in a session
+at most once: another join of the same team agent to the same session is refused with
+"already joined". A member who leaves the tenant gets no further token as the team agent; tokens
+that exist stop working when they expire.
 
 **First contact.** In the first stage, we trust a new public key because we meet the person. An
 admin registers the key by hand.
@@ -150,7 +164,8 @@ key; tokens bound to it stop working when they expire, at the latest.
 **Admins and tenants.** The role of a user in a tenant and the system admin role are described in
 `concept-multi-tenancy`.
 
-**Out of scope for the first stage:** acting on behalf of someone else (delegation), self-service
+**Out of scope for the first stage:** acting on behalf of someone else (delegation; a team agent
+does not act on behalf of its agent launcher), team agents that run without a human, self-service
 enrollment, encryption of stored data (OPEN).
 
 ```arc42
@@ -169,7 +184,9 @@ git repository where it keeps all its information. One hub, one user list, many 
 **Users and memberships.** Users are global and registered at the hub first (name and keys). A
 tenant admin or a system admin then assigns the user to a tenant. A user can be a member of
 several tenants, with one role per membership: `member` or `tenant admin`. A membership names the
-user ID and never a key, so rotating a key touches no membership. Identity keeps users, keys and
+user ID and never a key, so rotating a key touches no membership. A team agent is a user of kind
+agent without a key that belongs to exactly one tenant and is no member of it
+(`concept-identity`). Identity keeps users, keys and
 memberships in the hub repository, each in one place. Roles inside a session (moderator, minute
 taker) stay as in `concept-participant-model`; they are not tenant roles.
 
@@ -198,7 +215,8 @@ the hub repository and refuses to start on a violation.
 
 **Repository.** A tenant has one git repository for its artifacts, with a directory for each kind
 of content, one for its session logs, and one for what its sessions have not released
-(`dec-staging-repository`). Every session, record, task and slide deck belongs to exactly one tenant, and the archive
+(`dec-staging-repository`). The definitions of its team agents are files in the same repository
+(`dec-team-agents`); they are configuration, not artifacts, and no agent changes them. Every session, record, task and slide deck belongs to exactly one tenant, and the archive
 writes to the repository of that tenant only (`dec-yaml-git-storage`).
 
 **Separation.** Every call of the meeting session, the records, the tasks, the slides and the

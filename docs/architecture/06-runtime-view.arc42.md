@@ -392,7 +392,7 @@ sequenceDiagram
     actor_human->>bb_git_access: git push, token as password
     bb_git_access->>bb_identity: check token and tenant
     bb_git_access->>bb_archive: find the repository of the tenant
-    Note over bb_git_access: rules before Git accepts: author is the participant, only main, no rewrite, only artifact files
+    Note over bb_git_access: rules before Git accepts: author is the participant, only main, no rewrite, only artifact files and agent definitions, no agent changes a definition
     bb_git_access->>bb_artifacts: check a changed file with a schema
     bb_artifacts->>bb_records: pass the check to the owner of the schema, here a record type
     bb_records-->>bb_artifacts: valid, or invalid with reasons
@@ -625,6 +625,54 @@ sequenceDiagram
     bb_cli->>bb_tasks: update task local:7 (status done, command ID)
     bb_tasks->>bb_archive: commit (the file again)
     bb_tasks-->>bb_cli: task, revision 2
+```
+
+## A member runs a team agent
+
+A tenant admin has created the team agent "minutes" and a member changed its definition with
+Git. Anna, a member, starts the agent runner for a session. She is the agent launcher. The client
+core reads the definition and the runner shows it. Anna confirms it, and the runner keeps which
+version she confirmed. The client core signs the challenge with her own key, as for any call, and
+asks Identity for a token as the team agent, with the confirmed version. Identity checks that she
+is a member of the tenant and issues a short-lived token that names the agent, her as the agent
+launcher and the version. The harness command, the working directory and the model credentials
+come from her own computer. The runner then joins the session as the agent. If Ben already runs
+the same team agent in this session, the meeting session refuses the join with "already joined",
+and Anna's runner stops. Later Ben changes the definition. At her next start, Anna sees that the
+definition has changed and has to confirm it again. A push of the agent itself that changes a
+definition is refused.
+
+```arc42
+:::runtime-scenario
+id: rs-team-agent-run
+title: A member runs a team agent
+trigger: A member starts the agent runner for a team agent of the tenant
+involves: bb-agent-runner, bb-client-core, bb-identity, bb-session-service, bb-participant-client, bb-office-hub
+:::
+```
+
+```arc42
+:::diagram
+id: seq-team-agent-run
+notation: mermaid-sequence
+scenario: rs-team-agent-run
+aliases: bb_agent_runner=bb-agent-runner, bb_client_core=bb-client-core, bb_identity=bb-identity, bb_session_service=bb-session-service
+:::
+```
+
+```mermaid
+sequenceDiagram
+    participant bb_agent_runner as Agent runner
+    participant bb_client_core as Client core
+    participant bb_identity as Identity
+        participant bb_session_service as Meeting session
+    bb_agent_runner->>bb_client_core: start team agent minutes
+    bb_client_core-->>bb_agent_runner: definition and its version
+    bb_agent_runner->>bb_agent_runner: show definition, member confirms
+    bb_client_core->>bb_identity: token as team agent with the version (signed with the key of the member)
+    bb_identity-->>bb_client_core: token for the agent, agent launcher and version named
+    bb_agent_runner->>bb_session_service: join session as the agent
+    bb_session_service-->>bb_agent_runner: joined, or already joined
 ```
 
 ## Hub writes sessions to the archive

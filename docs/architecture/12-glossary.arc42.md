@@ -225,7 +225,33 @@ Who authenticates against the office.
 :::glossary-term
 id: term-actor
 title: Actor
-definition: A participant with its own key pair; every human device and every agent is one actor
+definition: A participant that authenticates against the office; every human device and every personal agent is one actor with its own key pair, and a team agent is one without a key
+:::
+```
+
+## Team agent
+
+An agent that belongs to a tenant and not to a person (`dec-team-agents`). It has no private key.
+Every member of the tenant may run it and change its definition.
+
+```arc42
+:::glossary-term
+id: term-team-agent
+title: Team agent
+definition: An agent that belongs to a tenant, has no private key and is run by any member of the tenant with a token as the agent; its definition is a versioned file with a schema in the repository of the tenant, and no agent changes it
+:::
+```
+
+## Agent launcher
+
+The member who starts a team agent on their own computer. The token as the team agent names the
+agent launcher and the version of the definition, so a session can show who runs the agent.
+
+```arc42
+:::glossary-term
+id: term-agent-launcher
+title: Agent launcher
+definition: The member of a tenant who starts a team agent on their own computer; the token as the team agent names the agent launcher and the version of the definition that the agent launcher confirmed
 :::
 ```
 

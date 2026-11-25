@@ -259,3 +259,20 @@ severity: medium
 mitigation: Take ended sessions that nobody follows out of memory and load them from the archive on demand; restore only open sessions at start
 :::
 ```
+
+## A member changes a team agent that another member runs
+
+Every member of a tenant may change the definition of a team agent (`dec-team-agents`). A change
+of the role or of the tools it may use steers an agent on the computer of another member, and the
+agent acts with that member's files and credentials in reach. A definition holds no command, so it
+cannot start a program by itself, but a changed role can still lead an agent to misuse the tools it
+may use.
+
+```arc42
+:::risk
+id: risk-shared-agent-definition
+title: A changed definition steers an agent that another member runs
+severity: medium
+mitigation: A client shows a definition and asks for confirmation before the first start and again whenever the definition has changed since, and shows added tools first; the confirmation protects the agent launcher and is no check of the hub; a run keeps its confirmed version, and the author of what the agent writes names it; no agent changes a definition, so a prompt-injected agent cannot rewrite itself or another agent; every change is one commit with its author; the harness, the working directory and the credentials of a model stay local; OPEN: finer rights per agent (dec-team-agents)
+:::
+```
