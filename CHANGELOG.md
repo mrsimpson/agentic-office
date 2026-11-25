@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.3](https://github.com/mrsimpson/agentic-office/compare/v0.4.2...v0.4.3) (2026-11-25)
+
+
+### Features
+
+* run a team agent without a human with a key of its own ([#284](https://github.com/mrsimpson/agentic-office/issues/284)) ([6a4d885](https://github.com/mrsimpson/agentic-office/commit/6a4d885373a8dab643b6d2806af685d43ea29604)), closes [#278](https://github.com/mrsimpson/agentic-office/issues/278)
+* **session,portal:** trim and soft-delete an ended session ([#283](https://github.com/mrsimpson/agentic-office/issues/283)) ([56b40b8](https://github.com/mrsimpson/agentic-office/commit/56b40b801648c8674f6974461cf47315996ae857))
+* team agents with a token as the agent and a shared definition file ([#281](https://github.com/mrsimpson/agentic-office/issues/281)) ([5c27ad0](https://github.com/mrsimpson/agentic-office/commit/5c27ad032e46819c2857911fcd65377057ac027c))
+
+
+### Documentation
+
+* **architecture:** add runtime scenarios for team agents; stop the runner of an ended team agent ([#282](https://github.com/mrsimpson/agentic-office/issues/282)) ([dfedc0d](https://github.com/mrsimpson/agentic-office/commit/dfedc0d8ed72f40fc4028c1ee2c8a1a439eecf17)), closes [#278](https://github.com/mrsimpson/agentic-office/issues/278)
+* **architecture:** propose team agents with a shared identity and no shared key ([#279](https://github.com/mrsimpson/agentic-office/issues/279)) ([5b8ac54](https://github.com/mrsimpson/agentic-office/commit/5b8ac546332090d4d75c17ba76e7c6b867d87642))
+* **architecture:** state each fact once, in its owner element ([#285](https://github.com/mrsimpson/agentic-office/issues/285)) ([439496e](https://github.com/mrsimpson/agentic-office/commit/439496e1c597381167971cfe996e628b0fee54dc))
+
 ## [0.4.2](https://github.com/mrsimpson/agentic-office/compare/v0.4.1...v0.4.2) (2026-11-24)
 
 
