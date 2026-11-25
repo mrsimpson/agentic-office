@@ -672,7 +672,7 @@ sequenceDiagram
     participant bb_agent_runner as Agent runner
     participant bb_client_core as Client core
     participant bb_identity as Identity
-        participant bb_session_service as Meeting session
+    participant bb_session_service as Meeting session
     bb_agent_runner->>bb_client_core: start team agent minutes
     bb_client_core-->>bb_agent_runner: definition and its version
     bb_agent_runner->>bb_agent_runner: show definition, member confirms
@@ -680,6 +680,108 @@ sequenceDiagram
     bb_identity-->>bb_client_core: token for the agent, agent launcher and version named
     bb_agent_runner->>bb_session_service: join session as the agent
     bb_session_service-->>bb_agent_runner: joined, or already joined
+```
+
+## A tenant gets a team agent
+
+A tenant admin creates the team agent "minutes" with the CLI. The client core calls the Tenant API,
+and Tenants checks that the caller is a tenant admin of the tenant. Tenants asks Identity through
+the tenant roster to create the agent: a user of kind agent that belongs to the tenant, has no key
+and is no member (`dec-team-agents`). The agent ID is a participant ID of the whole hub, so Identity
+refuses an ID that exists or existed. Later a member writes the definition of the agent as a file in
+the clone of the tenant and pushes it with Git. Git access checks the token, the tenant and the
+author. The artifacts part passes the check of the file to Tenants, which owns the schema of the
+definition. A file that breaks the schema, such as a field with a command, refuses the whole push.
+When the push is accepted, every member can start the agent.
+
+```arc42
+:::runtime-scenario
+id: rs-team-agent-create
+title: A tenant gets a team agent
+trigger: A tenant admin creates a team agent and a member writes its definition
+involves: bb-cli, bb-client-core, bb-tenants, bb-identity, bb-git-access, bb-artifacts, bb-sync, bb-participant-client, bb-office-hub
+:::
+```
+
+```arc42
+:::diagram
+id: seq-team-agent-create
+notation: mermaid-sequence
+scenario: rs-team-agent-create
+aliases: bb_cli=bb-cli, bb_client_core=bb-client-core, bb_tenants=bb-tenants, bb_identity=bb-identity, bb_git_access=bb-git-access, bb_artifacts=bb-artifacts
+:::
+```
+
+```mermaid
+sequenceDiagram
+    participant bb_cli as office CLI
+    participant bb_client_core as Client core
+    participant bb_tenants as Tenants
+    participant bb_identity as Identity
+    participant bb_git_access as Git access
+    participant bb_artifacts as Artifacts
+    bb_cli->>bb_client_core: team-agent create minutes
+    bb_client_core->>bb_tenants: create team agent (tenant, ID, display name, command ID)
+    bb_tenants->>bb_identity: the caller is a tenant admin? create the agent in the tenant roster
+    bb_identity-->>bb_tenants: created, or refused because the ID is taken
+    bb_tenants-->>bb_client_core: created
+    bb_client_core-->>bb_cli: write agents/minutes.yaml in the clone
+    bb_cli->>bb_git_access: git push of the definition, token as password
+    bb_git_access->>bb_artifacts: check the file with its schema
+    bb_artifacts->>bb_tenants: the owner of the schema checks the definition
+    bb_tenants-->>bb_artifacts: valid, or invalid with reasons
+    bb_artifacts-->>bb_git_access: the answer of the owner
+    bb_git_access-->>bb_cli: push accepted, or refused with the reason
+```
+
+## A team agent stops
+
+A team agent stops working at once, and without a new key, when one of three things happens: a
+tenant admin removes the agent, its agent launcher leaves the tenant, or the key of its agent
+launcher is revoked. Identity checks these conditions at every call of the token as the agent. The
+next call of the runner or of the harness fails with "unauthenticated". The runner renews the
+token of its harness at short intervals. It does not get a new token: asking for one fails for a
+removed agent, and for a member who left the tenant, with the answer for an agent that does not
+exist. A refusal for good stops the runner with the reason, and the harness stops with it. The
+agent stays in the session until it leaves; another member starts it again after that, or at once
+in another session.
+
+```arc42
+:::runtime-scenario
+id: rs-team-agent-stops
+title: A team agent stops
+trigger: A tenant admin removes a team agent, or its agent launcher leaves the tenant
+involves: bb-agent-runner, bb-client-core, bb-tenants, bb-identity, bb-session-service, bb-participant-client, bb-office-hub
+:::
+```
+
+```arc42
+:::diagram
+id: seq-team-agent-stops
+notation: mermaid-sequence
+scenario: rs-team-agent-stops
+aliases: bb_agent_runner=bb-agent-runner, bb_client_core=bb-client-core, bb_tenants=bb-tenants, bb_identity=bb-identity, bb_session_service=bb-session-service
+:::
+```
+
+```mermaid
+sequenceDiagram
+    participant bb_agent_runner as Agent runner
+    participant bb_client_core as Client core
+    participant bb_tenants as Tenants
+    participant bb_identity as Identity
+    participant bb_session_service as Meeting session
+    bb_client_core->>bb_tenants: remove team agent minutes (tenant admin)
+    bb_tenants->>bb_identity: end the team agent in the tenant roster
+    bb_identity-->>bb_tenants: ended, its record stays
+    bb_agent_runner->>bb_session_service: next call with the token of the agent
+    bb_session_service->>bb_identity: check token
+    bb_identity-->>bb_session_service: refused, the agent is removed
+    bb_session_service-->>bb_agent_runner: unauthenticated
+    bb_agent_runner->>bb_client_core: ask for a new token as the agent
+    bb_client_core->>bb_identity: token as team agent (key of the agent launcher)
+    bb_identity-->>bb_client_core: no such team agent
+    bb_agent_runner->>bb_agent_runner: stop with the reason
 ```
 
 ## Hub writes sessions to the archive

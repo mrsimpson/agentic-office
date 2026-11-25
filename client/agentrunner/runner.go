@@ -17,6 +17,7 @@ import (
 	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
 	"github.com/mrsimpson/agentic-office/client/replicator/control"
 
+	"connectrpc.com/connect/v2"
 	acp "github.com/coder/acp-go-sdk"
 
 	"github.com/mrsimpson/agentic-office/hub/session/activityapi/sessionactivityv1connect"
@@ -96,8 +97,8 @@ func Run(ctx context.Context, o Options) error {
 		return err
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
 	m, err := joinMeeting(ctx, o, cfg, logf)
 	if err != nil {
 		return err
@@ -111,7 +112,7 @@ func Run(ctx context.Context, o Options) error {
 	officeEnv := []acp.EnvVariable{absEnv(coreapi.EnvHub, cfg.Hub), absEnv(coreapi.EnvCACert, cfg.CACert),
 		absEnv(coreapi.EnvRuntimeDir, cfg.RuntimeDir), absEnv(coreapi.EnvTenant, cfg.Tenant)}
 	if cfg.TeamAgent != "" {
-		tokenFile, err := keepTokenFile(ctx, m, cfg, logf)
+		tokenFile, err := keepTokenFile(ctx, cancel, m, cfg, logf)
 		if err != nil {
 			return err
 		}
@@ -137,6 +138,10 @@ func Run(ctx context.Context, o Options) error {
 		o.Session, r.self, logf)
 	go r.rep.run(ctx)
 	err = r.loop(ctx)
+	// A team agent that ended (removed, or its agent launcher left) stops the runner with the reason.
+	if cause := context.Cause(ctx); cause != nil && !errors.Is(cause, context.Canceled) {
+		return cause
+	}
 	if errors.Is(err, context.Canceled) && ctx.Err() != nil {
 		return nil
 	}
@@ -232,7 +237,9 @@ func absConfig(cfg coreapi.Config) (coreapi.Config, error) {
 // keepTokenFile writes the token of the team agent into a file in the runtime directory that only
 // the user reads, and keeps it fresh until ctx ends. The MCP server of the harness reads it, so
 // the harness has the token of the agent and not the key of the agent launcher (dec-team-agents).
-func keepTokenFile(ctx context.Context, m *meeting, cfg coreapi.Config, logf func(string, ...any)) (string, error) {
+// When the hub refuses a new token for good (the team agent was removed, the agent launcher left
+// the tenant or lost the key), keepTokenFile cancels ctx with this reason and the run ends.
+func keepTokenFile(ctx context.Context, cancel context.CancelCauseFunc, m *meeting, cfg coreapi.Config, logf func(string, ...any)) (string, error) {
 	dir := filepath.Join(cfg.RuntimeDir, "tokens")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
@@ -250,9 +257,17 @@ func keepTokenFile(ctx context.Context, m *meeting, cfg coreapi.Config, logf fun
 			case <-ctx.Done():
 				return
 			case <-t.C:
-				if err := m.client.WriteTokenFile(ctx, file); err != nil && ctx.Err() == nil {
-					logf("the token of the team agent could not be renewed: %v", err)
+				err := m.client.WriteTokenFile(ctx, file)
+				if err == nil || ctx.Err() != nil {
+					continue
 				}
+				switch connect.CodeOf(err) {
+				case connect.CodeNotFound, connect.CodeUnauthenticated, connect.CodePermissionDenied:
+					logf("the team agent %s cannot go on: %v; stopping", cfg.TeamAgent, err)
+					cancel(fmt.Errorf("the team agent %s ended: %w", cfg.TeamAgent, err))
+					return
+				}
+				logf("the token of the team agent could not be renewed: %v", err)
 			}
 		}
 	}()
