@@ -429,8 +429,9 @@ addresses: risk-connect-maturity, risk-whisper-latency, qg-performance
 ## Local key pairs, one actor per agent
 
 **Context:** Participants and agents must prove who they are. We want no secrets stored on the
-hub. **Decision:** Every participant, including every agent, has its own Ed25519 key pair,
-created locally. Only the public key is sent to the hub. In the first stage, keys are registered
+hub. **Decision:** Every participant, including every personal agent, has its own Ed25519 key
+pair, created locally. A team agent is the one exception: it has no key pair and runs with a token
+that a member asks for with their own key (`dec-team-agents`). Only the public key is sent to the hub. In the first stage, keys are registered
 by hand at first contact. Agents act as themselves, not on behalf of a human. The stage is opened
 with a read-only link. A participant can have several keys (several devices), and an admin can
 remove a key. **Proposed details:** challenge and response with a short-lived access token bound
