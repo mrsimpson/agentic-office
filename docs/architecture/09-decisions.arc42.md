@@ -853,6 +853,37 @@ addresses: qg-usability, risk-imported-conversation
 :::
 ```
 
+## A session is trimmed or deleted by events, never by rewriting the log
+
+**Context:** A meeting is cancelled after a few sentences, or nobody ends it, and the minutes hold
+far too much. Humans want to delete such a session and to cut it off at a chosen sentence, in the
+portal. The log of a session only grows and is signed (`dec-merkle-log`), and peers replicate it.
+**Decision:** A trim and a delete are events at the end of the log, created through the session
+commands. A trim names the last event that counts. A delete marks the session as deleted; a restore
+removes the mark. A later trim replaces an earlier one, and a trim that names the last event
+removes the cut. Every human who took part and every tenant admin may call them; an agent is
+refused. Every reader applies the latest trim and delete: the session list, the stage, the portal
+and the minutes show only what counts, and a deleted session leaves the list, the stage and the
+wiki until it is restored. The minutes are built again up to the cut. Artifacts that exist
+already, staged or released, stay as they are. **Consequences:** The log, its tree heads and the
+restore from peers stay unchanged and verifiable, and both actions are reversible. The cut-off
+sentences still exist in the archive and at peers, so a trim is not erasure. OPEN: whether this
+meets the data protection needs. OPEN: whether a running session must end first, and what a trim
+means for the search for sentences off the record before a release. **Rejected:** cutting events
+out of the log (the tree heads promise that a log only grows); a second, edited copy of the log
+(two sources of truth); allowing only tenant admins (a meeting that nobody ended would wait for an
+admin).
+
+```arc42
+:::decision
+id: dec-session-trim-delete
+title: A session is trimmed or deleted by events, never by rewriting the log
+status: proposed
+date: 2026-11-25
+addresses: qg-usability
+:::
+```
+
 ## An own JSON format for imported conversations, read by the client
 
 **Context:** Conversations come from many tools, each with its own export. The import interface
