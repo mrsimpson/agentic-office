@@ -225,20 +225,20 @@ Who authenticates against the office.
 :::glossary-term
 id: term-actor
 title: Actor
-definition: A participant that authenticates against the office; every human device and every personal agent is one actor with its own key pair, and a team agent is one without a key
+definition: A participant that authenticates against the office; every human device and every personal agent is one actor with its own key pair, and a team agent is one without a key, unless a tenant admin registers one for a run without a human
 :::
 ```
 
 ## Team agent
 
-An agent that belongs to a tenant and not to a person (`dec-team-agents`). It has no private key.
+An agent that belongs to a tenant and not to a person (`dec-team-agents`). It has no private key, unless a tenant admin registers one for a run without a human.
 Every member of the tenant may run it and change its definition.
 
 ```arc42
 :::glossary-term
 id: term-team-agent
 title: Team agent
-definition: An agent that belongs to a tenant, has no private key and is run by any member of the tenant with a token as the agent; its definition is a versioned file with a schema in the repository of the tenant, and no agent changes it
+definition: An agent that belongs to a tenant, has no private key (unless a tenant admin registers one for a run without a human) and is run by any member of the tenant with a token as the agent; its definition is a versioned file with a schema in the repository of the tenant, and no agent changes it
 :::
 ```
 

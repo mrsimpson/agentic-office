@@ -115,6 +115,34 @@ func (s *Service) dropUnusable(now time.Time) {
 	}
 }
 
+// isTenantAdminSomewhere reports whether the caller is a tenant admin of any tenant.
+func isTenantAdminSomewhere(c Caller) bool {
+	for _, m := range c.Tenants {
+		if m.Role == tokencheck.RoleTenantAdmin {
+			return true
+		}
+	}
+	return false
+}
+
+// mayChangeKeysOf reports whether the caller may add keys to, or revoke keys of, the user: a system
+// admin for anyone, a user for itself, and a tenant admin for a team agent of their tenant
+// (dec-team-agents). A team agent never changes its own keys, and no agent changes keys of another.
+func mayChangeKeysOf(c Caller, id string, u *userRecord) bool {
+	switch {
+	case c.SystemAdmin:
+		return true
+	case c.TeamTenant != "":
+		return false
+	case c.ParticipantID == id:
+		return true
+	case u.Team != "":
+		role, ok := c.Member(u.Team)
+		return ok && role == tokencheck.RoleTenantAdmin
+	}
+	return false
+}
+
 func validPublicKey(b []byte) error {
 	if len(b) != ed25519.PublicKeySize {
 		return invalid("public_key must be a raw Ed25519 public key of 32 bytes")
@@ -230,8 +258,9 @@ func (s *Service) AddKey(ctx context.Context, req *userv1.AddKeyRequest) (*userv
 	if err != nil {
 		return nil, err
 	}
-	if !c.SystemAdmin && c.ParticipantID != req.GetUserId() {
-		return nil, denied("a user adds keys for itself; a system admin adds keys for anyone")
+	// A tenant admin adds a key to a team agent of their tenant (dec-team-agents); apply checks it.
+	if !c.SystemAdmin && c.ParticipantID != req.GetUserId() && !isTenantAdminSomewhere(c) {
+		return nil, denied("a user adds keys for itself; a system admin adds keys for anyone; a tenant admin adds keys to the team agents of their tenant")
 	}
 	if err := validPublicKey(req.GetPublicKey()); err != nil {
 		return nil, err
@@ -241,6 +270,9 @@ func (s *Service) AddKey(ctx context.Context, req *userv1.AddKeyRequest) (*userv
 		u := st.users[req.GetUserId()]
 		if u == nil || !u.active(now) {
 			return notFound("no such active user")
+		}
+		if !mayChangeKeysOf(c, req.GetUserId(), u) {
+			return denied("a user adds keys for itself; a system admin adds keys for anyone; a tenant admin adds keys to the team agents of their tenant")
 		}
 		for _, other := range st.users {
 			for _, k := range other.Keys {
@@ -276,8 +308,8 @@ func (s *Service) RevokeKey(ctx context.Context, req *userv1.RevokeKeyRequest) (
 				if k.KeyID != req.GetKeyId() {
 					continue
 				}
-				if !c.SystemAdmin && c.ParticipantID != id {
-					return denied("a user revokes its own keys; a system admin revokes any key")
+				if !mayChangeKeysOf(c, id, u) {
+					return denied("a user revokes its own keys; a system admin revokes any key; a tenant admin revokes the keys of the team agents of their tenant")
 				}
 				k.Revoked = true
 				return nil

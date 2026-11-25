@@ -168,7 +168,14 @@ func cmdAgentRun(e *env, fs *flag.FlagSet) func([]string) error {
 			if err := confirmDefinition(e, def, *confirm); err != nil {
 				return err
 			}
-			agentCfg.TeamAgent, agentCfg.DefinitionVersion = def.Agent, def.Version
+			// A key that belongs to the team agent itself starts it without a human, for example on a
+			// server: the runner joins with that key, as a personal agent does. Any other key is the
+			// key of an agent launcher, who asks the hub for a token as the agent.
+			if pid, err := c.ParticipantID(e.ctx); err != nil {
+				return err
+			} else if pid != def.Agent {
+				agentCfg.TeamAgent, agentCfg.DefinitionVersion = def.Agent, def.Version
+			}
 			teamAllow = def.Allow
 			values := map[string]any{keyRole: def.Role}
 			if def.Strategy != "" {

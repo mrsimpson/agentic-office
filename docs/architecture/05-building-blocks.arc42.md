@@ -340,7 +340,8 @@ path: hub/identity/api
 Manages users in two steps, because a user is global and a membership belongs to a tenant. First
 the user and its keys are registered at the hub. Then the user is assigned to tenants with a role,
 and system admins are named. A system admin may do everything, a tenant admin only the memberships
-of their own tenant, and everyone else only their own keys. Every change is checked against the
+of their own tenant and the keys of the team agents of their tenant (`dec-team-agents`), and
+everyone else only their own keys. Every change is checked against the
 rules in `concept-multi-tenancy` and refused if it breaks one. A user ID is never used again.
 
 ```arc42
@@ -1454,11 +1455,13 @@ path: hub/stage
 Knows all users (participants), their public keys, their tenant memberships and the system admins
 in one place for the whole hub, and keeps them in the hub repository through the archive. It is
 the only writer there and checks every change. Each user, human or agent, is its own actor with
-its own key pair, except a team agent. The client creates the key pair locally and sends only the public key. A user can
+its own key pair, except a team agent that runs with a token. The client creates the key pair locally and sends only the public key. A user can
 be a member of several tenants, with a role in each, and can also be a system admin. A new public
-key is registered by hand when we meet the person. A team agent is a user without a key that
+key is registered by hand when we meet the person. A team agent is a user that
 belongs to one tenant (`dec-team-agents`); Identity creates it when the tenant admin asks Tenants to, and
-issues a token as the agent to every member of that tenant. Its token carries the version of the definition that the member confirmed. Identity issues short-lived access tokens and
+issues a token as the agent to every member of that tenant. It has no key unless a tenant admin
+registers one for it, for a run without a human: it then authenticates as any user does and works in
+its tenant as a member who is no tenant admin. Its token carries the version of the definition that the member confirmed. Identity issues short-lived access tokens and
 creates read-only links for the stage. The token check tells the other parts of the hub who the
 caller is, whether they are a system admin and which tenants they belong to with which role. For
 a token as a team agent, it also names the agent launcher and the version of the definition, and it tells that the participant is an agent, so that other parts can refuse what no agent may do.
@@ -1843,7 +1846,8 @@ Keeps an agent in the meeting (`dec-agent-runner-acp`). Agents work in turns
 session and one agent, it:
 
 - gets its token: with the key of a personal agent, or, for a team agent, with the key of the
-  agent launcher as a token as the agent (`dec-team-agents`). It reads the definition of a team
+  agent launcher as a token as the agent (`dec-team-agents`); with the key of the team agent
+  itself it joins as a personal agent does, and the agent has no agent launcher. It reads the definition of a team
   agent from the clone or from the archive, starts it only after the user has confirmed the
   definition, again when the definition has changed since, and names the confirmed version in the
   request for the token. The harness, the working directory and the credentials of a model

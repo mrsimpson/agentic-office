@@ -276,3 +276,19 @@ severity: medium
 mitigation: A client shows a definition and asks for confirmation before the first start and again whenever the definition has changed since, and shows added tools first; the confirmation protects the agent launcher and is no check of the hub; a run keeps its confirmed version, and the author of what the agent writes names it; no agent changes a definition, so a prompt-injected agent cannot rewrite itself or another agent; every change is one commit with its author; the harness, the working directory and the credentials of a model stay local; OPEN: finer rights per agent (dec-team-agents)
 :::
 ```
+
+## The key of a team agent ties the agent to no person
+
+A team agent with a key (`dec-team-agents`) runs without an agent launcher. Whoever holds the key
+runs the agent, and what the agent writes does not name a person. The key lies on a server, and
+anyone who can read it can start the agent with the role of its definition and act as a member of
+the tenant who is no tenant admin.
+
+```arc42
+:::risk
+id: risk-team-agent-key
+title: The key of a team agent ties the agent to no person
+severity: medium
+mitigation: Only a tenant admin or a system admin registers or revokes the key, and revoking ends the agent at once; the runner needs the version of the definition that the operator names, so a change of the definition does not steer an unattended agent; the agent is no tenant admin, starts no agent, manages no key and changes no definition (dec-team-agents); the key stays in a file that only the operator of the server reads (concept-identity)
+:::
+```

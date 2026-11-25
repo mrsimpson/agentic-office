@@ -431,7 +431,8 @@ addresses: risk-connect-maturity, risk-whisper-latency, qg-performance
 **Context:** Participants and agents must prove who they are. We want no secrets stored on the
 hub. **Decision:** Every participant, including every personal agent, has its own Ed25519 key
 pair, created locally. A team agent is the one exception: it has no key pair and runs with a token
-that a member asks for with their own key (`dec-team-agents`). Only the public key is sent to the hub. In the first stage, keys are registered
+that a member asks for with their own key, unless a tenant admin registers a key for a run
+without a human (`dec-team-agents`). Only the public key is sent to the hub. In the first stage, keys are registered
 by hand at first contact. Agents act as themselves, not on behalf of a human. The stage is opened
 with a read-only link. A participant can have several keys (several devices), and an admin can
 remove a key. **Proposed details:** challenge and response with a short-lived access token bound
@@ -1477,7 +1478,11 @@ addresses: qg-usability, con-no-intelligence
 **Context:** An agent exists only on the computer of its creator today: its definition is in a
 local file and its identity is a private key in a local folder. Other members of a tenant cannot
 use it. Most agents are meant for a whole team. **Decision:** A team agent belongs to a tenant. It
-is an actor of its own with a stable ID and has no private key. Its definition (role, wake
+is an actor of its own with a stable ID and has no private key. For a run without a human, for
+example on a server, a tenant admin may register a key for it; the agent then runs with that key as
+a personal agent does, takes its role from the same definition, has no agent launcher and
+confirms the version of the definition at the start with a version that the operator names. Its
+definition (role, wake
 strategy, the tools it may use) is a file in the repository of the tenant. The file names its
 schema and the version of the schema, so that a third party can read it, and Git keeps its
 versions. It is configuration of the tenant, not an artifact: it is no result of a session and has
@@ -1508,8 +1513,10 @@ key for each user (no shared identity); a private key that is shared and encrypt
 (removing a member needs a new key, a member keeps what they decrypted, and a session cannot show
 who runs the agent); a signed delegation (a larger change at Identity than a token as the agent).
 Unknown fields of a definition are refused, so a definition holds no command, address or
-credential. OPEN: finer rights, for example a role or a list for each agent; team agents that run
-without a human; definitions across tenants.
+credential. The rights stay coarse on purpose: a tenant admin creates and removes team agents and
+registers their keys, and every member lists, starts and changes every team agent of the tenant.
+The key of a team agent on a server ties the agent to no person (`risk-team-agent-key`). Definitions
+across tenants are not part of this decision; the office may ship templates later.
 
 ```arc42
 :::decision
@@ -1517,6 +1524,6 @@ id: dec-team-agents
 title: Team agents: one shared identity without a shared key
 status: accepted
 date: 2026-11-25
-addresses: qg-usability, qg-confidentiality, risk-shared-agent-definition
+addresses: qg-usability, qg-confidentiality, risk-shared-agent-definition, risk-team-agent-key
 :::
 ```
