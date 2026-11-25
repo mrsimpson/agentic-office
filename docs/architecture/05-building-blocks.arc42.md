@@ -1341,7 +1341,7 @@ id: bb-artifacts
 title: Artifacts
 technology: Go
 parent: bb-office-hub
-requires: if-records-check, if-slides-check, if-tasks-check, if-documents-check, if-records-describe, if-slides-describe, if-tasks-describe, if-documents-describe
+requires: if-records-check, if-slides-check, if-tasks-check, if-documents-check, if-tenants-check, if-records-describe, if-slides-describe, if-tasks-describe, if-documents-describe
 implements: concept-module-boundaries
 path: hub/artifacts
 :::
@@ -1355,6 +1355,10 @@ whether a file is the stub of a staged artifact: the file names a schema, is val
 that owns the schema recognises it as the stub of its type. A third call gives the hints of the
 parts for a file, such as the links of a document that lead nowhere. The caller says which paths
 hold a file in the state that the file belongs to. A hint never makes a file invalid.
+
+A call tells whether no agent may change a file: the owner of its schema keeps its files from
+agents, as Tenants does for the definition of a team agent (`dec-team-agents`). Git access asks
+it for the old and the new state of every path that an agent pushes.
 
 A fourth call describes a file for the wiki (`dec-wiki`), so a reader needs one interface for all
 types. A file that names a schema goes to the description of the part that owns the schema, and a
@@ -1515,8 +1519,8 @@ a tenant also creates its repository (`if-archive-storage`). Tenants owns the sc
 (`dec-team-agents`). A definition is a file of the tenant that names its schema and its version: the
 role, the wake strategy and the tools the agent may use, never a secret and never anything that
 depends on one computer or one hub. It is configuration, not an artifact. Members change it with Git like every
-file, and Tenants checks it like the owner of any schema (OPEN: the interfaces of its check and its
-description are added with their code, see `dec-team-agents`). Synchronisation with
+file, and Tenants checks it like the owner of any schema (`if-tenants-check`). The wiki does not
+show a definition, and no agent changes it. Synchronisation with
 remotes is not part of this stage.
 
 ```arc42
@@ -1528,6 +1532,25 @@ parent: bb-office-hub
 implements: concept-multi-tenancy
 requires: if-token-check, if-tenant-roster, if-archive-storage
 path: hub/tenant
+:::
+```
+
+#### Tenants check
+
+Checks the definition of a team agent against its schema, in the form of the check of every other
+owner of a schema. A definition lies at one path for each agent, names its schema and the version
+of the schema, and has a role, the names of the tools the agent may use and its wake strategy. Any
+other field is invalid, so a definition holds no command, no address and no credential. The
+artifacts part passes the check of such a file here. The owner also tells the artifacts part that
+no agent may change its files, and that the wiki has nothing to show of them.
+
+```arc42
+:::interface
+id: if-tenants-check
+title: Tenants check
+provider: bb-tenants
+protocol: In-process Go call
+path: hub/tenant/check
 :::
 ```
 

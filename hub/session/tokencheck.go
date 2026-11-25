@@ -20,7 +20,7 @@ func TokenCheck() Authorizer {
 		}
 		return Caller{ParticipantID: c.ParticipantID, DisplayName: c.DisplayName, Kind: participantKind(c.Kind),
 			StageSessionID: c.StageSessionID, TenantAdmin: c.StageSessionID == "" && c.TenantRole == tokencheck.RoleTenantAdmin,
-			Done: c.Done}, nil
+			AgentLauncher: c.AgentLauncher, DefinitionVersion: c.DefinitionVersion, Done: c.Done}, nil
 	})
 }
 

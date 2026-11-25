@@ -187,6 +187,7 @@ func (h *Handler) serveGit(w http.ResponseWriter, r *http.Request, tenant, dir s
 		EnvTenant + "=" + tenant,
 		EnvParticipant + "=" + caller.ParticipantID,
 		EnvName + "=" + name,
+		EnvAgent + "=" + agentFlag(caller),
 		EnvMaxFileBytes + "=" + strconv.FormatInt(h.opts.MaxFileBytes, 10),
 		EnvMaxFiles + "=" + strconv.Itoa(h.opts.MaxFiles),
 		fmt.Sprintf("GIT_CONFIG_COUNT=%d", len(cfg)),
@@ -224,3 +225,11 @@ func challenge(w http.ResponseWriter) {
 }
 
 func notFound(w http.ResponseWriter) { http.Error(w, "not found", http.StatusNotFound) }
+
+// agentFlag is "1" for a caller that is an agent, so the hook can refuse what no agent may do.
+func agentFlag(c tokencheck.Caller) string {
+	if c.Kind == tokencheck.KindAgent {
+		return "1"
+	}
+	return "0"
+}

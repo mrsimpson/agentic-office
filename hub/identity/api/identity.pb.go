@@ -804,6 +804,141 @@ func (x *CreateStageLinkResponse) GetExpiresAt() *timestamppb.Timestamp {
 	return nil
 }
 
+type IssueAgentTokenRequest struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	TenantId string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	// agent_id is the participant ID of the team agent.
+	AgentId string `protobuf:"bytes,2,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	// definition_version is the version of the definition file that the caller confirmed, as the
+	// archive read interface names it. It is a statement of the caller: Identity records it in the
+	// token and checks nothing about it.
+	DefinitionVersion string `protobuf:"bytes,3,opt,name=definition_version,json=definitionVersion,proto3" json:"definition_version,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *IssueAgentTokenRequest) Reset() {
+	*x = IssueAgentTokenRequest{}
+	mi := &file_office_identity_v1_identity_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IssueAgentTokenRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IssueAgentTokenRequest) ProtoMessage() {}
+
+func (x *IssueAgentTokenRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_office_identity_v1_identity_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IssueAgentTokenRequest.ProtoReflect.Descriptor instead.
+func (*IssueAgentTokenRequest) Descriptor() ([]byte, []int) {
+	return file_office_identity_v1_identity_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *IssueAgentTokenRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *IssueAgentTokenRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *IssueAgentTokenRequest) GetDefinitionVersion() string {
+	if x != nil {
+		return x.DefinitionVersion
+	}
+	return ""
+}
+
+type IssueAgentTokenResponse struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	AccessToken string                 `protobuf:"bytes,1,opt,name=access_token,json=accessToken,proto3" json:"access_token,omitempty"`
+	ExpiresAt   *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	// participant_id is the ID of the team agent.
+	ParticipantId string `protobuf:"bytes,3,opt,name=participant_id,json=participantId,proto3" json:"participant_id,omitempty"`
+	// display_name is the name of the agent as its token shows it, also as the author of commits: the
+	// name of the agent, the agent launcher and the version.
+	DisplayName   string `protobuf:"bytes,4,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IssueAgentTokenResponse) Reset() {
+	*x = IssueAgentTokenResponse{}
+	mi := &file_office_identity_v1_identity_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IssueAgentTokenResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IssueAgentTokenResponse) ProtoMessage() {}
+
+func (x *IssueAgentTokenResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_office_identity_v1_identity_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IssueAgentTokenResponse.ProtoReflect.Descriptor instead.
+func (*IssueAgentTokenResponse) Descriptor() ([]byte, []int) {
+	return file_office_identity_v1_identity_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *IssueAgentTokenResponse) GetAccessToken() string {
+	if x != nil {
+		return x.AccessToken
+	}
+	return ""
+}
+
+func (x *IssueAgentTokenResponse) GetExpiresAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return nil
+}
+
+func (x *IssueAgentTokenResponse) GetParticipantId() string {
+	if x != nil {
+		return x.ParticipantId
+	}
+	return ""
+}
+
+func (x *IssueAgentTokenResponse) GetDisplayName() string {
+	if x != nil {
+		return x.DisplayName
+	}
+	return ""
+}
+
 var File_office_identity_v1_identity_proto protoreflect.FileDescriptor
 
 const file_office_identity_v1_identity_proto_rawDesc = "" +
@@ -861,18 +996,29 @@ const file_office_identity_v1_identity_proto_rawDesc = "" +
 	"\x17CreateStageLinkResponse\x12\x10\n" +
 	"\x03url\x18\x01 \x01(\tR\x03url\x129\n" +
 	"\n" +
-	"expires_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt*S\n" +
+	"expires_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\"\x7f\n" +
+	"\x16IssueAgentTokenRequest\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x19\n" +
+	"\bagent_id\x18\x02 \x01(\tR\aagentId\x12-\n" +
+	"\x12definition_version\x18\x03 \x01(\tR\x11definitionVersion\"\xc1\x01\n" +
+	"\x17IssueAgentTokenResponse\x12!\n" +
+	"\faccess_token\x18\x01 \x01(\tR\vaccessToken\x129\n" +
+	"\n" +
+	"expires_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12%\n" +
+	"\x0eparticipant_id\x18\x03 \x01(\tR\rparticipantId\x12!\n" +
+	"\fdisplay_name\x18\x04 \x01(\tR\vdisplayName*S\n" +
 	"\tActorKind\x12\x1a\n" +
 	"\x16ACTOR_KIND_UNSPECIFIED\x10\x00\x12\x14\n" +
 	"\x10ACTOR_KIND_HUMAN\x10\x01\x12\x14\n" +
-	"\x10ACTOR_KIND_AGENT\x10\x022\x87\x05\n" +
+	"\x10ACTOR_KIND_AGENT\x10\x022\xf3\x05\n" +
 	"\x0fIdentityService\x12a\n" +
 	"\fGetChallenge\x12'.office.identity.v1.GetChallengeRequest\x1a(.office.identity.v1.GetChallengeResponse\x12p\n" +
 	"\x11ExchangeChallenge\x12,.office.identity.v1.ExchangeChallengeRequest\x1a-.office.identity.v1.ExchangeChallengeResponse\x12j\n" +
 	"\x0fCreateStageLink\x12*.office.identity.v1.CreateStageLinkRequest\x1a+.office.identity.v1.CreateStageLinkResponse\x12m\n" +
 	"\x10CreatePortalLink\x12+.office.identity.v1.CreatePortalLinkRequest\x1a,.office.identity.v1.CreatePortalLinkResponse\x12s\n" +
 	"\x12ExchangePortalLink\x12-.office.identity.v1.ExchangePortalLinkRequest\x1a..office.identity.v1.ExchangePortalLinkResponse\x12O\n" +
-	"\x06WhoAmI\x12!.office.identity.v1.WhoAmIRequest\x1a\".office.identity.v1.WhoAmIResponseBAZ?github.com/mrsimpson/agentic-office/hub/identity/api;identityv1b\x06proto3"
+	"\x06WhoAmI\x12!.office.identity.v1.WhoAmIRequest\x1a\".office.identity.v1.WhoAmIResponse\x12j\n" +
+	"\x0fIssueAgentToken\x12*.office.identity.v1.IssueAgentTokenRequest\x1a+.office.identity.v1.IssueAgentTokenResponseBAZ?github.com/mrsimpson/agentic-office/hub/identity/api;identityv1b\x06proto3"
 
 var (
 	file_office_identity_v1_identity_proto_rawDescOnce sync.Once
@@ -887,7 +1033,7 @@ func file_office_identity_v1_identity_proto_rawDescGZIP() []byte {
 }
 
 var file_office_identity_v1_identity_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_office_identity_v1_identity_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_office_identity_v1_identity_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_office_identity_v1_identity_proto_goTypes = []any{
 	(ActorKind)(0),                     // 0: office.identity.v1.ActorKind
 	(*GetChallengeRequest)(nil),        // 1: office.identity.v1.GetChallengeRequest
@@ -903,33 +1049,38 @@ var file_office_identity_v1_identity_proto_goTypes = []any{
 	(*TenantMembership)(nil),           // 11: office.identity.v1.TenantMembership
 	(*CreateStageLinkRequest)(nil),     // 12: office.identity.v1.CreateStageLinkRequest
 	(*CreateStageLinkResponse)(nil),    // 13: office.identity.v1.CreateStageLinkResponse
-	(*timestamppb.Timestamp)(nil),      // 14: google.protobuf.Timestamp
+	(*IssueAgentTokenRequest)(nil),     // 14: office.identity.v1.IssueAgentTokenRequest
+	(*IssueAgentTokenResponse)(nil),    // 15: office.identity.v1.IssueAgentTokenResponse
+	(*timestamppb.Timestamp)(nil),      // 16: google.protobuf.Timestamp
 }
 var file_office_identity_v1_identity_proto_depIdxs = []int32{
-	14, // 0: office.identity.v1.GetChallengeResponse.expires_at:type_name -> google.protobuf.Timestamp
-	14, // 1: office.identity.v1.ExchangeChallengeResponse.expires_at:type_name -> google.protobuf.Timestamp
-	14, // 2: office.identity.v1.CreatePortalLinkResponse.expires_at:type_name -> google.protobuf.Timestamp
-	14, // 3: office.identity.v1.ExchangePortalLinkResponse.expires_at:type_name -> google.protobuf.Timestamp
+	16, // 0: office.identity.v1.GetChallengeResponse.expires_at:type_name -> google.protobuf.Timestamp
+	16, // 1: office.identity.v1.ExchangeChallengeResponse.expires_at:type_name -> google.protobuf.Timestamp
+	16, // 2: office.identity.v1.CreatePortalLinkResponse.expires_at:type_name -> google.protobuf.Timestamp
+	16, // 3: office.identity.v1.ExchangePortalLinkResponse.expires_at:type_name -> google.protobuf.Timestamp
 	0,  // 4: office.identity.v1.WhoAmIResponse.kind:type_name -> office.identity.v1.ActorKind
 	11, // 5: office.identity.v1.WhoAmIResponse.memberships:type_name -> office.identity.v1.TenantMembership
-	14, // 6: office.identity.v1.CreateStageLinkResponse.expires_at:type_name -> google.protobuf.Timestamp
-	1,  // 7: office.identity.v1.IdentityService.GetChallenge:input_type -> office.identity.v1.GetChallengeRequest
-	3,  // 8: office.identity.v1.IdentityService.ExchangeChallenge:input_type -> office.identity.v1.ExchangeChallengeRequest
-	12, // 9: office.identity.v1.IdentityService.CreateStageLink:input_type -> office.identity.v1.CreateStageLinkRequest
-	5,  // 10: office.identity.v1.IdentityService.CreatePortalLink:input_type -> office.identity.v1.CreatePortalLinkRequest
-	7,  // 11: office.identity.v1.IdentityService.ExchangePortalLink:input_type -> office.identity.v1.ExchangePortalLinkRequest
-	9,  // 12: office.identity.v1.IdentityService.WhoAmI:input_type -> office.identity.v1.WhoAmIRequest
-	2,  // 13: office.identity.v1.IdentityService.GetChallenge:output_type -> office.identity.v1.GetChallengeResponse
-	4,  // 14: office.identity.v1.IdentityService.ExchangeChallenge:output_type -> office.identity.v1.ExchangeChallengeResponse
-	13, // 15: office.identity.v1.IdentityService.CreateStageLink:output_type -> office.identity.v1.CreateStageLinkResponse
-	6,  // 16: office.identity.v1.IdentityService.CreatePortalLink:output_type -> office.identity.v1.CreatePortalLinkResponse
-	8,  // 17: office.identity.v1.IdentityService.ExchangePortalLink:output_type -> office.identity.v1.ExchangePortalLinkResponse
-	10, // 18: office.identity.v1.IdentityService.WhoAmI:output_type -> office.identity.v1.WhoAmIResponse
-	13, // [13:19] is the sub-list for method output_type
-	7,  // [7:13] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	16, // 6: office.identity.v1.CreateStageLinkResponse.expires_at:type_name -> google.protobuf.Timestamp
+	16, // 7: office.identity.v1.IssueAgentTokenResponse.expires_at:type_name -> google.protobuf.Timestamp
+	1,  // 8: office.identity.v1.IdentityService.GetChallenge:input_type -> office.identity.v1.GetChallengeRequest
+	3,  // 9: office.identity.v1.IdentityService.ExchangeChallenge:input_type -> office.identity.v1.ExchangeChallengeRequest
+	12, // 10: office.identity.v1.IdentityService.CreateStageLink:input_type -> office.identity.v1.CreateStageLinkRequest
+	5,  // 11: office.identity.v1.IdentityService.CreatePortalLink:input_type -> office.identity.v1.CreatePortalLinkRequest
+	7,  // 12: office.identity.v1.IdentityService.ExchangePortalLink:input_type -> office.identity.v1.ExchangePortalLinkRequest
+	9,  // 13: office.identity.v1.IdentityService.WhoAmI:input_type -> office.identity.v1.WhoAmIRequest
+	14, // 14: office.identity.v1.IdentityService.IssueAgentToken:input_type -> office.identity.v1.IssueAgentTokenRequest
+	2,  // 15: office.identity.v1.IdentityService.GetChallenge:output_type -> office.identity.v1.GetChallengeResponse
+	4,  // 16: office.identity.v1.IdentityService.ExchangeChallenge:output_type -> office.identity.v1.ExchangeChallengeResponse
+	13, // 17: office.identity.v1.IdentityService.CreateStageLink:output_type -> office.identity.v1.CreateStageLinkResponse
+	6,  // 18: office.identity.v1.IdentityService.CreatePortalLink:output_type -> office.identity.v1.CreatePortalLinkResponse
+	8,  // 19: office.identity.v1.IdentityService.ExchangePortalLink:output_type -> office.identity.v1.ExchangePortalLinkResponse
+	10, // 20: office.identity.v1.IdentityService.WhoAmI:output_type -> office.identity.v1.WhoAmIResponse
+	15, // 21: office.identity.v1.IdentityService.IssueAgentToken:output_type -> office.identity.v1.IssueAgentTokenResponse
+	15, // [15:22] is the sub-list for method output_type
+	8,  // [8:15] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_office_identity_v1_identity_proto_init() }
@@ -943,7 +1094,7 @@ func file_office_identity_v1_identity_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_office_identity_v1_identity_proto_rawDesc), len(file_office_identity_v1_identity_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   13,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

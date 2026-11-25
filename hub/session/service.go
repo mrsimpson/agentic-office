@@ -32,6 +32,10 @@ type Caller struct {
 	// StageSessionID is set for the read-only token of a stage link. Such a caller may only
 	// subscribe to this session.
 	StageSessionID string
+	// AgentLauncher and DefinitionVersion are set for the token of a team agent (dec-team-agents):
+	// the member who started it and the version of the definition that they confirmed.
+	AgentLauncher     string
+	DefinitionVersion string
 	// TenantAdmin is set for a tenant admin of the tenant of the call. A tenant admin sees every
 	// session of the tenant in the session list.
 	TenantAdmin bool
@@ -490,8 +494,12 @@ func (s *Service) runLocked(ctx context.Context, c command, isJoin bool) (*sessi
 	switch {
 	case isJoin:
 		// A participant joins once. Another join while it is in the session (for example from a
-		// second client of the same participant) returns the first join.
+		// second client of the same participant) returns the first join. A team agent that
+		// another agent launcher started is refused (dec-team-agents).
 		if pt != nil && !pt.left {
+			if l := pt.joined.GetParticipantJoined().GetAgentLauncher(); l != caller.AgentLauncher {
+				return nil, false, precondition("already joined: the team agent " + c.participantID + " is in this session, started by " + l)
+			}
 			return &sessioncommandsv1.CommandResult{Event: pt.joined, Duplicate: true}, false, nil
 		}
 		// The participant becomes a reader of the staging area before it joins
@@ -583,7 +591,7 @@ func (s *Service) Join(ctx context.Context, req *sessioncommandsv1.JoinRequest) 
 			return &sessionstreamv1.Event{
 				Payload: &sessionstreamv1.Event_ParticipantJoined{ParticipantJoined: &sessionstreamv1.ParticipantJoined{
 					ParticipantId: c.ParticipantID, DisplayName: name, Kind: c.Kind,
-					Captured: req.GetCaptured(),
+					Captured: req.GetCaptured(), AgentLauncher: c.AgentLauncher, DefinitionVersion: c.DefinitionVersion,
 				}},
 			}, nil
 		},

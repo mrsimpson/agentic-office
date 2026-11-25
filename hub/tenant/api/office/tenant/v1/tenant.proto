@@ -1,10 +1,17 @@
 // Tenant API (if-tenant-api): create, list and remove the tenants of the hub (concept-multi-tenancy,
-// dec-multi-tenancy).
+// dec-multi-tenancy), and manage the team agents of a tenant (dec-team-agents).
 //
 // A tenant is one organisation. Creating a tenant names its first tenant admin; the system admin
 // does not become a member. Removing a tenant ends the tenant and all its memberships and keeps
-// the records, so a tenant ID is never used again. Only a system admin may call these procedures;
-// everyone else gets permission_denied. Users and memberships are managed with the user API.
+// the records, so a tenant ID is never used again. Only a system admin may call the procedures
+// for tenants; everyone else gets permission_denied. Users and memberships are managed with the
+// user API.
+//
+// A team agent is an agent of one tenant without a key (dec-team-agents). A tenant admin creates
+// and removes the team agents of their tenant, and every member lists them. The definition of a
+// team agent is a file of the tenant (agents/<agent_id>.yaml), changed like every file. These
+// procedures name the tenant in the request. A caller who is no member of the tenant gets the
+// answer for a tenant that does not exist.
 //
 // Every call needs an access token (see identity.proto). Every command carries a command_id that
 // the client creates (dec-idempotent-commands).
@@ -24,6 +31,15 @@ service TenantService {
   rpc RemoveTenant(RemoveTenantRequest) returns (RemoveTenantResponse);
   // ListTenants returns all tenants, also the removed ones.
   rpc ListTenants(ListTenantsRequest) returns (ListTenantsResponse);
+  // CreateTeamAgent creates a team agent in a tenant. Only a tenant admin of the tenant may. The
+  // agent_id is a participant ID, so it is unique in the whole hub and never used again; a taken
+  // ID fails with already_exists. The agent has no definition yet: a member writes the file.
+  rpc CreateTeamAgent(CreateTeamAgentRequest) returns (CreateTeamAgentResponse);
+  // RemoveTeamAgent ends a team agent and keeps its record. Its tokens stop working at once.
+  // Only a tenant admin of the tenant may.
+  rpc RemoveTeamAgent(RemoveTeamAgentRequest) returns (RemoveTeamAgentResponse);
+  // ListTeamAgents returns the team agents of a tenant, also the removed ones. Every member may.
+  rpc ListTeamAgents(ListTeamAgentsRequest) returns (ListTeamAgentsResponse);
 }
 
 message Tenant {
@@ -56,4 +72,39 @@ message ListTenantsRequest {}
 
 message ListTenantsResponse {
   repeated Tenant tenants = 1;
+}
+
+message TeamAgent {
+  string agent_id = 1;
+  string display_name = 2;
+  google.protobuf.Timestamp valid_from = 3;
+  // valid_until is empty while the team agent is active.
+  google.protobuf.Timestamp valid_until = 4;
+}
+
+message CreateTeamAgentRequest {
+  string command_id = 1;
+  string tenant_id = 2;
+  // agent_id is 1 to 64 letters, digits, ".", "_" or "-", for example "minutes".
+  string agent_id = 3;
+  // display_name is one line of text, without "<" and ">".
+  string display_name = 4;
+}
+
+message CreateTeamAgentResponse {}
+
+message RemoveTeamAgentRequest {
+  string command_id = 1;
+  string tenant_id = 2;
+  string agent_id = 3;
+}
+
+message RemoveTeamAgentResponse {}
+
+message ListTeamAgentsRequest {
+  string tenant_id = 1;
+}
+
+message ListTeamAgentsResponse {
+  repeated TeamAgent agents = 1;
 }

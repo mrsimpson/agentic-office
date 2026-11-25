@@ -1,10 +1,17 @@
 // Tenant API (if-tenant-api): create, list and remove the tenants of the hub (concept-multi-tenancy,
-// dec-multi-tenancy).
+// dec-multi-tenancy), and manage the team agents of a tenant (dec-team-agents).
 //
 // A tenant is one organisation. Creating a tenant names its first tenant admin; the system admin
 // does not become a member. Removing a tenant ends the tenant and all its memberships and keeps
-// the records, so a tenant ID is never used again. Only a system admin may call these procedures;
-// everyone else gets permission_denied. Users and memberships are managed with the user API.
+// the records, so a tenant ID is never used again. Only a system admin may call the procedures
+// for tenants; everyone else gets permission_denied. Users and memberships are managed with the
+// user API.
+//
+// A team agent is an agent of one tenant without a key (dec-team-agents). A tenant admin creates
+// and removes the team agents of their tenant, and every member lists them. The definition of a
+// team agent is a file of the tenant (agents/<agent_id>.yaml), changed like every file. These
+// procedures name the tenant in the request. A caller who is no member of the tenant gets the
+// answer for a tenant that does not exist.
 //
 // Every call needs an access token (see identity.proto). Every command carries a command_id that
 // the client creates (dec-idempotent-commands).
@@ -376,6 +383,365 @@ func (x *ListTenantsResponse) GetTenants() []*Tenant {
 	return nil
 }
 
+type TeamAgent struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	AgentId     string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	DisplayName string                 `protobuf:"bytes,2,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	ValidFrom   *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=valid_from,json=validFrom,proto3" json:"valid_from,omitempty"`
+	// valid_until is empty while the team agent is active.
+	ValidUntil    *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=valid_until,json=validUntil,proto3" json:"valid_until,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TeamAgent) Reset() {
+	*x = TeamAgent{}
+	mi := &file_office_tenant_v1_tenant_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TeamAgent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TeamAgent) ProtoMessage() {}
+
+func (x *TeamAgent) ProtoReflect() protoreflect.Message {
+	mi := &file_office_tenant_v1_tenant_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TeamAgent.ProtoReflect.Descriptor instead.
+func (*TeamAgent) Descriptor() ([]byte, []int) {
+	return file_office_tenant_v1_tenant_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *TeamAgent) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *TeamAgent) GetDisplayName() string {
+	if x != nil {
+		return x.DisplayName
+	}
+	return ""
+}
+
+func (x *TeamAgent) GetValidFrom() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ValidFrom
+	}
+	return nil
+}
+
+func (x *TeamAgent) GetValidUntil() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ValidUntil
+	}
+	return nil
+}
+
+type CreateTeamAgentRequest struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	CommandId string                 `protobuf:"bytes,1,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
+	TenantId  string                 `protobuf:"bytes,2,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	// agent_id is 1 to 64 letters, digits, ".", "_" or "-", for example "minutes".
+	AgentId string `protobuf:"bytes,3,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	// display_name is one line of text, without "<" and ">".
+	DisplayName   string `protobuf:"bytes,4,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateTeamAgentRequest) Reset() {
+	*x = CreateTeamAgentRequest{}
+	mi := &file_office_tenant_v1_tenant_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateTeamAgentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateTeamAgentRequest) ProtoMessage() {}
+
+func (x *CreateTeamAgentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_office_tenant_v1_tenant_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateTeamAgentRequest.ProtoReflect.Descriptor instead.
+func (*CreateTeamAgentRequest) Descriptor() ([]byte, []int) {
+	return file_office_tenant_v1_tenant_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *CreateTeamAgentRequest) GetCommandId() string {
+	if x != nil {
+		return x.CommandId
+	}
+	return ""
+}
+
+func (x *CreateTeamAgentRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *CreateTeamAgentRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *CreateTeamAgentRequest) GetDisplayName() string {
+	if x != nil {
+		return x.DisplayName
+	}
+	return ""
+}
+
+type CreateTeamAgentResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateTeamAgentResponse) Reset() {
+	*x = CreateTeamAgentResponse{}
+	mi := &file_office_tenant_v1_tenant_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateTeamAgentResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateTeamAgentResponse) ProtoMessage() {}
+
+func (x *CreateTeamAgentResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_office_tenant_v1_tenant_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateTeamAgentResponse.ProtoReflect.Descriptor instead.
+func (*CreateTeamAgentResponse) Descriptor() ([]byte, []int) {
+	return file_office_tenant_v1_tenant_proto_rawDescGZIP(), []int{9}
+}
+
+type RemoveTeamAgentRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CommandId     string                 `protobuf:"bytes,1,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
+	TenantId      string                 `protobuf:"bytes,2,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	AgentId       string                 `protobuf:"bytes,3,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RemoveTeamAgentRequest) Reset() {
+	*x = RemoveTeamAgentRequest{}
+	mi := &file_office_tenant_v1_tenant_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RemoveTeamAgentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RemoveTeamAgentRequest) ProtoMessage() {}
+
+func (x *RemoveTeamAgentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_office_tenant_v1_tenant_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RemoveTeamAgentRequest.ProtoReflect.Descriptor instead.
+func (*RemoveTeamAgentRequest) Descriptor() ([]byte, []int) {
+	return file_office_tenant_v1_tenant_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *RemoveTeamAgentRequest) GetCommandId() string {
+	if x != nil {
+		return x.CommandId
+	}
+	return ""
+}
+
+func (x *RemoveTeamAgentRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *RemoveTeamAgentRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+type RemoveTeamAgentResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RemoveTeamAgentResponse) Reset() {
+	*x = RemoveTeamAgentResponse{}
+	mi := &file_office_tenant_v1_tenant_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RemoveTeamAgentResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RemoveTeamAgentResponse) ProtoMessage() {}
+
+func (x *RemoveTeamAgentResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_office_tenant_v1_tenant_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RemoveTeamAgentResponse.ProtoReflect.Descriptor instead.
+func (*RemoveTeamAgentResponse) Descriptor() ([]byte, []int) {
+	return file_office_tenant_v1_tenant_proto_rawDescGZIP(), []int{11}
+}
+
+type ListTeamAgentsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TenantId      string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListTeamAgentsRequest) Reset() {
+	*x = ListTeamAgentsRequest{}
+	mi := &file_office_tenant_v1_tenant_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListTeamAgentsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListTeamAgentsRequest) ProtoMessage() {}
+
+func (x *ListTeamAgentsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_office_tenant_v1_tenant_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListTeamAgentsRequest.ProtoReflect.Descriptor instead.
+func (*ListTeamAgentsRequest) Descriptor() ([]byte, []int) {
+	return file_office_tenant_v1_tenant_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ListTeamAgentsRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+type ListTeamAgentsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Agents        []*TeamAgent           `protobuf:"bytes,1,rep,name=agents,proto3" json:"agents,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListTeamAgentsResponse) Reset() {
+	*x = ListTeamAgentsResponse{}
+	mi := &file_office_tenant_v1_tenant_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListTeamAgentsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListTeamAgentsResponse) ProtoMessage() {}
+
+func (x *ListTeamAgentsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_office_tenant_v1_tenant_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListTeamAgentsResponse.ProtoReflect.Descriptor instead.
+func (*ListTeamAgentsResponse) Descriptor() ([]byte, []int) {
+	return file_office_tenant_v1_tenant_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *ListTeamAgentsResponse) GetAgents() []*TeamAgent {
+	if x != nil {
+		return x.Agents
+	}
+	return nil
+}
+
 var File_office_tenant_v1_tenant_proto protoreflect.FileDescriptor
 
 const file_office_tenant_v1_tenant_proto_rawDesc = "" +
@@ -402,11 +768,38 @@ const file_office_tenant_v1_tenant_proto_rawDesc = "" +
 	"\x14RemoveTenantResponse\"\x14\n" +
 	"\x12ListTenantsRequest\"I\n" +
 	"\x13ListTenantsResponse\x122\n" +
-	"\atenants\x18\x01 \x03(\v2\x18.office.tenant.v1.TenantR\atenants2\xa9\x02\n" +
+	"\atenants\x18\x01 \x03(\v2\x18.office.tenant.v1.TenantR\atenants\"\xc1\x01\n" +
+	"\tTeamAgent\x12\x19\n" +
+	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12!\n" +
+	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x129\n" +
+	"\n" +
+	"valid_from\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tvalidFrom\x12;\n" +
+	"\vvalid_until\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"validUntil\"\x92\x01\n" +
+	"\x16CreateTeamAgentRequest\x12\x1d\n" +
+	"\n" +
+	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x1b\n" +
+	"\ttenant_id\x18\x02 \x01(\tR\btenantId\x12\x19\n" +
+	"\bagent_id\x18\x03 \x01(\tR\aagentId\x12!\n" +
+	"\fdisplay_name\x18\x04 \x01(\tR\vdisplayName\"\x19\n" +
+	"\x17CreateTeamAgentResponse\"o\n" +
+	"\x16RemoveTeamAgentRequest\x12\x1d\n" +
+	"\n" +
+	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x1b\n" +
+	"\ttenant_id\x18\x02 \x01(\tR\btenantId\x12\x19\n" +
+	"\bagent_id\x18\x03 \x01(\tR\aagentId\"\x19\n" +
+	"\x17RemoveTeamAgentResponse\"4\n" +
+	"\x15ListTeamAgentsRequest\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\"M\n" +
+	"\x16ListTeamAgentsResponse\x123\n" +
+	"\x06agents\x18\x01 \x03(\v2\x1b.office.tenant.v1.TeamAgentR\x06agents2\xde\x04\n" +
 	"\rTenantService\x12]\n" +
 	"\fCreateTenant\x12%.office.tenant.v1.CreateTenantRequest\x1a&.office.tenant.v1.CreateTenantResponse\x12]\n" +
 	"\fRemoveTenant\x12%.office.tenant.v1.RemoveTenantRequest\x1a&.office.tenant.v1.RemoveTenantResponse\x12Z\n" +
-	"\vListTenants\x12$.office.tenant.v1.ListTenantsRequest\x1a%.office.tenant.v1.ListTenantsResponseB=Z;github.com/mrsimpson/agentic-office/hub/tenant/api;tenantv1b\x06proto3"
+	"\vListTenants\x12$.office.tenant.v1.ListTenantsRequest\x1a%.office.tenant.v1.ListTenantsResponse\x12f\n" +
+	"\x0fCreateTeamAgent\x12(.office.tenant.v1.CreateTeamAgentRequest\x1a).office.tenant.v1.CreateTeamAgentResponse\x12f\n" +
+	"\x0fRemoveTeamAgent\x12(.office.tenant.v1.RemoveTeamAgentRequest\x1a).office.tenant.v1.RemoveTeamAgentResponse\x12c\n" +
+	"\x0eListTeamAgents\x12'.office.tenant.v1.ListTeamAgentsRequest\x1a(.office.tenant.v1.ListTeamAgentsResponseB=Z;github.com/mrsimpson/agentic-office/hub/tenant/api;tenantv1b\x06proto3"
 
 var (
 	file_office_tenant_v1_tenant_proto_rawDescOnce sync.Once
@@ -420,32 +813,48 @@ func file_office_tenant_v1_tenant_proto_rawDescGZIP() []byte {
 	return file_office_tenant_v1_tenant_proto_rawDescData
 }
 
-var file_office_tenant_v1_tenant_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_office_tenant_v1_tenant_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_office_tenant_v1_tenant_proto_goTypes = []any{
-	(*Tenant)(nil),                // 0: office.tenant.v1.Tenant
-	(*CreateTenantRequest)(nil),   // 1: office.tenant.v1.CreateTenantRequest
-	(*CreateTenantResponse)(nil),  // 2: office.tenant.v1.CreateTenantResponse
-	(*RemoveTenantRequest)(nil),   // 3: office.tenant.v1.RemoveTenantRequest
-	(*RemoveTenantResponse)(nil),  // 4: office.tenant.v1.RemoveTenantResponse
-	(*ListTenantsRequest)(nil),    // 5: office.tenant.v1.ListTenantsRequest
-	(*ListTenantsResponse)(nil),   // 6: office.tenant.v1.ListTenantsResponse
-	(*timestamppb.Timestamp)(nil), // 7: google.protobuf.Timestamp
+	(*Tenant)(nil),                  // 0: office.tenant.v1.Tenant
+	(*CreateTenantRequest)(nil),     // 1: office.tenant.v1.CreateTenantRequest
+	(*CreateTenantResponse)(nil),    // 2: office.tenant.v1.CreateTenantResponse
+	(*RemoveTenantRequest)(nil),     // 3: office.tenant.v1.RemoveTenantRequest
+	(*RemoveTenantResponse)(nil),    // 4: office.tenant.v1.RemoveTenantResponse
+	(*ListTenantsRequest)(nil),      // 5: office.tenant.v1.ListTenantsRequest
+	(*ListTenantsResponse)(nil),     // 6: office.tenant.v1.ListTenantsResponse
+	(*TeamAgent)(nil),               // 7: office.tenant.v1.TeamAgent
+	(*CreateTeamAgentRequest)(nil),  // 8: office.tenant.v1.CreateTeamAgentRequest
+	(*CreateTeamAgentResponse)(nil), // 9: office.tenant.v1.CreateTeamAgentResponse
+	(*RemoveTeamAgentRequest)(nil),  // 10: office.tenant.v1.RemoveTeamAgentRequest
+	(*RemoveTeamAgentResponse)(nil), // 11: office.tenant.v1.RemoveTeamAgentResponse
+	(*ListTeamAgentsRequest)(nil),   // 12: office.tenant.v1.ListTeamAgentsRequest
+	(*ListTeamAgentsResponse)(nil),  // 13: office.tenant.v1.ListTeamAgentsResponse
+	(*timestamppb.Timestamp)(nil),   // 14: google.protobuf.Timestamp
 }
 var file_office_tenant_v1_tenant_proto_depIdxs = []int32{
-	7, // 0: office.tenant.v1.Tenant.valid_from:type_name -> google.protobuf.Timestamp
-	7, // 1: office.tenant.v1.Tenant.valid_until:type_name -> google.protobuf.Timestamp
-	0, // 2: office.tenant.v1.ListTenantsResponse.tenants:type_name -> office.tenant.v1.Tenant
-	1, // 3: office.tenant.v1.TenantService.CreateTenant:input_type -> office.tenant.v1.CreateTenantRequest
-	3, // 4: office.tenant.v1.TenantService.RemoveTenant:input_type -> office.tenant.v1.RemoveTenantRequest
-	5, // 5: office.tenant.v1.TenantService.ListTenants:input_type -> office.tenant.v1.ListTenantsRequest
-	2, // 6: office.tenant.v1.TenantService.CreateTenant:output_type -> office.tenant.v1.CreateTenantResponse
-	4, // 7: office.tenant.v1.TenantService.RemoveTenant:output_type -> office.tenant.v1.RemoveTenantResponse
-	6, // 8: office.tenant.v1.TenantService.ListTenants:output_type -> office.tenant.v1.ListTenantsResponse
-	6, // [6:9] is the sub-list for method output_type
-	3, // [3:6] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	14, // 0: office.tenant.v1.Tenant.valid_from:type_name -> google.protobuf.Timestamp
+	14, // 1: office.tenant.v1.Tenant.valid_until:type_name -> google.protobuf.Timestamp
+	0,  // 2: office.tenant.v1.ListTenantsResponse.tenants:type_name -> office.tenant.v1.Tenant
+	14, // 3: office.tenant.v1.TeamAgent.valid_from:type_name -> google.protobuf.Timestamp
+	14, // 4: office.tenant.v1.TeamAgent.valid_until:type_name -> google.protobuf.Timestamp
+	7,  // 5: office.tenant.v1.ListTeamAgentsResponse.agents:type_name -> office.tenant.v1.TeamAgent
+	1,  // 6: office.tenant.v1.TenantService.CreateTenant:input_type -> office.tenant.v1.CreateTenantRequest
+	3,  // 7: office.tenant.v1.TenantService.RemoveTenant:input_type -> office.tenant.v1.RemoveTenantRequest
+	5,  // 8: office.tenant.v1.TenantService.ListTenants:input_type -> office.tenant.v1.ListTenantsRequest
+	8,  // 9: office.tenant.v1.TenantService.CreateTeamAgent:input_type -> office.tenant.v1.CreateTeamAgentRequest
+	10, // 10: office.tenant.v1.TenantService.RemoveTeamAgent:input_type -> office.tenant.v1.RemoveTeamAgentRequest
+	12, // 11: office.tenant.v1.TenantService.ListTeamAgents:input_type -> office.tenant.v1.ListTeamAgentsRequest
+	2,  // 12: office.tenant.v1.TenantService.CreateTenant:output_type -> office.tenant.v1.CreateTenantResponse
+	4,  // 13: office.tenant.v1.TenantService.RemoveTenant:output_type -> office.tenant.v1.RemoveTenantResponse
+	6,  // 14: office.tenant.v1.TenantService.ListTenants:output_type -> office.tenant.v1.ListTenantsResponse
+	9,  // 15: office.tenant.v1.TenantService.CreateTeamAgent:output_type -> office.tenant.v1.CreateTeamAgentResponse
+	11, // 16: office.tenant.v1.TenantService.RemoveTeamAgent:output_type -> office.tenant.v1.RemoveTeamAgentResponse
+	13, // 17: office.tenant.v1.TenantService.ListTeamAgents:output_type -> office.tenant.v1.ListTeamAgentsResponse
+	12, // [12:18] is the sub-list for method output_type
+	6,  // [6:12] is the sub-list for method input_type
+	6,  // [6:6] is the sub-list for extension type_name
+	6,  // [6:6] is the sub-list for extension extendee
+	0,  // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_office_tenant_v1_tenant_proto_init() }
@@ -459,7 +868,7 @@ func file_office_tenant_v1_tenant_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_office_tenant_v1_tenant_proto_rawDesc), len(file_office_tenant_v1_tenant_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

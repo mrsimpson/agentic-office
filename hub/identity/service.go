@@ -78,7 +78,12 @@ type challenge struct {
 }
 
 type token struct {
-	keyID        string
+	keyID string
+	// A token as a team agent (dec-team-agents) has the key of the agent launcher in keyID, so it
+	// ends with that key, and names the agent, its tenant and the confirmed version.
+	agent        string
+	agentTenant  string
+	version      string
 	stageSession string
 	stageTenant  string
 	expires      time.Time
@@ -162,7 +167,8 @@ func precondition(msg string) error    { return connect.NewError(connect.CodeFai
 // API and the services that the wiring names in Options.TenantFreeServices.
 func (s *Service) tenantFree(procedure string) bool {
 	if publicProcedures[procedure] || procedure == identityv1connect.IdentityServiceCreatePortalLinkProcedure ||
-		procedure == identityv1connect.IdentityServiceWhoAmIProcedure {
+		procedure == identityv1connect.IdentityServiceWhoAmIProcedure ||
+		procedure == identityv1connect.IdentityServiceIssueAgentTokenProcedure {
 		return true
 	}
 	for _, name := range append([]string{userv1connect.UserServiceName}, s.opts.TenantFreeServices...) {
@@ -255,6 +261,9 @@ func (s *Service) CheckToken(tok string) (Caller, error) {
 	if !ok {
 		return Caller{}, unauthenticated("key revoked or user removed")
 	}
+	if t.agent != "" {
+		return s.agentCaller(t, k.userID, u, now)
+	}
 	c := Caller{ParticipantID: k.userID, DisplayName: u.DisplayName, Kind: callerKind(kindOf(u.Kind)), KeyID: t.keyID,
 		SystemAdmin: u.SystemAdmin, Expires: t.expires, Done: t.done}
 	for mk, m := range s.st.members {
@@ -268,6 +277,35 @@ func (s *Service) CheckToken(tok string) (Caller, error) {
 	}
 	sort.Slice(c.Tenants, func(i, j int) bool { return c.Tenants[i].TenantID < c.Tenants[j].TenantID })
 	return c, nil
+}
+
+// agentCaller is the caller of a token as a team agent. The token ends when the agent or its
+// tenant ends and when the agent launcher leaves the tenant. The caller holds s.mu.
+func (s *Service) agentCaller(t *token, launcher string, lu *userRecord, now time.Time) (Caller, error) {
+	a, tn := s.st.users[t.agent], s.st.tenants[t.agentTenant]
+	if a == nil || !a.active(now) || a.Team != t.agentTenant || tn == nil || !tn.active(now) {
+		return Caller{}, unauthenticated("the team agent was removed")
+	}
+	m := s.st.members[memberKey{t.agentTenant, launcher}]
+	if m == nil || !m.active(now) {
+		return Caller{}, unauthenticated("the agent launcher is no member of the tenant any more")
+	}
+	return Caller{ParticipantID: t.agent, DisplayName: agentDisplayName(a.DisplayName, lu.DisplayName, t.version),
+		Kind: tokencheck.KindAgent, TeamTenant: t.agentTenant, AgentLauncher: launcher, LauncherName: lu.DisplayName,
+		DefinitionVersion: t.version, Expires: t.expires, Done: t.done,
+		Tenants: []tokencheck.Membership{{TenantID: t.agentTenant, Role: tokencheck.RoleMember}}}, nil
+}
+
+// agentDisplayName is the name of a team agent as its token shows it, also as the author of what
+// it writes: the agent, the agent launcher and the version of the definition.
+func agentDisplayName(agent, launcher, version string) string {
+	if len(version) > 12 {
+		version = version[:12]
+	}
+	if version == "" {
+		version = "unknown"
+	}
+	return agent + " (agent launcher " + launcher + ", definition " + version + ")"
 }
 
 var _ tokencheck.Kinds = (*Service)(nil)
@@ -407,8 +445,8 @@ func callerKind(k identityv1.ActorKind) tokencheck.Kind {
 // CreatePortalLink implements the RPC. Every user may call it (dec-web-portal).
 func (s *Service) CreatePortalLink(ctx context.Context, req *identityv1.CreatePortalLinkRequest) (*identityv1.CreatePortalLinkResponse, error) {
 	c, _ := CallerFrom(ctx)
-	if c.ParticipantID == "" {
-		return nil, denied("a stage link cannot create a portal link")
+	if c.ParticipantID == "" || c.TeamTenant != "" {
+		return nil, denied("a stage link or a team agent cannot create a portal link")
 	}
 	if req.GetCommandId() == "" {
 		return nil, invalid("command_id is required")
@@ -462,6 +500,40 @@ func (s *Service) ExchangePortalLink(_ context.Context, req *identityv1.Exchange
 	tok, exp := s.newToken("oat_", l.keyID, "", "", s.opts.PortalSessionTTL)
 	return &identityv1.ExchangePortalLinkResponse{AccessToken: tok, ExpiresAt: timestamppb.New(exp), ParticipantId: k.userID,
 		TenantId: l.tenant}, nil
+}
+
+// IssueAgentToken implements the RPC: a human member of a tenant gets a token as a team agent
+// of the tenant (dec-team-agents).
+func (s *Service) IssueAgentToken(ctx context.Context, req *identityv1.IssueAgentTokenRequest) (*identityv1.IssueAgentTokenResponse, error) {
+	c, _ := CallerFrom(ctx)
+	if c.ParticipantID == "" || c.TeamTenant != "" || c.Kind != tokencheck.KindHuman {
+		return nil, denied("only a human member can start a team agent")
+	}
+	if req.GetTenantId() == "" || req.GetAgentId() == "" {
+		return nil, invalid("tenant_id and agent_id are required")
+	}
+	v := req.GetDefinitionVersion()
+	if len(v) > 200 || strings.ContainsFunc(v, func(r rune) bool { return r < ' ' || r == 0x7f || r == '<' || r == '>' }) {
+		return nil, invalid("definition_version must be at most 200 characters without control characters")
+	}
+	// The same answer for a tenant that the caller is not a member of, and for an agent that does
+	// not exist.
+	missing := notFound("no such team agent")
+	if _, member := c.Member(req.GetTenantId()); !member {
+		return nil, missing
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	a, tn := s.st.users[req.GetAgentId()], s.st.tenants[req.GetTenantId()]
+	if a == nil || a.Team != req.GetTenantId() || !a.active(now) || tn == nil || !tn.active(now) {
+		return nil, missing
+	}
+	tok, exp := s.newToken("oat_", c.KeyID, "", "", s.opts.TokenTTL)
+	t := s.tokens[sha256.Sum256([]byte(tok))]
+	t.agent, t.agentTenant, t.version = req.GetAgentId(), req.GetTenantId(), v
+	return &identityv1.IssueAgentTokenResponse{AccessToken: tok, ExpiresAt: timestamppb.New(exp), ParticipantId: req.GetAgentId(),
+		DisplayName: agentDisplayName(a.DisplayName, c.DisplayName, v)}, nil
 }
 
 // WhoAmI implements the RPC: the caller as the token check knows it.

@@ -26,6 +26,7 @@ const (
 	EnvTenant       = "OFFICE_PUSH_TENANT"
 	EnvParticipant  = "OFFICE_PUSH_PARTICIPANT"
 	EnvName         = "OFFICE_PUSH_NAME"
+	EnvAgent        = "OFFICE_PUSH_AGENT" // "1" when the participant is an agent
 	EnvMaxFileBytes = "OFFICE_PUSH_MAX_FILE_BYTES"
 	EnvMaxFiles     = "OFFICE_PUSH_MAX_FILES"
 )
@@ -73,7 +74,8 @@ func RunPreReceive(stdin io.Reader, stderr io.Writer) int {
 	if maxFiles <= 0 {
 		maxFiles = DefaultMaxFiles
 	}
-	h := &hook{wantName: signature(name), wantEmail: AuthorEmail(participant), maxFile: maxFile, maxFiles: maxFiles}
+	h := &hook{wantName: signature(name), wantEmail: AuthorEmail(participant), maxFile: maxFile, maxFiles: maxFiles,
+		agent: os.Getenv(EnvAgent) == "1"}
 
 	var problems, hints []string
 	sc := bufio.NewScanner(stdin)
@@ -105,6 +107,7 @@ type hook struct {
 	wantName, wantEmail string
 	maxFile             int64
 	maxFiles            int
+	agent               bool // the participant is an agent: no agent changes a file that the owner of its schema keeps from agents (dec-team-agents)
 }
 
 func isZero(id string) bool { return strings.Trim(id, "0") == "" }
@@ -211,6 +214,9 @@ func (h *hook) checkFiles(oldID, newID string) ([]string, []string) {
 		changes = append(changes, change{p, newBlob})
 	}
 	problems = append(problems, h.checkStubs(olds)...)
+	if h.agent {
+		problems = append(problems, h.checkNoAgents(olds, changes)...)
+	}
 	if len(changes) > h.maxFiles {
 		return append(problems, fmt.Sprintf("the push changes %d files; at most %d files may change in one push", len(changes), h.maxFiles)), nil
 	}
@@ -230,6 +236,28 @@ func (h *hook) checkStubs(olds []change) []string {
 	for i, c := range olds {
 		if blobs[i].content != nil && check.IsStub(c.path, blobs[i].content) {
 			problems = append(problems, fmt.Sprintf("%s is the stub of an artifact that waits for the release of its session; a push cannot change or remove it. Fetch, restore the file as it is on origin/main, and push again", c.path))
+		}
+	}
+	return problems
+}
+
+// checkNoAgents refuses the push of an agent that changes, creates or removes a file that no agent
+// may change, such as the definition of a team agent (dec-team-agents). The old state decides for a
+// change or a removal, the new state for a file that is new or that now names the schema. The
+// artifact check decides what such a file is.
+func (h *hook) checkNoAgents(olds, changes []change) []string {
+	var problems []string
+	seen := map[string]bool{}
+	for _, cs := range [][]change{olds, changes} {
+		blobs, err := h.readBlobs(cs)
+		if err != nil {
+			return append(problems, "the files could not be read: "+err.Error())
+		}
+		for i, c := range cs {
+			if !seen[c.path] && blobs[i].content != nil && check.NoAgents(c.path, blobs[i].content) {
+				seen[c.path] = true
+				problems = append(problems, fmt.Sprintf("%s: no agent may change this file; a member changes it with their own key", c.path))
+			}
 		}
 	}
 	return problems

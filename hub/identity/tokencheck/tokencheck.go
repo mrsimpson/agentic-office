@@ -49,6 +49,17 @@ type Caller struct {
 	// token has the tenant of its link and no role.
 	TenantID   string
 	TenantRole Role
+	// TeamTenant is set for the token as a team agent (dec-team-agents): the tenant that the
+	// agent belongs to. The participant is the agent, which is a member of this tenant only. It
+	// has no key; KeyID is empty.
+	TeamTenant string
+	// AgentLauncher is the participant ID of the member who started the team agent, and
+	// LauncherName is their display name. Both are empty for every other token.
+	AgentLauncher string
+	LauncherName  string
+	// DefinitionVersion is the version of the definition that the agent launcher confirmed, as the
+	// token as the team agent names it.
+	DefinitionVersion string
 	// StageSessionID is set for the token of a stage link. Such a token may only read the
 	// session stream of this session.
 	StageSessionID string

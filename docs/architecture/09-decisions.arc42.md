@@ -1507,11 +1507,9 @@ only Tenants writes (members could not use the file interfaces); a definition fo
 key for each user (no shared identity); a private key that is shared and encrypted for each member
 (removing a member needs a new key, a member keeps what they decrypted, and a session cannot show
 who runs the agent); a signed delegation (a larger change at Identity than a token as the agent).
-OPEN: the check and the description of the definition are two interfaces of Tenants, like the
-interfaces of the other owners of a schema, and are added to chapter 5 together with their code
-(issue #278), because a modelled interface needs its package; finer rights, for example a role or a
-list for each agent; team agents that run without a human; definitions across tenants; whether
-unknown fields of a definition are refused or ignored.
+Unknown fields of a definition are refused, so a definition holds no command, address or
+credential. OPEN: finer rights, for example a role or a list for each agent; team agents that run
+without a human; definitions across tenants.
 
 ```arc42
 :::decision

@@ -37,12 +37,15 @@ type keyRecord struct {
 }
 
 type userRecord struct {
-	DisplayName string       `yaml:"display_name"`
-	Kind        string       `yaml:"kind"`
-	SystemAdmin bool         `yaml:"system_admin,omitempty"`
-	ValidFrom   time.Time    `yaml:"valid_from"`
-	ValidUntil  *time.Time   `yaml:"valid_until,omitempty"`
-	Keys        []*keyRecord `yaml:"keys"`
+	DisplayName string `yaml:"display_name"`
+	Kind        string `yaml:"kind"`
+	SystemAdmin bool   `yaml:"system_admin,omitempty"`
+	// Team is the tenant of a team agent (dec-team-agents). A team agent is an agent without a
+	// key that belongs to this tenant only and is no member of it.
+	Team       string       `yaml:"team,omitempty"`
+	ValidFrom  time.Time    `yaml:"valid_from"`
+	ValidUntil *time.Time   `yaml:"valid_until,omitempty"`
+	Keys       []*keyRecord `yaml:"keys"`
 }
 
 type period struct {
@@ -167,6 +170,21 @@ func (st *state) validate(now time.Time) error {
 			}
 			keyOwner[k.KeyID] = id
 		}
+		if u.Team != "" {
+			switch tn := st.tenants[u.Team]; {
+			case kindOf(u.Kind) != identityv1.ActorKind_ACTOR_KIND_AGENT:
+				return fmt.Errorf("user %s: a team agent must be an agent", id)
+			case len(u.Keys) > 0:
+				return fmt.Errorf("team agent %s has a key: a team agent has none", id)
+			case u.SystemAdmin:
+				return fmt.Errorf("team agent %s cannot be a system admin", id)
+			case tn == nil:
+				return fmt.Errorf("team agent %s: there is no tenant %s", id, u.Team)
+			case u.active(now) && !tn.active(now):
+				return fmt.Errorf("tenant %s is removed and its team agent %s is still active", u.Team, id)
+			}
+			continue
+		}
 		if !u.active(now) {
 			if u.SystemAdmin {
 				return fmt.Errorf("user %s is removed and still a system admin", id)
@@ -203,6 +221,9 @@ func (st *state) validate(now time.Time) error {
 		}
 		if m.Role != roleMember && m.Role != roleTenantAdmin {
 			return fmt.Errorf("membership of %s in %s: the role must be member or tenant_admin", mk.user, mk.tenant)
+		}
+		if u.Team != "" {
+			return fmt.Errorf("team agent %s has a membership in %s: a team agent is no member", mk.user, mk.tenant)
 		}
 		if !m.active(now) {
 			continue

@@ -357,7 +357,10 @@ schema; the diagram shows the records part. For a file that the push changes or 
 access also asks the artifacts part whether the old file is the stub of a staged artifact, and
 refuses the push if it is. Git access also asks the artifacts part for the hints of each changed
 file, such as a link of a document that leads nowhere in the state after the push, and shows them
-to the participant; a hint never refuses the push. When all of the rules hold, Git moves main in one step, and Git access tells the archive,
+to the participant; a hint never refuses the push. When an agent pushes, Git access also asks
+the artifacts part whether the old or the new file is one that no agent may change, such as the
+definition of a team agent, which Tenants owns, and refuses the push if it is
+(`dec-team-agents`). When all of the rules hold, Git moves main in one step, and Git access tells the archive,
 which tells the clients that follow the tenant. A push that breaks a rule is refused as a whole and
 shows the reason. A push on an old base is refused by Git, and the participant fetches and merges
 by hand first.
@@ -367,7 +370,7 @@ by hand first.
 id: rs-git-push
 title: Participant pushes a change with Git
 trigger: A participant pushes the branch main of the tenant repository
-involves: bb-git-access, bb-identity, bb-artifacts, bb-records, bb-tasks, bb-slides, bb-documents, bb-archive, bb-sync, bb-participant-client, bb-office-hub
+involves: bb-git-access, bb-identity, bb-artifacts, bb-records, bb-tasks, bb-slides, bb-documents, bb-tenants, bb-archive, bb-sync, bb-participant-client, bb-office-hub
 :::
 ```
 
@@ -376,7 +379,7 @@ involves: bb-git-access, bb-identity, bb-artifacts, bb-records, bb-tasks, bb-sli
 id: seq-git-push
 notation: mermaid-sequence
 scenario: rs-git-push
-aliases: actor_human=actor-human, bb_git_access=bb-git-access, bb_identity=bb-identity, bb_artifacts=bb-artifacts, bb_records=bb-records, bb_archive=bb-archive, bb_sync=bb-sync
+aliases: actor_human=actor-human, bb_git_access=bb-git-access, bb_identity=bb-identity, bb_artifacts=bb-artifacts, bb_records=bb-records, bb_tenants=bb-tenants, bb_archive=bb-archive, bb_sync=bb-sync
 :::
 ```
 
@@ -387,6 +390,7 @@ sequenceDiagram
     participant bb_identity as Identity
     participant bb_artifacts as Artifacts
     participant bb_records as Records
+    participant bb_tenants as Tenants
     participant bb_archive as Archive
     participant bb_sync as Artifact sync
     actor_human->>bb_git_access: git push, token as password
@@ -401,6 +405,9 @@ sequenceDiagram
     bb_artifacts-->>bb_git_access: the owner of its schema recognises its stub, or not
     bb_git_access->>bb_artifacts: hints for a changed file, links resolve in the new state
     bb_artifacts-->>bb_git_access: hints of the parts, for example a link of a document that leads nowhere
+    bb_git_access->>bb_artifacts: for an agent: may no agent change this file?
+    bb_artifacts->>bb_tenants: the owner of the schema of a team agent definition says so
+    bb_artifacts-->>bb_git_access: refused for an agent, or free
     Note over bb_git_access: Git moves main in one step, or the push is refused with the reason
     bb_git_access->>bb_archive: main moved
     bb_archive-->>bb_records: changed artifacts, the part reloads its files
