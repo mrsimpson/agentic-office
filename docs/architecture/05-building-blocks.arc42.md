@@ -318,8 +318,10 @@ Proves who a caller is: the client signs a challenge from the hub with its priva
 short-lived access token that is bound to its key. The answer names the participant and the
 display name of the participant, which the client uses as the author of commits
 (`dec-artifact-sync`). The interface also creates the read-only links
-for the stage and the one-time links of the portal (`dec-web-portal`). The calls of the meeting session, the records, the tasks and the slides name a
-tenant, and Identity checks that the caller is a member of it. The auth, user and tenant APIs name
+for the stage and the one-time links of the portal (`dec-web-portal`). A member of a tenant can also ask for a token as a team agent
+of that tenant (`dec-team-agents`). Identity checks the membership and issues a short-lived
+token that names the team agent and the member who runs it, the operator. The calls of the meeting session, the records, the tasks and the slides name a
+tenant, and Identity checks that the caller is a member of it. The auth and user APIs name
 no tenant, because they work across tenants.
 
 ```arc42
@@ -355,7 +357,9 @@ path: hub/identity/userapi
 ### Tenant API
 
 Creates, lists and removes tenants; only a system admin may. Creating a tenant gives it its own
-repository and names its first tenant admin.
+repository and names its first tenant admin. The same interface manages the team agents of a
+tenant (`dec-team-agents`): a tenant admin creates and removes a team agent, and every member
+lists team agents and reads and changes their definitions. These calls name the tenant.
 
 ```arc42
 :::interface
@@ -670,7 +674,9 @@ Manages sessions and their participants. It accepts utterances from the ears and
 participants, and writes everything to one append-only event log per session. It also takes
 imported conversations (`if-session-import`) and writes them into the log of a new session, so a
 session log has one writer in every case. Next to the log, it keeps the short-lived activities of
-the participants (`if-session-activity`), in memory only. Subscribers receive the log from a cursor onwards.
+the participants (`if-session-activity`), in memory only. A team agent is in a session at most
+once: it refuses the join of a team agent that is already in the session with "already joined",
+whoever the operator is (`dec-team-agents`). Subscribers receive the log from a cursor onwards.
 It lists the sessions that a caller may see (`if-session-list`).
 Events are merged by time only: the participant model already says who spoke.
 
@@ -1442,11 +1448,14 @@ path: hub/stage
 Knows all users (participants), their public keys, their tenant memberships and the system admins
 in one place for the whole hub, and keeps them in the hub repository through the archive. It is
 the only writer there and checks every change. Each user, human or agent, is its own actor with
-its own key pair. The client creates the key pair locally and sends only the public key. A user can
+its own key pair, except a team agent. The client creates the key pair locally and sends only the public key. A user can
 be a member of several tenants, with a role in each, and can also be a system admin. A new public
-key is registered by hand when we meet the person. Identity issues short-lived access tokens and
+key is registered by hand when we meet the person. A team agent is a user without a key that
+belongs to one tenant (`dec-team-agents`); Identity creates it when the tenant admin asks Tenants to, and
+issues a token as the agent to every member of that tenant. Identity issues short-lived access tokens and
 creates read-only links for the stage. The token check tells the other parts of the hub who the
-caller is, whether they are a system admin and which tenants they belong to with which role.
+caller is, whether they are a system admin and which tenants they belong to with which role. For
+a token as a team agent, it also names the operator.
 
 ```arc42
 :::building-block
@@ -1481,7 +1490,8 @@ path: hub/identity/tokencheck
 Identity keeps the tenant records next to the users and memberships, so it can check that a
 membership belongs to a tenant that exists. Tenants uses this in-process interface to create a
 tenant together with its first tenant admin, to end a tenant with all its memberships, and to list
-tenants. A tenant ID is never used again.
+tenants. A tenant ID is never used again. Tenants also creates and ends the team agents of a tenant
+through it.
 
 ```arc42
 :::interface
@@ -1499,7 +1509,10 @@ Knows the tenants and their members. A tenant is the unit of separation: its ses
 tasks and slides live only in the git repository of the tenant and are visible only to its members.
 Only a system admin creates, lists and removes tenants. Tenants does not keep the tenant records or
 the memberships: Identity owns them and Tenants asks Identity through the tenant roster. Creating
-a tenant also creates its repository (`if-archive-storage`). Synchronisation with
+a tenant also creates its repository (`if-archive-storage`). Tenants keeps the definition of each
+team agent of a tenant in the repository of the tenant (`dec-team-agents`): the role, the wake
+strategy and the tools the agent may use, never a secret and never anything that depends on one
+computer. Every change is one commit. Synchronisation with
 remotes is not part of this stage.
 
 ```arc42
@@ -1721,7 +1734,8 @@ The shared core of the CLI, the MCP server and the ears ("one core, two adapters
 creates the command IDs and calls the interfaces of the office hub. It reads the import format
 of conversations and sends a conversation to the session import in pages
 (`dec-import-format`), so the CLI and the MCP server import in the same way. It lists the sessions
-that the participant may see (`if-session-list`). The adapters add only their own way of talking
+that the participant may see (`if-session-list`). It asks Identity for a token as a team agent and
+reads and changes the definitions of team agents (`dec-team-agents`). The adapters add only their own way of talking
 to a human or an agent.
 
 ```arc42
@@ -1799,8 +1813,13 @@ path: client/mcp
 
 Keeps an agent in the meeting (`dec-agent-runner-acp`). Agents work in turns
 (`con-turn-based-agents`): after a turn they wait for a human. The runner does not wait. For one
-session and one agent key, it:
+session and one agent, it:
 
+- gets its token: with the key of a personal agent, or, for a team agent, with the key of the
+  operator as a token as the agent (`dec-team-agents`). It reads the definition of a team agent
+  from Tenants and starts it only after the user has confirmed the definition, again when the
+  definition has changed since. The harness, the working directory and the credentials of a model
+  always come from the computer of the operator;
 - joins the session as the agent and runs the log replicator in its own process, so it follows
   the local log of the agent;
 - hands the harness, with its skills injector, the skills that every agent of a tenant needs
