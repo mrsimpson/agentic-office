@@ -78,6 +78,15 @@ const (
 	// SessionCommandsServiceObjectToReleaseProcedure is the procedure name of the
 	// SessionCommandsService's ObjectToRelease RPC.
 	SessionCommandsServiceObjectToReleaseProcedure = "/office.sessioncommands.v1.SessionCommandsService/ObjectToRelease"
+	// SessionCommandsServiceTrimSessionProcedure is the procedure name of the SessionCommandsService's
+	// TrimSession RPC.
+	SessionCommandsServiceTrimSessionProcedure = "/office.sessioncommands.v1.SessionCommandsService/TrimSession"
+	// SessionCommandsServiceDeleteSessionProcedure is the procedure name of the
+	// SessionCommandsService's DeleteSession RPC.
+	SessionCommandsServiceDeleteSessionProcedure = "/office.sessioncommands.v1.SessionCommandsService/DeleteSession"
+	// SessionCommandsServiceRestoreSessionProcedure is the procedure name of the
+	// SessionCommandsService's RestoreSession RPC.
+	SessionCommandsServiceRestoreSessionProcedure = "/office.sessioncommands.v1.SessionCommandsService/RestoreSession"
 	// SessionCommandsServiceGetReleaseProcedure is the procedure name of the SessionCommandsService's
 	// GetRelease RPC.
 	SessionCommandsServiceGetReleaseProcedure = "/office.sessioncommands.v1.SessionCommandsService/GetRelease"
@@ -190,6 +199,27 @@ var (
 			Procedure:  SessionCommandsServiceObjectToReleaseProcedure,
 		}
 	})
+	sessionCommandsServiceTrimSessionSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     commandsapi.File_office_sessioncommands_v1_commands_proto.Services().ByName("SessionCommandsService").Methods().ByName("TrimSession"),
+			Procedure:  SessionCommandsServiceTrimSessionProcedure,
+		}
+	})
+	sessionCommandsServiceDeleteSessionSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     commandsapi.File_office_sessioncommands_v1_commands_proto.Services().ByName("SessionCommandsService").Methods().ByName("DeleteSession"),
+			Procedure:  SessionCommandsServiceDeleteSessionProcedure,
+		}
+	})
+	sessionCommandsServiceRestoreSessionSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     commandsapi.File_office_sessioncommands_v1_commands_proto.Services().ByName("SessionCommandsService").Methods().ByName("RestoreSession"),
+			Procedure:  SessionCommandsServiceRestoreSessionProcedure,
+		}
+	})
 	sessionCommandsServiceGetReleaseSpec = sync.OnceValue(func() connect.Spec {
 		return connect.Spec{
 			StreamType: connect.StreamTypeUnary,
@@ -276,6 +306,20 @@ type SessionCommandsServiceClient interface {
 	// human releases it then. Who may object: as for ReleaseSession. A session that is held or
 	// released fails with failed_precondition.
 	ObjectToRelease(context.Context, *commandsapi.ObjectToReleaseRequest) (*commandsapi.ObjectToReleaseResponse, error)
+	// TrimSession appends session.trimmed (dec-session-trim-delete): the events after last_event_id
+	// no longer count. Only an ended session takes it (failed_precondition), and it never ends a
+	// session. Who may trim: a human who took part in the session (also one who left, and the
+	// participant who imported it) and a tenant admin; an agent gets permission_denied, everyone
+	// else not_found. A released session fails with failed_precondition. last_event_id must be an
+	// event of the log (invalid_argument); an ID at or after session.ended removes the cut.
+	TrimSession(context.Context, *commandsapi.TrimSessionRequest) (*commandsapi.TrimSessionResponse, error)
+	// DeleteSession appends session.deleted (dec-session-trim-delete). Only an ended session takes
+	// it, from the same callers as TrimSession. A released session and a session that is deleted
+	// already fail with failed_precondition.
+	DeleteSession(context.Context, *commandsapi.DeleteSessionRequest) (*commandsapi.DeleteSessionResponse, error)
+	// RestoreSession appends session.restored and removes the mark of a deleted session. Same
+	// callers as TrimSession. A session that is not deleted fails with failed_precondition.
+	RestoreSession(context.Context, *commandsapi.RestoreSessionRequest) (*commandsapi.RestoreSessionResponse, error)
 	// GetRelease returns the release of a session (concept-session-release). Who may read the
 	// session, as the session stream decides (stream.proto), gets the release status, the paths of
 	// the staged files and, once the session is released, its release commit. Every other member of
@@ -360,6 +404,20 @@ type SessionCommandsServiceHandler interface {
 	// human releases it then. Who may object: as for ReleaseSession. A session that is held or
 	// released fails with failed_precondition.
 	ObjectToRelease(context.Context, *commandsapi.ObjectToReleaseRequest) (*commandsapi.ObjectToReleaseResponse, error)
+	// TrimSession appends session.trimmed (dec-session-trim-delete): the events after last_event_id
+	// no longer count. Only an ended session takes it (failed_precondition), and it never ends a
+	// session. Who may trim: a human who took part in the session (also one who left, and the
+	// participant who imported it) and a tenant admin; an agent gets permission_denied, everyone
+	// else not_found. A released session fails with failed_precondition. last_event_id must be an
+	// event of the log (invalid_argument); an ID at or after session.ended removes the cut.
+	TrimSession(context.Context, *commandsapi.TrimSessionRequest) (*commandsapi.TrimSessionResponse, error)
+	// DeleteSession appends session.deleted (dec-session-trim-delete). Only an ended session takes
+	// it, from the same callers as TrimSession. A released session and a session that is deleted
+	// already fail with failed_precondition.
+	DeleteSession(context.Context, *commandsapi.DeleteSessionRequest) (*commandsapi.DeleteSessionResponse, error)
+	// RestoreSession appends session.restored and removes the mark of a deleted session. Same
+	// callers as TrimSession. A session that is not deleted fails with failed_precondition.
+	RestoreSession(context.Context, *commandsapi.RestoreSessionRequest) (*commandsapi.RestoreSessionResponse, error)
 	// GetRelease returns the release of a session (concept-session-release). Who may read the
 	// session, as the session stream decides (stream.proto), gets the release status, the paths of
 	// the staged files and, once the session is released, its release commit. Every other member of
@@ -413,6 +471,9 @@ func RegisterSessionCommandsServiceHandler(server *connect.Server, svc SessionCo
 		connect.Method{Spec: sessionCommandsServiceEndSessionSpec(), Handler: adapter.endSession},
 		connect.Method{Spec: sessionCommandsServiceReleaseSessionSpec(), Handler: adapter.releaseSession},
 		connect.Method{Spec: sessionCommandsServiceObjectToReleaseSpec(), Handler: adapter.objectToRelease},
+		connect.Method{Spec: sessionCommandsServiceTrimSessionSpec(), Handler: adapter.trimSession},
+		connect.Method{Spec: sessionCommandsServiceDeleteSessionSpec(), Handler: adapter.deleteSession},
+		connect.Method{Spec: sessionCommandsServiceRestoreSessionSpec(), Handler: adapter.restoreSession},
 		connect.Method{Spec: sessionCommandsServiceGetReleaseSpec(), Handler: adapter.getRelease},
 		connect.Method{Spec: sessionCommandsServiceGetTreeHeadSpec(), Handler: adapter.getTreeHead},
 		connect.Method{Spec: sessionCommandsServiceGetConsistencyProofSpec(), Handler: adapter.getConsistencyProof},
@@ -475,6 +536,18 @@ func (UnimplementedSessionCommandsServiceHandler) ReleaseSession(context.Context
 
 func (UnimplementedSessionCommandsServiceHandler) ObjectToRelease(context.Context, *commandsapi.ObjectToReleaseRequest) (*commandsapi.ObjectToReleaseResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, "office.sessioncommands.v1.SessionCommandsService.ObjectToRelease is not implemented")
+}
+
+func (UnimplementedSessionCommandsServiceHandler) TrimSession(context.Context, *commandsapi.TrimSessionRequest) (*commandsapi.TrimSessionResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "office.sessioncommands.v1.SessionCommandsService.TrimSession is not implemented")
+}
+
+func (UnimplementedSessionCommandsServiceHandler) DeleteSession(context.Context, *commandsapi.DeleteSessionRequest) (*commandsapi.DeleteSessionResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "office.sessioncommands.v1.SessionCommandsService.DeleteSession is not implemented")
+}
+
+func (UnimplementedSessionCommandsServiceHandler) RestoreSession(context.Context, *commandsapi.RestoreSessionRequest) (*commandsapi.RestoreSessionResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "office.sessioncommands.v1.SessionCommandsService.RestoreSession is not implemented")
 }
 
 func (UnimplementedSessionCommandsServiceHandler) GetRelease(context.Context, *commandsapi.GetReleaseRequest) (*commandsapi.GetReleaseResponse, error) {
@@ -604,6 +677,30 @@ func (c *sessionCommandsServiceClient) ReleaseSession(ctx context.Context, req *
 func (c *sessionCommandsServiceClient) ObjectToRelease(ctx context.Context, req *commandsapi.ObjectToReleaseRequest) (*commandsapi.ObjectToReleaseResponse, error) {
 	var res commandsapi.ObjectToReleaseResponse
 	if err := c.client.CallUnary(ctx, sessionCommandsServiceObjectToReleaseSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *sessionCommandsServiceClient) TrimSession(ctx context.Context, req *commandsapi.TrimSessionRequest) (*commandsapi.TrimSessionResponse, error) {
+	var res commandsapi.TrimSessionResponse
+	if err := c.client.CallUnary(ctx, sessionCommandsServiceTrimSessionSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *sessionCommandsServiceClient) DeleteSession(ctx context.Context, req *commandsapi.DeleteSessionRequest) (*commandsapi.DeleteSessionResponse, error) {
+	var res commandsapi.DeleteSessionResponse
+	if err := c.client.CallUnary(ctx, sessionCommandsServiceDeleteSessionSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *sessionCommandsServiceClient) RestoreSession(ctx context.Context, req *commandsapi.RestoreSessionRequest) (*commandsapi.RestoreSessionResponse, error) {
+	var res commandsapi.RestoreSessionResponse
+	if err := c.client.CallUnary(ctx, sessionCommandsServiceRestoreSessionSpec(), req, &res); err != nil {
 		return nil, err
 	}
 	return &res, nil
@@ -809,6 +906,42 @@ func (h sessionCommandsServiceHandler) objectToRelease(ctx context.Context, _ co
 		return err
 	}
 	res, err := h.svc.ObjectToRelease(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h sessionCommandsServiceHandler) trimSession(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req commandsapi.TrimSessionRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.TrimSession(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h sessionCommandsServiceHandler) deleteSession(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req commandsapi.DeleteSessionRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.DeleteSession(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h sessionCommandsServiceHandler) restoreSession(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req commandsapi.RestoreSessionRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.RestoreSession(ctx, &req)
 	if err != nil {
 		return err
 	}

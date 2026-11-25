@@ -52,9 +52,26 @@ type sessionView struct {
 	Decisions, Notes          []recordView
 	Tasks                     []taskView
 	Release                   *releaseView
+	Edit                      *editView // the trim and delete controls of an ended session
 	// Limited is set for a member who may not read the session: the page shows only what the
 	// session released.
 	Limited bool
+}
+
+// editView is the trim and delete part of the page of an ended session (dec-session-trim-delete).
+type editView struct {
+	Deleted, Trimmed                           bool
+	TrimmedAfter, EndId                        uint32
+	Choices                                    []choiceView
+	TrimPath, DeletePath, RestorePath          string
+	TrimCommand, DeleteCommand, RestoreCommand string
+}
+
+// choiceView is one sentence that a trim can keep as the last one.
+type choiceView struct {
+	EventId  uint32
+	Label    string
+	Selected bool
 }
 
 type lineView struct {
@@ -87,7 +104,10 @@ func (h *Handler) session(w http.ResponseWriter, r *http.Request, c *backend, te
 	}
 	notice := map[string]string{"released": "The session is released. Every member of the tenant sees its artifacts now.",
 		"held":      "The session is held. The hub does not release it; a human who took part releases it later.",
-		"discarded": "The artifact is discarded. Everyone reads the file that holds its path now."}[r.URL.Query().Get("done")]
+		"discarded": "The artifact is discarded. Everyone reads the file that holds its path now.",
+		"trimmed":   "The session is trimmed. Events after the chosen sentence no longer count.",
+		"deleted":   "The session is deleted. It is not in the session list any more; restore it to show it again.",
+		"restored":  "The session is restored."}[r.URL.Query().Get("done")]
 	h.sessionPage(w, r, c, tenant, sid, pageExtra{notice: notice})
 }
 
@@ -187,6 +207,16 @@ func (h *Handler) sessionPage(w http.ResponseWriter, r *http.Request, c *backend
 		h.denied(w, err)
 		return
 	}
+	// The controls are for a human who took part and for a human tenant admin, while nothing is
+	// released (dec-session-trim-delete); the hub decides in every case.
+	m, _ := c.me.membership(tenant)
+	if v.Edit != nil && (v.Release.State == "released" || !c.me.Human || !(v.Release.MayRelease || m.GetTenantAdmin())) {
+		v.Edit = nil
+	}
+	if v.Edit != nil {
+		v.Edit.TrimPath, v.Edit.DeletePath, v.Edit.RestorePath = web.TrimPath(tenant, sid), web.DeletePath(tenant, sid), web.RestorePath(tenant, sid)
+		v.Edit.TrimCommand, v.Edit.DeleteCommand, v.Edit.RestoreCommand = commandID(), commandID(), commandID()
+	}
 	v.Release.CSRF = csrf(ck.Value)
 	if q := extra.refusal; q != nil {
 		v.Release.Quotes, v.Release.QuoteToken, v.Release.AnywayCommand = q.GetQuotes(), q.GetQuoteToken(), extra.refusedCmd
@@ -232,7 +262,40 @@ func viewOf(sid string, evs []*sessionstreamv1.Event) sessionView {
 	names := map[string]participantChip{}
 	lines := map[uint32]int{} // event ID of an utterance -> index in v.Lines
 	var minutes string
+	// The latest trim and delete count (dec-session-trim-delete); a trim at or after session.ended
+	// removes the cut.
+	var endID, cut uint32
+	deleted := false
 	for _, ev := range evs {
+		switch p := ev.GetPayload().(type) {
+		case *sessionstreamv1.Event_SessionEnded:
+			endID = ev.GetId()
+		case *sessionstreamv1.Event_SessionTrimmed:
+			cut = p.SessionTrimmed.GetLastEventId()
+			if cut >= endID {
+				cut = 0
+			}
+		case *sessionstreamv1.Event_SessionDeleted:
+			deleted = true
+		case *sessionstreamv1.Event_SessionRestored:
+			deleted = false
+		}
+	}
+	var all []lineView
+	for _, ev := range evs {
+		if cut != 0 && ev.GetId() > cut {
+			if _, ok := ev.GetPayload().(*sessionstreamv1.Event_SessionEnded); !ok {
+				// The trim cut it off. A sentence stays a choice for a later trim.
+				if u := ev.GetUtteranceFinal(); u != nil && !u.GetOffTheRecord() {
+					who := names[u.GetParticipantId()]
+					if who.Name == "" {
+						who.Name = u.GetParticipantId()
+					}
+					all = append(all, lineView{EventId: ev.GetId(), Time: ev.GetTime().AsTime().UTC().Format("15:04:05"), Speaker: who.Name, Text: u.GetText()})
+				}
+				continue
+			}
+		}
 		switch p := ev.GetPayload().(type) {
 		case *sessionstreamv1.Event_SessionImported:
 			v.Source, v.ImportTitle, v.Importer = p.SessionImported.GetSource(), p.SessionImported.GetTitle(), ev.GetActorParticipantId()
@@ -265,6 +328,7 @@ func viewOf(sid string, evs []*sessionstreamv1.Event) sessionView {
 			lines[ev.GetId()] = len(v.Lines)
 			v.Lines = append(v.Lines, lineView{EventId: ev.GetId(), Time: at.AsTime().UTC().Format("15:04:05"), Speaker: who.Name,
 				SpeakerId: u.GetParticipantId(), Agent: who.Agent, Text: u.GetText()})
+			all = append(all, v.Lines[len(v.Lines)-1])
 		case *sessionstreamv1.Event_UtteranceCorrected:
 			if i, ok := lines[p.UtteranceCorrected.GetUtteranceEventId()]; ok {
 				v.Lines[i].Text, v.Lines[i].Corrected = p.UtteranceCorrected.GetText(), true
@@ -289,6 +353,24 @@ func viewOf(sid string, evs []*sessionstreamv1.Event) sessionView {
 	v.Lines = kept
 	if minutes != "" {
 		v.Minutes, v.MinutesRunning = markdownHTML(minutes), true
+	}
+	if !v.Running {
+		e := &editView{Deleted: deleted, Trimmed: cut != 0, TrimmedAfter: cut, EndId: endID}
+		// A sentence is kept with everything that follows it up to the next sentence, for example
+		// the minutes that were written meanwhile. The last sentence is no choice: it is "keep
+		// everything".
+		for i, l := range all[:max(len(all)-1, 0)] {
+			if l.Text == "" {
+				continue // a sentence off the record is no choice
+			}
+			text := []rune(l.Text)
+			if len(text) > 60 {
+				text = append(text[:60], '…')
+			}
+			upTo := all[i+1].EventId - 1
+			e.Choices = append(e.Choices, choiceView{EventId: upTo, Label: l.Time + " " + l.Speaker + ": " + string(text), Selected: cut == upTo})
+		}
+		v.Edit = e
 	}
 	return v
 }

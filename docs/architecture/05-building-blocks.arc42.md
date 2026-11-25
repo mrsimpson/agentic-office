@@ -163,7 +163,7 @@ in one step are two calls, one event each.
 An ended session also takes the trim and the delete (`dec-session-trim-delete`), from every human
 who took part, also after leaving, and from every tenant admin; an agent is refused. A trim names
 the last event that counts, a delete marks the session as deleted, and a restore removes the mark.
-Neither ends a session, and a running session refuses both. Each call is one event. The search for
+Neither ends a session, and a running or released session refuses both. Each call is one event. The search for
 sentences off the record before a release looks only at what counts after the trim.
 
 Before it releases, the hub searches the staged files for sentences off the record, word for word.

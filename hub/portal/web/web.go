@@ -8,6 +8,9 @@
 //	GET  /portal/t/<tenant>/              the start page of a tenant: the role and the sessions
 //	GET  /portal/t/<tenant>/s/<session>   one session: transcript, minutes, records, release
 //	POST /portal/t/<tenant>/s/<session>/release  releases the session (a human who took part)
+//	POST /portal/t/<tenant>/s/<session>/trim     cuts an ended session off after an event
+//	POST /portal/t/<tenant>/s/<session>/delete   deletes an ended session softly
+//	POST /portal/t/<tenant>/s/<session>/restore  restores a deleted session
 //	POST /portal/t/<tenant>/s/<session>/object   objects to the release (a human who took part)
 //	GET  /portal/t/<tenant>/members       the members of a tenant (tenant admins)
 //	GET  /portal/t/<tenant>/wiki          the index of the wiki of a tenant; ?tag=<tag> filters it
@@ -74,6 +77,16 @@ func ObjectPath(tenant, session string) string { return SessionPath(tenant, sess
 // DiscardPath takes the form that discards a staged artifact that the release of a session kept
 // back.
 func DiscardPath(tenant, session string) string { return SessionPath(tenant, session) + "/discard" }
+
+// TrimPath takes the form that trims an ended session after an event; DeletePath the form that
+// deletes it softly; RestorePath the form that restores a deleted session (dec-session-trim-delete).
+func TrimPath(tenant, session string) string { return SessionPath(tenant, session) + "/trim" }
+
+// DeletePath takes the form that deletes an ended session softly.
+func DeletePath(tenant, session string) string { return SessionPath(tenant, session) + "/delete" }
+
+// RestorePath takes the form that restores a deleted session.
+func RestorePath(tenant, session string) string { return SessionPath(tenant, session) + "/restore" }
 
 // MembersPath is the page with the members of a tenant.
 func MembersPath(tenant string) string { return TenantPrefix + url.PathEscape(tenant) + "/members" }
@@ -238,13 +251,14 @@ var Page = template.Must(template.New("page").Funcs(template.FuncMap{
 <h2>Sessions</h2>
 {{if .Sessions}}<table class="sessions">
 <tr><th>Session</th><th>Started (UTC)</th><th>Ended (UTC)</th><th>Participants</th></tr>
-{{range .Sessions}}<tr data-session="{{.SessionId}}"{{if .Running}} data-running{{end}}{{if .Imported}} data-imported{{end}}>
-<td><a class="name" href="{{.Href}}">{{.SessionId}}</a>{{if .Imported}} <span class="badge imported">imported</span>{{end}}</td>
+{{range .Sessions}}<tr data-session="{{.SessionId}}"{{if .Running}} data-running{{end}}{{if .Imported}} data-imported{{end}}{{if .Deleted}} data-deleted{{end}}>
+<td><a class="name" href="{{.Href}}">{{.SessionId}}</a>{{if .Imported}} <span class="badge imported">imported</span>{{end}}{{if .Deleted}} <span class="badge revoked">deleted</span>{{end}}{{if .Trimmed}} <span class="badge imported">trimmed</span>{{end}}</td>
 <td><small>{{.Started}}</small></td>
 <td>{{if .Running}}<span class="badge active">running</span>{{else}}<small>{{.Ended}}</small>{{end}}</td>
 <td><div class="chips">{{range .Participants}}<span class="chip{{if .Agent}} agent{{end}}" data-participant="{{.ParticipantId}}" title="{{.ParticipantId}}">{{.Name}}</span>{{end}}</div></td>
 </tr>
 {{end}}</table>{{else}}<p class="empty" data-empty="sessions">You took part in no session of this tenant yet.</p>{{end}}
+<p class="back">{{if .ShowDeleted}}<a class="link" href="{{.TenantHref}}">Hide deleted sessions</a>{{else}}<a class="link" href="{{.TenantHref}}?deleted=1" data-show-deleted>Show deleted sessions</a>{{end}}</p>
 {{else if eq .Mode "session"}}{{with .Session}}<p class="back"><a class="link" href="{{$.Back}}">All sessions</a></p>
 {{if .Limited}}<p class="muted" data-limited>You did not take part in this session. You see what it released, as every member of the tenant does.</p>
 {{template "release" .Release}}{{else}}
@@ -261,6 +275,14 @@ var Page = template.Must(template.New("page").Funcs(template.FuncMap{
 <form class="buttons" method="post" action="{{.ReleasePath}}" data-form="release-anyway"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="command_id" value="{{.AnywayCommand}}"><input type="hidden" name="accept_quotes" value="{{.QuoteToken}}"><button class="danger" type="submit">Release anyway</button></form></div>{{end}}
 {{if .MayRelease}}<div class="buttons" data-actions><form method="post" action="{{.ReleasePath}}" data-form="release"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="command_id" value="{{.ReleaseCommand}}"><button type="submit">Release now</button></form>
 {{if .Waiting}}<form method="post" action="{{.ObjectPath}}" data-form="object"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="command_id" value="{{.ObjectCommand}}"><button class="quiet" type="submit">Object</button></form>{{end}}</div>{{end}}{{end}}
+{{with .Edit}}<h2>Trim and delete</h2>
+{{if .Deleted}}<p data-deleted><span class="badge revoked">deleted</span> <small>The session is not in the session list. Restore it to show it again.</small></p>
+<form class="buttons" method="post" action="{{.RestorePath}}" data-form="restore"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="command_id" value="{{.RestoreCommand}}"><button type="submit">Restore</button></form>
+{{else}}{{if .Trimmed}}<p data-trimmed><span class="badge imported">trimmed</span> <small>The page shows the events up to event {{.TrimmedAfter}}. Later events do not count.</small></p>{{end}}
+<form method="post" action="{{.TrimPath}}" data-form="trim"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="command_id" value="{{.TrimCommand}}">
+<label>Last sentence that counts <select name="last_event_id">{{range .Choices}}<option value="{{.EventId}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}<option value="{{.EndId}}"{{if not .Trimmed}} selected{{end}}>Keep everything</option></select></label>
+<div class="buttons"><button type="submit">Trim</button></div></form>
+<form class="buttons" method="post" action="{{.DeletePath}}" data-form="delete"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="command_id" value="{{.DeleteCommand}}"><button class="danger" type="submit">Delete</button></form>{{end}}{{end}}
 <h2>Minutes</h2>
 {{if .Minutes}}<div class="prose" data-minutes{{if .MinutesRunning}} data-running-minutes{{end}}>{{if .MinutesRunning}}<p class="muted">The running minutes; the session has not stored minutes yet.</p>{{end}}{{.Minutes}}</div>{{else}}<p class="empty" data-empty="minutes">Nobody wrote minutes.</p>{{end}}
 <h2>Decisions</h2>

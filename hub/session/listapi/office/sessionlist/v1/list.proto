@@ -21,7 +21,11 @@ service SessionListService {
   rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
 }
 
-message ListSessionsRequest {}
+message ListSessionsRequest {
+  // include_deleted adds the deleted sessions (dec-session-trim-delete). Without it, they are
+  // left out.
+  bool include_deleted = 1;
+}
 
 message ListSessionsResponse {
   repeated Session sessions = 1;
@@ -37,6 +41,11 @@ message Session {
   bool imported = 4;
   // participants are everyone who joined the session, in the order of their first join.
   repeated Participant participants = 5;
+  // deleted is set for a session that was deleted and not restored (dec-session-trim-delete).
+  bool deleted = 6;
+  // trimmed_after_event_id is the last event that counts, or 0 if the session is not trimmed
+  // (dec-session-trim-delete).
+  uint32 trimmed_after_event_id = 7;
 }
 
 message Participant {

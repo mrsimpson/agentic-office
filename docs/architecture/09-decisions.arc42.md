@@ -861,12 +861,12 @@ portal. The log of a session only grows and is signed (`dec-merkle-log`), and pe
 **Decision:** A trim and a delete are events at the end of the log, created through the session
 commands. A trim names the last event that counts. A delete marks the session as deleted; a restore
 removes the mark. A later trim replaces an earlier one, and a trim that names the last event
-removes the cut. Only an ended session takes these commands, as it takes the release commands
+removes the cut. Only an ended session that is not released takes these commands
 (`dec-session-end-milestone`), and they never end a session themselves: a meeting that nobody ended
 is ended first, then trimmed. Every human who took part and every tenant admin may call them; an
-agent is refused. Every reader applies the latest trim and delete: the session list, the stage, the
-portal and the minutes show only what counts, and a deleted session leaves the list, the stage and
-the wiki until it is restored. The minutes are built again up to the cut. Artifacts that exist
+agent is refused. Readers apply the latest trim and delete: the portal shows only what counts, and a
+deleted session leaves the session list until it is restored. The stored minutes are written again
+from the log up to the cut. A session that is released takes neither command. Artifacts that exist
 already, staged or released, stay as they are. **Consequences:** The log, its tree heads and the
 restore from peers stay unchanged and verifiable, and both actions are reversible. The cut-off
 sentences stay in the session log, which only the participants, the importer and the tenant admins

@@ -23,6 +23,9 @@ const (
 	SessionEnded          = "session.ended"
 	ReleaseObjected       = "release.objected"
 	SessionReleased       = "session.released"
+	SessionTrimmed        = "session.trimmed"
+	SessionDeleted        = "session.deleted"
+	SessionRestored       = "session.restored"
 	SessionImported       = "session.imported"
 	ImportCompleted       = "import.completed"
 )
@@ -66,6 +69,12 @@ func TypeOf(ev *sessionstreamv1.Event) string {
 		return ReleaseObjected
 	case *sessionstreamv1.Event_SessionReleased:
 		return SessionReleased
+	case *sessionstreamv1.Event_SessionTrimmed:
+		return SessionTrimmed
+	case *sessionstreamv1.Event_SessionDeleted:
+		return SessionDeleted
+	case *sessionstreamv1.Event_SessionRestored:
+		return SessionRestored
 	case *sessionstreamv1.Event_SessionImported:
 		return SessionImported
 	case *sessionstreamv1.Event_ImportCompleted:

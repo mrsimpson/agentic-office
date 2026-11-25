@@ -56,9 +56,13 @@ message Event {
     ParticipantResumed participant_resumed = 43; // "participant.resumed"
     SessionEnded session_ended = 44; // "session.ended"
     // Release of what the session staged (concept-session-release). These events, notices about
-    // artifacts and marks off the record are the only events after session.ended.
+    // artifacts, marks off the record, trims and deletes are the only events after session.ended.
     ReleaseObjected release_objected = 45; // "release.objected"
     SessionReleased session_released = 46; // "session.released"
+    // Trim and delete of an ended session (dec-session-trim-delete)
+    SessionTrimmed session_trimmed = 47; // "session.trimmed"
+    SessionDeleted session_deleted = 48; // "session.deleted"
+    SessionRestored session_restored = 49; // "session.restored"
     // Import of a conversation (dec-session-import, if-session-import)
     SessionImported session_imported = 50; // "session.imported"
     ImportCompleted import_completed = 51; // "import.completed"
@@ -249,3 +253,21 @@ enum Modality {
   MODALITY_VOICE = 1;
   MODALITY_TEXT = 2;
 }
+
+// SessionTrimmed says that the events after last_event_id no longer count (dec-session-trim-delete).
+// The actor is the human or tenant admin who trimmed the session. A later trim replaces an earlier
+// one; a trim at or after session.ended removes the cut. The log keeps every event; readers
+// apply the latest trim.
+message SessionTrimmed {
+  // last_event_id is the last event that counts. It is at least 1 and at most the ID of the last
+  // event before the trim.
+  uint32 last_event_id = 1;
+}
+
+// SessionDeleted marks the session as deleted (dec-session-trim-delete). The actor is the human or
+// tenant admin who deleted it. A deleted session leaves the session list, the stage and the wiki
+// until a session.restored event follows.
+message SessionDeleted {}
+
+// SessionRestored removes the mark of session.deleted (dec-session-trim-delete).
+message SessionRestored {}

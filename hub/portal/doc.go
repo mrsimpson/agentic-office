@@ -46,6 +46,13 @@
 //     session; the part of the type decides. A member who may not read the session
 //     gets 404 from the session stream; for a released session the page then shows only the
 //     release: who released, the co-authors of the release commit and the released artifacts.
+//   - The page of an ended session that is not released also has the trim and delete forms
+//     (dec-session-trim-delete), for a human who took part and for a human tenant admin. "Trim"
+//     keeps the sentence that the user chooses with everything up to the next sentence, and calls
+//     TrimSession; the transcript and the running minutes of the page then stop there, and the
+//     portal writes the stored minutes again from the log up to the cut (or removes them when no
+//     minutes count). "Delete" and "Restore" call DeleteSession and RestoreSession. The list of a
+//     tenant leaves out deleted sessions; "?deleted=1" shows them.
 //   - The wiki of a tenant (wiki.go, concept-wiki) asks the view of the wiki (if-wiki-api) with
 //     the tenant of the page; every member reads it. /wiki is the index with every tag and its
 //     count, and ?tag=<tag> filters it. /wiki/a/<path> is one artifact: what the index says about
