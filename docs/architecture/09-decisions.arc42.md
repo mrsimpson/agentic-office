@@ -867,9 +867,9 @@ and the minutes show only what counts, and a deleted session leaves the list, th
 wiki until it is restored. The minutes are built again up to the cut. Artifacts that exist
 already, staged or released, stay as they are. **Consequences:** The log, its tree heads and the
 restore from peers stay unchanged and verifiable, and both actions are reversible. The cut-off
-sentences still exist in the archive and at peers, so a trim is not erasure. OPEN: whether this
-meets the data protection needs. OPEN: whether a running session must end first, and what a trim
-means for the search for sentences off the record before a release. **Rejected:** cutting events
+sentences stay in the session log, which only the participants, the importer and the tenant admins
+read (`concept-session-release`); the tenant never sees them. OPEN: whether a running session must
+end first, and what a trim means for the search for sentences off the record before a release. **Rejected:** cutting events
 out of the log (the tree heads promise that a log only grows); a second, edited copy of the log
 (two sources of truth); allowing only tenant admins (a meeting that nobody ended would wait for an
 admin).
