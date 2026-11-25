@@ -40,8 +40,9 @@ type userRecord struct {
 	DisplayName string `yaml:"display_name"`
 	Kind        string `yaml:"kind"`
 	SystemAdmin bool   `yaml:"system_admin,omitempty"`
-	// Team is the tenant of a team agent (dec-team-agents). A team agent is an agent without a
-	// key that belongs to this tenant only and is no member of it.
+	// Team is the tenant of a team agent (dec-team-agents). A team agent is an agent that belongs
+	// to this tenant only and is no member of it. It has no key unless a tenant admin registered one
+	// for an agent that runs without a human.
 	Team       string       `yaml:"team,omitempty"`
 	ValidFrom  time.Time    `yaml:"valid_from"`
 	ValidUntil *time.Time   `yaml:"valid_until,omitempty"`
@@ -174,8 +175,6 @@ func (st *state) validate(now time.Time) error {
 			switch tn := st.tenants[u.Team]; {
 			case kindOf(u.Kind) != identityv1.ActorKind_ACTOR_KIND_AGENT:
 				return fmt.Errorf("user %s: a team agent must be an agent", id)
-			case len(u.Keys) > 0:
-				return fmt.Errorf("team agent %s has a key: a team agent has none", id)
 			case u.SystemAdmin:
 				return fmt.Errorf("team agent %s cannot be a system admin", id)
 			case tn == nil:

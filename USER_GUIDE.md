@@ -1274,6 +1274,28 @@ What you can rely on:
 Any member can change a definition, and the change reaches everyone who starts the agent next.
 That is why the runner asks again after a change. Read the question each time.
 
+**Without a human, for example on a server.** A team agent can run with a key of its own. A tenant
+admin registers it:
+
+```bash
+OFFICE_KEY=/srv/office/minutes.pem office key create         # on the server; prints the public key
+office admin key add minutes "<public key>" --tenant acme    # a tenant admin
+```
+
+The server starts the agent with that key and names the version of the definition:
+
+```bash
+OFFICE_KEY=/srv/office/minutes.pem OFFICE_TENANT=acme \
+  office agent run --session weekly --team-agent minutes --confirm 3f9a1c0b2d4e -- opencode acp
+```
+
+The agent joins with its own key and takes its role from the same definition. It has no agent
+launcher, so what it writes names only the agent. Nobody can answer a question on a server, so the
+runner starts only with the version that you name. After a change of the definition, the runner
+refuses the old version: read the new one, then start it with the new version. A tenant admin who
+revokes the key (`office admin key revoke`) ends the agent at once. Treat the key like any other
+secret on the server: whoever can read it can start the agent.
+
 ### Teach the agent the memory of the team
 
 The office ships a skill, `office-memory`, that tells an agent how to read and write the memory of

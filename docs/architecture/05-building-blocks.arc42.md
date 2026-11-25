@@ -144,6 +144,13 @@ flowchart LR
     bb_wiki -->|if-archive-watch| bb_archive
     bb_wiki -->|if-artifact-check| bb_artifacts
     bb_wiki -->|if-token-check| bb_identity
+    bb_portal -->|if-slides-api| bb_slides
+    bb_portal -->|if-document-api| bb_documents
+    bb_records -->|if-session-release| bb_session_service
+    bb_documents -->|if-session-release| bb_session_service
+    bb_slides -->|if-session-release| bb_session_service
+    bb_archive -->|if-token-check| bb_identity
+    bb_stage -->|if-archive-read| bb_archive
 ```
 
 ### Session commands
@@ -155,30 +162,19 @@ client, so a repeated call has no extra effect and a client may always repeat af
 
 The same interface carries the release of an ended session (`concept-session-release`): release
 and object. Only a human who took part in the session may call them, also after leaving; an agent
-is refused. The answer to the end says when the hub releases the session. An ended session takes
-only these commands, notices about artifacts and, until the release, a mark off the record
-(`dec-session-end-milestone`); the hub stores such an event before it answers. Ending and releasing
-in one step are two calls, one event each.
+is refused. A release is refused while the staged files quote sentences off the record; the
+refusal names the places, never the sentences, and carries a token over the quotes it found. A
+human must confirm the quotes found, with the token of the refusal; the release goes through only
+if a new search finds the same quotes. An ended session takes only the events that
+`dec-session-end-milestone` names.
 
 An ended session that is not released also takes the trim, the delete and the restore
-(`dec-session-trim-delete`), from every human who took part and from every tenant admin. They never
-end a session, and the search for sentences off the record before a release follows the trim.
+(`dec-session-trim-delete`), from every human who took part and from every tenant admin.
 
-Before it releases, the hub searches the staged files for sentences off the record, word for word.
-While it finds one, it refuses with an error, like every other refusal of the release, and creates
-no event. The error has the code for a failed precondition and a typed detail: each place (the
-file, the line and the event of the sentence, never the sentence) and a token, a hash over the
-session and the exact quotes. A caller that checks only for errors therefore never takes the
-refusal for a release. The hub does not remember a refused command as done: to release anyway, the
-human sends the same command again with this token. The hub searches again and releases only if
-the search gives the same token, so a staged file that changed in between leads to a new refusal
-with a new token.
-
-The interface also tells who may read a session its release: the status and deadline, the staged
-files, whether the caller may release or object now, and, once released, the release commit with
-the human who released and the authors of the artifacts, and the staged files that the release
-did not release because their path is taken, until a participant discards them. Every other member of the tenant gets only the
-release commit of a released session.
+The interface also tells the readers of a session (`concept-multi-tenancy`) its release: the
+status and deadline, the staged files, whether the caller may release or object now, and, once
+released, the release commit and the staged files that the release kept back. Every other member
+of the tenant gets only the release commit of a released session.
 
 The same interface lets everyone who may read a session check its log (`dec-merkle-log`): it hands
 out signed tree heads, proofs and the public key of the hub. It owns no log types. The events, the tree
@@ -203,22 +199,17 @@ path: hub/session/commandsapi
 ### Session stream
 
 Delivers the event log of a session from a cursor onwards, then live. It is the one basis for the
-local replication, the stage and the portal, so every reader sees the same log. Only those who may
-read the session get it: everyone who ever joined it, the participant who imported it, the tenant
-admins, and a stage link of this session (`concept-multi-tenancy`). For anybody else the session
-does not exist. After a drop, the
-subscriber reconnects with its last event ID. A one-time request for the events after a cursor
-serves a participant that finds a gap in its copy, or that follows the session without a file
-system (`dec-events-from-cursor`). With its last event, the stream sends a tree head signed by the
-hub over everything up to it, so a subscriber always holds a signed head over its whole copy
+local replication, the stage and the portal, so every reader sees the same log. Only the readers of
+the session get it (`concept-multi-tenancy`); for anybody else the session does not exist. After a
+drop, the subscriber reconnects with its last event ID. A one-time request for the events after a
+cursor serves a participant that finds a gap in its copy, or that follows the session without a
+file system (`dec-events-from-cursor`). With its last event, the stream sends a tree head signed by
+the hub over everything up to it, so a subscriber always holds a signed head over its whole copy
 (`dec-signed-head-in-stream`). A cursor beyond the end of the log means that the hub lost events;
 the subscriber then offers its copy.
 
-Trim, delete and restore are events of the log (`dec-session-trim-delete`). The live stream ends with the end of the session. The events that an ended session still takes
-(changes of the release status, notices about artifacts, marks off the record, trims and deletes) come only with a
-one-time request for the events after a cursor (`dec-session-end-milestone`). A change of the
-release status without an actor comes from the hub: a release when the grace period ends, or a
-hold because staged files quote sentences off the record.
+The live stream ends with the session. The events that an ended session takes
+(`dec-session-end-milestone`) come only with a one-time request for the events after a cursor.
 
 The interface owns the event log: the event types, the signed tree head and the code that builds
 and verifies the Merkle tree (`dec-merkle-log`). The other interfaces return events and tree heads
@@ -279,7 +270,7 @@ agent works, which tool it calls, waits, or ended its turn with a reply that nob
 participant reports its own activity; the stage watches the activities of its session.
 
 The activity is short-lived and is no event of the log. The hub keeps only the latest activity of
-each participant, in memory, and never stores, archives or replicates it. A report lives a short
+each participant and never stores, archives or replicates it. A report lives a short
 time unless the participant renews it, and it ends when the participant leaves or the session
 ends. A report names a tool by a short name only, never by its arguments, because arguments can
 carry sentences that are off the record.
@@ -297,13 +288,12 @@ path: hub/session/activityapi
 
 ### Session list
 
-The sessions of a tenant that the caller may see (`dec-web-portal`), the newest first: the name,
-the start, the end or that the session runs, the participants, and whether it was imported. A
-session is visible to everyone who joined it, to the participant who imported it, and to the
-tenant admins of its tenant. A system admin is no member of a tenant and sees none. The list
-covers running sessions and ended sessions that only the archive holds; it reads a stored log only
-after it verified it against its signed tree head. A deleted session is left out unless the caller asks for it (`dec-session-trim-delete`). The events of one session come from the session
-stream.
+The sessions of a tenant that the caller may read (`concept-multi-tenancy`), the newest first: the
+name, the start, the end or that the session runs, the participants, and whether it was imported.
+A system admin is no member of a tenant and sees none. The list covers running sessions and ended
+sessions that only the archive holds; it reads a stored log only after it verified it against its
+signed tree head. A deleted session is left out unless the caller asks for it (`dec-session-trim-delete`). The events
+of one session come from the session stream.
 
 ```arc42
 :::interface
@@ -322,9 +312,8 @@ Proves who a caller is: the client signs a challenge from the hub with its priva
 short-lived access token that is bound to its key. The answer names the participant and the
 display name of the participant, which the client uses as the author of commits
 (`dec-artifact-sync`). The interface also creates the read-only links
-for the stage and the one-time links of the portal (`dec-web-portal`). A member of a tenant can also ask for a token as a team agent
-of that tenant (`dec-team-agents`). The request names the version of the definition that the member confirmed. Identity checks the membership and issues a short-lived
-token that names the team agent, the member who starts it, the agent launcher, and the version as a claim. The author of a change that the agent writes names all three. The calls of the meeting session, the records, the tasks and the slides name a
+for the stage and the one-time links of the portal (`dec-web-portal`). A member of a tenant can also ask for a token as a team agent of that tenant; the request names the
+confirmed version of its definition (`concept-identity`). The calls of the meeting session, the records, the tasks and the slides name a
 tenant, and Identity checks that the caller is a member of it. The auth and user APIs name
 no tenant, because they work across tenants.
 
@@ -344,7 +333,8 @@ path: hub/identity/api
 Manages users in two steps, because a user is global and a membership belongs to a tenant. First
 the user and its keys are registered at the hub. Then the user is assigned to tenants with a role,
 and system admins are named. A system admin may do everything, a tenant admin only the memberships
-of their own tenant, and everyone else only their own keys. Every change is checked against the
+of their own tenant and the keys of the team agents of their tenant (`dec-team-agents`), and
+everyone else only their own keys. Every change is checked against the
 rules in `concept-multi-tenancy` and refused if it breaks one. A user ID is never used again.
 
 ```arc42
@@ -380,14 +370,11 @@ path: hub/tenant/api
 ### Decisions
 
 Records decisions and lists them in order, by session and from a cursor. A decision keeps its
-author and whether the author is a human or an agent. Each command carries an ID created by the
-client, so a repeated command has no extra effect. A sentence that is off the record must not go
-into a decision (`dec-off-the-record`).
-
-A decision that names a session waits for the release of that session (`concept-session-release`).
-Until then, every participant of the session may change or remove it, and only the readers of the
-session see its content; everyone else sees its stub. A released decision never changes. The
-removal also discards a staged decision that the release kept back.
+author and whether the author is a human or an agent. Commands are idempotent
+(`dec-idempotent-commands`). A decision of a session waits for its release
+(`concept-session-release`); a released decision never changes. A list pages by number, so a reader
+who follows it learns of a record that is released after newer ones from the archive changes
+(`if-artifact-changes`).
 
 ```arc42
 :::interface
@@ -404,15 +391,9 @@ path: hub/records/decision/api
 
 The minutes of a session. While the session runs, participants write the running minutes through
 the session commands. When the session ends, the meeting session stores the last version through
-this interface (`rs-session-ends`). The stored minutes wait for the release of the session
-(`concept-session-release`). Until then, every participant of the session may change or remove
-them here, and only the readers of the session see them; everyone else sees their stub. The
-removal also discards staged minutes that the release kept back. Clients never create minutes
-here. A sentence that is off the record must not go into the minutes.
-
-The meeting session stores the minutes while it ends the session. This one write does not ask the
-meeting session back: the meeting session states that the session is not released and that the
-minute taker took part. So the records part and the meeting session never wait for each other.
+this interface (`rs-session-ends`); clients never create minutes here. This write does not ask the
+meeting session back, so the meeting session and the records part never call each other in a loop.
+The minutes wait for the release of the session (`concept-session-release`).
 
 ```arc42
 :::interface
@@ -427,15 +408,11 @@ path: hub/records/minutes/api
 
 ### Notes
 
-Adds free notes, with or without a session, and lists them like the decisions. A note is
-Markdown text with optional tags. It keeps its author, whether the author is a human or an agent,
-the time and the session, if any. A note is a
-memory: once it is released, it never changes; a correction is a new note that refers to the old
-one. A note that names a session waits for the release of that session, like a decision, and
-until then every participant of the session may change or remove it. The removal also discards a
-staged note that the release kept back. Notes are sources of the wiki (`dec-wiki`, `concept-wiki`). A sentence that is off the record must not go into a
-note. Ingest copies notes into documents, so the hub cannot remove a sentence that is marked off
-the record later from those copies.
+Adds free notes, with or without a session, and lists them like the decisions. A note is Markdown
+text with optional tags. It keeps its author, whether the author is a human or an agent, the time
+and the session, if any. A note is a memory: once it is released, it never changes; a correction is
+a new note that refers to the old one. A note of a session waits for its release
+(`concept-session-release`). Notes are sources of the wiki (`concept-wiki`).
 
 ```arc42
 :::interface
@@ -451,16 +428,13 @@ path: hub/records/note/api
 ### Tasks
 
 Creates and changes tasks and lists them by status, assignee and session. A task keeps its author,
-whether the author is a human or an agent, and who changed it last. Each command carries an ID
-created by the client, so a repeated command has no extra effect. A sentence that is off the
-record must not go into a task.
+whether the author is a human or an agent, and who changed it last. Commands are idempotent
+(`dec-idempotent-commands`). Tasks are not held (`concept-session-release`).
 
 Every task is a local draft of the hub (`dec-yaml-git-storage`). A sync with the task tool of the
 team would replace the draft by the synced task. So that this step does not change the contract, a
-task is named by a stable reference with a scheme, for example `local:42` or
-`github:owner/repo#12`. Clients treat the reference as opaque: they keep it and pass it back. Each
-task also says where it lives. OPEN: how a synced task replaces its draft, and which side is the
-truth.
+task is named by a stable, opaque reference that names where the task lives; clients keep it and
+pass it back. OPEN: how a synced task replaces its draft, and which side is the truth.
 
 ```arc42
 :::interface
@@ -475,21 +449,12 @@ path: hub/tasks/api
 
 ### Slides
 
-Renders a slide deck from a structured description and returns a deck by its ID, with its input
-and its rendered output. A deck keeps its author and whether the author is a human or an agent.
-Each command carries an ID created by the client, so a repeated command has no extra effect.
-Rendering is deterministic (`con-no-intelligence`): the same input gives the same output, so the
-hub stays free of a model. A sentence that is off the record must not go into a deck.
-
-A deck has an ID with the type in front, for example `slides/42`, and the stage shows a deck by
-this ID. In general, an artifact is anything that the stage can show by an ID like this; slide
-decks are the first type (`term-artifact`).
-
-A render may name a session, and the deck keeps it. A deck that names a session waits for the
-release of that session (`concept-session-release`). Until then, every participant of the session
-may change or remove it, and only the readers of the session see its content; everyone else sees
-its stub. The removal also discards a staged deck that the release kept back. The stage sees the
-decks of its own session.
+Renders a slide deck from a structured description and returns a deck with its input and its
+rendered output. A deck keeps its author and whether the author is a human or an agent. Commands
+are idempotent (`dec-idempotent-commands`). Rendering is deterministic (`con-no-intelligence`): the
+same input gives the same output of one version of the hub, so the hub stays free of a model; a
+later version may render a deck differently. A render may name a session; such a deck waits for
+the release of the session (`concept-session-release`).
 
 ```arc42
 :::interface
@@ -504,31 +469,14 @@ path: hub/slides/api
 
 ### Documents
 
-Creates and changes text documents: Markdown files without a schema (`dec-artifacts`). The path is
-the identity of a document. A change names the version that its author read, and the hub refuses
-it when another change came first, so two authors never overwrite each other unnoticed. The
-archive records the caller as the author of the commit. A call may name a session; the hub then
-tells the meeting session, which logs it. A sentence that is off the record must not go into a
-document; the hub cannot check this, so the author takes care of it.
-
-A new document that names a session waits for the release of that session
-(`concept-session-release`). Until then, every participant of the session may change or remove it,
-and each change must name that session. The removal also discards a staged document that the
-release kept back. A change of a released document is not held. A staged
-document is read through the archive read interface, which shows its content only to the readers
-of the session.
-
-A document may name the schema of documents in its front matter (`dec-wiki`). Then the hub checks
-the fields of the front matter, all optional: a title and a summary of one line each, tags, the
-sources it draws on as paths of records, a status (draft, reviewed or outdated), an owner, and
-the reviews it got, each with the reviewer and the day. Any other field is invalid. A create or a
-change with invalid front matter, or with front matter that names another schema, is refused with
-the reasons. A document without front matter is valid, and its first heading is its title. The
-rules are the same as for a push, because the check is the same.
-
-A create or a change answers with a hint for every relative Markdown link of the document that
-leads to no file of the artifact repository. A stub counts as a file, so a link to a staged
-document works. A hint never refuses the write.
+Creates and changes text documents: Markdown files (`dec-artifacts`). The path is the identity of a
+document. A change names the version that its author read, and the hub refuses it when another
+change came first, so two authors never overwrite each other unnoticed. The caller is the author of
+the change. A call may name a session; the hub then tells the meeting session, which logs it. A new
+document of a session waits for its release (`concept-session-release`); a change of a released
+document is not held. A document may carry the front matter of a page (`concept-wiki`); the hub
+refuses a write with invalid front matter, with the reasons. Every write answers with the hints of
+the document; a hint never refuses the write.
 
 ```arc42
 :::interface
@@ -543,24 +491,16 @@ path: hub/documents/api
 
 ### Wiki
 
-The view of the wiki of a tenant (`concept-wiki`), for the portal (`dec-web-portal`). It reads
-only. It lists the index of the artifacts with their title, summary and tags, filtered by a tag;
-one artifact with its links, its backlinks, the sources it cites, the documents that cite it and
-its trust data; the links and cited sources that lead nowhere; the ingest queue, which holds the
-released sources that no document cites yet; and a search by words, ranked without a model. The view holds released
-artifacts only: a stub is not in the index, the search or the queue, but a link to a stub leads
-somewhere. It follows every write and push, and it may show a change a moment after the write
-returned.
-
-The trust data of an artifact is what the hub knows without a model (`dec-wiki`): the status, the
-owner and the reviews that a document names; who changed the artifact last, with the name, the
-participant ID and whether a human or an agent, and when; when its newest cited source was
-written; and, when the last change was the release of a session, who released it and when. For an
-artifact that a release brought, the last author is who wrote it last in the session.
+The view of the wiki of a tenant (`concept-wiki`), for the portal. It reads only. It lists the
+index of the artifacts with their title, summary and tags, filtered by a tag; one artifact with its
+links, its backlinks, the sources it cites and the documents that cite it; the links and cited
+sources that lead nowhere; the ingest queue, which holds the released sources that no document
+cites yet; and a search by words, best first. The view holds released artifacts only: a stub is not
+in the index, the search or the queue, but a link to a stub leads somewhere. It follows every write
+and push, and it may show a change a moment after the write returned.
 
 Every member of the tenant reads the whole view, because every member may read every released
-artifact. A stage link cannot use it. Agents read their clone with their own tools, so the client,
-the CLI and the MCP server do not use this interface (`dec-wiki`).
+artifact. A stage link cannot use it.
 
 ```arc42
 :::interface
@@ -575,32 +515,19 @@ path: hub/wiki/api
 
 ### Portal
 
-A browser view for every user of the hub (`dec-web-portal`), opened by a link that the user creates
-with the CLI. The link works once and is swapped for an access token that the scripts of the page
-cannot read. It shows what the key of the user may see: the sessions in which the user took part,
-read-only, with their transcript and their artifacts; the minutes, notes, decisions, tasks, slides
-and documents of the tenant; for a tenant admin, every session and the members of the tenant; for a
-system admin, the users with their keys, the tenants and the system admins, with the forms to
-register users and keys and to revoke keys. The tenant is part of the address of a page. It has the
-same design as the stage.
+A browser view for every user of the hub (`dec-web-portal`), in the design of the stage. It shows
+what the key of the user may see:
 
-The page of a session shows its readers the release status, when the hub releases it, and the
-staged artifacts. A human who took part gets two forms: release, and, while the session waits,
-object. When the hub refuses a release because staged files quote sentences off the record, the
-page lists the places from the error and a button "release anyway" whose form sends the refused
-command again with the token. A member who did
-not take part sees a session only once it is released, and then only the released artifacts, who
-released them and their original authors. After the release, the readers of the session also see
-each staged artifact that the release did not release, marked "not released: the path is taken",
-with a form that discards it (`concept-session-release`).
+- every member of a tenant: the sessions that the member may read (`concept-multi-tenancy`),
+  read-only, with their transcript and their artifacts; the released artifacts of the tenant; and
+  the wiki of the tenant (`if-wiki-api`);
+- a tenant admin, in addition: every session and the members of the tenant;
+- a system admin, in addition: the users with their keys, the tenants and the system admins, with
+  the forms to register users and keys and to revoke keys.
 
-Every member of a tenant reads its wiki (`concept-wiki`) in the portal: the index of the artifacts,
-filtered by a tag, with every tag and the number of its artifacts; one artifact with its text, its
-links, its backlinks, its cited sources and the documents that cite it; a search form that works
-without scripts, with its hits, best first; the links that lead nowhere; and the sources that no
-document cites yet. A link between two artifacts leads from the page of one to the page of the
-other. The page of an artifact shows its trust data from the wiki interface, and the page of a
-document also its front matter as written.
+The page of a session shows its readers its release (`concept-session-release`): the status, the
+deadline, the staged artifacts and the artifacts that the release kept back. There, a human who
+took part releases, confirms quotes off the record, objects, and discards a kept artifact.
 
 ```arc42
 :::interface
@@ -615,19 +542,10 @@ path: hub/portal/web
 
 ### Portal part
 
-The portal part renders the portal on the server. It has no logic and no state of its own: every
-page asks the interfaces of the hub with the access token of the user and shows what it gets, so the
-portal has exactly the rights of the key (`dec-web-portal`). It asks the auth API who the user is,
-the user and tenant APIs for the administration and the members, the session list for the
-sessions of a tenant, the session stream for the events of one session, and the minutes, decisions,
-notes and tasks of that session. On the page of a session it asks the session commands for the
-release and the archive read API for the staged, released or not released artifacts. Its forms
-send release and objection to the session commands, and the discard of an artifact that was not
-released to the removal of the interface of its type. The pages of the wiki of a tenant ask the
-wiki interface for the index, the references of an artifact, the search, the broken links and the
-ingest queue, and the archive read API for the text of an artifact (`concept-wiki`). The wiki
-interface decides what is in the wiki and where a link leads; the portal only turns the links
-between artifacts into links between its pages.
+Renders the portal on the server. It has no logic and no state of its own: every page asks the
+interfaces of the hub with the access token of the user and shows what it gets, so the portal has
+exactly the rights of the key (`dec-web-portal`). The wiki interface decides what is in the wiki and
+where a link leads; the portal only turns links between artifacts into links between its pages.
 
 ```arc42
 :::building-block
@@ -636,6 +554,7 @@ title: Portal
 technology: Go, rendered by the hub
 parent: bb-office-hub
 requires: if-auth-api, if-user-api, if-tenant-api, if-session-list, if-session-stream, if-session-commands, if-minutes-api, if-decision-api, if-note-api, if-task-api, if-slides-api, if-document-api, if-archive-read, if-wiki-api
+implements: concept-session-release
 path: hub/portal
 :::
 ```
@@ -660,15 +579,15 @@ path: hub/stage/web
 ### Health check
 
 A plain address for container platforms and load balancers. It needs no token, reads no state and
-has no side effects. It answers on the TLS port of the hub, so it shows that the handshake and the
-HTTP server work, not only that the port is open.
+has no side effects. It answers through the same secure connection as the rest of the hub, so it
+shows that the hub serves requests, not only that its port is open.
 
 ```arc42
 :::interface
 id: if-health
 title: Health check
 provider: bb-office-hub
-protocol: HTTPS (GET /healthz)
+protocol: HTTPS
 path: hub/health
 :::
 ```
@@ -679,28 +598,16 @@ Manages sessions and their participants. It accepts utterances from the ears and
 participants, and writes everything to one append-only event log per session. It also takes
 imported conversations (`if-session-import`) and writes them into the log of a new session, so a
 session log has one writer in every case. Next to the log, it keeps the short-lived activities of
-the participants (`if-session-activity`), in memory only. A team agent is in a session at most
-once: it refuses the join of a team agent that is already in the session with "already joined",
-whoever the agent launcher is (`dec-team-agents`). Subscribers receive the log from a cursor onwards.
-It lists the sessions that a caller may see (`if-session-list`).
-Events are merged by time only: the participant model already says who spoke.
+the participants (`if-session-activity`). A team agent is in a session at most once: a second
+join is refused with "already joined" (`dec-team-agents`). Subscribers receive the log from a
+cursor onwards. It lists the sessions that a caller may see (`if-session-list`). Events are merged
+by time only: the participant model already says who spoke.
 
-It owns the release of each session (`concept-session-release`, `dec-staging-repository`):
-
-- When a session starts, it opens the staging area of the session and makes every participant who
-  joins a reader of it; the participant who imports a session is one too.
-- When the session ends, it writes the deadline into the staging area once: the end itself if no
-  human took part, otherwise the end plus the grace period of the tenant.
-- One worker per tenant keeps the deadlines in memory and rebuilds them from the staging
-  repository at start. A deadline that passed while the hub was down, and a release that a restart
-  cut off, are done at start. The worker loads an ended session that left memory when it needs it.
-- An objection holds the session, and the staging area records it. Only a human releases a held
-  session.
-- The release is an event in the log first, then the archive moves the area with the human who
-  released, or the hub, as the author. Before every release of a session with humans, it searches
-  the staged files for word-for-word quotes of sentences off the record. It knows no file type and
-  changes no content. A human releases despite quotes only with the token of the quotes found. When
-  the grace period ends while quotes exist, it holds the session instead of releasing it.
+It writes the logs to the archive and restores them at start (`dec-session-persistence`,
+`dec-restore-from-peers`). It owns the release status of every session and decides when a session
+is released or held (`concept-session-release`); the archive moves the files. It keeps the
+deadlines in the staging area, so a deadline that passed while the hub was down, and a release that
+a restart cut off, are done at start.
 
 ```arc42
 :::building-block
@@ -717,12 +624,7 @@ path: hub/session
 #### Session release
 
 Tells the parts of the hub that write artifacts for a session whether the session is released,
-and whether a participant took part in it. The release status decides where a write goes: into the
-staging area of the session while it is not released, else into the artifact repository. Every
-session that exists has a status, also one that staged nothing: open while it runs, waiting until
-its deadline, held after an objection, or released. Only a participant who took part may name a
-session in a write: one who joined it at any time, or the participant who imported it. The session
-notice accepts the same participants.
+and whether a participant took part in it (`concept-session-release`).
 
 ```arc42
 :::interface
@@ -737,9 +639,7 @@ path: hub/session/release
 #### Session notice
 
 Lets a part of the hub that writes artifacts tell the session about it. The session logs the
-change for the participant who wrote, who must have taken part in the session by the same rule as
-the session release: joined at any time, or imported it. So a write that passes the check of the
-session release never fails on the notice afterwards.
+change for the participant who wrote. It accepts the same participants as the session release.
 
 ```arc42
 :::interface
@@ -751,55 +651,14 @@ path: hub/session/notice
 :::
 ```
 
-The meeting session writes the log of every session that changed to the archive, at an interval
-and when the session ends (`dec-session-persistence`); the end of an import also starts a write.
-The write runs in the background, so commands and the stream never wait for it, and a slow write
-makes the next one take everything that has come since. Every write stores the raw log, with the
-original text of sentences that are off the record, and the tree head signed by the hub over
-exactly that log (`dec-merkle-log`).
-
-When the hub starts, the meeting session reads every stored log back and checks it against its
-signed tree head before it uses it (`dec-restore-from-peers`). A restored session keeps its IDs, so
-every cursor stays valid. The events after the last write are lost; a peer fills them in. Until a
-peer copy fits, or a wait is over, a restored session that has not ended takes no commands
-(`dec-signed-head-in-stream`). The archive also records whether the hub stopped after a last write
-of every session; then nothing is lost and there is no wait.
-
 ### Records
 
 The memory of the team: decisions, minutes and notes (`dec-records-per-type`). Each type has its
 own interface and its own types, and each record keeps who wrote it and whether that was a human
-or an agent. Decisions, minutes and notes are the sources of the wiki (`dec-wiki`). Tasks are not part of this block; they have their own part of the hub.
-
-Decisions and minutes are YAML files. A note is a Markdown file whose front matter names the
-schema, the author, whether the author is a human or an agent, the time, the session, if any, and
-the tags; its body is the text of the note (`dec-wiki`). So a clone of the tenant opens the notes
-as readable pages. Every new record is one commit in the archive (`dec-yaml-git-storage`). A command returns only
-after its commit, so a record that a client got back is stored. Local commits are fast, so this
-does not slow the meeting; the commit of the minutes is part of ending a session. The block reads
-its records back from the archive at start, so they survive a restart. It also reloads a record file
-that a push changed or added (`if-archive-watch`), and it never overwrites a file that a push put
-there first: it reloads and takes the next free ID.
-
-It routes every write that names a session (`concept-session-release`):
-
-- Only a participant of the session may name it. The block asks the meeting session
-  (`if-session-release`).
-- A new record goes into the staging area of the session while the session is not released.
-  Otherwise, and without a session, it goes into the artifact repository.
-- For each staged record, the block writes a stub of its type into the artifact repository,
-  through the archive, which records the stub in the staging area. Every stub of a type has the
-  same content, names no session and no time, and its commit is by the hub
-  with a message that says nothing about the record. No interface changes a stub.
-- Until the release, every participant may change or remove a staged record. A change that names
-  another session, or no session, is refused, and so is a write when the release status and the
-  staging area disagree. A released record never changes.
-- A staged record shows its content only to the readers of its session and to the tenant admins,
-  whose role comes from the token check. Everyone else sees the stub.
-- It follows the staging repository like the artifact repository (`if-archive-watch`).
-
-The meeting session stores the minutes through this block while it ends a session. That write
-does not ask the meeting session back, so the two blocks never call each other in a loop.
+or an agent. Decisions, minutes and notes are the sources of the wiki (`concept-wiki`). Tasks have
+their own part of the hub. Every new record is one commit in the archive
+(`dec-yaml-git-storage`). A command returns only after its commit, so a record that a client got
+back is stored.
 
 ```arc42
 :::building-block
@@ -815,14 +674,7 @@ implements: concept-wiki, concept-session-release
 
 #### Records check
 
-Lets the artifacts part check a file of a record type (decision, minutes or note) before it accepts a push. A decision or minutes is
-checked as YAML, and a note as Markdown with front matter and a text in its body. The part owns the schemas of
-its types, and the same check serves its own interface, so every rule exists once. A schema has a
-second form: the stub of a staged record (`concept-session-release`). Every stub of a type has the
-same content, and the check accepts exactly that content at the path of a record of the type. The
-part also tells whether a content is the stub of a type. The part names the schemas that it owns. A
-call gives the path, the content and the name of the schema; the part answers that the file is
-valid, or that it is invalid, with the reasons in plain words.
+The check of the record types (decision, minutes, note), and the recognition of their stubs, for the artifact check (`if-artifact-check`).
 
 ```arc42
 :::interface
@@ -836,13 +688,7 @@ path: hub/records/check
 
 #### Records description
 
-Describes a file of a record type for the wiki (`dec-wiki`), the same way the part checks it. A
-call gives the path, the content and the name of the schema. The answer is the title, the
-summary, the tags and the outgoing links of the record, or that the file is not a record that the
-check accepts. A record has no title of its own: the first block of its text is the title, and the
-rest of the text is the summary, both cut to a short length. Only a note has tags. The links are
-the relative links in the text, as paths from the top of the repository. The stub of a type is
-described as a stub, with nothing of its content.
+The description of a record for the wiki, for the artifact check (`if-artifact-check`): its title, summary, tags and links.
 
 ```arc42
 :::interface
@@ -858,8 +704,7 @@ path: hub/records/describe
 
 Keeps the tasks of the team behind the task interface (`dec-records-per-type`). Every change is
 one commit, so the archive keeps the history of every task, and a command returns only after its
-commit. Like the records part, it writes synchronously, and it reloads a task file that a push changed or
-added (`if-archive-watch`). A sync with the task tool of the team would belong to this block, and only the hub would
+commit. A sync with the task tool of the team would belong to this block, and only the hub would
 hold the credentials of that tool.
 
 ```arc42
@@ -875,10 +720,7 @@ requires: if-token-check, if-archive-storage, if-archive-watch
 
 #### Tasks check
 
-Lets the artifacts part check a file of a task before it accepts a push. The part owns the schemas of
-its types, and the same check serves its own interface, so every rule exists once. The part names the schemas that it owns. A call
-gives the path, the content and the name of the schema; the part answers that the file is valid, or
-that it is invalid, with the reasons in plain words.
+The check of a task, for the artifact check (`if-artifact-check`).
 
 ```arc42
 :::interface
@@ -892,10 +734,7 @@ path: hub/tasks/check
 
 #### Tasks description
 
-Describes a file of a task for the wiki (`dec-wiki`), the same way the part checks it. A call
-gives the path, the content and the name of the schema. The answer is the title of the task and
-its description as the summary, or that the file is not a task that the check accepts. A task has
-no tags and no links.
+The description of a task for the wiki, for the artifact check (`if-artifact-check`): its title, and its description as the summary.
 
 ```arc42
 :::interface
@@ -909,36 +748,10 @@ path: hub/tasks/describe
 
 ### Documents part
 
-The documents part stores each text document as one Markdown file in the archive and one commit
-per change. It checks the base version of a change and tells the meeting session when a call names
-one. Documents are the pages of the wiki (`dec-wiki`).
-
-It routes every write that names a session like the records part (`concept-session-release`):
-
-- Only a participant of the session may name it. The part asks the meeting session
-  (`if-session-release`).
-- A new document goes into the staging area of the session while the session is not released.
-  Otherwise, and without a session, it goes into the artifact repository.
-- For each staged document, the part writes the stub of a document into the artifact repository,
-  through the archive, which records the stub in the staging area. Every stub of a document has the
-  same content: Markdown whose front matter names the schema of
-  documents and marks it as a stub. It names no session and no time, and its commit is by the hub
-  with a message that says nothing about the document. No interface changes a stub.
-- Until the release, every participant may change or remove a staged document. A change that names
-  another session, or no session, is refused, and so is a write when the release status and the
-  staging area disagree. A change of a released document goes to the artifact repository and is
-  not held.
-
-The part keeps no documents in memory: it reads the state of a path from the archive at each
-write. If it cannot write the stub of a document that it has just staged, because a push took the
-path first, it takes the staged document back, and the staging area forgets the path.
-
-The part owns the schema of documents. Most documents name no schema and are plain Markdown. A
-document may name the schema; the stub always does. The part checks the front matter of a
-document that names the schema with its own check interface, at its interface and for a push, so
-every rule exists once. After a write it finds the relative links of the document that lead to
-no file and answers with a hint for each; it never refuses a write for a link
-(`concept-wiki`).
+Stores each text document as one Markdown file in the archive, with one commit per change. It
+checks the base version of a change and tells the meeting session when a call names a session.
+Documents are the pages of the wiki (`concept-wiki`). The part owns the schema of the front matter
+of a page and gives the hints of a document.
 
 ```arc42
 :::building-block
@@ -954,18 +767,10 @@ implements: concept-wiki, concept-session-release
 
 #### Documents check
 
-Lets the artifacts part check a document that names the schema of documents before it accepts a
-push. A document of the schema is Markdown under the directory of the documents, and its front
-matter has only the fields of the schema, each in its form; the stub of a document is one of
-them. The part also tells whether a content is the stub of a document, byte for byte, so the
-documents part and the push rules decide the same way. The part names the schemas that it owns.
-A call gives the path, the content and the name of the schema; the part answers that the file is
-valid, or that it is invalid, with the reasons in plain words.
-
-A second call gives the hints of a document: every relative Markdown link that leads to no file.
-The caller gives the path, the content and a way to ask whether a path holds a file in the state
-that the document belongs to. A file that is not a document, and the stub of a document, get no
-hints. A hint never makes a document invalid.
+The check of a document that names the schema of documents, and the recognition of its stub, for
+the artifact check (`if-artifact-check`). A second call gives the hints of a document
+(`concept-wiki`): every relative link that leads to no file in the state that the document belongs
+to.
 
 ```arc42
 :::interface
@@ -979,16 +784,7 @@ path: hub/documents/check
 
 #### Documents description
 
-Describes a document for the wiki (`dec-wiki`), the same way the part checks it. A call gives the
-path, the content and the name of the schema that the document names, if any. The answer is the
-title, the summary, the tags, the outgoing links, the sources, the status, the owner and the
-reviews of the document, or that the file is not a document that the check accepts. The title comes from the front matter, else from the
-first heading, else from the name of the file. The summary, the tags, the sources, the status,
-the owner and the reviews come from the front matter of a document that names the schema of
-documents. The links are the relative
-links of the body, as paths from the top of the repository. The sources are the records that the
-document cites, so the wiki part can tell which sources no document cites yet. The stub of a
-document is described as a stub, with nothing of its content.
+The description of a document for the wiki, for the artifact check (`if-artifact-check`): its title, summary, tags, links and cited sources.
 
 ```arc42
 :::interface
@@ -1004,22 +800,8 @@ path: hub/documents/describe
 
 Renders slide decks and keeps them behind the slides interface (`dec-records-per-type`).
 Rendering is deterministic and without streaming. A deck is stored in one commit with its input
-(`dec-yaml-git-storage`). The rendered output is a runtime artifact: it is not committed, so no
-clone of the tenant repository contains it, and the slides part renders it again from the stored
-input when it is needed. A later version of the hub may render a deck differently. Like the
-records part, it writes synchronously, and it reloads a deck file that a push changed or added
-(`if-archive-watch`).
-
-It routes a render that names a session like the records part (`concept-session-release`): only a
-participant may name the session (`if-session-release`); a new deck goes into the staging area of
-the session while the session is not released, and its stub into the artifact repository,
-through the archive, which records the stub in the staging area. Every stub of a deck has the same
-content, names no session and no time, and its commit is by the hub
-with a message that says nothing about the deck. Until the release, every participant may change
-or remove a staged deck; a change that names another session, or none, is refused. A staged deck
-shows its content only to the readers of its session, to the tenant admins and to the stage of its
-session; everyone else sees the stub. The part follows the staging repository like the artifact
-repository.
+(`dec-yaml-git-storage`). The rendered output is not committed, so no clone of the tenant
+repository contains it; the part renders it again from the stored input when it is needed.
 
 The check of business plans by calculation (consistency, unit economics, completeness) is a
 different type with its own interface when it is built.
@@ -1038,13 +820,7 @@ implements: concept-session-release
 
 #### Slides check
 
-Lets the artifacts part check a file of a slide deck before it accepts a push. The part owns the schemas of
-its types, and the same check serves its own interface, so every rule exists once. The schema of a
-deck has a second form: the stub of a staged deck (`concept-session-release`). Every stub of a deck
-has the same content, and the check accepts exactly that content. The part also tells whether a
-content is the stub of a deck. The part names the schemas that it owns. A call gives the path, the
-content and the name of the schema; the part answers that the file is valid, or that it is invalid,
-with the reasons in plain words.
+The check of a slide deck, and the recognition of its stub, for the artifact check (`if-artifact-check`).
 
 ```arc42
 :::interface
@@ -1058,11 +834,7 @@ path: hub/slides/check
 
 #### Slides description
 
-Describes a file of a slide deck for the wiki (`dec-wiki`), the same way the part checks it. A
-call gives the path, the content and the name of the schema. The answer is the title of the deck
-and the titles of its slides as the summary, or that the file is not a deck that the check
-accepts. A deck has no tags and no links. The stub of a deck is described as a stub, with nothing
-of its content.
+The description of a slide deck for the wiki, for the artifact check (`if-artifact-check`): its title, and the titles of its slides as the summary.
 
 ```arc42
 :::interface
@@ -1076,42 +848,24 @@ path: hub/slides/describe
 
 ### Archive
 
-The storage that all record parts of the hub use (`dec-records-per-type`): a local Git repository
-on the hub host with one commit for every change of a caller (`dec-yaml-git-storage`). The archive
-does not know the records: the caller decides the files and their content. A commit can be slow,
-so callers that must not wait call it in the background. The push to a remote is mocked: it does
-nothing and reports success.
+The storage that all parts of the hub use (`dec-records-per-type`): local Git repositories on the
+hub host with one commit for every change of a caller (`dec-yaml-git-storage`). The archive does
+not know the content: the caller decides the files and their content. The push to a remote is
+mocked.
 
-A tenant repository has no work tree, because a participant can push to it through Git access
-(`dec-artifact-sync`). The archive and a push both move the branch main in one atomic step of Git.
-When a push comes first, the archive repeats its commit on the new state. The archive is the one
-place that learns about every change of main, whatever its source. It finds which artifacts
-changed and tells the clients that follow the tenant.
+The archive keeps one repository for the hub itself (users, tenants, memberships and system admins)
+and three for each tenant:
 
-The session logs of a tenant lie in their own repository, which only the meeting session uses
-(`dec-artifact-sync`). They hold the original of sentences that are off the record
-(`dec-off-the-record`), so no interface for participants reaches that repository: Git access does
-not serve it, and the archive does not read from it for them.
+- **Artifacts.** Git access serves it (`dec-artifact-sync`). The archive and a push both move its
+  branch main in one atomic step. The archive is the one place that learns about every change of
+  main, whatever its source, and it tells the clients and the parts that follow the tenant.
+- **Session logs.** Only the meeting session uses it. The logs hold the original of sentences off
+  the record (`dec-off-the-record`), so no interface for participants reaches them.
+- **Staging.** One area for each session that is not released (`dec-staging-repository`). Git
+  access does not serve it.
 
-What a session has not released lies in a third repository of the tenant, the staging repository
-(`dec-staging-repository`). It has the layout of the artifact repository and one area for each
-session that is not released: the staged files, the readers of the session and the state of its
-release. Git access does not serve it either.
-
-The archive knows stubs as a concept, but not their type or their content. A part writes the stub
-of a staged artifact through the archive, and the archive records the path in the area of the
-session together with the exact version of the stub that it wrote. The part decides what the stub
-contains. The release is a transition that the archive owns. It moves an area into the artifact
-repository in one commit. A file replaces its path only if the artifact repository still holds
-exactly the recorded stub there, or no file at all. A path that holds anything else, for example a
-file that a participant pushed after a crash, keeps that file: the staged artifact is not
-released, and the release reports the conflict with the path and the session. The rest of the
-session is released. Such an artifact stays in the area until a participant discards it
-(`concept-session-release`). The author of the commit is the human who released, or the hub, and the
-authors of the files are its co-authors. The commit names the session, and each step of a release
-is recorded, so a release that a restart cut off is completed and never done twice. The archive
-moves the files and compares versions without reading their content, so the order in which a part
-writes a staged file and its stub does not matter.
+The archive owns the release transition (`concept-session-release`, `if-archive-storage`). It knows
+stubs only by path and version, never by type or content.
 
 ```arc42
 :::building-block
@@ -1129,16 +883,11 @@ path: hub/archive
 
 Reads artifacts by their path (`dec-artifacts`): one file with its content and its version, or
 the files of a directory. The caller needs the access token of a participant. A stage link cannot
-use it, because the link is shown on the shared screen. The stage reads in-process, and only paths
-that the log of its own session names. Only Markdown and YAML files can be read. The session logs lie in
-another repository and cannot be read here.
+use it, because the link is shown on the shared screen (`bb-stage`). Only Markdown and YAML files
+can be read. The session logs cannot be read here.
 
-A path that the staging area of a session names is staged (`concept-session-release`). A reader of
-that session, or a tenant admin by role, reads the staged file, marked as staged, with its version
-in the staging area; everyone else reads what the artifact repository holds there, the stub. The
-stage reads the staged files of its own session only.
-OPEN: how a call names the tenant, once the archive keeps one repository per tenant
-(`dec-multi-tenancy`).
+A staged path shows its content, marked as staged, only to the readers of its session and to the
+stage of that session; everyone else reads its stub (`concept-session-release`).
 
 ```arc42
 :::interface
@@ -1152,48 +901,23 @@ path: hub/archive/api
 
 #### Archive storage
 
-The in-process interface of the archive: write a set of files as one commit, and list and read
-files as they are in the current commit, from one directory or from the whole repository, and list every name that ever lay in a directory, so that
-a part never gives a number again that a removed file had. A change can also remove files. The
-archive keeps three git repositories for each tenant: one for its artifacts, one for its session
-logs and one for what sessions have not released (the staging repository). It keeps one more for
-the hub itself, for the users, the tenants, the memberships and the system admins. Each
-repository has its own commit queue, so one tenant does not hold up another. The repositories of a
-tenant are created with the tenant and stay when the tenant is removed. The artifact repository of a tenant
-starts with one first commit that holds no artifact, so the branch main exists from the start and
-every clone has something to follow (`dec-artifact-sync`).
+The in-process interface of the archive. A caller writes a set of files as one commit, reads the
+files of the current commit, and lists every name that ever lay in a directory, so that a part
+never gives again a number that a removed file had. Each repository has its own commit queue, so
+one tenant does not hold up another. The repositories of a tenant are created with the tenant and
+stay when the tenant is removed.
 
-For the staging repository, a caller works on the area of a session:
+For the staging repository (`concept-session-release`), the contract is:
 
-- open the area and write its readers and the state of its release (the deadline, and whether an
-  objection holds it);
-- write, change and remove files in the area, each change in one commit; a path belongs to one
-  area only;
-- write the stub of a staged file into the artifact repository through the area: the area
-  records the path with the exact version of the stub. The part decides the content; the
-  archive never reads it;
-- take a file back whose stub could not be written: the file goes away, and the area forgets the
-  path and its stub, so the release leaves that path alone;
-- read and list the files of an area, and list every area with its state;
-- release the area: close it for writes, move its files into the artifact repository in one
-  commit, then remove what was released. A file replaces its path only where the artifact
-  repository holds the recorded stub or no file, and the recorded stub of a removed file goes
-  away. A file whose path holds anything else is not released: the answer of the release names
-  it as a conflict, with the path and the session. Such files stay in the area, with its readers;
-  the area stays closed for writes, and its release counts as done. An area without such files is
-  removed. A release that a restart cut off is completed by the next call, and a done release
-  gives the same answer again;
-- discard a file that a done release kept back: the area forgets the path, and goes with its last
-  such file. The caller decides who may discard;
-- find the release commit of a session in the artifact repository, with its author, its
-  co-authors and the files it wrote.
-
-For any path, the archive gives the newest change that wrote the file: who wrote it and when, and
-whether the change was the release of a session, with who released it and when. For a released
-file, the author and the time are those of its last write in the area of the session.
-
-The content and the check of a stub belong to the parts of the types. The archive only records
-which version of a stub it wrote, and compares it at the release.
+- Every session that is not released has one area with its files, its readers and the state of
+  its release; a path belongs to one area only.
+- Every change of an area is recorded, and so is every stub with the version that was written.
+- The release of an area is atomic and repeatable: one commit with the human who released, or the
+  hub, as its author and the authors of the files as co-authors; a release that a restart cut off
+  is completed, never done twice.
+- The release never replaces a file that is not the recorded stub. It reports such a path as a
+  conflict and keeps the staged file with the readers of the session.
+- A kept file can be discarded; the area goes with its last one. The caller decides who may.
 
 ```arc42
 :::interface
@@ -1224,14 +948,12 @@ path: hub/archive/repository
 #### Archive changes
 
 A participant follows the changes of the artifacts of a tenant. The call needs the access token of
-a participant who belongs to the tenant, and it may name path prefixes. The hub sends one event for
-each change of the branch main: the artifacts that were created, changed or removed, with their new
-versions. An artifact is a Markdown or YAML file.
-The stream starts with a message of its own type that says the follower is registered. Changes
-follow in messages of another type. An event holds no content and the stream has no position and no
-replay. A client that connects, or
-connects again, first updates its clone through Git access and then follows. A change that the
-archive wrote and a change that came by a push give the same event.
+a participant who belongs to the tenant, and it may name path prefixes. The stream first confirms
+that the follower is registered. Then the hub sends one event for each change of the branch main:
+the artifacts that were created, changed or removed, with their new versions. An event holds no
+content, and the stream has no position and no replay. A client that connects, or connects again,
+first updates its clone through Git access and then follows. A change that the archive wrote and a
+change that came by a push give the same event.
 
 ```arc42
 :::interface
@@ -1245,14 +967,12 @@ path: hub/archive/changes
 
 #### Archive watch
 
-The in-process interface for the parts of the hub that keep files of the archive in memory (the
-records, tasks and slides parts) or a view derived from them (the wiki part). A part asks for the changes of the artifact repository of its
-tenant and gets the same changes that a participant gets through the changes stream: the
-artifacts that were created, changed or removed, after a commit of the archive or after a push.
-A part follows the staging repository of its tenant the same way: it gets the staged artifacts
-that were created, changed or removed, and nothing of the state of the areas.
-It needs no token. The part reloads the files that changed. A part that is slow never holds up a
-commit: the rule for the followers of the stream holds here too.
+The in-process interface for the parts of the hub that keep files of the archive, or a view
+derived from them. A part gets the same changes of the artifact repository of its tenant that a
+participant gets through the changes stream, whether a commit of the archive or a push made them,
+and reloads the files that changed; it never overwrites a file that a push put there first. A part
+can follow the staging repository the same way, without the state of the areas. It needs no token,
+and a slow part never holds up a commit.
 
 ```arc42
 :::interface
@@ -1266,30 +986,21 @@ path: hub/archive/watch
 
 ### Git access
 
-Serves the repository of every tenant over the Git protocol, so that participants fetch the
-artifacts of their tenant and push changes with plain Git (`dec-artifact-sync`). It has no
+Serves the artifact repository of every tenant over the Git protocol, so that participants fetch
+the artifacts of their tenant and push changes with plain Git (`dec-artifact-sync`). It has no
 records of its own and no layer that translates Git; Git does the work and this part sets the
-rules. It does three things:
+rules:
 
 - A gate: before Git reads anything, it checks the access token and the membership in the tenant
-  of the address, and it finds the repository through the archive. A fetch has no check inside
-  Git, and a push is checked inside Git only after the upload, so the gate comes first.
+  of the address, and it finds the repository through the archive.
 - Rules for every push, which Git runs before it accepts the push: the author of every new commit
   is the participant of the token; only the branch main changes and no history is rewritten; only
-  artifact files and the definitions of team agents change; no agent changes a definition,
-  which Git access knows from the token check; and every file with a schema
-  is valid against the schema that it names. Git access knows no schema: it asks the artifacts
-  part, which hands the check to the part of the hub that owns the schema. A refused push shows
-  its reason to the participant.
-- Rules for the stubs of staged artifacts (`concept-session-release`): no push changes or removes
-  a path that holds a stub, and no push writes the content of a stub. A rule needs the old state
-  of a path, so Git access asks the artifacts part whether the file that a push changes or
-  removes is a stub. A push next to a stub passes. Git access never serves the staging
-  repository, so a clone holds stubs and never staged content.
-- Hints for every push (`concept-wiki`): Git access asks the artifacts part for the hints of each
-  file that the push adds or changes, such as a link of a document that leads nowhere, and shows
-  them to the participant. A link resolves in the state of main after the push, so links between
-  the files of one push work, and so does a link to a stub. A hint never refuses a push.
+  artifact files and the definitions of team agents change; no agent changes a definition, which
+  Git access knows from the token check; every file with a schema is valid against the schema
+  that it names; and no push changes, removes or writes a stub (`concept-session-release`). Git
+  access knows no schema and no stub: it asks the artifacts part. A refused push shows its reason.
+- Hints: it shows the participant the hints of each file that a push adds or changes
+  (`concept-wiki`).
 - After an accepted push, it tells the archive that main moved.
 
 Git alone decides whether a push builds on the current state: a push on an old base is refused,
@@ -1309,12 +1020,10 @@ path: hub/gitaccess
 
 #### Git protocol
 
-The repository of a tenant under one fixed address of the hub (the hub address and the tenant).
-Any Git client can fetch and push. The password is the access token of the participant, which
-lives one hour; the client of the participant gives Git a fresh token when it needs one. Only
-participants of the tenant get access. They read and push the branch main and nothing else. The
-author of a commit has the form that the hub uses for its own commits: the display name of the
-participant and an address that is built from the participant ID.
+The repository of a tenant under one fixed address of the hub. Any Git client can fetch and push.
+The participant authenticates with a short-lived access token, which its client renews for Git.
+Only participants of the tenant get access, and they read and push the main branch and nothing
+else. The author of a commit is the participant, in the same form as the commits of the hub.
 
 ```arc42
 :::interface
@@ -1328,15 +1037,10 @@ path: hub/gitaccess/web
 
 ### Artifacts
 
-Knows which part of the hub owns which schema and passes the check of a file to that part. It
-owns no schema, because a schema belongs to its type (`dec-artifacts`). It finds the owner by the
-name of the schema that the file names. A file that names no schema is plain text, and a file
-that names a schema that no part owns is invalid. Each part also recognises the stub of its types
-(`concept-session-release`), so this part can tell a stub from any other file without knowing the
-stubs itself. A part may give hints for the files of its types, such as a link of a document that
-leads nowhere; each part decides which files are of its types. Each part also describes the
-files of its types for the wiki (`dec-wiki`), and this part passes a file on to the part that owns
-it. A new type needs a check and a description in
+Knows which part of the hub owns which schema and passes each request about a file to that part.
+It owns no schema, because a schema belongs to its type (`dec-artifacts`). It finds the owner by
+the name of the schema that the file names. A file that names no schema is plain text, and a file
+that names a schema that no part owns is invalid. A new type needs a check and a description in
 its own part and a line in this part.
 
 ```arc42
@@ -1353,25 +1057,18 @@ path: hub/artifacts
 
 #### Artifact check
 
-Checks the content of one file against the schema that the file names, whichever part owns the
-schema. The answer is valid, or invalid with the reasons in plain words. A second call tells
-whether a file is the stub of a staged artifact: the file names a schema, is valid, and the part
-that owns the schema recognises it as the stub of its type. A third call gives the hints of the
-parts for a file, such as the links of a document that lead nowhere. The caller says which paths
-hold a file in the state that the file belongs to. A hint never makes a file invalid.
-
-A call tells whether no agent may change a file: the owner of its schema keeps its files from
-agents, as Tenants does for the definition of a team agent (`dec-team-agents`). Git access asks
-it for the old and the new state of every path that an agent pushes.
-
-A fourth call describes a file for the wiki (`dec-wiki`), so a reader needs one interface for all
-types. A file that names a schema goes to the description of the part that owns the schema, and a
-document without a schema to the documents part. The answer is the schema, the title, the
-summary, the tags, the outgoing links and the sources of the file, the status, the owner and the
-reviews of a document, whether it is a source of the
-wiki (a decision, minutes or a note), and whether it is the stub of a staged artifact; or that the
-file is invalid or of no type that a part describes. This part reads
-no field of a type itself (`dec-artifact-sync`).
+One interface for all types. Each part that owns a type owns the schemas of its types, and the same
+check serves its own interface and a push, so every rule exists once. A check takes the path, the
+content and the name of the schema and answers valid, or invalid with the reasons in plain words.
+For a file, this interface offers the check, the recognition of a stub
+(`concept-session-release`), the hints for the file in a given state (`concept-wiki`), and the
+description for the wiki, which each part derives the same way it checks the file: the schema,
+title, summary, tags, links and sources, whether the file is a source and whether it is a stub.
+Each request goes to the part that owns the schema of the file; a document without a schema goes
+to the documents part. The artifacts part reads no field of a type itself. The owner of a schema may
+also keep its files from agents, as Tenants does for the definition of a team agent
+(`dec-team-agents`); Git access asks this for the old and the new state of every path that an agent
+pushes.
 
 ```arc42
 :::interface
@@ -1385,35 +1082,21 @@ path: hub/artifacts/check
 
 ### Wiki part
 
-Keeps the view of the wiki of each tenant (`concept-wiki`, `dec-wiki`) and offers it through the
-wiki interface. It is on no write path: it writes nothing and commits nothing. It follows the
-artifact repository of its tenant (`if-archive-watch`), never the staging repository, so it never
-sees what a session has not released. At start it reads every file of the repository and builds
-the view again; after each change it reads the files that changed.
-
-It reads no field of a type. The artifact check describes each file for it, by the part that owns
-the type: title, summary, tags, links, cited sources, the state of review of a document, whether
-the file is a source and whether it is a stub. From these descriptions it derives the backlinks, the links that lead nowhere, the
-sources that no document cites, and an index of words for the search. The search needs no model
-(`con-no-intelligence`): it ranks by how rare a word is in the tenant, how often it occurs, in
-which field (the title counts most, then the tags and the summary, then the text) and how long
-the artifact is.
-
-For the trust data of one artifact, it takes the state of review from the description of a
-document, asks the archive for the newest change of the artifact and of each cited source
-(`if-archive-storage`), and asks the token check whether each author is a human or an agent.
-
-It checks the token of every call. The hub has checked that the caller is a member of the tenant.
-OPEN: how much memory the view needs for a large tenant.
+Keeps the view of the wiki of each tenant (`concept-wiki`) and offers it through the wiki
+interface. It is read-only: it writes and commits nothing, and it can rebuild the view from the
+archive at any time. It follows only the artifact repository (`if-archive-watch`), never the
+staging repository, and it leaves stubs out (`concept-session-release`). It reads no field of a
+type: the artifact check describes each file for it. The search needs no model
+(`con-no-intelligence`). It checks the token of every call.
 
 ```arc42
 :::building-block
 id: bb-wiki
 title: Wiki
-technology: Go, a view in memory
+technology: Go
 parent: bb-office-hub
 requires: if-token-check, if-archive-storage, if-archive-watch, if-artifact-check
-implements: concept-wiki
+implements: concept-wiki, concept-session-release
 path: hub/wiki
 :::
 ```
@@ -1425,16 +1108,13 @@ the other artifacts as tabs, the transcript, and who is captured or paused, with
 and what each agent is doing (`if-session-activity`) in the same list. The minutes are the first artifact of every session and stay in focus until
 someone focuses another artifact. Until there are minutes, the stage asks for an agent that takes
 them. It marks an imported session with its source and never shows it as live. It is a view of
-everything that happens inside a session and has no logic of its own. It builds that view from the
-session log and from the staging area of its own session. The log names the artifacts that
-participants created, changed or focused. The staging area holds the artifacts that the session
-staged, whichever part wrote them, so the stage lists them without a notice from that part, and it
-reads the area again when it changes (`if-archive-watch`). It reads an artifact straight from the
-archive (`if-archive-read`) and renders it by its schema (`dec-artifacts`); it reads only the
-staging area of its own session, which the stage link names, never a path that another session
-staged. It reads the decks through the slides interface. A staged artifact of its own session
-shows its content; a staged artifact of another session shows as its stub
-(`concept-session-release`).
+what happens inside a session and has no logic of its own. It builds the view from the session log
+and from the staging area of its own session, which it reads again when it changes
+(`if-archive-watch`), so the stage lists staged artifacts without a notice of the part that wrote
+them. It reads an artifact straight from the archive (`if-archive-read`) and renders it by its
+schema (`dec-artifacts`), never a path that another session staged. It reads the decks through the
+slides interface. A staged artifact of its own session shows its content; any other staged artifact
+shows as its stub (`concept-session-release`).
 
 A viewer can open another artifact of the session in the own browser by its tab. That changes
 only this browser: the focus of the session stays, and nobody else's view changes. While a
@@ -1458,11 +1138,13 @@ path: hub/stage
 Knows all users (participants), their public keys, their tenant memberships and the system admins
 in one place for the whole hub, and keeps them in the hub repository through the archive. It is
 the only writer there and checks every change. Each user, human or agent, is its own actor with
-its own key pair, except a team agent. The client creates the key pair locally and sends only the public key. A user can
+its own key pair, except a team agent that runs with a token. The client creates the key pair locally and sends only the public key. A user can
 be a member of several tenants, with a role in each, and can also be a system admin. A new public
-key is registered by hand when we meet the person. A team agent is a user without a key that
+key is registered by hand when we meet the person. A team agent is a user that
 belongs to one tenant (`dec-team-agents`); Identity creates it when the tenant admin asks Tenants to, and
-issues a token as the agent to every member of that tenant. Its token carries the version of the definition that the member confirmed. Identity issues short-lived access tokens and
+issues a token as the agent to every member of that tenant. It has no key unless a tenant admin
+registers one for it, for a run without a human: it then authenticates as any user does and works in
+its tenant as a member who is no tenant admin. Its token carries the version of the definition that the member confirmed. Identity issues short-lived access tokens and
 creates read-only links for the stage. The token check tells the other parts of the hub who the
 caller is, whether they are a system admin and which tenants they belong to with which role. For
 a token as a team agent, it also names the agent launcher and the version of the definition, and it tells that the participant is an agent, so that other parts can refuse what no agent may do.
@@ -1482,8 +1164,6 @@ path: hub/identity
 #### Token check
 
 Other parts of the hub check access tokens here and learn which participant a token belongs to.
-A part also learns here whether a participant, named by its ID, is a human or an agent, also after
-the user was removed.
 
 ```arc42
 :::interface
@@ -1616,11 +1296,8 @@ flowchart LR
 
 ### CLI
 
-Shell commands with machine-readable output (OPEN: `--json` convention). A command that writes a
-document shows the hints of the hub, such as a link that leads nowhere, next to its result; the
-hints never make the command fail. A release that the hub refuses because staged files quote
-sentences off the record fails with an error: the command shows the places and the token, and the
-same command with the token confirms the quotes.
+Shell commands with machine-readable output. A command passes the hints of the hub and its
+refusals of a release on unchanged; a hint never makes a command fail.
 
 ```arc42
 :::interface
@@ -1638,11 +1315,9 @@ path: client/cli/commands
 The office as tools for an agent, with the same features as the CLI: join and leave a meeting,
 raise a hand, update the minutes, focus an artifact, render slides, record decisions, add notes,
 change or remove the records of a session before its release, create and update tasks, import a
-session. The names say what an agent does, not how the hub works. A tool that writes a document
-returns the hints of the hub with its result, such as a link that leads nowhere, so the agent can
-fix them. A release or a hold of a session is passed on for the human of the agent; a release that
-the hub refuses because of quotes off the record returns an error that holds the places and the
-token, which the human may confirm.
+session. The names say what an agent does, not how the hub works. A tool passes the hints of the
+hub and its refusals of a release on unchanged. Release and objection act only for the human of
+the agent (`concept-session-release`).
 
 ```arc42
 :::interface
@@ -1693,13 +1368,11 @@ path: client/ears/audio
 ### Agent Client Protocol (client side)
 
 The participant client is the client of the Agent Client Protocol (ACP) for an agent harness, for
-example Claude Code through its ACP adapter, opencode or Kiro. The agent runner starts the harness
-as a child process and talks JSON-RPC with it over its standard input and output. The contract is
-the published protocol; the client takes the client side and the harness the agent side
-(`dec-agent-runner-acp`). The runner hands the harness the office tools as an MCP server that
-runs with the key of the agent. It answers the requests of the harness for permission to use a
-tool by a rule of the user (`dec-agent-runner-delivery`) and offers it no access to its file
-system or terminal.
+example Claude Code through its ACP adapter, opencode or Kiro. The contract is the published
+protocol; the agent runner takes the client side and the harness the agent side
+(`dec-agent-runner-acp`). The runner hands the harness the office tools, which run with the key of
+the agent. It answers the requests of the harness for permission to use a tool by a rule of the
+user (`dec-agent-runner-delivery`) and offers it no access to its file system or terminal.
 
 ```arc42
 :::interface
@@ -1823,8 +1496,8 @@ path: client/cli
 
 ### MCP server
 
-A local MCP server (stdio) with the same features as the CLI. `meeting.join` starts the
-replication and returns the path to the log file. When the MCP server was started in a set-up
+A local MCP server with the same features as the CLI. Joining a meeting starts the replication
+and returns the path to the log file. When the MCP server was started in a set-up
 directory, it also follows the changes of that clone. The replication and the follow live as long
 as the MCP process.
 
@@ -1847,7 +1520,8 @@ Keeps an agent in the meeting (`dec-agent-runner-acp`). Agents work in turns
 session and one agent, it:
 
 - gets its token: with the key of a personal agent, or, for a team agent, with the key of the
-  agent launcher as a token as the agent (`dec-team-agents`). It reads the definition of a team
+  agent launcher as a token as the agent (`dec-team-agents`); with the key of the team agent
+  itself it joins as a personal agent does, and the agent has no agent launcher. It reads the definition of a team
   agent from the clone or from the archive, starts it only after the user has confirmed the
   definition, again when the definition has changed since, and names the confirmed version in the
   request for the token. The harness, the working directory and the credentials of a model
@@ -1856,20 +1530,11 @@ session and one agent, it:
   token of the agent and never the key of the agent launcher;
 - joins the session as the agent and runs the log replicator in its own process, so it follows
   the local log of the agent;
-- hands the harness, with its skills injector, the skills that every agent of a tenant needs
-  (`dec-skills`), so the agent follows the conventions of the office without a step of its human.
-  ACP has no notion of skills, so the injector writes each skill, before the harness starts, into
-  the folder of skills in the working directory of the agent that Kiro and opencode read, and
-  links it into the folder that Claude Code reads: one copy for all harnesses. It replaces only a
-  copy that the office wrote; a skill of the same name from elsewhere stays, and the runner warns.
-  It keeps what it wrote out of the commits of a Git work tree. Today every agent gets the
-  office memory skill;
+- hands the harness the office memory skill (`if-office-memory-skill`, `dec-skills`);
 - starts the agent harness, opens one ACP session, hands it the office tools as an MCP server with
-  the key of the agent and sends a first prompt with the role of the agent and the meeting, with
-  the rule that an agent says in the session which artifact it takes on (`dec-wiki`), and with
-  what only the runner knows: the session that everything from the meeting must name, and that
-  tasks are not held. The first prompt does not mention the skills, because the harness offers
-  them to the agent itself;
+  the key of the agent, and sends a first prompt with the role of the agent, the meeting and what
+  only the runner knows: the session that everything from the meeting must name, and that tasks
+  are not held;
 - decides with one wake strategy, chosen by the user at start, when to wake the agent
   (`dec-agent-runner-delivery`): at each change of speaker, or when a forwarding judge or a
   decision model that the user brings says so (`dec-wake-check-per-utterance`,
@@ -1885,12 +1550,6 @@ The runner never speaks for the agent and judges nothing itself: the agent decid
 addressed and acts through the office tools. Whatever the harness writes as a reply is only
 logged; if the agent did not speak, the runner asks it once whether the reply was meant for the
 meeting (`dec-agent-runner-delivery`).
-
-Inside the runner, the wake strategy is one seam that serves the runner as its consumer. The
-runner hands it the pending utterances in its own terms and gets back its own verdict: wake, wait,
-or check with the model. Only the strategies that use a model know the external contracts,
-`if-forwarding-judge` and `if-decision-model`, and each maps the request and the verdict to its
-contract. The seam lies inside the runner, so it is no interface of the model.
 
 ```arc42
 :::building-block
@@ -1949,27 +1608,12 @@ path: client/replicator/control
 ### Artifact sync
 
 Keeps a clone of the tenant repository in a directory that the participant has set up on purpose
-(`dec-artifact-sync`). It never syncs a directory by itself.
-
-- Set-up works out the address of the repository from the hub address and the tenant, clones the
-  branch main and writes into the own Git configuration of the clone: the author of the
-  participant, the way to get a fresh access token for Git, and a check that stops commits in the
-  main directory.
-- An update fetches and moves main to the state of the hub without a merge. It runs when a client
-  process starts, after every reconnect and on request. When the hub rewrote history, nothing of
-  the participant is on main, so main simply moves to the new state. The update stops and reports
-  when the main directory has commits of its own. It never touches files that a participant has
-  changed and not committed.
-- While a client process runs, it follows the changes of the artifacts (`if-artifact-changes`),
-  optionally for path prefixes, and updates the clone after each event. A client process that
-  starts in a set-up directory, or in a worktree of its clone, follows that clone: `meeting join`
-  of the CLI and of the MCP server starts the follow, and joining a meeting never needs a flag for
-  it.
-
-The main directory is a mirror of main. Participants and agents work in worktrees next to it, on
-local branches, and push with plain Git. For the participant, the sync runs only clone and update;
-for its own update it also reads the state of the repository, like any Git tool. The office CLI
-passes no Git command on.
+(`dec-artifact-sync`). It never syncs a directory by itself. It sets the clone up, updates its main
+directory to the state of the hub and keeps it a mirror of it, and, while a client process runs in
+that directory, follows the changes of the artifacts (`if-artifact-changes`). An update never
+touches work that a participant has not committed, and it stops and reports instead of merging.
+Participants and agents work beside the mirror and push with plain Git; the office CLI passes no
+Git command on.
 
 ```arc42
 :::building-block
@@ -2057,12 +1701,10 @@ path: skills/office-assistant
 
 ### Office memory skill
 
-How an agent reads and writes the memory of the team, its wiki (`dec-wiki`, `concept-wiki`):
-which artifacts never change once released, how to find what the team knows, how to write a page
-with its front matter, and how to ingest, answer and lint. Agents read it but never change it. The
-agent runner hands it to every harness that it starts; an agent without a runner gets it from its
-human with the usual skill tooling (`dec-skills`). The skill also offers its files to the agent
-runner inside the office, so the runner hands out exactly the skill of its own release.
+How an agent reads and writes the memory of the team, its wiki (`concept-wiki`): which artifacts
+never change once released, how to find what the team knows, how to claim work in a session, how
+to write a page with its front matter, and how to ingest, answer and lint. Agents read it but never
+change it.
 
 ```arc42
 :::ignore H011 an agent reads a skill as a file and the runner only copies it; there is no interaction to show

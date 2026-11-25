@@ -4,19 +4,16 @@
 
 A sentence that is marked off the record afterwards is already in the local files and in the
 context of the agents that read it. It cannot be removed from an agent's context. Off the record is
-a rule for the people and agents who write, not a mechanism. The hub checks only one thing: the
-release of a session stops while what the session staged quotes such a sentence word for word, and
-a human must confirm the quotes. A paraphrase, or a sentence in an artifact that skips the staging
-area, passes. If an agent has written it into
-a record or a page of the wiki (`dec-wiki`), it is visible to every member of the tenant and stays
-in the history of every clone.
+a rule for the people and agents who write, not a mechanism. If an agent has written the sentence
+into a record or a page of the wiki, it is visible to every member of the tenant once released and
+stays in the history of every clone.
 
 ```arc42
 :::risk
 id: risk-retraction-leak
 title: Sentences marked off the record stay in agent context
 severity: high
-mitigation: The interfaces of the session suppress the text of sentences off the record for every later reader, and only the readers of a session see its log (dec-off-the-record); the runner prompt and the memory skill tell agents to respect the mark; outside the release, nothing checks records and documents. What a session creates waits in a staging area until a human releases it or a grace period ends, and a word-for-word quote of a sentence off the record stops the release until a human confirms it (concept-session-release, dec-staging-repository); a change to a released artifact during a session, a push during a session and a record without its session, a task, and agent writes after a release at the end bypass the hold; a human may release early
+mitigation: The interfaces hide the text for every later reader (dec-off-the-record), and the release of a session holds what it created and stops at word-for-word quotes until a human confirms them (concept-session-release)
 :::
 ```
 
@@ -273,6 +270,40 @@ may use.
 id: risk-shared-agent-definition
 title: A changed definition steers an agent that another member runs
 severity: medium
-mitigation: A client shows a definition and asks for confirmation before the first start and again whenever the definition has changed since, and shows added tools first; the confirmation protects the agent launcher and is no check of the hub; a run keeps its confirmed version, and the author of what the agent writes names it; no agent changes a definition, so a prompt-injected agent cannot rewrite itself or another agent; every change is one commit with its author; the harness, the working directory and the credentials of a model stay local; OPEN: finer rights per agent (dec-team-agents)
+mitigation: A client shows a definition and asks for confirmation before the first start and again whenever the definition has changed since, and shows added tools first; the confirmation protects the agent launcher and is no check of the hub; a run keeps its confirmed version, and the author of what the agent writes names it; no agent changes a definition, so a prompt-injected agent cannot rewrite itself or another agent; every change is one commit with its author; the harness, the working directory and the credentials of a model stay local (dec-team-agents)
+:::
+```
+
+## The key of a team agent ties the agent to no person
+
+A team agent with a key (`dec-team-agents`) runs without an agent launcher. Whoever holds the key
+runs the agent, and what the agent writes does not name a person. The key lies on a server, and
+anyone who can read it can start the agent with the role of its definition and act as a member of
+the tenant who is no tenant admin.
+
+```arc42
+:::risk
+id: risk-team-agent-key
+title: The key of a team agent ties the agent to no person
+severity: medium
+mitigation: Only a tenant admin or a system admin registers or revokes the key, and revoking ends the agent at once; the runner needs the version of the definition that the operator names, so a change of the definition does not steer an unattended agent; the agent is no tenant admin, starts no agent, manages no key and changes no definition (dec-team-agents); the key stays in a file that only the operator of the server reads (concept-identity)
+:::
+```
+
+## The wiki view grows with the tenant
+
+The wiki part keeps a derived view of each tenant: the index, the links, the backlinks and the
+search (`concept-wiki`). The decision for a derived view in the hub causes this risk (`dec-wiki`). It builds the view from the archive at start and holds it while the hub
+runs. A tenant with many artifacts needs a lot of memory for it, and several large tenants share
+one hub. It is not measured yet how much memory the view needs for a large tenant.
+
+```arc42
+:::ignore H007 dec-wiki causes this risk and no decision mitigates it yet; the mitigation is accepted until a measurement
+:::
+:::risk
+id: risk-wiki-memory
+title: The wiki view grows with the tenant
+severity: low
+mitigation: Accepted until a measurement with a large tenant shows the need; the view can be rebuilt from the archive at any time, so it can move to other storage without a change of the wiki interface
 :::
 ```

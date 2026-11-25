@@ -52,6 +52,7 @@ For the first setup, follow https://mrsimpson.github.io/agentic-office/llms.txt.
 - Give each agent its own key, register it with `admin user create --kind agent`, and add it with
   `admin member set <tenant> <id>`.
 - Name an agent after its role, not after its harness.
+- For an agent that the whole tenant uses, create a **team agent** instead (next section).
 - In the repository: `agents/<name>/role.md` (the role) and `agents/<name>/agent.yaml` (a
   description, for people only).
 - Local, not in the repository: `agents/<name>/.office/config.yaml` with the hub profile, `key:`,
@@ -64,6 +65,25 @@ For the first setup, follow https://mrsimpson.github.io/agentic-office/llms.txt.
   a call, not the path or a chained command. Tell the human about this limit.
 - When you start a runner in the background, write its log to `/tmp/agent-<name>.log` and read it
   (`joined <session>`).
+
+## Team agents
+
+- A team agent belongs to the tenant, not to a person, and every member can start it. Create it
+  with `office team-agent create <id>` (tenant admin only). It has no key and no `key:` or
+  `agent.role-file` in the local configuration.
+- Its definition is the file `agents/<id>.yaml` with `schema: office.agent.v1`, `role`, and
+  optionally `allow` and `wake.strategy`. It holds no command, folder, address or key. Do not use
+  the same name as a personal agent folder `agents/<id>/`.
+- Change a definition only when the human asks. Show the change before you push it. Everyone who
+  starts the agent next must confirm it again.
+- Start it with `office agent run --team-agent <id> --session <session>`. Show the definition to
+  the human and ask. Pass `--confirm <version>` only after the human said yes. Never confirm for
+  them.
+- For a server without a human, a tenant admin registers a key for the team agent
+  (`office key create` on the server, then `office admin key add <id> <public key>`). The server
+  starts the agent with that key and `--confirm <version>`. Never print or send that key.
+- A team agent with a token starts no agent and changes no definition; the hub refuses it. This
+  is on purpose. Tell the human to change the definition with their own key.
 
 ## Sessions
 

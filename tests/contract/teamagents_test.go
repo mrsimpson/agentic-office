@@ -6,6 +6,7 @@ package contract
 // definition as a file that no agent may change. The tests check behaviour only.
 
 import (
+	"crypto/ed25519"
 	"strings"
 	"testing"
 
@@ -14,6 +15,7 @@ import (
 	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
 	archivev1 "github.com/mrsimpson/agentic-office/hub/archive/api"
 	identityv1 "github.com/mrsimpson/agentic-office/hub/identity/api"
+	"github.com/mrsimpson/agentic-office/hub/identity/api/auth"
 	userv1 "github.com/mrsimpson/agentic-office/hub/identity/userapi"
 	sessioncommandsv1 "github.com/mrsimpson/agentic-office/hub/session/commandsapi"
 	tenantv1 "github.com/mrsimpson/agentic-office/hub/tenant/api"
@@ -295,4 +297,100 @@ func TestTeamAgentDefinitionFile(t *testing.T) {
 	if got := contracttest.Git(t, srv.TenantRepoDir("acme"), "log", "-1", "--format=%an"); !strings.Contains(got, "Minutes (agent launcher Bob") {
 		t.Errorf("the author of the commit of the team agent: %q", got)
 	}
+}
+
+// A tenant admin registers a key for a team agent, so that it runs without a human, for example on
+// a server. Only a tenant admin of its tenant, or a system admin, adds or revokes such a key. The
+// agent with its own key works in its tenant like a member, and no more.
+func TestTeamAgentWithKey(t *testing.T) {
+	srv := contracttest.StartHub(t, nil)
+	admin := srv.Admin(t)
+	ada := srv.Participant(t, "ada", "Ada", human) // tenant admin of acme
+	bob := srv.Participant(t, "bob", "Bob", human) // member
+	if _, err := admin.Tenant.CreateTenant(ctx10(t), &tenantv1.CreateTenantRequest{CommandId: coreapi.NewCommandID(), TenantId: "other",
+		DisplayName: "Other", FirstAdminUserId: "zed"}); err == nil {
+		t.Fatal("create a tenant for a user that does not exist")
+	}
+	zed := srv.User(t, "zed", "Zed", human)
+	if _, err := admin.Tenant.CreateTenant(ctx10(t), &tenantv1.CreateTenantRequest{CommandId: coreapi.NewCommandID(), TenantId: "other",
+		DisplayName: "Other", FirstAdminUserId: "zed"}); err != nil {
+		t.Fatal(err)
+	}
+	eve := srv.User(t, "eve", "Eve", human)
+	if err := createTeamAgent(t, ada, "acme", "minutes", "Minutes"); err != nil {
+		t.Fatal(err)
+	}
+	key, err := auth.NewKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	addKey := func(a *contracttest.Actor, user string, key ed25519.PrivateKey) error {
+		_, err := a.User.AddKey(ctx10(t), &userv1.AddKeyRequest{CommandId: coreapi.NewCommandID(), UserId: user, PublicKey: auth.PublicKey(key)})
+		return err
+	}
+	wantCode(t, "a member adds a key to a team agent", addKey(bob, "minutes", key), connect.CodePermissionDenied)
+	wantCode(t, "a user outside the tenant", addKey(eve, "minutes", key), connect.CodePermissionDenied)
+	wantCode(t, "the tenant admin of another tenant", addKey(zed, "minutes", key), connect.CodePermissionDenied)
+	wantCode(t, "a tenant admin adds a key to a human", addKey(ada, "bob", key), connect.CodePermissionDenied)
+	if err := addKey(ada, "minutes", key); err != nil {
+		t.Fatalf("a tenant admin adds a key to a team agent of the tenant: %v", err)
+	}
+
+	agent := srv.WithKey(t, key)
+	who, err := agent.Identity.WhoAmI(ctx10(t), &identityv1.WhoAmIRequest{})
+	if err != nil || who.GetParticipantId() != "minutes" || who.GetKind() != identityv1.ActorKind_ACTOR_KIND_AGENT || who.GetSystemAdmin() ||
+		len(who.GetMemberships()) != 1 || who.GetMemberships()[0].GetTenantId() != "acme" || who.GetMemberships()[0].GetTenantAdmin() {
+		t.Fatalf("whoami of the team agent with a key: %v, %v", who, err)
+	}
+	// It does what an agent does in its tenant, and nothing that manages agents or keys.
+	_, err = agent.Identity.IssueAgentToken(ctx10(t), &identityv1.IssueAgentTokenRequest{TenantId: "acme", AgentId: "minutes"})
+	wantCode(t, "a team agent with a key starts a team agent", err, connect.CodePermissionDenied)
+	wantCode(t, "a team agent with a key creates a team agent", createTeamAgent(t, agent, "acme", "other-agent", "Other"), connect.CodeNotFound)
+	wantCode(t, "a team agent adds a key to itself", addKey(agent, "minutes", mustNewKey(t)), connect.CodePermissionDenied)
+
+	// Its join names no agent launcher, and another agent launcher is told "already joined".
+	join, err := agent.Commands.Join(ctx10(t), &sessioncommandsv1.JoinRequest{SessionId: "weekly", CommandId: coreapi.NewCommandID()})
+	if err != nil || join.GetResult().GetEvent().GetParticipantJoined().GetAgentLauncher() != "" {
+		t.Fatalf("join of the team agent with a key: %v, %v", join, err)
+	}
+	byBob, _ := teamAgentOf(t, srv, bob, "minutes", "v1")
+	_, err = byBob.Commands.Join(ctx10(t), &sessioncommandsv1.JoinRequest{SessionId: "weekly", CommandId: coreapi.NewCommandID()})
+	wantCode(t, "an agent launcher joins the agent that runs with its own key", err, connect.CodeFailedPrecondition)
+	if err == nil || !strings.Contains(err.Error(), "already joined") {
+		t.Fatalf("the answer does not say \"already joined\": %v", err)
+	}
+
+	// No agent changes a definition, also not with its own key.
+	pa := newPusher(t, srv, agent, "Minutes", contracttest.DefaultTenant)
+	pb := newPusher(t, srv, ada, "Ada", contracttest.DefaultTenant)
+	pb.commitFile("agents/minutes.yaml", goodDefinition)
+	pb.mustPush()
+	pa.mustGit("pull", "-q", "--ff-only", "origin", "main")
+	before := mainOf(t, srv, "acme")
+	pa.commitFile("agents/minutes.yaml", strings.Replace(goodDefinition, "minutes", "bosses", 1))
+	out, code := pa.push()
+	refused(t, srv, "acme", before, out, code, "no agent may change this file")
+
+	// Revoking the key ends the agent at once.
+	if _, err := ada.User.RevokeKey(ctx10(t), &userv1.RevokeKeyRequest{CommandId: coreapi.NewCommandID(), KeyId: auth.KeyID(auth.PublicKey(key))}); err != nil {
+		t.Fatalf("a tenant admin revokes the key of a team agent: %v", err)
+	}
+	_, err = agent.Identity.WhoAmI(ctx10(t), &identityv1.WhoAmIRequest{})
+	wantCode(t, "after the key was revoked", err, connect.CodeUnauthenticated)
+	key2 := mustNewKey(t)
+	if err := addKey(ada, "minutes", key2); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bob.User.RevokeKey(ctx10(t), &userv1.RevokeKeyRequest{CommandId: coreapi.NewCommandID(), KeyId: auth.KeyID(auth.PublicKey(key2))}); err == nil {
+		t.Fatal("a member revokes the key of a team agent")
+	}
+}
+
+func mustNewKey(t *testing.T) ed25519.PrivateKey {
+	t.Helper()
+	k, err := auth.NewKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return k
 }
