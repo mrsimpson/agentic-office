@@ -16,6 +16,7 @@ const (
 	EnvHub        = "OFFICE_HUB"
 	EnvCACert     = "OFFICE_CA_CERT"
 	EnvKey        = "OFFICE_KEY"
+	EnvTokenFile  = "OFFICE_TOKEN_FILE"
 	EnvRuntimeDir = "OFFICE_RUNTIME_DIR"
 	EnvTenant     = "OFFICE_TENANT"
 )
@@ -37,6 +38,16 @@ type Config struct {
 	KeyFile string
 	// RuntimeDir is the private directory for local logs and state.
 	RuntimeDir string
+	// TeamAgent is the ID of the team agent that this client works as (dec-team-agents), or empty.
+	// The client then authenticates with KeyFile, which is the key of the agent launcher, and asks
+	// for a token as the agent. DefinitionVersion is the version of the definition that the agent
+	// launcher confirmed.
+	TeamAgent         string
+	DefinitionVersion string
+	// TokenFile is a file with the token of an agent that another process keeps fresh. With it, the
+	// client has no key: a harness gets the token of its team agent this way and never the key of
+	// the agent launcher. KeyFile is empty then.
+	TokenFile string
 }
 
 // ConfigFromEnv returns the configuration from the OFFICE_* environment variables and the
@@ -52,14 +63,14 @@ type Config struct {
 //     <temp dir>/agentic-office-<uid>.
 func ConfigFromEnv() Config {
 	c := Config{Hub: os.Getenv(EnvHub), CACert: os.Getenv(EnvCACert), KeyFile: os.Getenv(EnvKey),
-		RuntimeDir: os.Getenv(EnvRuntimeDir), Tenant: os.Getenv(EnvTenant)}
+		RuntimeDir: os.Getenv(EnvRuntimeDir), Tenant: os.Getenv(EnvTenant), TokenFile: os.Getenv(EnvTokenFile)}
 	if c.Hub == "" {
 		c.Hub = DefaultHub
 	}
 	if c.CACert == "" {
 		c.CACert = DefaultCACert()
 	}
-	if c.KeyFile == "" {
+	if c.KeyFile == "" && c.TokenFile == "" {
 		c.KeyFile = DefaultKeyFile()
 	}
 	if c.RuntimeDir == "" {
@@ -74,8 +85,12 @@ func ConfigFromEnv() Config {
 
 // Env returns the configuration as OFFICE_* environment variables, for a child process.
 func (c Config) Env() []string {
-	return []string{EnvHub + "=" + c.Hub, EnvCACert + "=" + c.CACert, EnvKey + "=" + c.KeyFile,
+	env := []string{EnvHub + "=" + c.Hub, EnvCACert + "=" + c.CACert,
 		EnvRuntimeDir + "=" + c.RuntimeDir, EnvTenant + "=" + c.Tenant}
+	if c.TokenFile != "" {
+		return append(env, EnvTokenFile+"="+c.TokenFile)
+	}
+	return append(env, EnvKey+"="+c.KeyFile)
 }
 
 // ClientConfigDir is the configuration folder of the client: <config dir>/agentic-office/client.

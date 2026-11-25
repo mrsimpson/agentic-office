@@ -70,6 +70,10 @@ type Client interface {
 	// AccessToken authenticates if needed and returns a valid access token. A token that is close
 	// to its end is replaced first, so the caller can use the result at once.
 	AccessToken(ctx context.Context) (string, error)
+	// WriteTokenFile writes the current access token into a file that only the user reads, so that
+	// a process without a key can use it through Config.TokenFile. The harness of a team agent gets
+	// the token this way (dec-team-agents). The caller writes it again before the token ends.
+	WriteTokenFile(ctx context.Context, path string) error
 
 	// Commands returns the session commands client, for example for a replicator.
 	Commands() sessioncommandsv1connect.SessionCommandsServiceClient
@@ -153,6 +157,14 @@ type Client interface {
 	CreateTenant(ctx context.Context, tenantID, displayName, firstAdminUserID string) error
 	RemoveTenant(ctx context.Context, tenantID string) error
 	ListTenants(ctx context.Context) ([]*tenantv1.Tenant, error)
+	// CreateTeamAgent, RemoveTeamAgent and ListTeamAgents manage the team agents of the tenant of
+	// the client (dec-team-agents). A tenant admin creates and removes, every member lists.
+	CreateTeamAgent(ctx context.Context, agentID, displayName string) error
+	RemoveTeamAgent(ctx context.Context, agentID string) error
+	ListTeamAgents(ctx context.Context) ([]*tenantv1.TeamAgent, error)
+	// AgentDefinition reads and checks the definition of a team agent of the tenant, the file
+	// agents/<agent ID>.yaml. A file that breaks the schema is an error with the reasons.
+	AgentDefinition(ctx context.Context, agentID string) (*AgentDefinition, error)
 
 	// RenderDeck renders a deck. A deck whose request names a session (session_id) waits for the
 	// release of the session; only a participant may name it.

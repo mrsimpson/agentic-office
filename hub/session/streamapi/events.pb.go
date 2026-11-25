@@ -1170,9 +1170,16 @@ type ParticipantJoined struct {
 	// participant is not registered and has no key: the hub took its name and kind from the import
 	// and cannot check them. Its participant_id starts with "imported:", which no registered
 	// participant ID can.
-	Imported      bool `protobuf:"varint,5,opt,name=imported,proto3" json:"imported,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Imported bool `protobuf:"varint,5,opt,name=imported,proto3" json:"imported,omitempty"`
+	// agent_launcher is the participant ID of the member who started the participant, when it is a
+	// team agent (dec-team-agents), and empty for every other participant. A team agent is in a
+	// session once: another agent launcher gets "already joined".
+	AgentLauncher string `protobuf:"bytes,6,opt,name=agent_launcher,json=agentLauncher,proto3" json:"agent_launcher,omitempty"`
+	// definition_version is the version of the definition of the team agent that its agent launcher
+	// confirmed, and empty for every other participant.
+	DefinitionVersion string `protobuf:"bytes,7,opt,name=definition_version,json=definitionVersion,proto3" json:"definition_version,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *ParticipantJoined) Reset() {
@@ -1238,6 +1245,20 @@ func (x *ParticipantJoined) GetImported() bool {
 		return x.Imported
 	}
 	return false
+}
+
+func (x *ParticipantJoined) GetAgentLauncher() string {
+	if x != nil {
+		return x.AgentLauncher
+	}
+	return ""
+}
+
+func (x *ParticipantJoined) GetDefinitionVersion() string {
+	if x != nil {
+		return x.DefinitionVersion
+	}
+	return ""
 }
 
 type ParticipantLeft struct {
@@ -1785,13 +1806,15 @@ const file_office_sessionstream_v1_events_proto_rawDesc = "" +
 	"\aversion\x18\x02 \x01(\tR\aversion\"?\n" +
 	"\x0fArtifactChanged\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x18\n" +
-	"\aversion\x18\x02 \x01(\tR\aversion\"\xd3\x01\n" +
+	"\aversion\x18\x02 \x01(\tR\aversion\"\xa9\x02\n" +
 	"\x11ParticipantJoined\x12%\n" +
 	"\x0eparticipant_id\x18\x01 \x01(\tR\rparticipantId\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12<\n" +
 	"\x04kind\x18\x03 \x01(\x0e2(.office.sessionstream.v1.ParticipantKindR\x04kind\x12\x1a\n" +
 	"\bcaptured\x18\x04 \x01(\bR\bcaptured\x12\x1a\n" +
-	"\bimported\x18\x05 \x01(\bR\bimported\"8\n" +
+	"\bimported\x18\x05 \x01(\bR\bimported\x12%\n" +
+	"\x0eagent_launcher\x18\x06 \x01(\tR\ragentLauncher\x12-\n" +
+	"\x12definition_version\x18\a \x01(\tR\x11definitionVersion\"8\n" +
 	"\x0fParticipantLeft\x12%\n" +
 	"\x0eparticipant_id\x18\x01 \x01(\tR\rparticipantId\":\n" +
 	"\x11ParticipantPaused\x12%\n" +

@@ -352,6 +352,10 @@ type Rule struct {
 	// Globs are patterns of the user ("*" matches any text), matched against the title of the
 	// tool call without regard to case. With no globs, the default rule applies.
 	Globs []string
+	// Also are patterns that allow a tool call in addition to the rule above, for example the
+	// tools that the definition of a team agent names. The office tools stay allowed by the default
+	// rule.
+	Also []string
 }
 
 // officeTool matches the title of a call of an office tool, as harnesses name MCP tools: the
@@ -362,17 +366,17 @@ var officeTool = regexp.MustCompile(`(?i)(^|[^a-z0-9])office[_\W]+(meeting|utter
 // allows reports whether a tool call with this title and kind is allowed. The default rule
 // allows the office tools only, and never a tool that executes, edits, deletes or moves.
 func (r Rule) allows(title string, kind acp.ToolKind) bool {
+	for _, g := range append(append([]string(nil), r.Globs...), r.Also...) {
+		if globMatch(strings.ToLower(g), strings.ToLower(title)) {
+			return true
+		}
+	}
 	if len(r.Globs) == 0 {
 		switch kind {
 		case acp.ToolKindExecute, acp.ToolKindEdit, acp.ToolKindDelete, acp.ToolKindMove:
 			return false
 		}
 		return officeTool.MatchString(title)
-	}
-	for _, g := range r.Globs {
-		if globMatch(strings.ToLower(g), strings.ToLower(title)) {
-			return true
-		}
 	}
 	return false
 }

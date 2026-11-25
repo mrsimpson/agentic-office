@@ -52,6 +52,9 @@ const (
 	IdentityServiceExchangePortalLinkProcedure = "/office.identity.v1.IdentityService/ExchangePortalLink"
 	// IdentityServiceWhoAmIProcedure is the procedure name of the IdentityService's WhoAmI RPC.
 	IdentityServiceWhoAmIProcedure = "/office.identity.v1.IdentityService/WhoAmI"
+	// IdentityServiceIssueAgentTokenProcedure is the procedure name of the IdentityService's
+	// IssueAgentToken RPC.
+	IdentityServiceIssueAgentTokenProcedure = "/office.identity.v1.IdentityService/IssueAgentToken"
 )
 
 var (
@@ -97,6 +100,13 @@ var (
 			Procedure:  IdentityServiceWhoAmIProcedure,
 		}
 	})
+	identityServiceIssueAgentTokenSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     api.File_office_identity_v1_identity_proto.Services().ByName("IdentityService").Methods().ByName("IssueAgentToken"),
+			Procedure:  IdentityServiceIssueAgentTokenProcedure,
+		}
+	})
 )
 
 // IdentityServiceClient is a client for the office.identity.v1.IdentityService service.
@@ -122,6 +132,13 @@ type IdentityServiceClient interface {
 	// WhoAmI returns the caller: the user, whether it is a system admin, and its active memberships.
 	// It belongs to no tenant. A stage link may not call it.
 	WhoAmI(context.Context, *api.WhoAmIRequest) (*api.WhoAmIResponse, error)
+	// IssueAgentToken gives a human member of a tenant a short-lived access token as a team agent of
+	// that tenant (dec-team-agents). The caller is the agent launcher: the token names the agent as
+	// the participant, the caller and the version of the definition that the caller confirmed. The
+	// token allows what a member of the tenant may do, except what only a human may do. It belongs
+	// to no tenant: the request names it. A team agent that was removed, or a caller who is no
+	// member, gets the answer for an agent that does not exist.
+	IssueAgentToken(context.Context, *api.IssueAgentTokenRequest) (*api.IssueAgentTokenResponse, error)
 }
 
 // NewIdentityServiceClient constructs a client for the office.identity.v1.IdentityService service.
@@ -153,6 +170,13 @@ type IdentityServiceHandler interface {
 	// WhoAmI returns the caller: the user, whether it is a system admin, and its active memberships.
 	// It belongs to no tenant. A stage link may not call it.
 	WhoAmI(context.Context, *api.WhoAmIRequest) (*api.WhoAmIResponse, error)
+	// IssueAgentToken gives a human member of a tenant a short-lived access token as a team agent of
+	// that tenant (dec-team-agents). The caller is the agent launcher: the token names the agent as
+	// the participant, the caller and the version of the definition that the caller confirmed. The
+	// token allows what a member of the tenant may do, except what only a human may do. It belongs
+	// to no tenant: the request names it. A team agent that was removed, or a caller who is no
+	// member, gets the answer for an agent that does not exist.
+	IssueAgentToken(context.Context, *api.IssueAgentTokenRequest) (*api.IssueAgentTokenResponse, error)
 }
 
 // RegisterIdentityServiceHandler registers svc as the office.identity.v1.IdentityService
@@ -166,6 +190,7 @@ func RegisterIdentityServiceHandler(server *connect.Server, svc IdentityServiceH
 		connect.Method{Spec: identityServiceCreatePortalLinkSpec(), Handler: adapter.createPortalLink},
 		connect.Method{Spec: identityServiceExchangePortalLinkSpec(), Handler: adapter.exchangePortalLink},
 		connect.Method{Spec: identityServiceWhoAmISpec(), Handler: adapter.whoAmI},
+		connect.Method{Spec: identityServiceIssueAgentTokenSpec(), Handler: adapter.issueAgentToken},
 	)
 }
 
@@ -194,6 +219,10 @@ func (UnimplementedIdentityServiceHandler) ExchangePortalLink(context.Context, *
 
 func (UnimplementedIdentityServiceHandler) WhoAmI(context.Context, *api.WhoAmIRequest) (*api.WhoAmIResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, "office.identity.v1.IdentityService.WhoAmI is not implemented")
+}
+
+func (UnimplementedIdentityServiceHandler) IssueAgentToken(context.Context, *api.IssueAgentTokenRequest) (*api.IssueAgentTokenResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "office.identity.v1.IdentityService.IssueAgentToken is not implemented")
 }
 
 type identityServiceClient struct {
@@ -243,6 +272,14 @@ func (c *identityServiceClient) ExchangePortalLink(ctx context.Context, req *api
 func (c *identityServiceClient) WhoAmI(ctx context.Context, req *api.WhoAmIRequest) (*api.WhoAmIResponse, error) {
 	var res api.WhoAmIResponse
 	if err := c.client.CallUnary(ctx, identityServiceWhoAmISpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *identityServiceClient) IssueAgentToken(ctx context.Context, req *api.IssueAgentTokenRequest) (*api.IssueAgentTokenResponse, error) {
+	var res api.IssueAgentTokenResponse
+	if err := c.client.CallUnary(ctx, identityServiceIssueAgentTokenSpec(), req, &res); err != nil {
 		return nil, err
 	}
 	return &res, nil
@@ -316,6 +353,18 @@ func (h identityServiceHandler) whoAmI(ctx context.Context, _ connect.Spec, stre
 		return err
 	}
 	res, err := h.svc.WhoAmI(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h identityServiceHandler) issueAgentToken(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req api.IssueAgentTokenRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.IssueAgentToken(ctx, &req)
 	if err != nil {
 		return err
 	}

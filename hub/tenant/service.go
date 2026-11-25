@@ -1,6 +1,8 @@
 // Package tenant is the building block Tenants (bb-tenants in docs/architecture/05-building-blocks.arc42.md).
 //
-// It provides if-tenant-api (TenantService): a system admin creates, lists and removes tenants.
+// It provides if-tenant-api (TenantService): a system admin creates, lists and removes tenants, and
+// a tenant admin creates and removes the team agents of the tenant (dec-team-agents); every member
+// lists them. Tenants owns the schema of the definition of a team agent (package check, if-tenants-check).
 // It does not keep the tenant records or the memberships: Identity owns them, and Tenants asks
 // Identity through the tenant roster (if-tenant-roster), and it creates the repository of each
 // tenant through the archive (if-archive-storage). So creating a tenant with its first
@@ -123,6 +125,66 @@ func (s *Service) ListTenants(ctx context.Context, _ *tenantv1.ListTenantsReques
 			pt.ValidUntil = timestamppb.New(t.ValidUntil)
 		}
 		res.Tenants = append(res.Tenants, pt)
+	}
+	return res, nil
+}
+
+// member returns the caller of a call for a tenant. A caller who is no member of the tenant gets
+// the answer for a tenant that does not exist, and so does a team agent or a stage link. With
+// admin set, only a tenant admin passes.
+func member(ctx context.Context, tenantID string, admin bool) error {
+	c, _ := tokencheck.CallerFrom(ctx)
+	role, ok := c.Member(tenantID)
+	if c.ParticipantID == "" || c.TeamTenant != "" || !ok {
+		return connect.NewError(connect.CodeNotFound, "no such tenant")
+	}
+	if admin && role != tokencheck.RoleTenantAdmin {
+		return connect.NewError(connect.CodePermissionDenied, "only a tenant admin may manage the team agents")
+	}
+	return nil
+}
+
+func (s *Service) CreateTeamAgent(ctx context.Context, req *tenantv1.CreateTeamAgentRequest) (*tenantv1.CreateTeamAgentResponse, error) {
+	if err := member(ctx, req.GetTenantId(), true); err != nil {
+		return nil, err
+	}
+	res, err := s.run(req.GetCommandId(), req, &tenantv1.CreateTeamAgentResponse{}, func() error {
+		return s.roster.CreateTeamAgent(ctx, req.GetTenantId(), req.GetAgentId(), req.GetDisplayName())
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*tenantv1.CreateTeamAgentResponse), nil
+}
+
+func (s *Service) RemoveTeamAgent(ctx context.Context, req *tenantv1.RemoveTeamAgentRequest) (*tenantv1.RemoveTeamAgentResponse, error) {
+	if err := member(ctx, req.GetTenantId(), true); err != nil {
+		return nil, err
+	}
+	res, err := s.run(req.GetCommandId(), req, &tenantv1.RemoveTeamAgentResponse{}, func() error {
+		return s.roster.RemoveTeamAgent(ctx, req.GetTenantId(), req.GetAgentId())
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*tenantv1.RemoveTeamAgentResponse), nil
+}
+
+func (s *Service) ListTeamAgents(ctx context.Context, req *tenantv1.ListTeamAgentsRequest) (*tenantv1.ListTeamAgentsResponse, error) {
+	if err := member(ctx, req.GetTenantId(), false); err != nil {
+		return nil, err
+	}
+	as, err := s.roster.TeamAgents(ctx, req.GetTenantId())
+	if err != nil {
+		return nil, err
+	}
+	res := &tenantv1.ListTeamAgentsResponse{}
+	for _, a := range as {
+		pa := &tenantv1.TeamAgent{AgentId: a.ID, DisplayName: a.DisplayName, ValidFrom: timestamppb.New(a.ValidFrom)}
+		if !a.Active() {
+			pa.ValidUntil = timestamppb.New(a.ValidUntil)
+		}
+		res.Agents = append(res.Agents, pa)
 	}
 	return res, nil
 }

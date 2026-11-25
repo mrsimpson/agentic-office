@@ -162,6 +162,8 @@ const (
 	sourceFlag    = "flag"
 	// sourceProfile marks a value that a hub profile gives.
 	sourceProfile = "profile"
+	// sourceDefinition marks a value that the definition of a team agent gives.
+	sourceDefinition = "definition"
 )
 
 // source says where a setting comes from: the kind of layer and the file, the variable or the
@@ -185,6 +187,8 @@ func (s source) String() string {
 		return s.From
 	case sourceProfile:
 		return "hub profile " + s.Profile + " (" + s.From + ")"
+	case sourceDefinition:
+		return s.From
 	}
 	return "default"
 }

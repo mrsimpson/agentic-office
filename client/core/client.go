@@ -62,20 +62,28 @@ var _ coreapi.Dial = Dial
 // Dial reads the key of cfg and returns a client (Dial). It does not connect yet; the
 // first call authenticates (rs-authenticate).
 func Dial(cfg coreapi.Config) (coreapi.Client, error) {
-	key, err := auth.ReadKey(cfg.KeyFile)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, fmt.Errorf("%w %s: create one with \"office key create\" and let a system admin register it", coreapi.ErrNoKey, cfg.KeyFile)
-	}
-	if err != nil {
-		return nil, err
-	}
 	hc, err := auth.HTTPClient(cfg.CACert)
 	if err != nil {
 		return nil, err
 	}
 	base := strings.TrimRight(cfg.Hub, "/")
-	// The identity client inside the token source must not use Bearer itself.
-	ts := auth.NewTokenSource(identityv1connect.NewIdentityServiceClient(newConnect(hc, base)), key)
+	var key ed25519.PrivateKey
+	var ts *auth.TokenSource
+	if cfg.TokenFile != "" {
+		// A harness has the token of its team agent and no key (dec-team-agents).
+		ts = auth.NewFileTokenSource(cfg.TokenFile)
+	} else {
+		if key, err = auth.ReadKey(cfg.KeyFile); errors.Is(err, fs.ErrNotExist) {
+			return nil, fmt.Errorf("%w %s: create one with \"office key create\" and let a system admin register it", coreapi.ErrNoKey, cfg.KeyFile)
+		} else if err != nil {
+			return nil, err
+		}
+		// The identity client inside the token source must not use Bearer itself.
+		ts = auth.NewTokenSource(identityv1connect.NewIdentityServiceClient(newConnect(hc, base)), key)
+		if cfg.TeamAgent != "" {
+			ts.AsAgent(auth.AgentSpec{Tenant: cfg.Tenant, Agent: cfg.TeamAgent, Version: cfg.DefinitionVersion})
+		}
+	}
 	cc := newConnect(hc, base, auth.Bearer(ts), auth.Tenant(cfg.Tenant))
 	return &hubClient{cfg: cfg, key: key, tokens: ts, connection: cc,
 		commands:      sessioncommandsv1connect.NewSessionCommandsServiceClient(cc),
@@ -99,7 +107,12 @@ func (c *hubClient) Config() coreapi.Config { return c.cfg }
 
 func (c *hubClient) Connection() *connect.Client { return c.connection }
 
-func (c *hubClient) KeyID() string { return auth.KeyID(auth.PublicKey(c.key)) }
+func (c *hubClient) KeyID() string {
+	if c.key == nil {
+		return ""
+	}
+	return auth.KeyID(auth.PublicKey(c.key))
+}
 
 func (c *hubClient) Commands() sessioncommandsv1connect.SessionCommandsServiceClient {
 	return c.commands
@@ -129,6 +142,15 @@ func (c *hubClient) DisplayName(ctx context.Context) (string, error) {
 		return err
 	})
 	return name, err
+}
+
+// WriteTokenFile writes the access token, with the participant and its display name, into a file.
+func (c *hubClient) WriteTokenFile(ctx context.Context, path string) error {
+	if _, err := c.AccessToken(ctx); err != nil {
+		return err
+	}
+	tok, pid, name, exp := c.tokens.Current()
+	return auth.WriteTokenFile(path, tok, pid, name, exp)
 }
 
 // AccessToken authenticates if needed and returns a valid access token.

@@ -149,6 +149,13 @@ message ParticipantJoined {
   // and cannot check them. Its participant_id starts with "imported:", which no registered
   // participant ID can.
   bool imported = 5;
+  // agent_launcher is the participant ID of the member who started the participant, when it is a
+  // team agent (dec-team-agents), and empty for every other participant. A team agent is in a
+  // session once: another agent launcher gets "already joined".
+  string agent_launcher = 6;
+  // definition_version is the version of the definition of the team agent that its agent launcher
+  // confirmed, and empty for every other participant.
+  string definition_version = 7;
 }
 
 message ParticipantLeft {

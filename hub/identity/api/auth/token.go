@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -21,15 +22,20 @@ import (
 
 // TokenSource gets access tokens with challenge and response (rs-authenticate) and keeps them
 // fresh: it gets a new token when 80 % of the lifetime of the current one has passed.
-// It is safe for concurrent use.
+// With AsAgent it then asks for a token as a team agent (dec-team-agents) and uses that one. A
+// source made by NewFileTokenSource has no key: it reads the token that another process keeps in
+// a file. It is safe for concurrent use.
 type TokenSource struct {
 	identity identityv1connect.IdentityServiceClient
 	key      ed25519.PrivateKey
+	agent    *AgentSpec
+	file     string
 
 	mu            sync.Mutex
 	token         string
 	participantID string
 	displayName   string
+	expires       time.Time
 	renewAt       time.Time
 }
 
@@ -39,10 +45,61 @@ func NewTokenSource(identity identityv1connect.IdentityServiceClient, key ed2551
 	return &TokenSource{identity: identity, key: key}
 }
 
+// AgentSpec names the team agent that a token source works as: its tenant and ID, and the version
+// of the definition that the agent launcher confirmed.
+type AgentSpec struct {
+	Tenant, Agent, Version string
+}
+
+// AsAgent makes ts ask for a token as the team agent after it has authenticated with its key. It
+// returns ts. Call it before the first use.
+func (ts *TokenSource) AsAgent(a AgentSpec) *TokenSource {
+	ts.agent = &a
+	return ts
+}
+
+// NewFileTokenSource returns a TokenSource that has no key. It reads the token from the file that
+// WriteTokenFile writes; another process renews it. A harness gets its token this way, never the
+// key of its agent launcher.
+func NewFileTokenSource(path string) *TokenSource { return &TokenSource{file: path} }
+
+// tokenFile is the content of a token file.
+type tokenFile struct {
+	Token         string    `json:"token"`
+	ParticipantID string    `json:"participant_id"`
+	DisplayName   string    `json:"display_name"`
+	ExpiresAt     time.Time `json:"expires_at"`
+}
+
+// WriteTokenFile writes the token and who it belongs to into a file that only the user reads, so
+// that NewFileTokenSource reads it. The file is replaced in one step.
+func WriteTokenFile(path, token, participantID, displayName string, expiresAt time.Time) error {
+	b, err := json.Marshal(tokenFile{token, participantID, displayName, expiresAt})
+	if err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+// Current returns the token, the participant, the display name and the end of the current token
+// without a new call, or empty values if there is none yet.
+func (ts *TokenSource) Current() (token, participantID, displayName string, expiresAt time.Time) {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	return ts.token, ts.participantID, ts.displayName, ts.expires
+}
+
 // Token returns a valid access token. It authenticates if there is no token or it is old.
 func (ts *TokenSource) Token(ctx context.Context) (string, error) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
+	if ts.file != "" {
+		return ts.readFile()
+	}
 	if ts.token != "" && time.Now().Before(ts.renewAt) {
 		return ts.token, nil
 	}
@@ -61,8 +118,34 @@ func (ts *TokenSource) Token(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("exchange challenge: %w", err)
 	}
-	ts.token, ts.participantID, ts.displayName = res.GetAccessToken(), res.GetParticipantId(), res.GetDisplayName()
-	ts.renewAt = now.Add(res.GetExpiresAt().AsTime().Sub(now) * 4 / 5)
+	tok, pid, name, exp := res.GetAccessToken(), res.GetParticipantId(), res.GetDisplayName(), res.GetExpiresAt().AsTime()
+	if a := ts.agent; a != nil {
+		// The call names the tenant in its request and carries the token of the member.
+		actx, info := connect.NewClientContext(ctx)
+		info.RequestHeader().Set(AuthorizationHeader, "Bearer "+tok)
+		ares, err := ts.identity.IssueAgentToken(actx, &identityv1.IssueAgentTokenRequest{TenantId: a.Tenant, AgentId: a.Agent,
+			DefinitionVersion: a.Version})
+		if err != nil {
+			return "", fmt.Errorf("token as the team agent %s: %w", a.Agent, err)
+		}
+		tok, pid, name, exp = ares.GetAccessToken(), ares.GetParticipantId(), ares.GetDisplayName(), ares.GetExpiresAt().AsTime()
+	}
+	ts.token, ts.participantID, ts.displayName, ts.expires = tok, pid, name, exp
+	ts.renewAt = now.Add(exp.Sub(now) * 4 / 5)
+	return ts.token, nil
+}
+
+// readFile reads the token file. The caller holds ts.mu.
+func (ts *TokenSource) readFile() (string, error) {
+	b, err := os.ReadFile(ts.file)
+	if err != nil {
+		return "", fmt.Errorf("token file: %w", err)
+	}
+	var f tokenFile
+	if err := json.Unmarshal(b, &f); err != nil || f.Token == "" {
+		return "", fmt.Errorf("token file %s is not a token file", ts.file)
+	}
+	ts.token, ts.participantID, ts.displayName, ts.expires = f.Token, f.ParticipantID, f.DisplayName, f.ExpiresAt
 	return ts.token, nil
 }
 

@@ -1,10 +1,17 @@
 // Tenant API (if-tenant-api): create, list and remove the tenants of the hub (concept-multi-tenancy,
-// dec-multi-tenancy).
+// dec-multi-tenancy), and manage the team agents of a tenant (dec-team-agents).
 //
 // A tenant is one organisation. Creating a tenant names its first tenant admin; the system admin
 // does not become a member. Removing a tenant ends the tenant and all its memberships and keeps
-// the records, so a tenant ID is never used again. Only a system admin may call these procedures;
-// everyone else gets permission_denied. Users and memberships are managed with the user API.
+// the records, so a tenant ID is never used again. Only a system admin may call the procedures
+// for tenants; everyone else gets permission_denied. Users and memberships are managed with the
+// user API.
+//
+// A team agent is an agent of one tenant without a key (dec-team-agents). A tenant admin creates
+// and removes the team agents of their tenant, and every member lists them. The definition of a
+// team agent is a file of the tenant (agents/<agent_id>.yaml), changed like every file. These
+// procedures name the tenant in the request. A caller who is no member of the tenant gets the
+// answer for a tenant that does not exist.
 //
 // Every call needs an access token (see identity.proto). Every command carries a command_id that
 // the client creates (dec-idempotent-commands).
@@ -41,6 +48,15 @@ const (
 	TenantServiceRemoveTenantProcedure = "/office.tenant.v1.TenantService/RemoveTenant"
 	// TenantServiceListTenantsProcedure is the procedure name of the TenantService's ListTenants RPC.
 	TenantServiceListTenantsProcedure = "/office.tenant.v1.TenantService/ListTenants"
+	// TenantServiceCreateTeamAgentProcedure is the procedure name of the TenantService's
+	// CreateTeamAgent RPC.
+	TenantServiceCreateTeamAgentProcedure = "/office.tenant.v1.TenantService/CreateTeamAgent"
+	// TenantServiceRemoveTeamAgentProcedure is the procedure name of the TenantService's
+	// RemoveTeamAgent RPC.
+	TenantServiceRemoveTeamAgentProcedure = "/office.tenant.v1.TenantService/RemoveTeamAgent"
+	// TenantServiceListTeamAgentsProcedure is the procedure name of the TenantService's ListTeamAgents
+	// RPC.
+	TenantServiceListTeamAgentsProcedure = "/office.tenant.v1.TenantService/ListTeamAgents"
 )
 
 var (
@@ -65,6 +81,27 @@ var (
 			Procedure:  TenantServiceListTenantsProcedure,
 		}
 	})
+	tenantServiceCreateTeamAgentSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     api.File_office_tenant_v1_tenant_proto.Services().ByName("TenantService").Methods().ByName("CreateTeamAgent"),
+			Procedure:  TenantServiceCreateTeamAgentProcedure,
+		}
+	})
+	tenantServiceRemoveTeamAgentSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     api.File_office_tenant_v1_tenant_proto.Services().ByName("TenantService").Methods().ByName("RemoveTeamAgent"),
+			Procedure:  TenantServiceRemoveTeamAgentProcedure,
+		}
+	})
+	tenantServiceListTeamAgentsSpec = sync.OnceValue(func() connect.Spec {
+		return connect.Spec{
+			StreamType: connect.StreamTypeUnary,
+			Schema:     api.File_office_tenant_v1_tenant_proto.Services().ByName("TenantService").Methods().ByName("ListTeamAgents"),
+			Procedure:  TenantServiceListTeamAgentsProcedure,
+		}
+	})
 )
 
 // TenantServiceClient is a client for the office.tenant.v1.TenantService service.
@@ -76,6 +113,15 @@ type TenantServiceClient interface {
 	RemoveTenant(context.Context, *api.RemoveTenantRequest) (*api.RemoveTenantResponse, error)
 	// ListTenants returns all tenants, also the removed ones.
 	ListTenants(context.Context, *api.ListTenantsRequest) (*api.ListTenantsResponse, error)
+	// CreateTeamAgent creates a team agent in a tenant. Only a tenant admin of the tenant may. The
+	// agent_id is a participant ID, so it is unique in the whole hub and never used again; a taken
+	// ID fails with already_exists. The agent has no definition yet: a member writes the file.
+	CreateTeamAgent(context.Context, *api.CreateTeamAgentRequest) (*api.CreateTeamAgentResponse, error)
+	// RemoveTeamAgent ends a team agent and keeps its record. Its tokens stop working at once.
+	// Only a tenant admin of the tenant may.
+	RemoveTeamAgent(context.Context, *api.RemoveTeamAgentRequest) (*api.RemoveTeamAgentResponse, error)
+	// ListTeamAgents returns the team agents of a tenant, also the removed ones. Every member may.
+	ListTeamAgents(context.Context, *api.ListTeamAgentsRequest) (*api.ListTeamAgentsResponse, error)
 }
 
 // NewTenantServiceClient constructs a client for the office.tenant.v1.TenantService service.
@@ -93,6 +139,15 @@ type TenantServiceHandler interface {
 	RemoveTenant(context.Context, *api.RemoveTenantRequest) (*api.RemoveTenantResponse, error)
 	// ListTenants returns all tenants, also the removed ones.
 	ListTenants(context.Context, *api.ListTenantsRequest) (*api.ListTenantsResponse, error)
+	// CreateTeamAgent creates a team agent in a tenant. Only a tenant admin of the tenant may. The
+	// agent_id is a participant ID, so it is unique in the whole hub and never used again; a taken
+	// ID fails with already_exists. The agent has no definition yet: a member writes the file.
+	CreateTeamAgent(context.Context, *api.CreateTeamAgentRequest) (*api.CreateTeamAgentResponse, error)
+	// RemoveTeamAgent ends a team agent and keeps its record. Its tokens stop working at once.
+	// Only a tenant admin of the tenant may.
+	RemoveTeamAgent(context.Context, *api.RemoveTeamAgentRequest) (*api.RemoveTeamAgentResponse, error)
+	// ListTeamAgents returns the team agents of a tenant, also the removed ones. Every member may.
+	ListTeamAgents(context.Context, *api.ListTeamAgentsRequest) (*api.ListTeamAgentsResponse, error)
 }
 
 // RegisterTenantServiceHandler registers svc as the office.tenant.v1.TenantService implementation
@@ -103,6 +158,9 @@ func RegisterTenantServiceHandler(server *connect.Server, svc TenantServiceHandl
 		connect.Method{Spec: tenantServiceCreateTenantSpec(), Handler: adapter.createTenant},
 		connect.Method{Spec: tenantServiceRemoveTenantSpec(), Handler: adapter.removeTenant},
 		connect.Method{Spec: tenantServiceListTenantsSpec(), Handler: adapter.listTenants},
+		connect.Method{Spec: tenantServiceCreateTeamAgentSpec(), Handler: adapter.createTeamAgent},
+		connect.Method{Spec: tenantServiceRemoveTeamAgentSpec(), Handler: adapter.removeTeamAgent},
+		connect.Method{Spec: tenantServiceListTeamAgentsSpec(), Handler: adapter.listTeamAgents},
 	)
 }
 
@@ -119,6 +177,18 @@ func (UnimplementedTenantServiceHandler) RemoveTenant(context.Context, *api.Remo
 
 func (UnimplementedTenantServiceHandler) ListTenants(context.Context, *api.ListTenantsRequest) (*api.ListTenantsResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, "office.tenant.v1.TenantService.ListTenants is not implemented")
+}
+
+func (UnimplementedTenantServiceHandler) CreateTeamAgent(context.Context, *api.CreateTeamAgentRequest) (*api.CreateTeamAgentResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "office.tenant.v1.TenantService.CreateTeamAgent is not implemented")
+}
+
+func (UnimplementedTenantServiceHandler) RemoveTeamAgent(context.Context, *api.RemoveTeamAgentRequest) (*api.RemoveTeamAgentResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "office.tenant.v1.TenantService.RemoveTeamAgent is not implemented")
+}
+
+func (UnimplementedTenantServiceHandler) ListTeamAgents(context.Context, *api.ListTeamAgentsRequest) (*api.ListTeamAgentsResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, "office.tenant.v1.TenantService.ListTeamAgents is not implemented")
 }
 
 type tenantServiceClient struct {
@@ -144,6 +214,30 @@ func (c *tenantServiceClient) RemoveTenant(ctx context.Context, req *api.RemoveT
 func (c *tenantServiceClient) ListTenants(ctx context.Context, req *api.ListTenantsRequest) (*api.ListTenantsResponse, error) {
 	var res api.ListTenantsResponse
 	if err := c.client.CallUnary(ctx, tenantServiceListTenantsSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *tenantServiceClient) CreateTeamAgent(ctx context.Context, req *api.CreateTeamAgentRequest) (*api.CreateTeamAgentResponse, error) {
+	var res api.CreateTeamAgentResponse
+	if err := c.client.CallUnary(ctx, tenantServiceCreateTeamAgentSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *tenantServiceClient) RemoveTeamAgent(ctx context.Context, req *api.RemoveTeamAgentRequest) (*api.RemoveTeamAgentResponse, error) {
+	var res api.RemoveTeamAgentResponse
+	if err := c.client.CallUnary(ctx, tenantServiceRemoveTeamAgentSpec(), req, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+func (c *tenantServiceClient) ListTeamAgents(ctx context.Context, req *api.ListTeamAgentsRequest) (*api.ListTeamAgentsResponse, error) {
+	var res api.ListTeamAgentsResponse
+	if err := c.client.CallUnary(ctx, tenantServiceListTeamAgentsSpec(), req, &res); err != nil {
 		return nil, err
 	}
 	return &res, nil
@@ -181,6 +275,42 @@ func (h tenantServiceHandler) listTenants(ctx context.Context, _ connect.Spec, s
 		return err
 	}
 	res, err := h.svc.ListTenants(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h tenantServiceHandler) createTeamAgent(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req api.CreateTeamAgentRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.CreateTeamAgent(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h tenantServiceHandler) removeTeamAgent(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req api.RemoveTeamAgentRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.RemoveTeamAgent(ctx, &req)
+	if err != nil {
+		return err
+	}
+	return stream.Send(res)
+}
+
+func (h tenantServiceHandler) listTeamAgents(ctx context.Context, _ connect.Spec, stream connect.ServerStream) error {
+	var req api.ListTeamAgentsRequest
+	if err := stream.Receive(&req); err != nil {
+		return err
+	}
+	res, err := h.svc.ListTeamAgents(ctx, &req)
 	if err != nil {
 		return err
 	}

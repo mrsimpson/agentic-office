@@ -38,6 +38,13 @@ service IdentityService {
   // WhoAmI returns the caller: the user, whether it is a system admin, and its active memberships.
   // It belongs to no tenant. A stage link may not call it.
   rpc WhoAmI(WhoAmIRequest) returns (WhoAmIResponse);
+  // IssueAgentToken gives a human member of a tenant a short-lived access token as a team agent of
+  // that tenant (dec-team-agents). The caller is the agent launcher: the token names the agent as
+  // the participant, the caller and the version of the definition that the caller confirmed. The
+  // token allows what a member of the tenant may do, except what only a human may do. It belongs
+  // to no tenant: the request names it. A team agent that was removed, or a caller who is no
+  // member, gets the answer for an agent that does not exist.
+  rpc IssueAgentToken(IssueAgentTokenRequest) returns (IssueAgentTokenResponse);
 }
 
 message GetChallengeRequest {
@@ -126,4 +133,24 @@ enum ActorKind {
   ACTOR_KIND_UNSPECIFIED = 0;
   ACTOR_KIND_HUMAN = 1;
   ACTOR_KIND_AGENT = 2;
+}
+
+message IssueAgentTokenRequest {
+  string tenant_id = 1;
+  // agent_id is the participant ID of the team agent.
+  string agent_id = 2;
+  // definition_version is the version of the definition file that the caller confirmed, as the
+  // archive read interface names it. It is a statement of the caller: Identity records it in the
+  // token and checks nothing about it.
+  string definition_version = 3;
+}
+
+message IssueAgentTokenResponse {
+  string access_token = 1;
+  google.protobuf.Timestamp expires_at = 2;
+  // participant_id is the ID of the team agent.
+  string participant_id = 3;
+  // display_name is the name of the agent as its token shows it, also as the author of commits: the
+  // name of the agent, the agent launcher and the version.
+  string display_name = 4;
 }

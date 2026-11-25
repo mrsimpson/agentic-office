@@ -16,6 +16,9 @@
 //   - A part may also give hints for the files of its types, such as links that lead nowhere
 //     (concept-wiki). A hint never makes a file invalid. Hinters returns the parts that give
 //     hints; each part decides by itself which files are of its types.
+//   - A part may mark its files as files that no agent may change (Part.NoAgents). Git access
+//     asks this through if-artifact-check (NoAgents) for the old and the new state of every path
+//     that an agent pushes. Tenants does so for the definition of a team agent (dec-team-agents).
 //   - Each part describes the files of its types for the wiki (dec-wiki): title, summary, tags,
 //     outgoing links, sources, the state of review of a document and whether a file is a stub, through its own description
 //     interface (if-records-describe, if-tasks-describe, if-slides-describe,
@@ -37,6 +40,7 @@ import (
 	slidesdescribe "github.com/mrsimpson/agentic-office/hub/slides/describe"
 	taskscheck "github.com/mrsimpson/agentic-office/hub/tasks/check"
 	tasksdescribe "github.com/mrsimpson/agentic-office/hub/tasks/describe"
+	tenantscheck "github.com/mrsimpson/agentic-office/hub/tenant/check"
 )
 
 // Check checks the content of the file at path against the schema. It returns the reasons in
@@ -88,6 +92,8 @@ type Part struct {
 	IsStub   StubCheck
 	Hints    HintCheck // nil: the part gives no hints
 	Describe Describer
+	// NoAgents is set for a part whose files no agent may change (dec-team-agents).
+	NoAgents bool
 }
 
 type entry struct {
@@ -100,11 +106,17 @@ func noStubs(string, []byte) bool { return false }
 
 // parts is the fixed list of the owners of schemas. A new type adds one line.
 var parts = []entry{
-	{Part{"records", recordscheck.Validate, recordscheck.IsStub, nil, describeRecord}, recordscheck.Schemas},
-	{Part{"tasks", taskscheck.Validate, noStubs, nil, describeTask}, taskscheck.Schemas},
-	{Part{"slides", slidescheck.Validate, func(_ string, c []byte) bool { return slidescheck.IsStub(c) }, nil, describeDeck}, slidescheck.Schemas},
-	{Part{"documents", documentscheck.Validate, func(_ string, c []byte) bool { return documentscheck.IsStub(c) }, documentscheck.Hints, describeDocument}, documentscheck.Schemas},
+	{Part{"records", recordscheck.Validate, recordscheck.IsStub, nil, describeRecord, false}, recordscheck.Schemas},
+	{Part{"tasks", taskscheck.Validate, noStubs, nil, describeTask, false}, taskscheck.Schemas},
+	{Part{"slides", slidescheck.Validate, func(_ string, c []byte) bool { return slidescheck.IsStub(c) }, nil, describeDeck, false}, slidescheck.Schemas},
+	{Part{"documents", documentscheck.Validate, func(_ string, c []byte) bool { return documentscheck.IsStub(c) }, documentscheck.Hints, describeDocument, false}, documentscheck.Schemas},
+	// The definition of a team agent is configuration of the tenant: never staged, never described
+	// for the wiki, and never changed by an agent (dec-team-agents).
+	{Part{"tenants", tenantscheck.Validate, noStubs, nil, noDescription, true}, tenantscheck.Schemas},
 }
+
+// noDescription is the describer of a part whose files the wiki does not show.
+func noDescription(string, string, []byte) (Description, bool) { return Description{}, false }
 
 // The describers take the description of each part into the form of this part.
 

@@ -19,6 +19,7 @@
 //   - A file is the stub of a staged artifact (concept-session-release) when it names a schema and
 //     the part that owns the schema recognises it as the stub of its type (IsStub). Git access
 //     asks this for the old state of every path that a push changes or removes.
+//   - No agent may change a file of a schema that the owner keeps from agents (NoAgents).
 //   - The parts may give hints for a file, such as a link of a document that leads nowhere
 //     (Hints). A hint never makes a file invalid. Git access shows them with a push.
 //   - The part that owns the type of a file describes it for the wiki (Describe): title,
@@ -62,6 +63,20 @@ func IsStub(filePath string, content []byte) bool {
 	}
 	owner, ok := artifacts.Owner(schema)
 	return ok && owner.IsStub(schema, content) && len(owner.Validate(schema, clean, content)) == 0
+}
+
+// NoAgents reports whether no agent may change the file at filePath with the given content: the
+// file names a schema, and the part that owns the schema keeps its files from agents, such as the
+// definition of a team agent (dec-team-agents). Git access asks this for the old and the new
+// state of every path that an agent pushes. A file that is not valid, or that names no schema,
+// is not one of them.
+func NoAgents(filePath string, content []byte) bool {
+	_, schema, named, err := schemaOf(filePath, content)
+	if err != nil || !named {
+		return false
+	}
+	owner, ok := artifacts.Owner(schema)
+	return ok && owner.NoAgents
 }
 
 // Hints returns hints in plain words for the file at filePath, a path relative to the repository
