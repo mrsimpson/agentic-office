@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.4](https://github.com/mrsimpson/agentic-office/compare/v0.4.3...v0.4.4) (2026-11-26)
+
+
+### Features
+
+* **agentrunner:** instruct agents how to take part in a conversation ([#287](https://github.com/mrsimpson/agentic-office/issues/287)) ([fba76c0](https://github.com/mrsimpson/agentic-office/commit/fba76c09d3f32bb41d725e2bdcf98158d7e4a355))
+
 ## [0.4.3](https://github.com/mrsimpson/agentic-office/compare/v0.4.2...v0.4.3) (2026-11-25)
 
 
