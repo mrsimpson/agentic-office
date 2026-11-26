@@ -112,7 +112,9 @@ decides when to notify it over ACP. **Decision:** The runner has one notificatio
 one exchangeable part, the wake strategy, which the user chooses at the start: by default it wakes
 the agent at each change of speaker, or a model that the user brings decides after each utterance
 (`dec-byo-decision-model`). The runner delivers everything new since the last delivery as one
-prompt, one prompt at a time, in the order of the log (`bb-agent-runner`). It answers permission
+prompt, one prompt at a time, in the order of the log (`bb-agent-runner`). The first prompt
+holds all instructions of the runner; a prompt that wakes the agent carries data only: what was
+said, when and by whom, and what the runner knows about it. It answers permission
 requests of the harness by a rule of the user; by default it allows the office tools only. If a
 turn ends with text in the agent's chat and the agent neither spoke nor raised its hand, the runner
 asks it once whether the text was meant for the meeting. A failing model never wakes the agent by
@@ -121,7 +123,9 @@ wakes at each change of speaker until the model answers again. **Consequences:**
 and nothing is sent twice within one ACP session. A slow agent gets fewer, larger prompts. A
 failing model costs at most the wake-ups at each change of speaker. An unattended agent cannot run
 other tools unless the user allows them. An answer that the agent wrote only in its chat costs one
-more prompt instead of being lost. **Rejected:** cancelling a running prompt when a new turn comes
+more prompt instead of being lost. The agent reads each instruction once, and a wake-up shows only
+what is new; in a long meeting, the agent must keep the first prompt in mind. **Rejected:**
+instructions in every wake-up (they repeat the first prompt and hide what is new); cancelling a running prompt when a new turn comes
 (the agent would lose its work); one prompt per turn while busy (the agent would lag behind more
 and more); checks in parallel (answers could come out of order); waking the agent at every
 utterance without a model (too many wake-ups); waking it at every failed check (a broken model
@@ -180,7 +184,8 @@ A decision model (`if-decision-model`, wake strategy `decision-model`) is a smal
 answer questions about a state with probabilities; a threshold of the user turns them into yes or
 no. Towards the runner, both hide behind one wake strategy with the runner's own request and
 verdict; only the strategy maps them to the external contract. The runner wakes the agent when it
-should act, and with the task of the role when a block of topics has ended. If the model fails,
+should act, and tells it when a block of topics has ended; what the agent does then comes from its
+role. If the model fails,
 the runner falls back to the change of speaker (`dec-agent-runner-delivery`). **Consequences:**
 The office ships no model and stays free of a model vendor. A wrong "no" can keep the agent
 silent when it was addressed; the utterances stay queued and reach it with the next prompt, so
@@ -1363,7 +1368,10 @@ conventions for agents as skills in the open Agent Skills format. They ship with
 the same for every tenant and are never changed by a model. A human installs them with the usual
 skill tooling. The office decides for each skill whether the agent runner also hands it to the
 harness that it starts: it hands over the office memory skill, but not the office assistant skill,
-which helps a human. Rules of one team come from the role of an agent. **Consequences:** Every harness that
+which helps a human. Rules of one team come from the role of an agent. How a meeting works for an
+agent, and how the agent takes part in the conversation, is a process of the agent runner, not a
+convention: the runner gives it in its first prompt, and the role may change how the agent takes
+part. Skills hold the conventions that matter only in some situations. **Consequences:** Every harness that
 reads skills can take part, and a new convention reaches all agents with a release. Nothing checks
 that an agent follows a skill; the hub still checks every request. **Rejected:** conventions only
 in the help of the CLI (an agent reads them only when it asks); only in the first prompt of the

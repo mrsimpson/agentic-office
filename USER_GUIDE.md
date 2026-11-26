@@ -1344,9 +1344,8 @@ else. It wakes the agent when the model says that:
 - someone addressed the agent, by name, by its role or by the context;
 - what was said concerns the agent's role, so it should contribute now. This also works in the
   middle of a long monologue, for example when the speaker moves to a new topic;
-- a topic or a block of topics has ended. Then the runner also gives the agent the task for the
-  end of a topic. Set it with `--topic-task`, for example
-  `--topic-task "Update the minutes and record the decisions of this block."`.
+- a topic or a block of topics has ended. The runner tells the agent so. What the agent does
+  then, for example update the minutes, comes from its role.
 
 What did not wake the agent stays and reaches it with the next wake-up, so it misses nothing.
 
@@ -1366,38 +1365,40 @@ your turn: run `office signal turn-end` when you are done.
 
 ### What the agent receives
 
-When the runner wakes the agent, it sends everything that others said since the last time, oldest
-first, one sentence per line: the event ID, the name, whether the speaker is a human or an agent,
-and the text. Then it says whose turn has ended, or that the speaker may still be speaking, so
-the agent should raise its hand or write instead of interrupting. For example:
+At the start, the runner sends one prompt with all its instructions: the role, how the meeting
+works, and how the agent takes part. The rules for taking part apply unless the role says
+otherwise. For example, the agent answers directly when it is addressed and the turn has ended,
+raises its hand before it joins in unasked, speaks only when it adds something new, and answers
+in short sentences without Markdown.
+
+When the runner wakes the agent, it sends data only: everything that others said since the last
+time, oldest first, one sentence per line, with the event ID, the local time, the name, whether
+the speaker is a human or an agent, and the text. Then it says whether the turn of the speaker
+has ended. For example:
 
 ```text
-New in the meeting "weekly" since my last message (event ID, speaker, human or agent, text):
+New in the meeting "weekly" since my last message:
 
-[41] Ada (human): We start with the budget.
-[42] Ada (human): Bot, what did we decide last week?
+[41] 10:04:12 Ada (human): We start with the budget.
+[42] 10:04:20 Ada (human): Bot, what did we decide last week?
 
-The speaker may still be speaking. Do not interrupt: raise your hand or write instead, unless the speaker asked you to answer now.
-
-The model of the runner thinks that the speaker addressed: bot.
-
-Decide yourself whether someone addressed you or whether your role asks you to contribute now.
-If not, end your turn without text. To answer, call utterance_say: text in this chat reaches
-nobody in the meeting.
+The turn of Ada (human) has not ended yet.
+The model of the runner estimates that the speaker addressed: bot.
 ```
 
 - The agent never gets its own sentences, its own end of turn, or sentences that are off the
   record. A sentence that went off the record before it was sent is never sent. If it was
-  sent already, the runner wakes the agent as soon as it is free, names the event and says that
-  it is off the record.
+  sent already, the runner wakes the agent as soon as it is free and names the event
+  (`Taken off the record afterwards: [38].`).
 - One prompt runs at a time. While the agent works, what comes waits and goes out together in
   one prompt when the agent ends its turn. An end of turn without new sentences wakes nobody.
-- With a model, the prompt also says whom the speaker addressed and, when a block of topics has
-  ended, gives the task for that (`--topic-task`; the default is to update the minutes and record
-  the decisions and tasks of the block, if the role asks for it).
+- With a model, the prompt also says whom the model estimates the speaker addressed, and that a
+  block of topics has ended when the model estimates so. What the agent does then comes from its
+  role, for example "After each block of topics, update the minutes."
 - After the meeting ended, the last prompt carries what is left and asks the agent to finish the
   work of its role, for example the minutes, decisions or tasks, **without speaking**: the
-  ended session takes no new sentences.
+  ended session takes no new sentences. It also asks the agent to go through what it kept in its
+  own memory during the meeting and to bring what is worth keeping into the wiki.
 
 ### Bring a decision model
 
@@ -1532,7 +1533,6 @@ agent:
   session: weekly
   harness: [npx, -y, "@agentclientprotocol/claude-agent-acp"]
   role-file: minutes.md            # next to the folder .office, that is agents/minutes/minutes.md
-  topic-task: Update the minutes and record the decisions of this block.
   wake:
     strategy: decision-model
     url: https://api.typesafe.ai/v1/systemone

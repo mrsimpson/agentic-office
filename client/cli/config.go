@@ -75,14 +75,13 @@ type profileFile struct {
 
 // agentFile is the mapping agent: the options of "office agent run".
 type agentFile struct {
-	Session   string   `yaml:"session"`
-	Harness   []string `yaml:"harness"`
-	Role      string   `yaml:"role"`
-	RoleFile  string   `yaml:"role-file" office:"path"`
-	Allow     []string `yaml:"allow"`
-	Cwd       string   `yaml:"cwd" office:"path"`
-	TopicTask string   `yaml:"topic-task"`
-	Wake      wakeFile `yaml:"wake"`
+	Session  string   `yaml:"session"`
+	Harness  []string `yaml:"harness"`
+	Role     string   `yaml:"role"`
+	RoleFile string   `yaml:"role-file" office:"path"`
+	Allow    []string `yaml:"allow"`
+	Cwd      string   `yaml:"cwd" office:"path"`
+	Wake     wakeFile `yaml:"wake"`
 }
 
 // wakeFile is the mapping agent.wake: the wake strategy and its model.
@@ -123,7 +122,6 @@ const (
 	keyRoleFile  = "agent.role-file"
 	keyAllow     = "agent.allow"
 	keyCwd       = "agent.cwd"
-	keyTopicTask = "agent.topic-task"
 	keyStrategy  = "agent.wake.strategy"
 	keyCommand   = "agent.wake.command"
 	keyURL       = "agent.wake.url"

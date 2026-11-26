@@ -35,7 +35,7 @@ func main() {
 	cli.RunAgent = func(ctx context.Context, o cli.AgentOptions) error {
 		return agentrunner.Run(ctx, agentrunner.Options{Config: o.Config, Session: o.Session, Role: o.Role,
 			Harness: o.Harness, Allow: o.Allow, AlsoAllow: o.AlsoAllow, Cwd: o.Cwd, Office: o.Office, Version: o.Version, Stderr: o.Stderr,
-			Dial: core.Dial, NewReplicator: replicator.New, TopicTask: o.TopicTask,
+			Dial: core.Dial, NewReplicator: replicator.New,
 			Wake: agentrunner.Wake{Strategy: o.Wake, Command: o.DecideCommand, URL: o.DecideURL, Model: o.DecideModel,
 				APIKey: o.DecideKey, Threshold: o.DecideThreshold, Timeout: o.DecideTimeout}})
 	}

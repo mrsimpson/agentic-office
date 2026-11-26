@@ -3,10 +3,12 @@ package agentrunner
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
-// firstPrompt tells the agent its role and how the meeting works. restarted: the runner started
-// the harness again after a failure, so the agent remembers nothing of its earlier turns.
+// firstPrompt tells the agent its role and how the meeting works. It holds every instruction of
+// the runner: the prompts that wake the agent carry data only. restarted: the runner started the
+// harness again after a failure, so the agent remembers nothing of its earlier turns.
 func (r *runner) firstPrompt(restarted bool) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "You take part in the meeting %q of the agentic office as the participant %q, an agent.\n\n",
@@ -17,17 +19,33 @@ func (r *runner) firstPrompt(restarted bool) string {
 	} else {
 		b.WriteString("No role was given. Listen, and answer when someone addresses you.")
 	}
-	b.WriteString("\n\nHow this works:\n")
+	b.WriteString("\n\nHow the meeting works:\n")
 	b.WriteString("- You have joined the session already. The tools of the MCP server \"office\" act as you in this session; you do not need to call meeting_join.\n")
-	b.WriteString("- I am the agent runner. When something in the meeting may concern you, I send you what the others said since my last message: who spoke, whether that participant is a human or an agent, and what they said.\n")
-	b.WriteString("- To speak in the meeting, call the tool utterance_say. This is the only way to answer. Text that you write in this chat reaches nobody in the meeting; only the log of the runner on this computer shows it.\n")
-	b.WriteString("- Decide yourself whether someone addressed you or whether your role asks you to contribute now. Do not interrupt a speaker: raise your hand or write instead. If nothing is for you, end your turn without text.\n")
-	b.WriteString("- If you take responsibility for an artifact in this meeting, for example the minutes or bringing the results into the wiki, say so in the meeting as soon as you take it on, so that nobody else does it too. If someone already said so, leave it to them.\n")
-	b.WriteString("- When you have created or changed an artifact of this meeting (a document, slides, a decision), present it: show it on the stage with the tool stage_focus and say in one sentence in the meeting what you changed. Do not take the stage while someone else presents; wait until they are done. stage_focus with \"minutes\" brings the minutes back.\n")
-	fmt.Fprintf(&b, "- Everything you write that comes from this meeting (notes, decisions, documents, slides) must name the session %q. Then it waits until a human releases the meeting. Tasks are not held: they are shared at once.\n", r.o.Session)
-	b.WriteString("- Never use or repeat a sentence that is off the record.\n")
+	b.WriteString("- I am the agent runner. When something in the meeting may concern you, I send you what the others said since my last message: the event ID, the local time, who spoke, whether that participant is a human or an agent, and what they said. I also tell you whether the speaker's turn has ended")
+	if r.modelWakes() {
+		b.WriteString(", whom a model estimates that the speaker addressed, and when it estimates that a block of topics has ended")
+	}
+	b.WriteString(".\n")
+	b.WriteString("- Most of it was spoken and transcribed. Names and terms may be written wrongly. Read them as the speaker most likely meant them, and never correct anyone's wording. If a word that matters is unclear, ask back in one short question.\n")
+	b.WriteString("- To speak, call utterance_say. It is the only way to be heard: text in this chat reaches nobody in the meeting; only the log of the runner on this computer shows it.\n")
+	b.WriteString("- If nothing is for you, end your turn without text. Silence is normal; do not announce it.\n")
+	b.WriteString("- When I tell you that sentences went off the record, never use or repeat them, and take them out of everything you wrote in this meeting at once.\n")
 	fmt.Fprintf(&b, "- The local log of the session is the file %s (one JSON line per event). Read it if you need earlier events.\n",
 		r.m.joined.Paths.Log)
+	b.WriteString("\nHow to take part, unless your role says otherwise:\n")
+	b.WriteString("- If someone addresses you and their turn has ended, answer directly. If their turn has not ended yet, answer now only if they asked you to; otherwise raise your hand with hand_raise. If their last sentence breaks off, they are probably not done: say nothing yet.\n")
+	b.WriteString("- If you want to contribute without being addressed, raise your hand with hand_raise first, and speak when someone addresses you. If the conversation has moved on by then, drop what you wanted to say.\n")
+	b.WriteString("- Speak only when you add something new. Do not repeat or summarise what others said, and do not just agree. If someone else already said it, stay silent.\n")
+	b.WriteString("- Contribute unasked only when it changes something: a statement contradicts a recorded decision, a fact is wrong, or missing knowledge would change a decision.\n")
+	b.WriteString("- Speak as in a conversation: the answer first, in one to three short sentences, in the language of the meeting. No Markdown, lists, paths or IDs. Put details into a document, show it with stage_focus, and say one sentence about it.\n")
+	b.WriteString("- Answer an agent only if it addressed you. Humans go first.\n")
+	b.WriteString("- Bring in only what the artifacts of the tenant say, and what follows from them. Say so when you find nothing; never guess. If someone asks where you know it from, name the artifact.\n")
+	b.WriteString("- Advise, do not decide: name the options and their trade-offs. The humans decide.\n")
+	b.WriteString("- If you said something wrong, correct it at once in one sentence.\n")
+	b.WriteString("\nWhat you write:\n")
+	b.WriteString("- If you take responsibility for an artifact of this meeting, for example the minutes or the ingest into the wiki, say so in the meeting as soon as you take it on, so that nobody else does it too. If someone already did, leave it to them.\n")
+	b.WriteString("- When you have created or changed an artifact of this meeting (a document, slides, a decision), show it on the stage with stage_focus and say in one sentence what you changed. Do not take the stage while someone else presents; wait until they are done. stage_focus with \"minutes\" brings the minutes back.\n")
+	fmt.Fprintf(&b, "- Everything you write that comes from this meeting (notes, decisions, documents, slides) must name the session %q. It waits until a human releases the meeting. Tasks are not held: they are shared at once, so keep sentences of the meeting out of them.\n", r.o.Session)
 	if restarted {
 		b.WriteString("\nThe harness that ran you stopped with an error, and I started it again. You remember nothing of your earlier turns in this chat, but the meeting is not new: do not repeat what your role asks you to do at the start of the meeting. ")
 		b.WriteString("If your role keeps a document, for example the minutes, read its current state with the tools of the office before you change it, so that you do not replace it with less. ")
@@ -38,54 +56,57 @@ func (r *runner) firstPrompt(restarted bool) string {
 	return b.String()
 }
 
-// writeBatch writes the utterances of a batch, one per line, and the notices of sentences that
-// went off the record.
+// modelWakes reports whether a model of the wake strategy judges the meeting, so that the
+// prompts can carry whom the speaker addressed and the end of a block of topics.
+func (r *runner) modelWakes() bool {
+	return r.o.Wake.Strategy != "" && r.o.Wake.Strategy != WakeTurnEnd
+}
+
+// writeBatch writes the utterances of a batch, one per line, and the sentences that went off the
+// record. Data only: the instructions are in the first prompt.
 func (r *runner) writeBatch(b *strings.Builder, bt batch) {
 	if len(bt.utterances) == 0 {
 		b.WriteString("Nobody said anything new.\n")
 	}
 	for _, u := range bt.utterances {
 		p := r.who(u.pid)
-		fmt.Fprintf(b, "[%d] %s (%s): %s\n", u.id, p.name, p.kind, strings.Join(strings.Fields(u.text), " "))
+		fmt.Fprintf(b, "[%d] %s %s (%s): %s\n", u.id, u.at.Local().Format(time.TimeOnly), p.name, p.kind,
+			strings.Join(strings.Fields(u.text), " "))
 	}
 	if len(bt.offNotices) > 0 {
 		ids := make([]string, len(bt.offNotices))
 		for i, id := range bt.offNotices {
 			ids[i] = fmt.Sprintf("[%d]", id)
 		}
-		fmt.Fprintf(b, "\nThe speaker marked these sentences off the record afterwards: %s. Do not use or repeat them, and keep them out of minutes, decisions, notes and tasks.\n",
-			strings.Join(ids, ", "))
+		fmt.Fprintf(b, "\nTaken off the record afterwards: %s.\n", strings.Join(ids, ", "))
 	}
 }
 
-// defaultTopicTask is the task at the end of a block of topics when the user gave none.
-const defaultTopicTask = "If your role asks for it, update the minutes and record the decisions and tasks of that block now."
-
-// wakePrompt is the prompt that wakes the agent (dec-wake-check-per-utterance). It says whether
-// the speaker has ended their turn and what the model of the wake strategy found: whom the
-// speaker addressed and whether a block of topics has ended.
+// wakePrompt is the prompt that wakes the agent (dec-wake-check-per-utterance). It carries data
+// only: what was said, whether the speaker has ended their turn, and what the model of the wake
+// strategy estimated: whom the speaker addressed and whether a block of topics has ended.
 func (r *runner) wakePrompt(bt batch) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "New in the meeting %q since my last message (event ID, speaker, human or agent, text):\n\n", r.o.Session)
+	fmt.Fprintf(&b, "New in the meeting %q since my last message:\n\n", r.o.Session)
 	r.writeBatch(&b, bt)
+	var facts []string
 	if bt.turnBy != "" {
 		p := r.who(bt.turnBy)
-		fmt.Fprintf(&b, "\nThe turn of %s (%s) has ended.\n", p.name, p.kind)
-	} else if len(bt.utterances) > 0 {
-		b.WriteString("\nThe speaker may still be speaking. Do not interrupt: raise your hand or write instead, unless the speaker asked you to answer now.\n")
-	}
-	if bt.topicClosed {
-		task := strings.TrimSpace(r.o.TopicTask)
-		if task == "" {
-			task = defaultTopicTask
-		}
-		fmt.Fprintf(&b, "\nA block of topics has ended. %s\n", task)
+		facts = append(facts, fmt.Sprintf("The turn of %s (%s) has ended.", p.name, p.kind))
+	} else if n := len(bt.utterances); n > 0 {
+		p := r.who(bt.utterances[n-1].pid)
+		facts = append(facts, fmt.Sprintf("The turn of %s (%s) has not ended yet.", p.name, p.kind))
 	}
 	if bt.addressed != "" {
-		fmt.Fprintf(&b, "\nThe model of the runner thinks that the speaker addressed: %s.\n", bt.addressed)
+		facts = append(facts, fmt.Sprintf("The model of the runner estimates that the speaker addressed: %s.", bt.addressed))
 	}
-	b.WriteString("\nDecide yourself whether someone addressed you or whether your role asks you to contribute now. If not, end your turn without text. To answer, call utterance_say: text in this chat reaches nobody in the meeting.")
-	return b.String()
+	if bt.topicClosed {
+		facts = append(facts, "The model of the runner estimates that a block of topics has ended.")
+	}
+	if len(facts) > 0 {
+		b.WriteString("\n" + strings.Join(facts, "\n"))
+	}
+	return strings.TrimRight(b.String(), "\n")
 }
 
 // finalPrompt is the last prompt after session.ended.
@@ -97,7 +118,8 @@ func (r *runner) finalPrompt(bt batch) string {
 		r.writeBatch(&b, bt)
 		b.WriteString("\n")
 	}
-	b.WriteString("If your role has work for the end of the meeting, for example the minutes, decisions or tasks, do it now. Do not speak in the meeting any more: it has ended and takes no new utterances. Then end your turn. This is my last message; I stop after it.")
+	b.WriteString("If your role has work for the end of the meeting, for example the minutes, decisions or tasks, do it now. Do not speak in the meeting any more: it has ended and takes no new utterances. ")
+	b.WriteString("Then go through what you kept in your own memory during this meeting, as the skill office-memory says. Then end your turn. This is my last message; I stop after it.")
 	return b.String()
 }
 

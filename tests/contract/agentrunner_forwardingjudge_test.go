@@ -61,8 +61,7 @@ func texts(us any) []string {
 // new.
 func TestAgentRunnerForwardingJudgePerUtterance(t *testing.T) {
 	d := newDecider(t)
-	mt := newMeetingWithRunner(t, nil, "--wake", "llm", "--decide-cmd", d.cmd,
-		"--topic-task", "Write the decisions of the block into the minutes.")
+	mt := newMeetingWithRunner(t, nil, "--wake", "llm", "--decide-cmd", d.cmd)
 	mt.waitStderr("wake strategy llm: command")
 
 	// A monologue: the first sentence does not concern the agent; the second names it.
@@ -75,7 +74,7 @@ func TestAgentRunnerForwardingJudgePerUtterance(t *testing.T) {
 	ps := waitPrompt(t, mt.rec, 2)
 	p2 := ps[1]
 	i, j := strings.Index(p2, "Ada (human): We start with the budget."), strings.Index(p2, `Ada (human): Bot, please say "Here."`)
-	if i < 0 || j < 0 || i > j || !strings.Contains(p2, "may still be speaking") ||
+	if i < 0 || j < 0 || i > j || !strings.Contains(p2, "The turn of Ada (human) has not ended yet.") ||
 		!strings.Contains(p2, "the speaker addressed: bot.") || strings.Contains(p2, "has ended") {
 		t.Fatalf("prompt 2 must carry the monologue so far, in order, without an end of turn:\n%s", p2)
 	}
@@ -122,10 +121,10 @@ func TestAgentRunnerForwardingJudgePerUtterance(t *testing.T) {
 		return strings.Count(mt.runner.Stderr(), fmt.Sprintf("decision up to event %d: do not wake", u3)) == 2
 	})
 
-	// A block of topics ends: the agent gets the task of the role and what did not wake it.
+	// A block of topics ends: the agent learns of it and gets what did not wake it.
 	mt.say(mt.ada, "Agreed, next topic.")
 	ps = waitPrompt(t, mt.rec, 3)
-	if p3 := ps[2]; !strings.Contains(p3, "A block of topics has ended. Write the decisions of the block into the minutes.") ||
+	if p3 := ps[2]; !strings.Contains(p3, "The model of the runner estimates that a block of topics has ended.") ||
 		!strings.Contains(p3, "Carl (agent): Thanks.") || !strings.Contains(p3, "Ada (human): Agreed, next topic.") {
 		t.Fatalf("prompt 3:\n%s", p3)
 	}

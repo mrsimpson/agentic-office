@@ -117,13 +117,12 @@ func (s *systemOne) serve(w http.ResponseWriter, r *http.Request) {
 
 // TestAgentRunnerDecisionModel: the runner posts the state and three questions to the full URL
 // with the key as a bearer token. A noul at or above the threshold (default 0.5) wakes the agent;
-// the choice "addressed" goes into the prompt; topic_closed adds the task of the role. The runner
+// the choice "addressed" goes into the prompt; topic_closed adds that a block of topics has ended. The runner
 // logs the probabilities, never the key.
 func TestAgentRunnerDecisionModel(t *testing.T) {
 	s1 := newSystemOne(t, false)
 	mt := newMeetingWithRunner(t, []string{"OFFICE_DECIDE_KEY=s1-secret-key"},
-		"--wake", "decision-model", "--decide-url", s1.srv.URL+"/v1/systemone", "--decide-model", "jev-1.14.0",
-		"--topic-task", "Write the decisions of the block into the minutes.")
+		"--wake", "decision-model", "--decide-url", s1.srv.URL+"/v1/systemone", "--decide-model", "jev-1.14.0")
 	mt.waitStderr("wake strategy decision-model: endpoint " + s1.srv.URL + "/v1/systemone, model jev-1.14.0, threshold 0.5")
 
 	u1 := mt.say(mt.ada, "We start with the budget.")
@@ -132,7 +131,7 @@ func TestAgentRunnerDecisionModel(t *testing.T) {
 	waitUtterance(t, mt.adaLog, "bot", "Here.")
 	ps := waitPrompt(t, mt.rec, 2)
 	if p := ps[1]; !strings.Contains(p, "Ada (human): We start with the budget.") || !strings.Contains(p, `Ada (human): Bot, please say "Here."`) ||
-		!strings.Contains(p, "the speaker addressed: bot.") || strings.Contains(p, "A block of topics") {
+		!strings.Contains(p, "the speaker addressed: bot.") || strings.Contains(p, "block of topics") {
 		t.Fatalf("prompt 2:\n%s", p)
 	}
 	if !strings.Contains(mt.runner.Stderr(), "act 0.93, topic_closed 0.10, addressed bot (0.80); ada 0.10, bot 0.80, carl 0.10, nobody 0.10") {
@@ -142,7 +141,7 @@ func TestAgentRunnerDecisionModel(t *testing.T) {
 
 	mt.say(mt.ada, "Agreed, next topic.")
 	ps = waitPrompt(t, mt.rec, 3)
-	if p := ps[2]; !strings.Contains(p, "A block of topics has ended. Write the decisions of the block into the minutes.") ||
+	if p := ps[2]; !strings.Contains(p, "The model of the runner estimates that a block of topics has ended.") ||
 		!strings.Contains(p, "Ada (human): Agreed, next topic.") || strings.Contains(p, "the speaker addressed") {
 		t.Fatalf("prompt 3:\n%s", p)
 	}
