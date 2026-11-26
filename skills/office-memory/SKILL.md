@@ -21,6 +21,17 @@ run meetings, use the skill office-assistant.
 - **This skill** holds the rules. Team-specific rules come from your role and from the pages you
   find.
 
+## Keep no knowledge of your own
+
+A tenant shares all its knowledge, except what is off the record. So what the team should know
+belongs in the wiki, not in your own memory: not in the memory files of your harness, not in
+local notes. Everyone in the tenant reads the wiki; nobody reads your memory.
+
+- When you learn something worth keeping, write it as a note or into a page.
+- If you kept something in your own memory during a meeting, go through it when the meeting has
+  ended. Write what is worth keeping into the wiki, naming the meeting, and then delete it from
+  your memory. Delete everything that is off the record.
+
 ## Find what the team knows
 
 1. Read in the local clone of the tenant if you have one (`office sync init`, `office sync

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -114,9 +115,10 @@ func count(prompts []string, s string) int {
 }
 
 // TestAgentRunnerTurns: with the wake strategy turn-end, the runner says so at start and wakes the
-// agent at each change of speaker, not at each utterance. The agent gets what others said since
-// the last delivery, in order, with who spoke and their kind; never its own utterances; nothing
-// twice. A turn without new utterances wakes nobody.
+// agent at each change of speaker, not at each utterance. The first prompt holds the instructions,
+// without the estimates of a model. The agent gets what others said since the last delivery, in
+// order, with the time, who spoke and their kind; never its own utterances; nothing twice. A
+// wake-up carries data only. A turn without new utterances wakes nobody.
 func TestAgentRunnerTurns(t *testing.T) {
 	mt := newMeetingWithRunner(t, nil)
 	mt.waitStderr("a new topic within a monologue is not detected")
@@ -133,6 +135,16 @@ func TestAgentRunnerTurns(t *testing.T) {
 	}
 	if !strings.Contains(p2, "The turn of Ada (human) has ended.") || strings.Contains(p2, "Bot is here.") {
 		t.Fatalf("prompt 2:\n%s", p2)
+	}
+	if !regexp.MustCompile(`\[\d+\] \d\d:\d\d:\d\d Ada \(human\): Good morning\.`).MatchString(p2) {
+		t.Fatalf("prompt 2 must give the event ID and the time of each utterance:\n%s", p2)
+	}
+	if strings.Contains(p2, "utterance_say") {
+		t.Fatalf("a wake-up must carry data only, no instructions:\n%s", p2)
+	}
+	if p1 := ps[0]; !strings.Contains(p1, "How to take part, unless your role says otherwise:") ||
+		!strings.Contains(p1, "call utterance_say") || strings.Contains(p1, "block of topics") {
+		t.Fatalf("prompt 1 must hold the instructions, without the estimates of a model:\n%s", p1)
 	}
 	waitPromptEnd(t, mt.rec, 2)
 
@@ -226,7 +238,7 @@ func TestAgentRunnerOffTheRecord(t *testing.T) {
 	waitPromptEnd(t, mt.rec, 3)
 	mt.ada.ok("utterance", "off-the-record", strconv.Itoa(int(secret)), "--session", mt.sid)
 	ps = waitPrompt(t, mt.rec, 4)
-	if want := fmt.Sprintf("[%d]. Do not use or repeat them", secret); !strings.Contains(ps[3], want) ||
+	if want := fmt.Sprintf("Taken off the record afterwards: [%d].", secret); !strings.Contains(ps[3], want) ||
 		strings.Contains(ps[3], "Second secret.") {
 		t.Fatalf("prompt 4 must name [%d] as off the record:\n%s", secret, ps[3])
 	}

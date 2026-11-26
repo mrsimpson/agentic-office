@@ -51,8 +51,6 @@ type Options struct {
 	// Wake chooses the wake strategy and its model (dec-agent-runner-delivery,
 	// dec-byo-decision-model). The zero value: wake the agent at each change of speaker.
 	Wake Wake
-	// TopicTask is the task of the role when a block of topics has ended. Empty: a default task.
-	TopicTask string
 	// Stderr receives the log of the runner and the stderr of the harness. Nil: os.Stderr.
 	Stderr io.Writer
 	// Dial dials the office hub (if-client-core).

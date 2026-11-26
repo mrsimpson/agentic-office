@@ -1532,15 +1532,15 @@ session and one agent, it:
   the local log of the agent;
 - hands the harness the office memory skill (`if-office-memory-skill`, `dec-skills`);
 - starts the agent harness, opens one ACP session, hands it the office tools as an MCP server with
-  the key of the agent, and sends a first prompt with the role of the agent, the meeting and what
-  only the runner knows: the session that everything from the meeting must name, and that tasks
-  are not held;
+  the key of the agent, and sends a first prompt with the role of the agent, the meeting, how the
+  agent takes part in the conversation unless its role says otherwise, and what only the runner
+  knows: the session that everything from the meeting must name, and that tasks are not held;
 - decides with one wake strategy, chosen by the user at start, when to wake the agent
   (`dec-agent-runner-delivery`): at each change of speaker, or when a forwarding judge or a
   decision model that the user brings says so (`dec-wake-check-per-utterance`,
   `dec-byo-decision-model`); when the model fails, it falls back to the change of speaker;
-- when it wakes the agent, sends what others said since its last delivery, with who said it and
-  whether that participant is a human or an agent, but not the agent's own utterances or
+- when it wakes the agent, sends data only: what others said since its last delivery, with when
+  and who said it and whether that participant is a human or an agent, but not the agent's own utterances or
   sentences off the record; nothing is lost and nothing is sent twice;
 - reports what the agent is doing, so the stage can show it (`if-session-activity`): working
   and the short name of the tool it calls, waiting, or that its reply reached nobody;

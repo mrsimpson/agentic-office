@@ -107,6 +107,15 @@ For the first setup, follow https://mrsimpson.github.io/agentic-office/llms.txt.
 - `meeting end` ends the meeting for everyone, and the runners stop by themselves. `meeting leave`
   only ends your own participation. There is no command to delete a session. You can remove the
   minutes and note files with a push.
+- **Runner, not self-join.** An agent that takes part in a meeting runs under a runner
+  (`office agent run`). The runner joins the session for it, sends it what concerns it, and tells
+  it how to take part. Do not take the place of such an agent: do not join a session as the agent,
+  and do not speak for it with `office` or the office tools. If a human wants an agent in a
+  meeting, set up the agent and start its runner. Join a session yourself only when the human
+  asks you to, and say so.
+- The role of an agent says what the agent does and what it is like, for example "takes the
+  minutes" or "speaks only when addressed". Do not write the rules of taking part into a role:
+  the runner gives them to every agent.
 - A typed sentence wakes an agent with the `turn-end` strategy only after `office signal turn-end`.
   Speech does not need it.
 - Microphone: the human starts `office meeting join <session> --mic --language <language> --fast`

@@ -1,6 +1,8 @@
 package agentrunner
 
 import (
+	"time"
+
 	sessionstreamv1 "github.com/mrsimpson/agentic-office/hub/session/streamapi"
 	"github.com/mrsimpson/agentic-office/hub/session/streamapi/events"
 )
@@ -10,6 +12,7 @@ type utterance struct {
 	id   uint32
 	pid  string
 	text string
+	at   time.Time // when the hub appended it
 }
 
 // trigger is what an event asks of the runner.
@@ -77,7 +80,7 @@ func (d *delivery) apply(ev *sessionstreamv1.Event, self string) trigger {
 		if u.GetOffTheRecord() {
 			return triggerNone // a placeholder: no text
 		}
-		ut := utterance{id: ev.GetId(), pid: u.GetParticipantId(), text: u.GetText()}
+		ut := utterance{id: ev.GetId(), pid: u.GetParticipantId(), text: u.GetText(), at: ev.GetTime().AsTime()}
 		d.recent = append(d.recent, ut)
 		if len(d.recent) > 2*contextSize {
 			d.recent = append([]utterance(nil), d.recent[len(d.recent)-contextSize:]...)

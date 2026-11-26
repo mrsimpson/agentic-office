@@ -38,8 +38,6 @@ type AgentOptions struct {
 	DecideKey       string
 	DecideThreshold float64
 	DecideTimeout   time.Duration
-	// TopicTask is the task of the role when a block of topics has ended.
-	TopicTask string
 }
 
 // The wake strategies of --wake.
@@ -70,7 +68,7 @@ func (s *stringList) Set(v string) error { *s = append(*s, v); return nil }
 // agentFlags maps the flags of "office agent run" to the keys of the configuration files.
 var agentFlags = []struct{ flag, key string }{
 	{"session", keySession}, {"role", keyRole}, {"role-file", keyRoleFile}, {"allow", keyAllow},
-	{"cwd", keyCwd}, {"topic-task", keyTopicTask}, {"wake", keyStrategy}, {"decide-cmd", keyCommand},
+	{"cwd", keyCwd}, {"wake", keyStrategy}, {"decide-cmd", keyCommand},
 	{"decide-url", keyURL}, {"decide-model", keyModel}, {"decide-threshold", keyThreshold},
 	{"decide-timeout", keyTimeout},
 }
@@ -101,7 +99,7 @@ func (s settings) name(key string) string {
 // cmdAgentRun runs the agent runner: office agent run --session S [--role T | --role-file F]
 // [--allow PATTERN]... [--cwd DIR] [--wake turn-end|llm|decision-model]
 // [--decide-cmd CMD | --decide-url URL --decide-model M] [--decide-threshold P]
-// [--decide-timeout D] [--topic-task T] -- <harness command>. Every option can also come from a
+// [--decide-timeout D] -- <harness command>. Every option can also come from a
 // configuration file (concept-client-configuration).
 func cmdAgentRun(e *env, fs *flag.FlagSet) func([]string) error {
 	role := fs.String("role", "", "the role of the agent, in plain words (agent.role)")
@@ -117,7 +115,6 @@ func cmdAgentRun(e *env, fs *flag.FlagSet) func([]string) error {
 	decideTimeout := fs.Duration("decide-timeout", 10*time.Second, "after this time without an answer, a check of the model has failed (agent.wake.timeout)")
 	teamAgent := fs.String("team-agent", "", "run the team agent of this tenant with this ID: its role, tools and wake strategy come from its definition, and the agent writes as the team agent (see office help team-agent run)")
 	confirm := fs.String("confirm", "", "with --team-agent: the version of the definition that you confirm, so that the runner does not ask")
-	topicTask := fs.String("topic-task", "", "the task of the role when a block of topics has ended (with --wake "+WakeLLM+" or "+WakeDecisionModel+") (agent.topic-task)")
 	return func(args []string) error {
 		set := map[string]bool{}
 		fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
@@ -187,7 +184,7 @@ func cmdAgentRun(e *env, fs *flag.FlagSet) func([]string) error {
 			s.apply(layer{src: source{Kind: sourceDefinition, From: "the definition of the team agent " + def.Agent}, values: values})
 		}
 		flagValues := map[string]any{"session": e.session, "role": *role, "role-file": *roleFile,
-			"allow": []string(allow), "cwd": *cwd, "topic-task": *topicTask, "wake": *wake,
+			"allow": []string(allow), "cwd": *cwd, "wake": *wake,
 			"decide-cmd": *decideCmd, "decide-url": *decideURL, "decide-model": *decideModel,
 			"decide-threshold": *decideThreshold, "decide-timeout": *decideTimeout}
 		for _, f := range agentFlags {
@@ -234,8 +231,7 @@ func cmdAgentRun(e *env, fs *flag.FlagSet) func([]string) error {
 		return RunAgent(e.ctx, AgentOptions{Config: agentCfg, Session: session, Role: r, Harness: harness,
 			Allow: s.list(keyAllow), AlsoAllow: teamAllow, Cwd: s.str(keyCwd), Office: office, Version: Version, Stderr: e.stderr,
 			Wake: s.str(keyStrategy), DecideCommand: s.str(keyCommand), DecideURL: s.str(keyURL),
-			DecideModel: s.str(keyModel), DecideKey: key, DecideThreshold: threshold, DecideTimeout: timeout,
-			TopicTask: s.str(keyTopicTask)})
+			DecideModel: s.str(keyModel), DecideKey: key, DecideThreshold: threshold, DecideTimeout: timeout})
 	}
 }
 

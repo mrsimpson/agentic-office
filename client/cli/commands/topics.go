@@ -68,7 +68,6 @@ Configuration files (YAML, strict)
   agent.role-file         --role-file                  none
   agent.allow             --allow                      the office tools only
   agent.cwd               --cwd                        the current directory
-  agent.topic-task        --topic-task                 none
   agent.wake.strategy     --wake                       turn-end
   agent.wake.command      --decide-cmd                 none
   agent.wake.url          --decide-url                 none
