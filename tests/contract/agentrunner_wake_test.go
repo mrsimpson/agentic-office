@@ -238,7 +238,7 @@ func TestAgentRunnerOffTheRecord(t *testing.T) {
 	waitPromptEnd(t, mt.rec, 3)
 	mt.ada.ok("utterance", "off-the-record", strconv.Itoa(int(secret)), "--session", mt.sid)
 	ps = waitPrompt(t, mt.rec, 4)
-	if want := fmt.Sprintf("[%d]. Do not use or repeat them", secret); !strings.Contains(ps[3], want) ||
+	if want := fmt.Sprintf("Taken off the record afterwards: [%d].", secret); !strings.Contains(ps[3], want) ||
 		strings.Contains(ps[3], "Second secret.") {
 		t.Fatalf("prompt 4 must name [%d] as off the record:\n%s", secret, ps[3])
 	}
