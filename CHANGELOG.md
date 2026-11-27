@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.5](https://github.com/mrsimpson/agentic-office/compare/v0.4.4...v0.4.5) (2026-11-27)
+
+
+### Features
+
+* **client:** open the stage in the browser after join ([#292](https://github.com/mrsimpson/agentic-office/issues/292)) ([b84fc18](https://github.com/mrsimpson/agentic-office/commit/b84fc1873f769f9a07efbf4a504d623192e00c68)), closes [#291](https://github.com/mrsimpson/agentic-office/issues/291)
+* **ears:** voice print for loudspeakers and an overlap hint ([#289](https://github.com/mrsimpson/agentic-office/issues/289)) ([ec60d9c](https://github.com/mrsimpson/agentic-office/commit/ec60d9cb8367ab80d4ac8e35f7692cb0a55d3a02))
+
 ## [0.4.4](https://github.com/mrsimpson/agentic-office/compare/v0.4.3...v0.4.4) (2026-11-26)
 
 
