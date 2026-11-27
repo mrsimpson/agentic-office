@@ -55,8 +55,8 @@ with a shell and humans both use it (see `dec-cli-and-mcp`).
 
 ## Transcription at the edge
 
-Each human transcribes only themselves, locally, with a headset. Who is speaking follows from the
-setup, without speaker recognition. Raw audio does not leave the device (see
+Each human transcribes only themselves, locally, with a headset or with a voice print of the
+owner. With a headset, who is speaking follows from the setup. Raw audio does not leave the device (see
 `dec-local-single-ear`).
 
 ## Stage by screen share

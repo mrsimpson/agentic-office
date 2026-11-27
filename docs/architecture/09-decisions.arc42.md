@@ -221,21 +221,90 @@ addresses: qg-performance
 :::
 ```
 
-## Local gateway, single ear with a headset
+## Local gateway, single ear
 
 **Context:** Whisper does not tell speakers apart. Loudspeakers and rooms cause echo and mixed
-signals. **Decision:** Each human transcribes only themselves, locally, with a headset in the first
-stage. **Consequences:** Who is speaking follows from the setup. Raw audio stays local.
-Loudspeakers and rooms are not covered yet. **Rejected:** central speaker recognition (pyannote) on
-a mixed signal.
+signals. **Decision:** Each human transcribes only themselves, locally, with a headset or with a
+voice print (`dec-voice-print`). **Consequences:** Who is speaking follows from the setup. Raw
+audio stays local. Rooms with several speakers at one microphone are not covered.
+**Rejected:** central speaker recognition (pyannote) on a mixed signal.
 
 ```arc42
 :::decision
 id: dec-local-single-ear
-title: Local transcription per participant (single ear, headset)
+title: Local transcription per participant (single ear)
 status: accepted
 date: 2026-11-06
-addresses: con-privacy-law, con-headset-only, qg-confidentiality, risk-speaker-mode
+addresses: con-privacy-law, con-own-voice-only, qg-confidentiality, risk-speaker-mode
+:::
+```
+
+## Voice print keeps the single ear with loudspeakers
+
+**Context:** With loudspeakers, the voices of other participants reach the microphone. They would
+end up in the owner's transcript. **Decision:** The owner enrols a voice print once, on the
+device. The ears compare the speech of each sentence with the print in short windows and drop
+every part that does not match, before Whisper. Dropped audio is discarded and never transcribed
+or sent. Enrolment needs explicit consent, the print stays on the device, and the owner can delete
+it at any time. The print is a file that only the owner's user can read; it is not encrypted,
+because the owner decided so on 2026-11-27 and anyone who can read the owner's account can
+already read the models and the local log. A client without a print keeps working as before and
+needs a headset.
+**Consequences:** The single ear also holds with loudspeakers, and in a room where other people
+speak near the microphone. No playback signal is needed, so the same rule works on every
+operating system. Where the owner and another voice speak at once, the louder voice wins: words
+of the owner may be missing, or words of someone else may stay in (`dec-overlap-hint`). A very
+short sentence has little voice to compare. The ears have one more local model, which they
+download like the other models (`dec-model-download`) and run in plain Go, as the model for
+named-entity recognition (`dec-ner-model`). A voice print is biometric data (Art. 9 GDPR).
+**Rejected:** echo cancellation (removes what the computer plays, but not people in the same
+room, and needs the playback signal of each operating system; it may be added in front of the
+voice print if overlap turns out to be the main failure); deduplication on the server alone
+(cannot tell whose voice it was and so records other people); central speaker recognition (raw
+audio would leave the device).
+OPEN: Which accuracy is good enough on real meetings, and how many false drops of the owner are
+acceptable? Measurements so far use synthetic remote voices.
+
+```arc42
+:::decision
+id: dec-voice-print
+title: Local voice print drops sentences of other voices (single ear with loudspeakers)
+status: accepted
+date: 2026-11-27
+addresses: con-own-voice-only, con-privacy-law, qg-confidentiality, risk-speaker-mode
+:::
+```
+
+## The ears flag an utterance that probably hides another voice
+
+**Context:** The voice print (`dec-voice-print`) drops the parts of a sentence that are not the
+owner's. It cannot separate two voices that speak at the same time. Where people talk over each
+other, the text of the owner may be incomplete, or it may contain words of someone else. An agent
+reads every utterance as what the owner said. **Decision:** The ears add a yes-or-no hint to an
+utterance when they heard another voice, or a voice they could not assign, at the same time as
+the utterance or directly before or after it, within the same stretch of speech. The hint is
+part of the utterance. The hub stores it and passes it on and judges nothing (`con-no-intelligence`).
+The agent runner gives the hint to the agent with the utterance, and its first prompt says what
+it means: the text may be incomplete or may hold words of someone else, so the agent should ask
+before it acts on a doubtful sentence. The hint is only set when the ears use a voice print.
+Without a voice print the ears know nothing about other voices, so the hint is absent, and
+absent does not mean that one voice spoke. An utterance off the record carries no hint.
+**Consequences:** An agent can ask back instead of acting on doubtful text. The hint is a guess:
+a false alarm costs one question, and a miss is possible when one voice is much louder than the
+other. The hint carries no audio, no score and no data of the voice print. **Rejected:** a
+separate event for the hint (it must stay in order with its utterance and belongs to it); the
+similarity score as a number (it invites every reader to choose its own limit, and the score
+depends on the model); a marker inside the text (it would pollute the transcript and the quotes
+of the minutes).
+OPEN: Should the minutes agent or the stage show the hint to people too?
+
+```arc42
+:::decision
+id: dec-overlap-hint
+title: Utterance hint when the ears suspect another voice (overlap)
+status: accepted
+date: 2026-11-27
+addresses: risk-speaker-mode, qg-usability
 :::
 ```
 

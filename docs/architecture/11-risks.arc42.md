@@ -109,14 +109,16 @@ mitigation: The runner checks every answer against the contract, accepts the bar
 ## Loudspeakers instead of a headset
 
 If someone uses loudspeakers, other people's voices end up in their transcript, and sentences
-appear twice.
+appear twice. A voice print removes most of this. It cannot separate voices that speak at the same
+time: the louder voice wins, so words of the owner can be missing or words of someone else can
+stay in.
 
 ```arc42
 :::risk
 id: risk-speaker-mode
 title: Echo and duplicates with loudspeakers
 severity: medium
-mitigation: Headset required (con-headset-only); echo cancellation, voice print and deduplication in issue #1
+mitigation: Without a headset the ears need a voice print that drops sentences of other voices (con-own-voice-only, dec-voice-print); utterances that probably hold another voice carry a hint for agents (dec-overlap-hint)
 :::
 ```
 

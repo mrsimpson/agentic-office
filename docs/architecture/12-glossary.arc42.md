@@ -116,7 +116,7 @@ The audio connector of the office.
 :::glossary-term
 id: term-ears
 title: Ears
-definition: The local audio pipeline of a human (VAD, Whisper) that sends only text
+definition: The local audio pipeline of a human (VAD, voice print, Whisper) that sends only text
 :::
 ```
 
@@ -128,7 +128,31 @@ The listening mode of the first stage.
 :::glossary-term
 id: term-single-ear
 title: Single ear
-definition: A listening mode in which only the owner of the device is transcribed
+definition: A listening mode in which only the owner of the device is transcribed, with a headset or with a voice print
+:::
+```
+
+## Voice print
+
+What lets the ears tell the owner's voice from other voices.
+
+```arc42
+:::glossary-term
+id: term-voice-print
+title: Voice print
+definition: A short list of numbers that describes the voice of the owner; it is made once on the device, with consent, never leaves it and lets the ears drop the speech of other voices (dec-voice-print)
+:::
+```
+
+## Overlap hint
+
+A mark on an utterance for the agents.
+
+```arc42
+:::glossary-term
+id: term-overlap-hint
+title: Overlap hint
+definition: A yes-or-no mark on an utterance that says that the ears suspect another voice in it, so the text may be incomplete or may hold words of someone else (dec-overlap-hint)
 :::
 ```
 

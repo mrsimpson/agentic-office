@@ -100,8 +100,10 @@ category: integration
 ## Transcription at the edge
 
 Each human transcribes only themselves, locally. Raw audio never leaves the device. Only text and
-metadata are sent. With a headset, the single ear comes for free. Use with loudspeakers (echo
-cancellation, voice print) and the room ear (speaker recognition) come later. Voice prints are
+metadata are sent. With a headset, the single ear comes for free. With loudspeakers, a voice print
+of the owner keeps it: it stays on the device, and the ears drop the speech of other voices
+(`dec-voice-print`). Where voices overlap, the ears mark the utterance (`dec-overlap-hint`). The
+room ear (speaker recognition for several people at one microphone) comes later. Voice prints are
 biometric data (Art. 9 GDPR) and need explicit consent.
 
 ```arc42

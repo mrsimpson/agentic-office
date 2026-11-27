@@ -1352,7 +1352,7 @@ path: client/replicator/locallog
 
 ### Audio input
 
-The participant's local audio device (headset).
+The participant's local audio device (a headset, or loudspeakers with a voice print).
 
 ```arc42
 :::interface
@@ -1540,8 +1540,9 @@ session and one agent, it:
   decision model that the user brings says so (`dec-wake-check-per-utterance`,
   `dec-byo-decision-model`); when the model fails, it falls back to the change of speaker;
 - when it wakes the agent, sends data only: what others said since its last delivery, with when
-  and who said it and whether that participant is a human or an agent, but not the agent's own utterances or
-  sentences off the record; nothing is lost and nothing is sent twice;
+  and who said it and whether that participant is a human or an agent, and the hint of the ears
+  that another voice may be in an utterance (`dec-overlap-hint`), but not the agent's
+  own utterances or sentences off the record; nothing is lost and nothing is sent twice;
 - reports what the agent is doing, so the stage can show it (`if-session-activity`): working
   and the short name of the tool it calls, waiting, or that its reply reached nobody;
 - after the session ends, sends a last prompt and stops the harness.
@@ -1644,8 +1645,10 @@ path: client/sync/control
 ### Ears
 
 Only for humans with a microphone. Pipeline: microphone → voice activity detection → Whisper
-(local) → utterances to the session. The first stage needs a headset and has no voice print and no
-echo cancellation (`con-headset-only`). Raw audio never leaves the device. During a network drop,
+(local) → utterances to the session. The ears need a headset or a voice print of the owner, and have no
+echo cancellation (`con-own-voice-only`). With a voice print, they drop the speech of other
+voices before Whisper and so allow loudspeakers (`dec-voice-print`). They also flag an utterance
+when they suspect another voice in it (`dec-overlap-hint`). Raw audio never leaves the device. During a network drop,
 the ears keep transcribing and queue the utterances locally. They send them in order once the
 connection is back. The ears also end the turn of their participant: after a longer silence that
 follows the last sentence, once per turn and never while paused. They choose their speech model by
@@ -1660,7 +1663,7 @@ rules find other terms (`dec-ner-model`).
 id: bb-ears
 title: Ears
 parent: bb-participant-client
-technology: Go / whisper.cpp, including its voice activity detection
+technology: Go / whisper.cpp, including its voice activity detection; speaker model in plain Go
 requires: if-client-core, if-session-stream
 implements: concept-edge-transcription, concept-test-strategy
 path: client/ears

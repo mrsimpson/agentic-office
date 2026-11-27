@@ -54,18 +54,20 @@ source: Product vision; scope limited to the hub by the maintainer on 2026-11-11
 :::
 ```
 
-## Headset required for the ears
+## The ears hear only their owner
 
-The first stage has no echo cancellation and no voice print. Only a headset makes sure that the
-ears hear nothing but their owner. Use with loudspeakers is not supported. Issue #1 describes how
-to lift this constraint.
+The ears transcribe one person: the owner of the device. Two things make sure of it. With a
+headset, nobody else is near the microphone. Without a headset, the owner needs a voice print,
+and the ears drop everything that is not the owner's voice (`dec-voice-print`). There is no echo
+cancellation. Without a voice print and without a headset, the ears would transcribe the other
+participants too, so the ears do not offer that setup.
 
 ```arc42
 :::constraint
-id: con-headset-only
-title: Ears only with a headset (no echo cancellation, no voice print)
+id: con-own-voice-only
+title: The ears transcribe only their owner (headset or voice print, no echo cancellation)
 category: technical
-source: Scope of the first stage; to be lifted by issue #1
+source: Scope of the first stage; voice print added by the maintainer on 2026-11-27 (issue #1)
 :::
 ```
 

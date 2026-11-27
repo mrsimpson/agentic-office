@@ -14,7 +14,7 @@ one difference: humans can also switch on a microphone. Their speech is then tra
 | Use case | Summary |
 |---|---|
 | Join a meeting | A human or an agent joins a session and gets a local log file that is replicated continuously |
-| Capture speech | Local Whisper transcribes only the device owner (headset) and sends text, never audio |
+| Capture speech | Local Whisper transcribes only the device owner (headset, or voice print with loudspeakers) and sends text, never audio |
 | Take minutes and raise a hand | An agent keeps the minutes, raises its hand on the stage and shows artifacts |
 | Keep an agent in the meeting | The agent runner wakes an agent when the speaker changes, so people can address it in plain words |
 | Show the stage | A web view of the hub is shared by screen share in any meeting tool |
@@ -22,7 +22,7 @@ one difference: humans can also switch on a microphone. Their speech is then tra
 | Track tasks | Create tasks in a meeting, assign them and change their status through CLI or MCP; for now they are drafts in the hub |
 | Transparency | Every participant sees what was recorded and sent from them, and can pause or mark it off the record |
 
-Explicitly **not** in the first stage: speech output (TTS), video, use with loudspeakers, meeting
+Explicitly **not** in the first stage: speech output (TTS), video, meeting
 rooms with several speakers at one microphone, and integration into meeting tools.
 
 ## 1.2 Quality Goals
