@@ -82,12 +82,22 @@ func main() {
 		}
 		return r, nil
 	}
+	cli.EnrolVoice = func(ctx context.Context, o cli.VoiceEnrolOptions, progress func(string)) (cli.VoicePrintResult, error) {
+		r, err := ears.Enrol(ctx, ears.EnrolOptions{WAV: o.WAV, Out: o.Out, VADModel: o.VADModel, Seconds: o.Seconds, Replace: o.Replace}, progress)
+		return cli.VoicePrintResult(r), err
+	}
+	cli.ShowVoicePrint = func(file string) (cli.VoicePrintInfo, error) {
+		i, err := ears.ShowVoicePrint(file)
+		return cli.VoicePrintInfo(i), err
+	}
+	cli.DeleteVoicePrint = ears.DeleteVoicePrint
 	os.Exit(cli.Run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
 func earsConfig(o cli.EarsOptions) ears.Config {
 	return ears.Config{Mic: o.Mic, WAV: o.WAV, Model: o.Model, Fast: o.Fast, VADModel: o.VADModel, Language: o.Language,
-		Threads: o.Threads, EndSilence: o.EndSilence, TurnSilence: o.TurnSilence, Vocabulary: o.Vocabulary, Context: o.Context}
+		Threads: o.Threads, EndSilence: o.EndSilence, TurnSilence: o.TurnSilence, Vocabulary: o.Vocabulary, Context: o.Context,
+		VoicePrint: o.VoicePrint, NoVoicePrint: o.NoVoicePrint, Debug: o.Debug}
 }
 
 type nopWriteCloser struct{ io.Writer }

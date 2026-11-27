@@ -1,7 +1,7 @@
 # User guide
 
 This guide shows how a team uses the agentic office: how to get the software, run a hub, join
-meetings as a human with a headset, and bring in agents.
+meetings as a human with a headset or a voice print, and bring in agents.
 
 The commands explain themselves. `office help` lists them, `office <group> --help` lists the
 commands of one group (for example `office admin --help`), `office <command> --help` shows the
@@ -502,10 +502,36 @@ The first run downloads a model of about 540 MB. The run can take a few minutes 
 documents. Then check `.office/vocabulary.txt`: delete what is wrong and move the most important
 terms to the top.
 
+### Use loudspeakers: make a voice print
+
+With loudspeakers, the voices of the others reach your microphone and would end up in your
+transcript. A voice print prevents that. Speak alone in a quiet room, in your normal voice, and
+read a page aloud:
+
+```sh
+office voice enrol
+```
+
+The client collects about 20 seconds of speech, keeps a voice print (256 numbers) and discards
+the recording. From then on, `office meeting join --mic` uses it: the client compares each
+sentence with your voice print and drops the parts that are not your voice. It reports them as
+`not your voice`.
+
+- A voice print is biometric data (Art. 9 GDPR). By running the command, you agree that the
+  client makes and keeps it. It stays in one file on your computer that only you can read. The
+  hub, the other participants and the agents never get it.
+- `office voice show` tells you when it was made. `office voice delete` removes it.
+  `--no-voice-print` ignores it for one join.
+- When another voice speaks at the same time as you, the louder voice wins. Words of yours may be
+  missing, or words of someone else may stay in. The client then marks the sentence, and agents
+  that see the mark ask before they act on it.
+- `--debug` shows, for each sentence, how close each part was to your voice print.
+
 ### Speak in a meeting
 
-Use a headset: the client has no echo cancellation. Join with the name of the meeting, for
-example `weekly`:
+Use a headset, or make a voice print of your voice first (see below). Without a voice print, the
+client hears everything that the microphone hears and has no echo cancellation. Join with the name
+of the meeting, for example `weekly`:
 
 ```sh
 office meeting join weekly --mic
@@ -524,7 +550,7 @@ office meeting join weekly --mic
   network is back. Sentences that are still waiting when you quit are lost; the client says how
   many.
 - `--wav FILE` plays a WAV file in real time instead of the microphone. This is how you try the
-  ears without a headset.
+  ears without a microphone.
 - Before you join, the client checks the models, the WAV file and the recorder. If something is
   missing, the join fails and you do not join. The client needs a recorder program that runs as
   your user; it tries `parec`, `arecord`, `rec` and, on macOS, `ffmpeg`. To use another one, set
@@ -1749,7 +1775,7 @@ scripts/try-local.sh tail bot                        # what the agent reads; sto
 - `scripts/try-local.sh register me <public key> human` registers a client on your computer. That
   client then joins this hub: run `office hub add trial https://localhost:8740 --default` and
   compare the fingerprint with the log of the hub container (the script also leaves the
-  certificate in `office-trial/hub.crt`). This is how you try your headset (see [Join a meeting](#3-join-a-meeting)).
+  certificate in `office-trial/hub.crt`). This is how you try your microphone (see [Join a meeting](#3-join-a-meeting)).
 - `scripts/try-local.sh down` removes everything again.
 
 | Variable | Default | Meaning |

@@ -393,6 +393,10 @@ type SubmitUtteranceRequest struct {
 	Text          string                 `protobuf:"bytes,4,opt,name=text,proto3" json:"text,omitempty"`
 	Modality      streamapi.Modality     `protobuf:"varint,5,opt,name=modality,proto3,enum=office.sessionstream.v1.Modality" json:"modality,omitempty"`
 	TranscribedAt *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=transcribed_at,json=transcribedAt,proto3" json:"transcribed_at,omitempty"`
+	// overlap is set by the ears when they heard another voice, or one they could not assign, at
+	// the same time as the utterance or directly before or after it (dec-overlap-hint). Only a voice
+	// utterance can carry it; the hub rejects it on typed text.
+	Overlap       bool `protobuf:"varint,7,opt,name=overlap,proto3" json:"overlap,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -467,6 +471,13 @@ func (x *SubmitUtteranceRequest) GetTranscribedAt() *timestamppb.Timestamp {
 		return x.TranscribedAt
 	}
 	return nil
+}
+
+func (x *SubmitUtteranceRequest) GetOverlap() bool {
+	if x != nil {
+		return x.Overlap
+	}
+	return false
 }
 
 type SubmitUtteranceResponse struct {
@@ -3023,7 +3034,7 @@ const file_office_sessioncommands_v1_commands_proto_rawDesc = "" +
 	"command_id\x18\x02 \x01(\tR\tcommandId\x12%\n" +
 	"\x0eparticipant_id\x18\x03 \x01(\tR\rparticipantId\"Q\n" +
 	"\rLeaveResponse\x12@\n" +
-	"\x06result\x18\x01 \x01(\v2(.office.sessioncommands.v1.CommandResultR\x06result\"\x93\x02\n" +
+	"\x06result\x18\x01 \x01(\v2(.office.sessioncommands.v1.CommandResultR\x06result\"\xad\x02\n" +
 	"\x16SubmitUtteranceRequest\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x1d\n" +
@@ -3032,7 +3043,8 @@ const file_office_sessioncommands_v1_commands_proto_rawDesc = "" +
 	"\x0eparticipant_id\x18\x03 \x01(\tR\rparticipantId\x12\x12\n" +
 	"\x04text\x18\x04 \x01(\tR\x04text\x12=\n" +
 	"\bmodality\x18\x05 \x01(\x0e2!.office.sessionstream.v1.ModalityR\bmodality\x12A\n" +
-	"\x0etranscribed_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\rtranscribedAt\"[\n" +
+	"\x0etranscribed_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\rtranscribedAt\x12\x18\n" +
+	"\aoverlap\x18\a \x01(\bR\aoverlap\"[\n" +
 	"\x17SubmitUtteranceResponse\x12@\n" +
 	"\x06result\x18\x01 \x01(\v2(.office.sessioncommands.v1.CommandResultR\x06result\"\xac\x01\n" +
 	"\x17MarkOffTheRecordRequest\x12\x1d\n" +

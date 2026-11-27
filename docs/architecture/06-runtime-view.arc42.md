@@ -51,7 +51,7 @@ after the last sentence, the ears submit the end of the turn. Agents that wait f
 :::runtime-scenario
 id: rs-human-speaks
 title: Human speaks, agent receives the sentence
-trigger: End of sentence (VAD pause) in the headset signal
+trigger: End of sentence (VAD pause) in the signal of the owner
 involves: bb-ears, bb-client-core, bb-session-service, bb-replicator, bb-cli, bb-participant-client, bb-office-hub
 :::
 ```
@@ -72,7 +72,7 @@ sequenceDiagram
     participant bb_session as Meeting session
     participant bb_replicator as Log replicator
     participant bb_cli as office CLI
-    actor_human->>bb_ears: speaks (headset)
+    actor_human->>bb_ears: speaks
     bb_ears->>bb_ears: VAD + Whisper (local)
     bb_ears->>bb_session: submit the utterance (text, voice)
     bb_session-->>bb_ears: event id

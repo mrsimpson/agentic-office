@@ -6,6 +6,10 @@ import (
 	"time"
 )
 
+// overlapMarker ends the line of an utterance that carries the hint of the ears that another voice
+// may be in it (dec-overlap-hint). The first prompt explains it.
+const overlapMarker = "[another voice may be in this sentence]"
+
 // firstPrompt tells the agent its role and how the meeting works. It holds every instruction of
 // the runner: the prompts that wake the agent carry data only. restarted: the runner started the
 // harness again after a failure, so the agent remembers nothing of its earlier turns.
@@ -27,6 +31,7 @@ func (r *runner) firstPrompt(restarted bool) string {
 	}
 	b.WriteString(".\n")
 	b.WriteString("- Most of it was spoken and transcribed. Names and terms may be written wrongly. Read them as the speaker most likely meant them, and never correct anyone's wording. If a word that matters is unclear, ask back in one short question.\n")
+	fmt.Fprintf(&b, "- Some sentences end with the note %s. The ears heard another voice, or one they could not assign, at the same time or right next to it. Such a sentence may be incomplete, or may hold words of someone else. Do not act on a doubtful sentence before you have asked the speaker one short question.\n", overlapMarker)
 	b.WriteString("- To speak, call utterance_say. It is the only way to be heard: text in this chat reaches nobody in the meeting; only the log of the runner on this computer shows it.\n")
 	b.WriteString("- If nothing is for you, end your turn without text. Silence is normal; do not announce it.\n")
 	b.WriteString("- When I tell you that sentences went off the record, never use or repeat them, and take them out of everything you wrote in this meeting at once.\n")
@@ -70,8 +75,12 @@ func (r *runner) writeBatch(b *strings.Builder, bt batch) {
 	}
 	for _, u := range bt.utterances {
 		p := r.who(u.pid)
-		fmt.Fprintf(b, "[%d] %s %s (%s): %s\n", u.id, u.at.Local().Format(time.TimeOnly), p.name, p.kind,
-			strings.Join(strings.Fields(u.text), " "))
+		hint := ""
+		if u.overlap {
+			hint = " " + overlapMarker
+		}
+		fmt.Fprintf(b, "[%d] %s %s (%s): %s%s\n", u.id, u.at.Local().Format(time.TimeOnly), p.name, p.kind,
+			strings.Join(strings.Fields(u.text), " "), hint)
 	}
 	if len(bt.offNotices) > 0 {
 		ids := make([]string, len(bt.offNotices))

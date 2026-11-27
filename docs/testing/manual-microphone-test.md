@@ -1,4 +1,4 @@
-# Manual headset test (`qs-manual-headset`)
+# Manual microphone test (`qs-manual-microphone`)
 
 This checklist is for the person who tests the ears with a real microphone. The automated tests
 play a synthetic WAV file and use a mock recorder (issue #18, label `mocked`). Only this test
@@ -8,8 +8,11 @@ Plan about 30 minutes. You need a second person or a second terminal to watch th
 
 ## What you need
 
-- A participant laptop (Linux or macOS) with a **headset**. Do not use the laptop speakers: the
-  ears have no echo cancellation (`con-headset-only`).
+- A participant laptop (Linux or macOS). Run the test twice: once with a **headset**, once with the
+  laptop speakers and a voice print (`office voice enrol`, see `con-own-voice-only`). The ears have
+  no echo cancellation, so without a headset and without a voice print the test is not valid.
+- For the run with loudspeakers: a second person who speaks in the meeting, or a second device that
+  plays a recording of another voice next to the laptop. Write down the volume and the distance.
 - A recorder program for your user. On Linux: `parec` (package `pulseaudio-utils`, also for
   PipeWire), `arecord` (`alsa-utils`) or `rec` (`sox`). On macOS: `rec` (SoX) or `ffmpeg`.
 - Go, make, git, a C/C++ compiler and cmake (see "Setup" in the README).
@@ -102,7 +105,7 @@ Post the results as a comment on issue #18, or on a new issue that links to #18 
 template:
 
 ```text
-Laptop: <model, CPU, OS>   Headset: <model>   Recorder: <parec|arecord|rec|ffmpeg>
+Laptop: <model, CPU, OS>   Headset: <model, or loudspeakers + voice print>   Recorder: <parec|arecord|rec|ffmpeg>
 office version: <bin/office version>   Model: ggml-small   Threads: <from ears.log>
 
 Checks 1–9: <pass/fail each, with a note for each fail>
@@ -116,7 +119,7 @@ Total: <words said>, <word errors>   Word error rate: <errors / words>
 
 **Count word errors** like this: a word that is wrong, missing or added counts as one error.
 Ignore case and punctuation. The word error rate is the number of errors divided by the number of
-words you said. The target for it is still open (`OPEN` in `qs-manual-headset`); the test records
+words you said. The target for it is still open (`OPEN` in `qs-manual-microphone`); the test records
 it so that a target can be chosen.
 
 Attach `ears.log` if a check fails.
@@ -127,3 +130,19 @@ Issue #18 (`mocked`) says that no automated test uses a real microphone. This ma
 real thing that #18 asks for. When it passed once on a Linux laptop with PulseAudio or PipeWire,
 post the results on #18. Close #18 only if the results show no problem. Open a new issue for
 each failed check, and link it to #18.
+
+## Run with loudspeakers and a voice print
+
+Repeat the checks with the laptop speakers, after `bin/office voice enrol`. Join with `--debug`
+and keep the `ears.log`: its `gate` lines hold the similarity of every window to your voice print.
+
+While another person speaks through the loudspeakers (or a recording plays), say the test
+sentences. Write down:
+
+- every sentence of the other person that appears under your name (false accepts);
+- every sentence of yours that is missing or cut (false drops);
+- for each sentence with the `overlap` hint: was another voice really in it?
+- the `gate` lines of each false accept and each false drop (best match and windows).
+
+These numbers decide the open accuracy question of `dec-voice-print`. Do the same once with the
+other person and you speaking at the same time.

@@ -111,18 +111,18 @@ metric: p95 ≤ 1.5 s on the reference hardware
 :::
 ```
 
-## Audio capture with a real headset
+## Audio capture with a real microphone
 
 The automated tests use a WAV file. This manual test checks real audio capture and recognition
-quality (see `concept-test-strategy`).
+quality, with a headset and with loudspeakers and a voice print (see `concept-test-strategy`).
 
 ```arc42
 :::quality-scenario
-id: qs-manual-headset
-title: Manual test with a real headset
+id: qs-manual-microphone
+title: Manual test with a real microphone
 quality: qg-performance
-stimulus: A person joins with --mic on a participant laptop with a headset and speaks a few sentences
-response: Each sentence appears as utterance.final with readable text; no audio leaves the device
+stimulus: A person joins with --mic on a participant laptop, with a headset or with loudspeakers and a voice print, and speaks a few sentences while another person speaks on the loudspeakers
+response: Each sentence of the owner appears as utterance.final with readable text, no sentence of the other person appears, and no audio leaves the device
 metric: All spoken sentences arrive; recognition is good enough to follow the meeting (OPEN: define a word error rate)
 :::
 ```

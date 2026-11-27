@@ -91,9 +91,11 @@ type Client interface {
 	Leave(ctx context.Context, sessionID string) (*sessioncommandsv1.CommandResult, error)
 	// Say submits a typed utterance.
 	Say(ctx context.Context, sessionID, text string) (*sessioncommandsv1.CommandResult, error)
-	// SubmitUtterance submits an utterance with a command ID that the caller created.
+	// SubmitUtterance submits an utterance with a command ID that the caller created. overlap is
+	// the hint of the ears that another voice may be in the utterance (dec-overlap-hint); only a
+	// voice utterance can carry it.
 	SubmitUtterance(ctx context.Context, sessionID, cmdID, text string, modality sessionstreamv1.Modality,
-		transcribedAt time.Time) (*sessioncommandsv1.CommandResult, error)
+		transcribedAt time.Time, overlap bool) (*sessioncommandsv1.CommandResult, error)
 	MarkOffTheRecord(ctx context.Context, sessionID string, utteranceEventID uint32) (*sessioncommandsv1.CommandResult, error)
 	// MarkOffTheRecordLast marks off the record the newest own sentence that is not off the
 	// record yet, or fails with ErrNothingOffTheRecord. It reads the local log.

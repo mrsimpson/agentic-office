@@ -13,6 +13,8 @@ type utterance struct {
 	pid  string
 	text string
 	at   time.Time // when the hub appended it
+	// overlap is the hint of the ears that another voice may be in the utterance (dec-overlap-hint).
+	overlap bool
 }
 
 // trigger is what an event asks of the runner.
@@ -80,7 +82,7 @@ func (d *delivery) apply(ev *sessionstreamv1.Event, self string) trigger {
 		if u.GetOffTheRecord() {
 			return triggerNone // a placeholder: no text
 		}
-		ut := utterance{id: ev.GetId(), pid: u.GetParticipantId(), text: u.GetText(), at: ev.GetTime().AsTime()}
+		ut := utterance{id: ev.GetId(), pid: u.GetParticipantId(), text: u.GetText(), at: ev.GetTime().AsTime(), overlap: u.GetOverlap()}
 		d.recent = append(d.recent, ut)
 		if len(d.recent) > 2*contextSize {
 			d.recent = append([]utterance(nil), d.recent[len(d.recent)-contextSize:]...)

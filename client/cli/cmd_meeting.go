@@ -45,6 +45,11 @@ type EarsOptions struct {
 	Vocabulary string
 	// Context adds the previous sentence to Whisper's prompt.
 	Context bool
+	// VoicePrint is the voice print file; NoVoicePrint turns the voice print off.
+	VoicePrint   string
+	NoVoicePrint bool
+	// Debug makes the ears report the measurements of the voice print for every sentence.
+	Debug bool
 	// Names returns the display names of the participants of the session, for Whisper's prompt.
 	// Set by the CLI from the local log.
 	Names func() []string
@@ -123,11 +128,14 @@ func cmdJoin(e *env, fs *flag.FlagSet) func([]string) error {
 		"(env OFFICE_EARS_TURN_SILENCE, default 1.8s)")
 	fs.StringVar(&eo.Vocabulary, "vocabulary", "", "file with terms for Whisper, one per line (default .office/vocabulary.txt, if it is there)")
 	fs.BoolVar(&eo.Context, "context", false, "give Whisper the previous sentence as context")
+	fs.StringVar(&eo.VoicePrint, "voice-print", "", "voice print file (env OFFICE_VOICE_PRINT, default <data dir>/voiceprint.json, if it is there)")
+	fs.BoolVar(&eo.Debug, "debug", false, "report the measurements of the voice print for every sentence (env OFFICE_EARS_DEBUG)")
+	fs.BoolVar(&eo.NoVoicePrint, "no-voice-print", false, "ignore the voice print: the ears then need a headset")
 	return func(args []string) error {
 		if len(args) != 1 {
 			return usagef("usage: office meeting join <session> [--name N] [--foreground] [--mic | --wav FILE] " +
 				"[--language L] [--fast] [--model NAME|FILE] [--vocabulary FILE] [--context] [--vad-model F] [--threads N] " +
-				"[--end-silence D] [--turn-silence D]")
+				"[--end-silence D] [--turn-silence D] [--voice-print FILE | --no-voice-print] [--debug]")
 		}
 		sid := args[0]
 		ears := *mic || *wav != ""
@@ -136,6 +144,9 @@ func cmdJoin(e *env, fs *flag.FlagSet) func([]string) error {
 		}
 		if ears && StartEars == nil {
 			return errEarsNotImplemented
+		}
+		if eo.VoicePrint != "" && eo.NoVoicePrint {
+			return usagef("use --voice-print or --no-voice-print, not both")
 		}
 		eo.Mic, eo.WAV = *mic, *wav
 		if ears && CheckEars != nil {

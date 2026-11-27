@@ -314,7 +314,8 @@ and its output. It is cleaned at logout for $XDG_RUNTIME_DIR.
 
 With --mic or --wav FILE the client joins as captured: the ears transcribe your own speech
 locally with Whisper and the gateway view shows each sentence. Only text leaves your computer.
-Use a headset. A missing speech model is downloaded once; before join, the ears check the
+Use a headset, or make a voice print first ("office voice enrol"): then the ears drop the voices
+of other people, and you can use loudspeakers. A missing speech model is downloaded once; before join, the ears check the
 models, the WAV file or the recorder, and if something is missing you do not join. "office help
 ears" lists the flags and variables of the ears.
 
@@ -461,6 +462,41 @@ about 30 fit into the prompt of Whisper.
 
 --json prints {"file", "documents", "model", "terms": [{"term", "score", "sources"}]}.`,
 		Examples: []string{"office vocabulary extract docs/", "office vocabulary extract --no-model --max 50"}},
+
+	{Name: "voice enrol", Group: groupEars, Summary: "make your voice print, so the ears work with loudspeakers",
+		Usage: "voice enrol [--wav FILE] [--seconds N] [--out FILE] [--replace]",
+		Details: `Makes the voice print that lets the ears transcribe only you, also when the loudspeakers play
+the voices of the other participants. Speak alone, in a quiet room and in your normal voice, for
+example by reading a page aloud. The ears collect about 20 seconds of speech (--seconds, at least
+10), compare the first and the second half, and refuse a recording in which they do not sound
+like one voice. Then they keep a voice print, a list of 256 numbers, and nothing else: the
+recording is not stored. With --wav FILE the ears take the speech from a recording of you.
+
+A voice print is biometric data (Art. 9 GDPR). By running this command you agree that the ears make
+and keep it. It stays in the file <data dir>/voiceprint.json (or --out, or OFFICE_VOICE_PRINT),
+which only you can read. It never leaves your computer: the hub, the other participants and the
+agents never get it. "office voice delete" removes it at any time. The command needs the speaker
+model (26 MB), which it downloads once, like the speech models.
+
+An existing voice print is not replaced unless you pass --replace. "office meeting join --mic"
+uses the voice print if there is one; see "office help ears".
+
+--json prints {"file", "seconds", "model"}.`,
+		Examples: []string{"office voice enrol", "office voice enrol --wav my-voice.wav"}},
+	{Name: "voice show", Group: groupEars, Summary: "say whether there is a voice print and what it was made of",
+		Usage: "voice show [--file FILE]",
+		Details: `Prints the file of the voice print, when it was made, from how many seconds of speech and with which
+model. It never prints the numbers of the voice print. Without a voice print it says so.
+
+--json prints {"file", "exists", "model", "createdAt", "seconds"}.`,
+		Examples: []string{"office voice show"}},
+	{Name: "voice delete", Group: groupEars, Summary: "delete your voice print",
+		Usage: "voice delete [--file FILE]",
+		Details: `Deletes the voice print. Without it, the ears hear everything that the microphone hears, so use a
+headset or enrol again. It is not an error if there is none.
+
+--json prints {"deleted"}.`,
+		Examples: []string{"office voice delete"}},
 
 	// Stage, slides and documents.
 	{Name: "stage focus", Group: groupStage, Summary: "show an artifact on the stage",

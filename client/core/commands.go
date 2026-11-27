@@ -184,18 +184,19 @@ func (c *hubClient) Leave(ctx context.Context, sessionID string) (*sessioncomman
 
 // Say submits a typed utterance (modality text).
 func (c *hubClient) Say(ctx context.Context, sessionID, text string) (*sessioncommandsv1.CommandResult, error) {
-	return c.SubmitUtterance(ctx, sessionID, coreapi.NewCommandID(), text, sessionstreamv1.Modality_MODALITY_TEXT, time.Time{})
+	return c.SubmitUtterance(ctx, sessionID, coreapi.NewCommandID(), text, sessionstreamv1.Modality_MODALITY_TEXT, time.Time{}, false)
 }
 
 // SubmitUtterance submits an utterance with a given command ID. The ears (#8) use it with the
 // ID they created when the sentence became final, so a resend after a drop is not stored twice.
-// transcribedAt may be zero for typed text.
-func (c *hubClient) SubmitUtterance(ctx context.Context, sessionID, cmdID, text string, modality sessionstreamv1.Modality, transcribedAt time.Time) (*sessioncommandsv1.CommandResult, error) {
+// transcribedAt may be zero for typed text. overlap is the hint of the ears that another voice
+// may be in the utterance (dec-overlap-hint); typed text passes false.
+func (c *hubClient) SubmitUtterance(ctx context.Context, sessionID, cmdID, text string, modality sessionstreamv1.Modality, transcribedAt time.Time, overlap bool) (*sessioncommandsv1.CommandResult, error) {
 	pid, err := c.ParticipantID(ctx)
 	if err != nil {
 		return nil, err
 	}
-	req := &sessioncommandsv1.SubmitUtteranceRequest{SessionId: sessionID, CommandId: cmdID, ParticipantId: pid, Text: text, Modality: modality}
+	req := &sessioncommandsv1.SubmitUtteranceRequest{SessionId: sessionID, CommandId: cmdID, ParticipantId: pid, Text: text, Modality: modality, Overlap: overlap}
 	if !transcribedAt.IsZero() {
 		req.TranscribedAt = timestamppb.New(transcribedAt)
 	}

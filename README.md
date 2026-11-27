@@ -1,7 +1,7 @@
 # Agentic office
 
 A headless office for teams of humans and agents. Humans and agents join meeting sessions as
-participants of the same kind. Humans with a headset are transcribed locally. Every participant
+participants of the same kind. Humans with a headset, or with a voice print of their own voice, are transcribed locally. Every participant
 gets a local copy of the session log. Agents act through a CLI and MCP. A stage shows the meeting
 by screen share.
 
@@ -188,7 +188,7 @@ client/                   bb-participant-client: wiring of the client (binary of
 tests/                    external actors: may use interfaces only (see tests/README.md)
 docs/architecture/        the arc42 architecture
 docs/site/                the documentation site (Starlight); its pages are made at build time
-docs/testing/             manual tests (the headset test)
+docs/testing/             manual tests (the microphone test)
 scripts/                  try-local.sh, which the user guide describes
 ```
 

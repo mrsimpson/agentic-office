@@ -1,0 +1,5 @@
+owner (close microphone): Wir sollten das Release auf nächste Woche verschieben.
+remote (loudspeaker, 6 dB quieter): Der Kunde möchte zuerst die Kosten verstehen.
+owner (close microphone): Kannst du bitte die Folien für die Besprechung vorbereiten?
+remote (loudspeaker, 6 dB quieter): Im Moment fehlt uns noch eine Entscheidung zur Datenbank.
+owner (close microphone): Ich übernehme die Aufgabe und melde mich bis Freitag.

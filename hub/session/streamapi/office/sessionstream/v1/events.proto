@@ -83,6 +83,12 @@ message UtteranceFinal {
   // for an imported utterance whose import gave a time (dec-session-import). The hub does not
   // check it.
   google.protobuf.Timestamp original_time = 6;
+  // overlap is true when the ears heard another voice, or one they could not assign, at the same
+  // time as the utterance or directly before or after it (dec-overlap-hint). False means "not
+  // known to overlap". It is only ever true for voice utterances from ears that use a voice
+  // print. The hub stores and passes it on and judges nothing. A placeholder of an utterance off
+  // the record does not carry it.
+  bool overlap = 7;
 }
 
 message UtteranceOffTheRecord {

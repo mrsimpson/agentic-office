@@ -10,6 +10,14 @@
 //   - VAD: the Silero model of whisper.cpp gives a speech probability for every 32 ms window.
 //     A sentence ends after EndSilence (default 500 ms) without speech. See vad.go for why the
 //     streaming API is used instead of whisper.cpp's segment API.
+//   - Voice print (package speaker, dec-voice-print): with a voice print of the owner, each sentence
+//     goes through a speaker model (WeSpeaker ResNet34, plain Go, no cgo) before Whisper. The model
+//     scores windows of 1.5 s against the print; only the stretches that score 0.50 or more go on.
+//     The ears set the overlap hint on the sentence when other speech was dropped next to the kept
+//     stretches or the kept stretches are doubtful (below 0.60), see dec-overlap-hint. The print is a
+//     file that only the user can read (DefaultVoicePrintFile); Enrol makes it from speech of the
+//     owner. Without a print, the ears need a headset and set no hint. Config.Debug reports the
+//     scores of every sentence (type gate).
 //   - Whisper: one whisper.cpp context transcribes one sentence after the other. Model, language
 //     and threads are configurable (Config).
 //   - Queue: when Whisper has the text, the ears create the command ID, report the status final

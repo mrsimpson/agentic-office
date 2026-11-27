@@ -1,0 +1,2 @@
+owner: Ich übernehme die Aufgabe und melde mich bis Freitag, dann schauen wir uns die Ergebnisse gemeinsam an.
+remote (starts 1.5 s before the owner ends): Im Moment fehlt uns noch eine Entscheidung zur Datenbank und zum Budget.
