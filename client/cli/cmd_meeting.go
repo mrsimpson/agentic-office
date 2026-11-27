@@ -131,9 +131,10 @@ func cmdJoin(e *env, fs *flag.FlagSet) func([]string) error {
 	fs.StringVar(&eo.VoicePrint, "voice-print", "", "voice print file (env OFFICE_VOICE_PRINT, default <data dir>/voiceprint.json, if it is there)")
 	fs.BoolVar(&eo.Debug, "debug", false, "report the measurements of the voice print for every sentence (env OFFICE_EARS_DEBUG)")
 	fs.BoolVar(&eo.NoVoicePrint, "no-voice-print", false, "ignore the voice print: the ears then need a headset")
+	noBrowser := fs.Bool("no-browser", false, "do not open the stage in the browser (it opens only when stderr is a terminal)")
 	return func(args []string) error {
 		if len(args) != 1 {
-			return usagef("usage: office meeting join <session> [--name N] [--foreground] [--mic | --wav FILE] " +
+			return usagef("usage: office meeting join <session> [--name N] [--foreground] [--no-browser] [--mic | --wav FILE] " +
 				"[--language L] [--fast] [--model NAME|FILE] [--vocabulary FILE] [--context] [--vad-model F] [--threads N] " +
 				"[--end-silence D] [--turn-silence D] [--voice-print FILE | --no-voice-print] [--debug]")
 		}
@@ -185,6 +186,12 @@ func cmdJoin(e *env, fs *flag.FlagSet) func([]string) error {
 			fmt.Fprintln(e.stdout, j.Paths.Log)
 			if stageURL != "" {
 				fmt.Fprintf(e.stderr, "stage: %s\n", stageURL)
+			}
+		}
+		// Opening the stage is a convenience too: a failure only says so.
+		if stageURL != "" && !*noBrowser && e.interactive() {
+			if err := openBrowser(stageURL); err != nil {
+				e.progress(fmt.Sprintf("could not open the stage in the browser: %v", err))
 			}
 		}
 		if !*fg && !ears {

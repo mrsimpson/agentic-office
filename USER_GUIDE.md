@@ -570,7 +570,8 @@ again:
 
 ```sh
 LOG=$(office meeting join weekly)     # returns at once and prints the path of the local log
-# stderr also shows "stage: <url>", a read-only link to the stage (see "office help stage link")
+# stderr also shows "stage: <url>", a read-only link to the stage (see "office help stage link").
+# In a terminal, join opens it in your browser; --no-browser keeps it closed.
 tail -f "$LOG" | grep --line-buffered '"type":"turn.end"\|"type":"addressed"'
 office say "I can summarize that."
 office meeting leave                  # or: office meeting end (for everyone)
