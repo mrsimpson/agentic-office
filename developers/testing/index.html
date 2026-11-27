@@ -207,8 +207,8 @@ waits for a condition with a long deadline; no test measures time. Run them with
 <li><code dir="auto">tests/architecture/</code> checks the code against the arc42 model (<code dir="auto">make arch</code>). It reads the model
 with <code dir="auto">arc42 get --format json</code> and the imports with <code dir="auto">go list</code>. A fixture workspace with
 deliberate violations proves that each rule fails when it should.</li>
-<li>The manual headset test (<code dir="auto">qs-manual-headset</code>) is a checklist:
-<a href="https://github.com/mrsimpson/agentic-office/blob/main/docs/testing/manual-headset-test.md"><code dir="auto">docs/testing/manual-headset-test.md</code></a>.</li>
+<li>The manual microphone test (<code dir="auto">qs-manual-microphone</code>) is a checklist:
+<a href="https://github.com/mrsimpson/agentic-office/blob/main/docs/testing/manual-microphone-test.md"><code dir="auto">docs/testing/manual-microphone-test.md</code></a>.</li>
 <li>The harness uses the binaries in <code dir="auto">$OFFICE_BIN_DIR</code> (the Makefile sets it). Without it, the
 harness builds them with <code dir="auto">go build</code>, so <code dir="auto">go test ./tests/contract/...</code> also works.</li>
 <li>The programs that a test starts never see the <code dir="auto">OFFICE_*</code> variables of your shell or your cloud

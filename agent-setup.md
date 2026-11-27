@@ -135,7 +135,7 @@ office meeting leave
   run `office config show`: it names the hub, the tenant and the key that the client uses.
 - With a microphone, give the human this command for their own terminal, and ask them to say
   one sentence: `office meeting join <meeting> --mic --language english`. Keys: `p` pause,
-  `o` off the record, `q` leave. Use a headset.
+  `o` off the record, `q` leave. Use a headset, or make a voice print first with `office voice enrol`.
 
 ## 7. The agents of the human
 
