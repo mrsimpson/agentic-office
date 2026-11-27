@@ -8,10 +8,12 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/mrsimpson/agentic-office/client/ears/audio"
+	"github.com/mrsimpson/agentic-office/client/ears/speaker"
 
 	coreapi "github.com/mrsimpson/agentic-office/client/core/api"
 
@@ -53,11 +55,23 @@ type Config struct {
 	Vocabulary string
 	// Context adds the previous sentence to the prompt.
 	Context bool
+	// VoicePrint is the file with the voice print of the owner (dec-voice-print). Env
+	// OFFICE_VOICE_PRINT. Empty means DefaultVoicePrintFile, if it is there. With a voice print,
+	// the ears transcribe only the parts of a sentence that are the owner's voice.
+	VoicePrint string
+	// Debug adds a "gate" report for every sentence, with the measurements of the voice print.
+	// Env OFFICE_EARS_DEBUG.
+	Debug bool
+	// NoVoicePrint uses no voice print, also if there is one: the ears then hear everything the
+	// microphone hears and need a headset.
+	NoVoicePrint bool
 
 	recorder []string
 	samples  []float32
 	terms    []string
 	vocFile  string
+	// printFile and speakerFile are the voice print and the speaker model, or empty without one.
+	printFile, speakerFile string
 }
 
 // Defaults of Config.
@@ -180,6 +194,18 @@ func (c *Config) Prepare(ctx context.Context, progress func(string)) error {
 	if c.terms == nil {
 		c.vocFile = ""
 	}
+	if !c.Debug {
+		if v := os.Getenv("OFFICE_EARS_DEBUG"); v != "" {
+			b, err := strconv.ParseBool(v)
+			if err != nil {
+				return fmt.Errorf("OFFICE_EARS_DEBUG=%q is not true or false", v)
+			}
+			c.Debug = b
+		}
+	}
+	if err := c.prepareVoicePrint(ctx, progress); err != nil {
+		return err
+	}
 	switch {
 	case c.Mic == (c.WAV != ""):
 		return errors.New("use either the microphone or a WAV file")
@@ -197,6 +223,41 @@ func (c *Config) Prepare(ctx context.Context, progress func(string)) error {
 		c.recorder = r
 	}
 	return nil
+}
+
+// DefaultVoicePrintFile is where the voice print of the owner is kept: voiceprint.json in the
+// data directory of the ears, next to the models directory.
+func DefaultVoicePrintFile() string {
+	return filepath.Join(filepath.Dir(ModelDir()), "voiceprint.json")
+}
+
+// prepareVoicePrint decides whether the ears use a voice print, and downloads the speaker model
+// if it is missing. A print that was asked for by a flag or a variable must exist; the default
+// file only counts if it is there.
+func (c *Config) prepareVoicePrint(ctx context.Context, progress func(string)) error {
+	c.printFile, c.speakerFile = "", ""
+	if c.NoVoicePrint {
+		return nil
+	}
+	file, explicit := c.VoicePrint, c.VoicePrint != ""
+	if file == "" {
+		if file = os.Getenv("OFFICE_VOICE_PRINT"); file != "" {
+			explicit = true
+		}
+	}
+	if file == "" {
+		file = DefaultVoicePrintFile()
+	}
+	_, err := speaker.LoadPrint(file)
+	switch {
+	case errors.Is(err, speaker.ErrNoPrint) && !explicit:
+		return nil
+	case err != nil:
+		return err
+	}
+	c.printFile = file
+	c.speakerFile = filepath.Join(ModelDir(), speakerModel.file)
+	return ensureModel(ctx, speakerModel, c.speakerFile, progress)
 }
 
 // Ears connect one audio source to one participant in one session.
@@ -221,8 +282,10 @@ type Ears struct {
 type Report struct {
 	// Type is listening, vocabulary (Whisper's prompt changed), final, sent, turn-end (the
 	// turn.end after a turn is submitted), retry (not sent yet, repeating), dropped (the server
-	// rejected it for good), skipped (Whisper failed), unsent (lost because the ears stopped) or
-	// done (the WAV file is over and everything is sent).
+	// rejected it for good), skipped (Whisper failed), other-voice (the voice print dropped a
+	// sentence or a part of it), gate (with Debug: the measurements of the voice print for every
+	// sentence), unsent (lost because the ears stopped) or done (the WAV file is
+	// over and everything is sent).
 	Type      string `json:"type"`
 	CommandID string `json:"commandId,omitempty"`
 	Text      string `json:"text,omitempty"`
@@ -235,14 +298,30 @@ type Report struct {
 	// SubmittedAt is when the server confirmed the utterance or the turn.end.
 	SubmittedAt *time.Time `json:"submittedAt,omitempty"`
 
-	AudioMs             int64  `json:"audioMs,omitempty"`
-	WhisperMs           int64  `json:"whisperMs,omitempty"`
-	SpeechEndToFinalMs  int64  `json:"speechEndToFinalMs,omitempty"`
-	SpeechEndToSubmitMs int64  `json:"speechEndToSubmitMs,omitempty"`
-	Attempts            int    `json:"attempts,omitempty"`
-	Duplicate           bool   `json:"duplicate,omitempty"`
-	Queued              int    `json:"queued,omitempty"`
-	Error               string `json:"error,omitempty"`
+	AudioMs             int64 `json:"audioMs,omitempty"`
+	WhisperMs           int64 `json:"whisperMs,omitempty"`
+	SpeechEndToFinalMs  int64 `json:"speechEndToFinalMs,omitempty"`
+	SpeechEndToSubmitMs int64 `json:"speechEndToSubmitMs,omitempty"`
+	Attempts            int   `json:"attempts,omitempty"`
+	// Overlap is true for a final sentence in which the ears suspect another voice
+	// (dec-overlap-hint).
+	Overlap bool `json:"overlap,omitempty"`
+	// Score is the best similarity of the sentence to the voice print, for type other-voice;
+	// DroppedMs is the speech that was dropped.
+	Score     float64 `json:"score,omitempty"`
+	DroppedMs int64   `json:"droppedMs,omitempty"`
+	// VoicePrint is true for type listening when the ears use a voice print.
+	VoicePrint bool `json:"voicePrint,omitempty"`
+	// For type gate: the similarity of each window to the voice print with the middle of the
+	// window in ms from the start of the sentence, the stretches that went to Whisper, and the
+	// limits that were used.
+	Windows   []GateWindow `json:"windows,omitempty"`
+	KeptMs    [][2]int64   `json:"keptMs,omitempty"`
+	Threshold float64      `json:"threshold,omitempty"`
+	Doubt     float64      `json:"doubt,omitempty"`
+	Duplicate bool         `json:"duplicate,omitempty"`
+	Queued    int          `json:"queued,omitempty"`
+	Error     string       `json:"error,omitempty"`
 
 	// For type listening.
 	Source   string `json:"source,omitempty"`
@@ -259,11 +338,41 @@ type Report struct {
 	Prompt         string `json:"prompt,omitempty"`
 }
 
+// GateWindow is the similarity of one window of a sentence to the voice print.
+type GateWindow struct {
+	AtMs  int64   `json:"atMs"`
+	Score float64 `json:"score"`
+}
+
 // String is the short text form of a report for the terminal.
 func (r Report) String() string {
 	switch r.Type {
 	case "listening":
-		return fmt.Sprintf("listening to %s (model %s, language %s, %d threads)", r.Source, filepath.Base(r.Model), r.Language, r.Threads)
+		s := fmt.Sprintf("listening to %s (model %s, language %s, %d threads)", r.Source, filepath.Base(r.Model), r.Language, r.Threads)
+		if r.VoicePrint {
+			s += "; only your voice, by your voice print"
+		}
+		return s
+	case "gate":
+		var w, k []string
+		for _, x := range r.Windows {
+			w = append(w, fmt.Sprintf("%.2f", x.Score))
+		}
+		for _, x := range r.KeptMs {
+			k = append(k, fmt.Sprintf("%.1f-%.1f s", float64(x[0])/1000, float64(x[1])/1000))
+		}
+		kept := "nothing kept"
+		if len(k) > 0 {
+			kept = "kept " + strings.Join(k, ", ")
+		}
+		s := fmt.Sprintf("gate: best %.2f, windows [%s], %s, dropped %d ms (owner from %.2f, doubt below %.2f)",
+			r.Score, strings.Join(w, " "), kept, r.DroppedMs, r.Threshold, r.Doubt)
+		if r.Overlap {
+			s += ", overlap"
+		}
+		return s
+	case "other-voice":
+		return fmt.Sprintf("not your voice: dropped %d ms of speech (best match %.2f)", r.DroppedMs, r.Score)
 	case "vocabulary":
 		s := fmt.Sprintf("vocabulary: %d terms and %d names in the prompt", r.Terms, r.Names)
 		if r.VocabularyFile != "" {
@@ -274,7 +383,11 @@ func (r Report) String() string {
 		}
 		return s
 	case "final":
-		return fmt.Sprintf("final after %d ms (whisper %d ms for %d ms of audio)", r.SpeechEndToFinalMs, r.WhisperMs, r.AudioMs)
+		s := fmt.Sprintf("final after %d ms (whisper %d ms for %d ms of audio)", r.SpeechEndToFinalMs, r.WhisperMs, r.AudioMs)
+		if r.Overlap {
+			s += "; another voice may be in it"
+		}
+		return s
 	case "sent":
 		return fmt.Sprintf("sent #%d %d ms after the end of speech (attempts %d)", r.EventID, r.SpeechEndToSubmitMs, r.Attempts)
 	case "turn-end":
@@ -299,6 +412,8 @@ type utterance struct {
 	speechEnd     time.Time
 	transcribedAt time.Time
 	turnEnd       bool
+	// overlap is the hint that another voice may be in the sentence (dec-overlap-hint).
+	overlap bool
 	// pauses is the number of pauses when the turn of a turn.end began.
 	pauses uint64
 }
@@ -383,7 +498,19 @@ func (e *Ears) Run(ctx context.Context) error {
 
 	srcCtx, stopSrc := context.WithCancel(ctx)
 	defer stopSrc()
-	report(Report{Type: "listening", Source: name, Model: e.Model, Language: e.Language, Threads: e.Threads})
+	var gate *speaker.Gate
+	if e.printFile != "" {
+		p, err := speaker.LoadPrint(e.printFile)
+		if err != nil {
+			return err
+		}
+		sm, err := speaker.Load(e.speakerFile)
+		if err != nil {
+			return fmt.Errorf("load the speaker model %s: %w", e.speakerFile, err)
+		}
+		gate = speaker.NewGate(sm, p.Embedding)
+	}
+	report(Report{Type: "listening", Source: name, Model: e.Model, Language: e.Language, Threads: e.Threads, VoicePrint: gate != nil})
 	names := func() []string {
 		if e.Names == nil {
 			return nil
@@ -443,29 +570,57 @@ func (e *Ears) Run(ctx context.Context) error {
 				}
 				continue
 			}
-			setPrompt(prev)
-			start := time.Now()
-			text, err := tr.transcribe(s.samples)
-			done := time.Now()
-			if err != nil {
-				report(Report{Type: "skipped", Error: "whisper: " + err.Error()})
-				continue
+			// With a voice print, only the stretches of the owner's voice go to Whisper. Each
+			// stretch is its own sentence; all of them carry the hint when another voice was
+			// heard in the sentence (dec-voice-print, dec-overlap-hint).
+			parts, overlap := [][]float32{s.samples}, false
+			if gate != nil {
+				v := gate.Judge(s.samples)
+				dropped := int64(v.ForeignSamples) * 1000 / audio.SampleRate
+				if e.Debug {
+					g := Report{Type: "gate", AudioMs: int64(len(s.samples)) * 1000 / audio.SampleRate, Score: float64(v.Score),
+						DroppedMs: dropped, Overlap: v.Overlap, Threshold: speaker.Threshold, Doubt: speaker.Doubt}
+					for _, w := range v.Windows {
+						g.Windows = append(g.Windows, GateWindow{AtMs: w.AtMs, Score: float64(w.Score)})
+					}
+					for _, r := range v.Runs {
+						g.KeptMs = append(g.KeptMs, [2]int64{int64(r.Start) * 1000 / audio.SampleRate, int64(r.End) * 1000 / audio.SampleRate})
+					}
+					report(g)
+				}
+				if dropped > 0 || len(v.Runs) == 0 {
+					report(Report{Type: "other-voice", Score: float64(v.Score), DroppedMs: dropped})
+				}
+				parts, overlap = nil, v.Overlap
+				for _, r := range v.Runs {
+					parts = append(parts, s.samples[r.Start:r.End])
+				}
 			}
-			if text == "" {
-				continue
+			for _, samples := range parts {
+				setPrompt(prev)
+				start := time.Now()
+				text, err := tr.transcribe(samples)
+				done := time.Now()
+				if err != nil {
+					report(Report{Type: "skipped", Error: "whisper: " + err.Error()})
+					continue
+				}
+				if text == "" {
+					continue
+				}
+				if n, paused = ps.observe(); paused {
+					spoke = false
+					break
+				}
+				prev = text
+				u := utterance{cmdID: coreapi.NewCommandID(), text: text, speechEnd: s.speechEnd, transcribedAt: done, overlap: overlap}
+				e.Status(u.cmdID, u.text, coreapi.StatusFinal)
+				report(Report{Type: "final", CommandID: u.cmdID, Text: text, SpeechEnd: &u.speechEnd, TranscribedAt: &u.transcribedAt,
+					AudioMs: int64(len(samples)) * 1000 / audio.SampleRate, WhisperMs: done.Sub(start).Milliseconds(),
+					SpeechEndToFinalMs: done.Sub(s.speechEnd).Milliseconds(), Overlap: overlap})
+				queue.push(u)
+				spoke, turn = true, n
 			}
-			if n, paused = ps.observe(); paused {
-				spoke = false
-				continue
-			}
-			prev = text
-			u := utterance{cmdID: coreapi.NewCommandID(), text: text, speechEnd: s.speechEnd, transcribedAt: done}
-			e.Status(u.cmdID, u.text, coreapi.StatusFinal)
-			report(Report{Type: "final", CommandID: u.cmdID, Text: text, SpeechEnd: &u.speechEnd, TranscribedAt: &u.transcribedAt,
-				AudioMs: int64(len(s.samples)) * 1000 / audio.SampleRate, WhisperMs: done.Sub(start).Milliseconds(),
-				SpeechEndToFinalMs: done.Sub(s.speechEnd).Milliseconds()})
-			queue.push(u)
-			spoke, turn = true, n
 		}
 	}()
 
@@ -577,7 +732,7 @@ func (e *Ears) submit(ctx context.Context, u utterance) (result, error) {
 	if u.turnEnd {
 		return e.Client.SubmitTurnEnd(ctx, e.SessionID, u.cmdID, "")
 	}
-	return e.Client.SubmitUtterance(ctx, e.SessionID, u.cmdID, u.text, sessionstreamv1.Modality_MODALITY_VOICE, u.transcribedAt)
+	return e.Client.SubmitUtterance(ctx, e.SessionID, u.cmdID, u.text, sessionstreamv1.Modality_MODALITY_VOICE, u.transcribedAt, u.overlap)
 }
 
 // permanent is true for errors that a repeat of the same command cannot fix.

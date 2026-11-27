@@ -639,7 +639,13 @@ type UtteranceFinal struct {
 	// original_time is when the utterance was made in the original conversation. It is set only
 	// for an imported utterance whose import gave a time (dec-session-import). The hub does not
 	// check it.
-	OriginalTime  *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=original_time,json=originalTime,proto3" json:"original_time,omitempty"`
+	OriginalTime *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=original_time,json=originalTime,proto3" json:"original_time,omitempty"`
+	// overlap is true when the ears heard another voice, or one they could not assign, at the same
+	// time as the utterance or directly before or after it (dec-overlap-hint). False means "not
+	// known to overlap". It is only ever true for voice utterances from ears that use a voice
+	// print. The hub stores and passes it on and judges nothing. A placeholder of an utterance off
+	// the record does not carry it.
+	Overlap       bool `protobuf:"varint,7,opt,name=overlap,proto3" json:"overlap,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -714,6 +720,13 @@ func (x *UtteranceFinal) GetOriginalTime() *timestamppb.Timestamp {
 		return x.OriginalTime
 	}
 	return nil
+}
+
+func (x *UtteranceFinal) GetOverlap() bool {
+	if x != nil {
+		return x.Overlap
+	}
+	return false
 }
 
 type UtteranceOffTheRecord struct {
@@ -1950,14 +1963,15 @@ const file_office_sessionstream_v1_events_proto_rawDesc = "" +
 	"\x10session_restored\x181 \x01(\v2(.office.sessionstream.v1.SessionRestoredH\x00R\x0fsessionRestored\x12U\n" +
 	"\x10session_imported\x182 \x01(\v2(.office.sessionstream.v1.SessionImportedH\x00R\x0fsessionImported\x12U\n" +
 	"\x10import_completed\x183 \x01(\v2(.office.sessionstream.v1.ImportCompletedH\x00R\x0fimportCompletedB\t\n" +
-	"\apayload\"\xb4\x02\n" +
+	"\apayload\"\xce\x02\n" +
 	"\x0eUtteranceFinal\x12%\n" +
 	"\x0eparticipant_id\x18\x01 \x01(\tR\rparticipantId\x12\x12\n" +
 	"\x04text\x18\x02 \x01(\tR\x04text\x12=\n" +
 	"\bmodality\x18\x03 \x01(\x0e2!.office.sessionstream.v1.ModalityR\bmodality\x12A\n" +
 	"\x0etranscribed_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\rtranscribedAt\x12$\n" +
 	"\x0eoff_the_record\x18\x05 \x01(\bR\foffTheRecord\x12?\n" +
-	"\roriginal_time\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\foriginalTime\"E\n" +
+	"\roriginal_time\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\foriginalTime\x12\x18\n" +
+	"\aoverlap\x18\a \x01(\bR\aoverlap\"E\n" +
 	"\x15UtteranceOffTheRecord\x12,\n" +
 	"\x12utterance_event_id\x18\x01 \x01(\rR\x10utteranceEventId\"V\n" +
 	"\x12UtteranceCorrected\x12,\n" +

@@ -152,6 +152,10 @@ message SubmitUtteranceRequest {
   string text = 4;
   office.sessionstream.v1.Modality modality = 5;
   google.protobuf.Timestamp transcribed_at = 6;
+  // overlap is set by the ears when they heard another voice, or one they could not assign, at
+  // the same time as the utterance or directly before or after it (dec-overlap-hint). Only a voice
+  // utterance can carry it; the hub rejects it on typed text.
+  bool overlap = 7;
 }
 
 message SubmitUtteranceResponse {

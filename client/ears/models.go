@@ -70,6 +70,18 @@ var vadModel = model{
 	about:  "voice activity detection",
 }
 
+// speakerModel is the model of the voice print (dec-voice-print): WeSpeaker ResNet34, trained on
+// VoxCeleb and fine-tuned with large margin. The card of the model says CC-BY-4.0; the training
+// data is VoxCeleb, whose terms we did not check for a product (OPEN in dec-voice-print). The
+// source is pinned to a commit of its Hugging Face repository.
+var speakerModel = model{
+	name: "speaker-wespeaker-resnet34", what: "speaker model", file: "wespeaker-voxceleb-resnet34-LM.onnx",
+	url:    "https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34-LM/resolve/f0c48c298fd835726c27956a5d617bad7115627e/voxceleb_resnet34_LM.onnx",
+	sha256: "7bb2f06e9df17cdf1ef14ee8a15ab08ed28e8d0ef5054ee135741560df2ec068",
+	size:   26530309,
+	about:  "voice print: tells your voice from other voices",
+}
+
 func catalogueModel(name string) (model, bool) {
 	for _, m := range catalogue {
 		if m.name == name {
@@ -186,7 +198,7 @@ func Catalogue(name, language string, fast bool) ([]ModelInfo, Choice, error) {
 		return nil, Choice{}, err
 	}
 	var out []ModelInfo
-	for _, m := range append(append(append([]model{}, catalogue...), vadModel), nerModels...) {
+	for _, m := range append(append(append(append([]model{}, catalogue...), vadModel), speakerModel), nerModels...) {
 		_, err := os.Stat(filepath.Join(ModelDir(), m.file))
 		out = append(out, ModelInfo{Name: m.name, File: filepath.Join(ModelDir(), m.file), SizeBytes: m.size,
 			Languages: m.languages, About: m.about, Downloaded: err == nil, Selected: m.name == c.Name})

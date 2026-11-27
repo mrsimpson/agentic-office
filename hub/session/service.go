@@ -646,13 +646,16 @@ func (s *Service) SubmitUtterance(ctx context.Context, req *sessioncommandsv1.Su
 	if req.GetModality() == sessionstreamv1.Modality_MODALITY_UNSPECIFIED {
 		return nil, invalid("modality is required")
 	}
+	if req.GetOverlap() && req.GetModality() != sessionstreamv1.Modality_MODALITY_VOICE {
+		return nil, invalid("overlap is only for voice utterances (dec-overlap-hint)")
+	}
 	res, err := s.run(ctx, command{
 		sessionID: req.GetSessionId(), commandID: req.GetCommandId(), participantID: req.GetParticipantId(),
 		types: []string{events.UtteranceFinal},
 		build: func(*state, Caller) (*sessionstreamv1.Event, error) {
 			return &sessionstreamv1.Event{Payload: &sessionstreamv1.Event_UtteranceFinal{UtteranceFinal: &sessionstreamv1.UtteranceFinal{
 				ParticipantId: req.GetParticipantId(), Text: req.GetText(), Modality: req.GetModality(),
-				TranscribedAt: req.GetTranscribedAt(),
+				TranscribedAt: req.GetTranscribedAt(), Overlap: req.GetOverlap(),
 			}}}, nil
 		},
 	}, false)
@@ -1106,7 +1109,7 @@ func (s *Service) prepare(sid string, evs []*sessionstreamv1.Event) ([]*sessions
 			if u := st.utterances[ev.GetId()]; u != nil && u.offTheRecord {
 				c := proto.Clone(ev).(*sessionstreamv1.Event)
 				f := c.GetUtteranceFinal()
-				f.Text, f.TranscribedAt, f.OffTheRecord = "", nil, true
+				f.Text, f.TranscribedAt, f.Overlap, f.OffTheRecord = "", nil, false, true
 				// The placeholder keeps the leaf hash of the original (dec-merkle-log).
 				c.LeafHash = st.leaves[ev.GetId()-1]
 				ev = c

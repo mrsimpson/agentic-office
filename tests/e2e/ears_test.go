@@ -238,14 +238,22 @@ type earsReport struct {
 	Attempts            int        `json:"attempts"`
 	Duplicate           bool       `json:"duplicate"`
 	Error               string     `json:"error"`
-	Model               string     `json:"model"`
-	Language            string     `json:"language"`
-	VocabularyFile      string     `json:"vocabularyFile"`
-	Terms               int        `json:"terms"`
-	Names               int        `json:"names"`
-	Cut                 int        `json:"cut"`
-	Prompt              string     `json:"prompt"`
-	seen                time.Time
+	Overlap             bool       `json:"overlap"`
+	Score               float64    `json:"score"`
+	Windows             []struct {
+		AtMs  int64   `json:"atMs"`
+		Score float64 `json:"score"`
+	} `json:"windows"`
+	KeptMs         [][2]int64 `json:"keptMs"`
+	Threshold      float64    `json:"threshold"`
+	Model          string     `json:"model"`
+	Language       string     `json:"language"`
+	VocabularyFile string     `json:"vocabularyFile"`
+	Terms          int        `json:"terms"`
+	Names          int        `json:"names"`
+	Cut            int        `json:"cut"`
+	Prompt         string     `json:"prompt"`
+	seen           time.Time
 }
 
 // ears is a running "office meeting join --wav|--mic --json".

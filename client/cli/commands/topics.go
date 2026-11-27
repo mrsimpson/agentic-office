@@ -256,7 +256,14 @@ hub; the audio never leaves your computer.
   lost; the ears say how many.
 - --wav FILE plays a WAV file in real time instead of the microphone (16-bit PCM, any rate, mono
   or stereo). The view stays open after the file ends; quit with q.
-- Use a headset: the ears have no echo cancellation.
+- Use a headset, or a voice print. Without a voice print, the ears hear everything that the
+  microphone hears and have no echo cancellation. With one ("office voice enrol"), the ears
+  compare your speech with it and drop the parts that are not your voice, so you can use
+  loudspeakers. A dropped part is reported as "not your voice". Where another voice speaks at
+  the same time as you, the louder voice wins: words of yours may be missing, or words of
+  someone else may stay in. The ears then mark the utterance ("overlap" in the log), and agents
+  that read it should ask before they act on a doubtful sentence. The voice print never leaves
+  your computer; "office voice delete" removes it. --no-voice-print ignores it for one join.
 
   Flag            Variable                  Default
   --model         OFFICE_WHISPER_MODEL      the best model for the language ("office models list")
@@ -270,6 +277,9 @@ hub; the audio never leaves your computer.
                   OFFICE_VAD_THRESHOLD      0.5 (speech probability of the VAD)
   --vocabulary                              .office/vocabulary.txt in the current directory, if there
   --context                                 off
+  --voice-print   OFFICE_VOICE_PRINT        <data dir>/voiceprint.json, if it is there
+  --no-voice-print                          off
+  --debug         OFFICE_EARS_DEBUG         off (see "Debug output" below)
                   OFFICE_MIC_COMMAND        the first recorder found (see below)
                   OFFICE_MODEL_URL          a mirror for model downloads
 
@@ -286,6 +296,15 @@ the vocabulary at the start and whenever it changes, for example "vocabulary: 12
 names in the prompt (terms from .office/vocabulary.txt); 5 cut, the prompt is full". --context also
 gives Whisper the previous sentence; it is off by default because its effect is not measured yet.
 "office vocabulary extract" writes the file from your documents.
+
+Debug output. The office has no log levels. --debug (or OFFICE_EARS_DEBUG=1) adds one line per
+sentence, "ears: gate: ...", when you use a voice print. It shows the similarity of each window
+of the sentence to your voice print (1.5 s windows; with --json, the middle of each in ms from the
+start of the sentence), the stretches that went to Whisper, the speech that was dropped, the
+limits in use and whether the sentence got the overlap hint. A similarity is between -1 and 1:
+your voice scored about 0.6 to 0.8 in tests, other voices below 0.4. The ears keep a window from
+0.50 and call it doubtful below 0.60. The lines contain no text and no audio. With --json, each
+line is {"ears": {"type": "gate", "windows": [...], "keptMs": [...], ...}} on stderr.
 
 Microphone. The ears need no administrator rights. They read the microphone through a recorder
 program that runs as your user and writes raw 16 kHz mono 16-bit PCM to stdout. They try, in this
