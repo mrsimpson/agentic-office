@@ -154,8 +154,8 @@ through its interfaces:
 - `tests/architecture/` checks the code against the arc42 model (`make arch`). It reads the model
   with `arc42 get --format json` and the imports with `go list`. A fixture workspace with
   deliberate violations proves that each rule fails when it should.
-- The manual headset test (`qs-manual-headset`) is a checklist:
-  [`docs/testing/manual-headset-test.md`](../docs/testing/manual-headset-test.md).
+- The manual microphone test (`qs-manual-microphone`) is a checklist:
+  [`docs/testing/manual-microphone-test.md`](../docs/testing/manual-microphone-test.md).
 - The harness uses the binaries in `$OFFICE_BIN_DIR` (the Makefile sets it). Without it, the
   harness builds them with `go build`, so `go test ./tests/contract/...` also works.
 - The programs that a test starts never see the `OFFICE_*` variables of your shell or your cloud
