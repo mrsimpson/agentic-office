@@ -298,7 +298,7 @@ that the effective strategy does not use.`,
 
 	// Meeting.
 	{Name: "meeting join", Group: groupMeeting, Summary: "join a meeting, start the local log and print its path",
-		Usage: "meeting join <session> [--name N] [--foreground] [--mic | --wav FILE] [ears flags]",
+		Usage: "meeting join <session> [--name N] [--foreground] [--no-browser] [--mic | --wav FILE] [ears flags]",
 		Details: `Joins the session (it exists as soon as someone joins), starts the log replicator and prints
 the path of your local log: <runtime dir>/<session>/<participant>.jsonl, one compact JSON line
 per event, append-only. A participant joins once; joining again, also from a second device,
@@ -327,7 +327,10 @@ nothing extra.
 
 Join also creates a read-only stage link (see "office help stage link") and prints it to stderr
 as "stage: <url>", so stdout stays the path of the log. With --json the join object has it as
-"stageUrl". If the link cannot be created, join still succeeds and says so on stderr.`,
+"stageUrl". If the link cannot be created, join still succeeds and says so on stderr.
+
+When stderr is a terminal, join also opens the stage link in your default browser. Agents,
+scripts and pipes never open one. Use --no-browser to keep it closed.`,
 		Examples: []string{`LOG=$(office meeting join weekly)   # prints the path of the local log`,
 			"office meeting join weekly --mic --language english", "office meeting join weekly --foreground &"}},
 	{Name: "meeting log", Group: groupMeeting, Summary: "print the path of the local log",
