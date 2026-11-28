@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.4.6](https://github.com/mrsimpson/agentic-office/compare/v0.4.5...v0.4.6) (2026-11-28)
+
+
+### Features
+
+* **ui:** add a fixture preview of the stage and portal pages ([#309](https://github.com/mrsimpson/agentic-office/issues/309)) ([21323af](https://github.com/mrsimpson/agentic-office/commit/21323af97e5775efcf80f14ba9a1856a5b7e2ced))
+* **ui:** serve the DB UX base style sheet and a neutral theme ([#310](https://github.com/mrsimpson/agentic-office/issues/310)) ([23e7254](https://github.com/mrsimpson/agentic-office/commit/23e725430be154af906a89fcc21afdc0f676b00d))
+
+
+### Documentation
+
+* **arch:** propose dec-ui-base, the DB UX style sheets for stage and portal ([#304](https://github.com/mrsimpson/agentic-office/issues/304)) ([e120e12](https://github.com/mrsimpson/agentic-office/commit/e120e1277b1634dce54661b5976551bbddb2ba98)), closes [#294](https://github.com/mrsimpson/agentic-office/issues/294)
+
+
+### Refactoring
+
+* **ui:** embed templates and style sheets of stage and portal as files ([#306](https://github.com/mrsimpson/agentic-office/issues/306)) ([e933396](https://github.com/mrsimpson/agentic-office/commit/e9333962cc5441f8d2c8a6a8f26fdd3fd5305334)), closes [#295](https://github.com/mrsimpson/agentic-office/issues/295)
+
 ## [0.4.5](https://github.com/mrsimpson/agentic-office/compare/v0.4.4...v0.4.5) (2026-11-27)
 
 
