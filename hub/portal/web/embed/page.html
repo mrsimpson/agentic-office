@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="same-origin">
+<title>{{.Title}} · Agentic office</title><style>{{css}}</style></head>
+<body>
+<nav><a class="brand" href="/portal/"><div class="logo"></div>Agentic office</a>
+{{with .Me}}<div class="me" data-me="{{.ParticipantID}}">{{.Name}}</div>{{end}}
+{{range .Nav}}<div class="eyebrow">{{.Group}}</div>
+{{range .Links}}<a href="{{.Href}}"{{if .On}} class="on"{{end}} data-nav="{{.Href}}">{{.Label}}</a>
+{{end}}{{end}}
+</nav>
+<main>
+<div class="eyebrow">{{.Section}}</div>
+<h1>{{.Title}}</h1>
+{{if .Notice}}<p class="notice" role="status" data-notice>{{.Notice}}</p>{{end}}{{if .Error}}<p class="error" role="alert" data-error>{{.Error}}</p>{{end}}
+{{if eq .Mode "tenants"}}{{if .Tenants}}<table class="tenants">
+<tr><th>Tenant</th><th>Name</th><th>Status</th></tr>
+{{range .Tenants}}<tr data-tenant="{{.TenantId}}"><td><span class="name">{{.TenantId}}</span></td><td>{{.Name}}</td><td>{{if .Removed}}<span class="badge revoked">removed</span>{{else}}<span class="badge active">active</span>{{end}}</td></tr>
+{{end}}</table>{{else}}<p class="empty">There are no tenants yet. Create one with: office admin tenant create</p>{{end}}
+{{else if eq .Mode "home"}}{{if .Tenants}}<table class="tenants">
+<tr><th>Tenant</th><th>Your role</th></tr>
+{{range .Tenants}}<tr data-tenant="{{.TenantId}}"><td><a class="name" href="{{.Href}}">{{.TenantId}}</a></td><td>{{.Role}}</td></tr>
+{{end}}</table>{{else}}<p class="empty" data-empty="tenants">You are no member of a tenant.{{if .SystemAdmin}} As a system admin you manage the hub in the sections on the left.{{end}}</p>{{end}}
+{{else if eq .Mode "tenant"}}<dl class="facts" data-tenant="{{.Tenant}}"><dt>Your role</dt><dd data-role>{{.Role}}</dd></dl>
+<h2>Sessions</h2>
+{{if .Sessions}}<table class="sessions">
+<tr><th>Session</th><th>Started (UTC)</th><th>Ended (UTC)</th><th>Participants</th></tr>
+{{range .Sessions}}<tr data-session="{{.SessionId}}"{{if .Running}} data-running{{end}}{{if .Imported}} data-imported{{end}}{{if .Deleted}} data-deleted{{end}}>
+<td><a class="name" href="{{.Href}}">{{.SessionId}}</a>{{if .Imported}} <span class="badge imported">imported</span>{{end}}{{if .Deleted}} <span class="badge revoked">deleted</span>{{end}}{{if .Trimmed}} <span class="badge imported">trimmed</span>{{end}}</td>
+<td><small>{{.Started}}</small></td>
+<td>{{if .Running}}<span class="badge active">running</span>{{else}}<small>{{.Ended}}</small>{{end}}</td>
+<td><div class="chips">{{range .Participants}}<span class="chip{{if .Agent}} agent{{end}}" data-participant="{{.ParticipantId}}" title="{{.ParticipantId}}">{{.Name}}</span>{{end}}</div></td>
+</tr>
+{{end}}</table>{{else}}<p class="empty" data-empty="sessions">You took part in no session of this tenant yet.</p>{{end}}
+<p class="back">{{if .ShowDeleted}}<a class="link" href="{{.TenantHref}}">Hide deleted sessions</a>{{else}}<a class="link" href="{{.TenantHref}}?deleted=1" data-show-deleted>Show deleted sessions</a>{{end}}</p>
+{{else if eq .Mode "session"}}{{with .Session}}<p class="back"><a class="link" href="{{$.Back}}">All sessions</a></p>
+{{if .Limited}}<p class="muted" data-limited>You did not take part in this session. You see what it released, as every member of the tenant does.</p>
+{{template "release" .Release}}{{else}}
+<dl class="facts" data-session="{{.SessionId}}"{{if .Running}} data-running{{end}}>
+<dt>Started (UTC)</dt><dd>{{.Started}}</dd>
+<dt>Ended (UTC)</dt><dd>{{if .Running}}<span class="badge active">running</span> <small>This page shows the session as it was when you opened it.</small>{{else}}{{.Ended}}{{end}}</dd>
+{{if .Source}}<dt>Imported</dt><dd data-origin><span class="badge imported">imported</span> {{.Source}}{{if .ImportTitle}}: {{.ImportTitle}}{{end}} <small>by {{.Importer}}. The office did not see this conversation happen.</small></dd>{{end}}
+<dt>Participants</dt><dd><div class="chips">{{range .Participants}}<span class="chip{{if .Agent}} agent{{end}}" data-participant="{{.ParticipantId}}" title="{{.ParticipantId}}">{{.Name}}</span>{{end}}</div></dd>
+</dl>
+{{with .Release}}{{template "release" .}}
+{{if .Quotes}}<div class="error" role="alert" data-quotes><p>The hub did not release the session: staged files quote sentences that are off the record, word for word. The places:</p>
+<ul>{{range .Quotes}}<li data-quote="{{.Path}}:{{.Line}}"><code>{{.Path}}</code>, line {{.Line}}: the sentence of event {{.UtteranceEventId}}</li>{{end}}</ul>
+<p>Correct these files, or release anyway if the quotes may be shared.</p>
+<form class="buttons" method="post" action="{{.ReleasePath}}" data-form="release-anyway"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="command_id" value="{{.AnywayCommand}}"><input type="hidden" name="accept_quotes" value="{{.QuoteToken}}"><button class="danger" type="submit">Release anyway</button></form></div>{{end}}
+{{if .MayRelease}}<div class="buttons" data-actions><form method="post" action="{{.ReleasePath}}" data-form="release"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="command_id" value="{{.ReleaseCommand}}"><button type="submit">Release now</button></form>
+{{if .Waiting}}<form method="post" action="{{.ObjectPath}}" data-form="object"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="command_id" value="{{.ObjectCommand}}"><button class="quiet" type="submit">Object</button></form>{{end}}</div>{{end}}{{end}}
+{{with .Edit}}<h2>Trim and delete</h2>
+{{if .Deleted}}<p data-deleted><span class="badge revoked">deleted</span> <small>The session is not in the session list. Restore it to show it again.</small></p>
+<form class="buttons" method="post" action="{{.RestorePath}}" data-form="restore"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="command_id" value="{{.RestoreCommand}}"><button type="submit">Restore</button></form>
+{{else}}{{if .Trimmed}}<p data-trimmed><span class="badge imported">trimmed</span> <small>The page shows the events up to event {{.TrimmedAfter}}. Later events do not count.</small></p>{{end}}
+<form method="post" action="{{.TrimPath}}" data-form="trim"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="command_id" value="{{.TrimCommand}}">
+<label>Last sentence that counts <select name="last_event_id">{{range .Choices}}<option value="{{.EventId}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}<option value="{{.EndId}}"{{if not .Trimmed}} selected{{end}}>Keep everything</option></select></label>
+<div class="buttons"><button type="submit">Trim</button></div></form>
+<form class="buttons" method="post" action="{{.DeletePath}}" data-form="delete"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="command_id" value="{{.DeleteCommand}}"><button class="danger" type="submit">Delete</button></form>{{end}}{{end}}
+<h2>Minutes</h2>
+{{if .Minutes}}<div class="prose" data-minutes{{if .MinutesRunning}} data-running-minutes{{end}}>{{if .MinutesRunning}}<p class="muted">The running minutes; the session has not stored minutes yet.</p>{{end}}{{.Minutes}}</div>{{else}}<p class="empty" data-empty="minutes">Nobody wrote minutes.</p>{{end}}
+<h2>Decisions</h2>
+{{if .Decisions}}<ol class="records">{{range .Decisions}}<li data-decision="{{.Id}}"><div class="prose">{{.Text}}</div><small>{{.Author}}, {{.Time}} UTC</small></li>{{end}}</ol>{{else}}<p class="empty" data-empty="decisions">No decisions.</p>{{end}}
+<h2>Tasks</h2>
+{{if .Tasks}}<table class="tasks"><tr><th>Task</th><th>Status</th><th>Assignee</th></tr>
+{{range .Tasks}}<tr data-task="{{.Ref}}"><td>{{.Title}}</td><td>{{.Status}}</td><td>{{.Assignee}}</td></tr>{{end}}</table>{{else}}<p class="empty" data-empty="tasks">No tasks.</p>{{end}}
+<h2>Notes</h2>
+{{if .Notes}}<ol class="records">{{range .Notes}}<li data-note="{{.Id}}"><div class="prose">{{.Text}}</div><small>{{.Author}}, {{.Time}} UTC</small>{{range .Tags}} <span class="chip" data-tag>{{.}}</span>{{end}}</li>{{end}}</ol>{{else}}<p class="empty" data-empty="notes">No notes.</p>{{end}}
+<h2>Transcript</h2>
+{{if .Lines}}<ol class="transcript">{{range .Lines}}<li data-utterance="{{.EventId}}" data-participant="{{.SpeakerId}}"><time>{{.Time}}</time><span class="speaker{{if .Agent}} agent{{end}}">{{.Speaker}}</span><span class="text">{{.Text}}</span>{{if .Corrected}} <small class="corrected">(corrected)</small>{{end}}</li>{{end}}</ol>{{else}}<p class="empty" data-empty="transcript">Nothing was said.</p>{{end}}
+{{end}}{{end}}
+{{else if eq .Mode "members"}}<table class="members">
+<tr><th>User</th><th>Role</th><th>Since</th></tr>
+{{range .Members}}<tr data-member="{{.UserId}}"><td><span class="name">{{.UserId}}</span></td><td>{{.Role}}</td><td><small>{{.Since}}</small></td></tr>
+{{end}}</table>
+{{else if eq .Mode "wiki"}}{{template "wiki" .Wiki}}
+{{else if eq .Mode "admins"}}<table class="keys">
+<tr><th>User</th><th>Kind</th><th>Key</th><th>Status</th></tr>
+{{range .Keys}}<tr data-participant="{{.ParticipantId}}" data-key="{{.KeyId}}">
+<td><div class="who"><span class="avatar" data-initials="{{initials .Name}}" aria-hidden="true"></span><div><div class="name">{{.Name}}</div><small>{{.ParticipantId}}</small></div></div></td>
+<td>{{.KindName}}</td><td><code title="{{.KeyId}}">{{short .KeyId}}</code></td>
+<td>{{if .Revoked}}<span class="badge revoked">revoked</span>{{else}}<span class="badge active">active</span>{{end}}</td></tr>
+{{end}}</table>
+{{else if eq .Mode "register"}}<form class="stack" method="post" action="/portal/admin/keys/register" data-form="register">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<label>User ID<input name="participant_id" value="{{.Form.ParticipantID}}" required maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9._-]*" autocomplete="off"><small>1 to 64 letters, digits, ".", "_" or "-", for example ada.</small></label>
+<label>Display name<input name="display_name" value="{{.Form.DisplayName}}" maxlength="100" autocomplete="off"><small>Needed for a new user.</small></label>
+<label>Kind<select name="kind"><option value="human"{{if ne .Form.Kind "agent"}} selected{{end}}>human</option><option value="agent"{{if eq .Form.Kind "agent"}} selected{{end}}>agent</option></select></label>
+<label>Public key<textarea name="public_key" required spellcheck="false" autocomplete="off">{{.Form.PublicKey}}</textarea><small>The base64 public key that <code>office key show</code> prints.</small></label>
+<div class="buttons"><button type="submit">Register key</button><a class="link" href="/portal/admin/keys">Cancel</a></div>
+</form>
+{{else if eq .Mode "revoke"}}<dl class="facts" data-confirm="revoke">
+<dt>User</dt><dd>{{.Key.Name}} <small>{{.Key.ParticipantId}}</small></dd>
+<dt>Key</dt><dd><code>{{.Key.KeyId}}</code></dd></dl>
+<p class="muted">The key stops working at once, and all its access tokens end. A revoked key cannot be registered again.</p>
+<form class="buttons" method="post" action="/portal/admin/keys/revoke" data-form="revoke">
+<input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="key_id" value="{{.Key.KeyId}}">
+<button class="danger" type="submit">Revoke key</button><a class="link" href="/portal/admin/keys">Cancel</a></form>
+{{else}}<div class="toolbar"><a class="button" href="/portal/admin/keys/new">Register key</a></div>
+{{if .Keys}}<table class="keys">
+<tr><th>User</th><th>Kind</th><th>Key</th><th>Status</th><th></th></tr>
+{{range .Keys}}<tr data-participant="{{.ParticipantId}}" data-key="{{.KeyId}}">
+<td><div class="who"><span class="avatar{{if eq .KindName "agent"}} agent{{end}}" data-initials="{{initials .Name}}" aria-hidden="true"></span><div><div class="name">{{.Name}}</div><small>{{.ParticipantId}}</small></div></div></td>
+<td>{{.KindName}}</td>
+<td><code title="{{.KeyId}}">{{short .KeyId}}</code></td>
+<td>{{if .Revoked}}<span class="badge revoked">revoked</span>{{else}}<span class="badge active">active</span>{{end}}{{if .Removed}} <span class="badge revoked">removed</span>{{end}}{{if .Admin}} <span class="badge admin">system admin</span>{{end}}</td>
+<td>{{if and (not .Revoked) (not .Removed)}}<a class="link" href="/portal/admin/keys/revoke?key_id={{.KeyId}}">Revoke</a>{{end}}</td>
+</tr>
+{{end}}</table>{{else}}<p class="empty">There are no keys yet.</p>{{end}}{{end}}
+</main></body></html>

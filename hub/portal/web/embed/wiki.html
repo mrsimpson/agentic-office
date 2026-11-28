@@ -1,0 +1,37 @@
+<div class="wikibar" data-wikibar><a class="link{{if eq .Page "index"}} on{{end}}" href="{{.IndexHref}}">Index</a>
+<a class="link{{if eq .Page "broken"}} on{{end}}" href="{{.BrokenHref}}">Broken links</a>
+<a class="link{{if eq .Page "queue"}} on{{end}}" href="{{.QueueHref}}">Ingest queue</a>
+<form method="get" action="{{.SearchHref}}" role="search" data-form="search"><input type="search" name="q" value="{{.Query}}" aria-label="Search the wiki" placeholder="Search the wiki"><button class="quiet" type="submit">Search</button></form></div>
+{{if eq .Page "index"}}{{if .Tags}}<div class="chips" data-tags><a class="chip{{if not .Tag}} on{{end}}" href="{{.IndexHref}}" data-tag-filter="">all</a>{{range .Tags}}<a class="chip{{if .On}} on{{end}}" href="{{.Href}}" data-tag-filter="{{.Tag}}">{{.Tag}} <small data-count>{{.Count}}</small></a>{{end}}</div>{{end}}
+{{if .Tag}}<h2 data-filter="{{.Tag}}">Tagged {{.Tag}}</h2>{{else}}<h2>All artifacts</h2>{{end}}
+{{template "wiki-entries" .Artifacts}}{{if not .Artifacts}}<p class="empty" data-empty="wiki">{{if .Tag}}No artifact has this tag.{{else}}The wiki of this tenant is empty. Its artifacts appear here once they are released.{{end}}</p>{{end}}
+{{else if eq .Page "search"}}{{if .Query}}<h2>Results for {{.Query}}</h2>
+{{template "wiki-entries" .Artifacts}}{{if not .Artifacts}}<p class="empty" data-empty="hits">No artifact contains these words. A word matches whole; case does not matter.</p>{{end}}{{else}}<p class="empty" data-empty="query">Type words to search the titles, tags, summaries and texts of the artifacts.</p>{{end}}
+{{else if eq .Page "broken"}}{{if .Broken}}<table class="broken"><tr><th>Artifact</th><th>Leads to</th><th>Kind</th></tr>
+{{range .Broken}}<tr data-broken="{{.FromPath}} -> {{.ToPath}}"><td><a class="name" href="{{.FromHref}}"><code>{{.FromPath}}</code></a></td><td><code>{{.ToPath}}</code></td><td>{{if .Source}}cited source{{else}}link in the text{{end}}</td></tr>
+{{end}}</table>{{else}}<p class="empty" data-empty="broken">Every link of the wiki leads somewhere.</p>{{end}}
+{{else if eq .Page "queue"}}<p class="muted">The decisions, minutes and notes that no document cites yet. Agents bring them into the pages of the wiki.</p>
+{{template "wiki-entries" .Artifacts}}{{if not .Artifacts}}<p class="empty" data-empty="queue">Every source is cited by a document.</p>{{end}}
+{{else if eq .Page "artifact"}}{{with .Artifact}}<dl class="facts" data-artifact="{{.Entry.Path}}">
+<dt>Path</dt><dd><code>{{.Entry.Path}}</code>{{if .Staged}} <span class="badge imported">staged</span> <small>You read the version that waits for the release of your session.</small>{{end}}</dd>
+<dt>Kind</dt><dd data-kind>{{.Kind}}{{if .Entry.Schema}} <small><code>{{.Entry.Schema}}</code></small>{{end}}</dd>
+{{if .Entry.Summary}}<dt>Summary</dt><dd data-summary>{{.Entry.Summary}}</dd>{{end}}
+{{if .Entry.Tags}}<dt>Tags</dt><dd><div class="chips">{{range .Entry.Tags}}<a class="chip" href="{{.Href}}" data-tag="{{.Tag}}">{{.Tag}}</a>{{end}}</div></dd>{{end}}
+{{with .Trust}}{{if .Status}}<dt>Status</dt><dd data-status>{{.Status}}</dd>{{end}}
+{{if .Owner}}<dt>Owner</dt><dd data-owner><code>{{.Owner}}</code></dd>{{end}}
+{{if .Reviews}}<dt>Reviews</dt><dd><ul class="refs">{{range .Reviews}}<li data-review="{{.ParticipantID}} {{.Date}}"><code>{{.ParticipantID}}</code> on {{.Date}}</li>{{end}}</ul></dd>{{end}}
+{{if .LastChange}}<dt>Last change</dt><dd data-last-change>{{template "wiki-author" .LastAuthor}} · {{.LastChange}} UTC</dd>{{end}}
+{{if .ReleasedAt}}<dt>Released</dt><dd data-released>by {{if .ReleasedBy}}{{template "wiki-author" .ReleasedBy}}{{else}}the hub at the deadline{{end}} · {{.ReleasedAt}} UTC</dd>{{end}}
+{{if .NewestSource}}<dt>Newest source</dt><dd data-newest-source>written {{.NewestSource}} UTC</dd>{{end}}{{end}}
+{{if .FrontMatter}}<dt>Front matter</dt><dd><details data-front-matter><summary><small>As written</small></summary><pre class="artifact">{{.FrontMatter}}</pre></details></dd>{{end}}
+</dl>
+{{if .Missing}}<p class="empty" data-empty="content">The file cannot be read now.</p>{{else if .Text}}<pre class="artifact" data-content>{{.Text}}</pre>{{else}}<div class="prose" data-content>{{.Body}}</div>{{end}}{{if .Cut}}<small>The page shows the start of the file only.</small>{{end}}
+<h2>Links</h2>
+{{template "wiki-links" .Links}}{{if not .Links}}<p class="empty" data-empty="links">The text links no other file.</p>{{end}}
+<h2>Backlinks</h2>
+{{template "wiki-entries" .Backlinks}}{{if not .Backlinks}}<p class="empty" data-empty="backlinks">No artifact links here.</p>{{end}}
+{{if .Sources}}<h2>Sources</h2>
+{{template "wiki-links" .Sources}}{{end}}
+{{if .Entry.Source}}<h2>Cited by</h2>
+{{template "wiki-entries" .CitedBy}}{{if not .CitedBy}}<p class="empty" data-empty="cited-by">No document cites this source yet. It waits in the ingest queue.</p>{{end}}{{end}}
+{{end}}{{end}}
