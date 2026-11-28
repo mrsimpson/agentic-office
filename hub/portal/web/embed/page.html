@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="same-origin">
-<title>{{.Title}} · Agentic office</title><style>{{css}}</style></head>
+<title>{{.Title}} · Agentic office</title><link rel="stylesheet" href="{{asset "base.css"}}"><link rel="stylesheet" href="{{asset "portal.css"}}"></head>
 <body>
 <nav><a class="brand" href="/portal/"><div class="logo"></div>Agentic office</a>
 {{with .Me}}<div class="me" data-me="{{.ParticipantID}}">{{.Name}}</div>{{end}}

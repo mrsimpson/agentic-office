@@ -105,6 +105,9 @@ func TestPreviewWritesEveryFixturePage(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, e := range entries {
+		if e.IsDir() && (e.Name() == "stage" || e.Name() == "portal") {
+			continue // the style sheets, checked below
+		}
 		if _, known := previewAnchors[e.Name()]; !known && e.Name() != "index.html" {
 			t.Errorf("%s is written but has no markers in this test", e.Name())
 		}
@@ -112,6 +115,28 @@ func TestPreviewWritesEveryFixturePage(t *testing.T) {
 	// A page of the portal links to the other pages by file, so the folder works as it is.
 	if tenant := readPreviewFile(t, filepath.Join(out, "portal-tenant.html")); !strings.Contains(tenant, `href="portal-wiki-index.html"`) {
 		t.Errorf("the navigation of portal-tenant.html does not link the wiki page by file")
+	}
+	// The style sheets that the pages link are written next to the pages and linked by their
+	// relative path, so the folder works as it is.
+	for _, c := range []struct{ page, dir, own string }{
+		{"stage-live.html", "stage/assets/", "stage"}, {"stage-error.html", "stage/assets/", "stage"},
+		{"portal-tenant.html", "portal/assets/", "portal"}, {"portal-error.html", "portal/assets/", "portal"},
+	} {
+		page := readPreviewFile(t, filepath.Join(out, c.page))
+		sheets := regexp.MustCompile(`<link rel="stylesheet" href="(`+regexp.QuoteMeta(c.dir)+`(?:base|`+c.own+`)-[0-9a-f]{12}\.css)">`).FindAllStringSubmatch(page, -1)
+		if len(sheets) != 2 || !strings.Contains(sheets[0][1], "base-") || !strings.Contains(sheets[1][1], c.own+"-") {
+			t.Errorf("%s links %v, want the relative paths of the base and of the %s style sheet", c.page, sheets, c.own)
+			continue
+		}
+		for _, s := range sheets {
+			if css := readPreviewFile(t, filepath.Join(out, filepath.FromSlash(s[1]))); !strings.Contains(css, "{") {
+				t.Errorf("%s is no style sheet", s[1])
+			}
+		}
+		if strings.Contains(page, "<style") {
+			t.Errorf("%s has an inline style sheet", c.page)
+		}
+		readPreviewFile(t, filepath.Join(out, filepath.FromSlash(c.dir), "third-party-notices.txt"))
 	}
 	// The pages are static: no reload script, no stream.
 	for _, name := range []string{"stage-live.html", "portal-tenant.html", "index.html"} {
@@ -214,6 +239,19 @@ func TestPreviewServesStageAndPortal(t *testing.T) {
 		}
 		if !strings.Contains(body, "/__version") {
 			t.Errorf("GET %s: no reload script", c.path)
+		}
+	}
+	// The style sheets that a page links are served at the address of the real stage and portal.
+	for _, c := range []struct{ page, prefix string }{{"/stage/weekly-planning", "/stage/assets/"}, {"/portal/t/acme/", "/portal/assets/"}} {
+		_, page := get(c.page)
+		links := regexp.MustCompile(`<link rel="stylesheet" href="(`+regexp.QuoteMeta(c.prefix)+`[^"]+\.css)">`).FindAllStringSubmatch(page, -1)
+		if len(links) != 2 {
+			t.Errorf("GET %s links %d style sheets, want 2", c.page, len(links))
+		}
+		for _, l := range links {
+			if res, css := get(l[1]); res.StatusCode != http.StatusOK || !strings.HasPrefix(res.Header.Get("Content-Type"), "text/css") || !strings.Contains(css, "{") {
+				t.Errorf("GET %s: status %d, content type %q", l[1], res.StatusCode, res.Header.Get("Content-Type"))
+			}
 		}
 	}
 	if res, body := get("/__version"); res.StatusCode != http.StatusOK || strings.TrimSpace(body) == "" {

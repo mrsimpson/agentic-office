@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -75,7 +76,8 @@ func New(opts Options) *Handler {
 	return &Handler{opts: opts}
 }
 
-// ServeHTTP serves GET <web.PathPrefix><session>?token=… (the page),
+// ServeHTTP serves GET <web.AssetPrefix><name> (a style sheet, no token),
+// GET <web.PathPrefix><session>?token=… (the page),
 // GET <web.PathPrefix><session>/events?token=… (the event stream) and
 // GET <web.PathPrefix><session>/artifact?token=…&path=… (one artifact of the session, for the own
 // focus of a browser).
@@ -92,6 +94,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	escaped, sub, _ := strings.Cut(rest, "/")
+	// The static files of the page need no token. A session that is called "assets" keeps its
+	// event stream and its artifact: those two names are never assets.
+	if escaped == "assets" && sub != "" && sub != "events" && sub != "artifact" {
+		h.asset(w, r, sub)
+		return
+	}
 	sid, err := url.PathUnescape(escaped)
 	if err != nil || sid == "" || (sub != "" && sub != "events" && sub != "artifact") {
 		h.fail(w, http.StatusNotFound, "Not found", "There is no stage at this address.")
@@ -117,6 +125,35 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.page(w, r, sid, token)
+}
+
+// asset answers GET <web.AssetPrefix><name>: a style sheet of the page, or the notice of the
+// third-party licences. It needs no token, because it holds no session data. An unknown name
+// answers 404 without data.
+func (h *Handler) asset(w http.ResponseWriter, r *http.Request, name string) {
+	a, ok := web.Embedded().Asset(name)
+	if !ok {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	hdr := w.Header()
+	hdr.Set("Content-Type", a.Type)
+	hdr.Set("Content-Security-Policy", "default-src 'none'")
+	if a.Immutable {
+		// The name holds a hash of the content, so a changed file has a new address.
+		hdr.Set("Cache-Control", "public, max-age=31536000, immutable")
+	} else {
+		hdr.Set("Cache-Control", "public, max-age=3600")
+	}
+	hdr.Set("Content-Length", strconv.Itoa(len(a.Body)))
+	if r.Method == http.MethodGet {
+		_, _ = w.Write(a.Body)
+	}
 }
 
 // check returns http.StatusOK if token is a valid stage link for the session.

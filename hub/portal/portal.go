@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -80,6 +81,11 @@ func keyRows(users []*userv1.User) []keyView {
 
 // ServeHTTP serves the pages of the portal.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// The static files need no login and no cookie.
+	if name, ok := strings.CutPrefix(r.URL.Path, web.AssetPrefix); ok {
+		serveAsset(w, r, name)
+		return
+	}
 	w.Header().Set("Content-Security-Policy", web.CSP)
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "same-origin")
@@ -149,6 +155,35 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.admins(w, r)
 	default:
 		h.fail(w, http.StatusNotFound, "Not found", "There is no such page.")
+	}
+}
+
+// serveAsset answers GET <web.AssetPrefix><name>: a style sheet of the pages, or the notice of the
+// third-party licences. It sets no cookie and reads none. An unknown name answers 404 without data.
+func serveAsset(w http.ResponseWriter, r *http.Request, name string) {
+	a, ok := web.Embedded().Asset(name)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if !ok {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	hdr := w.Header()
+	hdr.Set("Content-Type", a.Type)
+	hdr.Set("Content-Security-Policy", "default-src 'none'")
+	if a.Immutable {
+		// The name holds a hash of the content, so a changed file has a new address.
+		hdr.Set("Cache-Control", "public, max-age=31536000, immutable")
+	} else {
+		hdr.Set("Cache-Control", "public, max-age=3600")
+	}
+	hdr.Set("Content-Length", strconv.Itoa(len(a.Body)))
+	if r.Method == http.MethodGet {
+		_, _ = w.Write(a.Body)
 	}
 }
 
