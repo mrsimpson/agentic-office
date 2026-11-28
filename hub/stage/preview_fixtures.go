@@ -192,13 +192,13 @@ func fixtureDocument(body string) string {
 
 func previewSessions() []previewSession {
 	return []previewSession{
-		fixtureLive(), fixtureLiveSlides(), fixtureUnspoken(), fixtureEmpty(), fixtureImported(), fixtureImporting(),
-		fixtureEnded(), fixtureStopped(),
+		fixtureLive(), fixtureLiveQuiet(), fixtureLiveSlides(), fixtureUnspoken(), fixtureEmpty(), fixtureImported(),
+		fixtureImporting(), fixtureEnded(), fixtureStopped(),
 	}
 }
 
 // fixtureLive is a busy session: many tabs with long names, long participant names, raised hands,
-// working and waiting agents, and a long transcript.
+// working, waiting and unspoken agents, a bot feed and a long transcript.
 func fixtureLive() previewSession {
 	l := newFixtureLog()
 	l.join("ada", "Ada Lovelace", false, true)
@@ -213,6 +213,7 @@ func fixtureLive() previewSession {
 	l.join("researcher", "Researcher with a very long agent name that must not break the header", true, false)
 	l.join("kai", "Kai", false, true)
 	l.join("noor", "Noor Al-Sayed", false, true)
+	l.join("notes-bot", "Notes bot", true, false)
 	tabs := []string{longPath, "notes/000001.md", "notes/000002.md", "decisions/000001.yaml", "decisions/000002.yaml",
 		"documents/roadmap.md", "documents/glossary.md"}
 	for i := 1; i <= 8; i++ {
@@ -230,14 +231,41 @@ func fixtureLive() previewSession {
 		}
 		l.say(who, text)
 	}
+	l.say("minutes-keeper", "I added the release date to the decisions.")
+	l.say("slides-agent", "I created slides 1 to 8 from the roadmap.")
+	l.say("researcher", "The reporting database has 14 consumers; the list is in the migration plan.")
+	l.say("minutes-keeper", "Open point 2 is now assigned to Ada.")
+	l.say("slides-agent", "Slide 4 now shows the two migration steps.")
 	l.hand("grace", "The migration plan needs a second reviewer, and I would like to say why before we decide anything today")
 	l.hand("margaret", "")
 	l.focus("slides-agent", longPath)
-	l.v.setActivities([]*sessionactivityv1.Activity{working("minutes-keeper", "write_minutes"), waiting("slides-agent"), working("researcher", "")})
+	l.v.setActivities([]*sessionactivityv1.Activity{working("minutes-keeper", "write_minutes"), waiting("slides-agent"), working("researcher", ""), unspoken("notes-bot")})
 	l.v.artifact = artifactView{ID: longPath, Kind: "document", MediaType: "text/html", Content: fixtureDocument(
 		"<h1>Migration plan</h1><p>The reporting database moves in two steps.</p><h2>Step one</h2><ul><li>Copy the data.</li><li>Switch the readers.</li></ul><pre><code>office hub add</code></pre>")}
 	return previewSession{name: "stage-live.html", title: "Live session: many tabs, long names, raised hands, working agents",
 		session: "weekly-planning", portal: "/portal/t/acme/s/weekly-planning", view: l.live()}
+}
+
+// fixtureLiveQuiet is a live session where nobody needs to act: no raised hand and no unspoken
+// reply, so the "needs attention" block takes no space. The bots work and talk.
+func fixtureLiveQuiet() previewSession {
+	l := newFixtureLog()
+	l.join("ada", "Ada Lovelace", false, true)
+	l.join("grace", "Grace Hopper", false, true)
+	l.join("minutes-keeper", "Minutes keeper", true, false)
+	l.join("slides-agent", "Slides agent", true, false)
+	l.created("minutes-keeper", "notes/000001.md")
+	l.created("minutes-keeper", "decisions/000001.yaml")
+	l.created("slides-agent", "slides/1")
+	l.minutes("minutes-keeper", fixtureMinutes)
+	l.say("ada", "Let us start with the release.")
+	l.say("minutes-keeper", "I added the agenda to the minutes.")
+	l.say("grace", "Ship on Tuesday if the end-to-end tests are green.")
+	l.say("minutes-keeper", "Decision recorded: ship on Tuesday if e2e is green.")
+	l.say("slides-agent", "I created a slide for the release plan.")
+	l.v.setActivities([]*sessionactivityv1.Activity{waiting("minutes-keeper"), working("slides-agent", "render_slides")})
+	return previewSession{name: "stage-live-quiet.html", title: "Live session without needs attention: bots work and talk",
+		session: "release-planning", portal: "/portal/t/acme/s/release-planning", view: l.live()}
 }
 
 // fixtureLiveSlides shows the minutes as the shared focus and a note for an artifact the stage cannot show.

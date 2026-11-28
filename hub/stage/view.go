@@ -3,6 +3,7 @@ package stage
 import (
 	"bytes"
 	"context"
+	"hash/fnv"
 	"html/template"
 	"path"
 	"slices"
@@ -22,6 +23,9 @@ import (
 // recentUtterances is how many utterances the stage shows in its transcript, which scrolls. The
 // stage sends the whole region on every change, so the number stays bounded.
 const recentUtterances = 500
+
+// recentBotLines is how many utterances of agents the bot feed shows, newest first.
+const recentBotLines = 12
 
 // view is what the stage knows about one session. It is built from the session stream only.
 type view struct {
@@ -86,6 +90,17 @@ func (p *participantView) Activity() *activityView {
 	default:
 		return &activityView{State: "waiting", Text: "waiting"}
 	}
+}
+
+// Semantic is the colour family of the activity tag: "informational", "warning" or "neutral".
+func (a *activityView) Semantic() string {
+	switch a.State {
+	case "working":
+		return "informational"
+	case "unspoken":
+		return "warning"
+	}
+	return "neutral"
 }
 
 // Status is one of "imported", "captured", "paused", "not-captured" and "left".
@@ -305,6 +320,18 @@ func (e *artifactEntry) Focused() bool {
 	return e.Path == e.v.focus
 }
 
+// Version changes when the content of the minutes changes; it is empty for every other artifact.
+// The tab of the minutes carries it, so a page that shows the minutes for its own focus learns
+// that they changed although the shared focus is elsewhere.
+func (e *artifactEntry) Version() string {
+	if e.Path != MinutesID {
+		return ""
+	}
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(e.v.minutes))
+	return strconv.FormatUint(uint64(h.Sum32()), 36)
+}
+
 // Label is the name of the tab: "Minutes", the file name of a document, or the path of any other
 // artifact, so that "decisions/000001.yaml" and "notes/000001.md" stay apart.
 func (e *artifactEntry) Label() string {
@@ -447,18 +474,41 @@ func (v *view) Status() string {
 	return "connecting"
 }
 
+// StatusText is the short label of the status, for its tag.
 func (v *view) StatusText() string {
 	switch v.Status() {
 	case "ended":
-		return "The session has ended."
+		return "Ended"
 	case "stopped":
-		return v.stopped
+		return "Stopped"
 	case "live":
 		return "Live"
 	case "imported":
 		return "Imported"
 	}
 	return "Connecting …"
+}
+
+// StatusNote is the sentence that says why the stage stopped, or "".
+func (v *view) StatusNote() string {
+	if v.Status() == "stopped" {
+		return v.stopped
+	}
+	return ""
+}
+
+// StatusSemantic is the colour family of the status tag: "successful", "informational",
+// "warning" or "neutral".
+func (v *view) StatusSemantic() string {
+	switch v.Status() {
+	case "live":
+		return "successful"
+	case "imported":
+		return "informational"
+	case "ended", "stopped":
+		return "warning"
+	}
+	return "neutral"
 }
 
 func (v *view) Imported() *importView { return v.imported }
@@ -471,9 +521,70 @@ func (v *view) Participants() []*participantView {
 	}
 	return v.participants
 }
+
+// Hands returns the raised hands in the order they were raised.
 func (v *view) Hands() []handView      { return v.hands }
 func (v *view) Artifact() artifactView { return v.artifact }
 func (v *view) Minutes() string        { return v.minutes }
+
+// Unspoken returns the agents whose last reply stayed in their own chat (if-session-activity),
+// in the order of their first join. An ended session has none.
+func (v *view) Unspoken() []*participantView {
+	var out []*participantView
+	if v.ended {
+		return nil
+	}
+	for _, p := range v.participants {
+		p.activity = v.activities[p.ID]
+		if a := p.Activity(); p.Agent && a != nil && a.State == "unspoken" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// NeedsAttention reports whether a raised hand or an unspoken reply waits for a human.
+func (v *view) NeedsAttention() bool { return len(v.hands) > 0 || len(v.Unspoken()) > 0 }
+
+// botView is an agent of the session with what it does right now.
+type botView struct {
+	Agent    *participantView
+	Activity *activityView // nil when the agent reported no activity
+}
+
+// Bots returns the agents that are in the session, in the order of their first join.
+func (v *view) Bots() []botView {
+	var out []botView
+	for _, p := range v.participants {
+		if p.Agent && !p.left {
+			p.activity = v.activities[p.ID]
+			out = append(out, botView{Agent: p, Activity: p.Activity()})
+		}
+	}
+	return out
+}
+
+// BotLines returns the latest utterances of agents that are not off the record, newest first.
+func (v *view) BotLines() []*utteranceView {
+	var out []*utteranceView
+	for i := len(v.utterances) - 1; i >= 0 && len(out) < recentBotLines; i-- {
+		if u := v.utterances[i]; u.Speaker.Agent && !u.offTheRecord {
+			out = append(out, u)
+		}
+	}
+	return out
+}
+
+// LastUtterance returns the latest utterance that is not off the record, or nil. It is the line
+// that the transcript shows while it is closed.
+func (v *view) LastUtterance() *utteranceView {
+	for i := len(v.utterances) - 1; i >= 0; i-- {
+		if !v.utterances[i].offTheRecord {
+			return v.utterances[i]
+		}
+	}
+	return nil
+}
 
 // Utterances returns the most recent utterances that are not off the record, oldest first.
 func (v *view) Utterances() []*utteranceView {

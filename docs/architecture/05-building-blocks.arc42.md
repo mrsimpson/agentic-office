@@ -563,8 +563,12 @@ path: hub/portal
 ### Stage view
 
 A browser view of one session, opened by a link, in the design of the portal (`dec-ui-base`). The
-page follows the session through a stream of its regions. The minutes come first. The bots and what
-needs a human come next, and the transcript is there to check the transcription. It can also read one artifact of the session at a time, for the own focus of the
+page follows the session through a stream of its regions. The minutes come first, as the first of
+the artifacts of the session. Next to them, one block lists what needs a human (raised hands and
+replies that an agent gave only in its own chat) and takes no space when nothing does. A feed shows
+what the bots say and do. The transcript is a closed drawer with the last sentence, there to check
+the transcription. The page is read-only: it has no message box and no button that changes the
+session. It can also read one artifact of the session at a time, for the own focus of the
 browser; that read changes nothing in the session.
 
 ```arc42

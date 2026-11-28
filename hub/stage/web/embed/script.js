@@ -26,31 +26,35 @@
       .then(function (html) { if (own === p) { shown.innerHTML = html; } })
       .catch(function () { if (own === p) { shown.innerHTML = '<p class="note">This artifact cannot be shown here.</p>'; } });
   }
-  function pick(e) {
+  // The tabs are buttons, so the keyboard works without a handler of its own.
+  tabs.addEventListener("click", function (e) {
     var el = e.target.closest(".tab");
-    if (!el || (e.type === "keydown" && e.key !== "Enter" && e.key !== " ")) { return; }
-    e.preventDefault();
-    open(el.getAttribute("data-artifact"));
-  }
-  tabs.addEventListener("click", pick);
-  tabs.addEventListener("keydown", pick);
+    if (el) { open(el.getAttribute("data-artifact")); }
+  });
+  // The tab of the minutes carries a version of the minutes: the own focus on the minutes reloads when it changes.
+  function minutesVersion() { var m = tabs.querySelector('.tab[data-artifact="minutes"]'); return m ? m.getAttribute("data-version") : null; }
   var jump = document.getElementById("jump");
+  var drawer = document.getElementById("transcript");
   function atEnd() { return log.scrollHeight - log.scrollTop - log.clientHeight < 32; }
   function toEnd() { log.scrollTop = log.scrollHeight; jump.hidden = true; }
   log.addEventListener("scroll", function () { if (atEnd()) { jump.hidden = true; } });
   jump.addEventListener("click", toEnd);
+  // A closed drawer has no height: the transcript goes to its end when the drawer opens.
+  drawer.addEventListener("toggle", function () { if (drawer.open) { toEnd(); } });
   toEnd();
   var es = new EventSource(main.getAttribute("data-events"));
-  ["status", "origin", "participants", "artifactlog"].forEach(function (name) {
+  ["status", "origin", "participants", "artifactlog", "needs", "bots", "lastline"].forEach(function (name) {
     es.addEventListener(name, function (e) { document.getElementById(name).innerHTML = e.data; });
   });
   es.addEventListener("artifacts", function (e) {
+    var before = minutesVersion();
     tabs.innerHTML = e.data;
     var now = sharedFocus();
     if (own !== null && now !== shared) { pulse = now; }
     if (own !== null && own === now) { follow(); }
     shared = now;
     mark();
+    if (own === "minutes" && minutesVersion() !== before) { load(own); }
   });
   es.addEventListener("artifactlog", function () { if (own !== null) { load(own); } });
   es.addEventListener("artifact", function (e) {
