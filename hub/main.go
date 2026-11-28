@@ -187,6 +187,8 @@ const hubHelp = `office-hub: the hub of the agentic office
 usage:
   office-hub -signing-key FILE [flags]     run the hub
   office-hub keygen FILE                   create the signing key file (once)
+  office-hub preview [flags]               the pages of the stage and the portal with fixture data
+                                           (for the design; starts no hub; see office-hub preview -h)
   office-hub help                          print this help
 
 The hub orders the meetings, keeps the archive and serves the stage. It speaks only TLS and needs
@@ -260,6 +262,10 @@ func main() {
 	}
 	if len(os.Args) > 1 && os.Args[1] == "keygen" {
 		keygen(os.Args[2:])
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "preview" {
+		preview(os.Args[2:])
 		return
 	}
 	if len(os.Args) == 2 && isHelpFlag(os.Args[1]) {

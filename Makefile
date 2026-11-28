@@ -17,7 +17,7 @@ export CGO_LDFLAGS := -O2 -g -L$(WHISPER_BUILD)/src -L$(WHISPER_BUILD)/ggml/src 
 # Models of the ears: a multilingual Whisper model and the Silero VAD model.
 MODEL_DIR ?= $(or $(XDG_DATA_HOME),$(HOME)/.local/share)/agentic-office/models
 
-.PHONY: all build arch test contract e2e e2e-all e2e-vet performance docs docs-serve lint generate check-generated whisper models clean
+.PHONY: all build arch test contract e2e e2e-all e2e-vet performance ui-dev ui-preview docs docs-serve lint generate check-generated whisper models clean
 all: build
 
 build:
@@ -65,6 +65,17 @@ performance: build
 		$(GO) test -tags e2e,performance -count=1 -v -timeout 90m -run '^TestQuality' ./tests/e2e/... 2>&1; \
 		echo $$? > $(BIN)/performance.exit; } | tee $(BIN)/performance.log
 	@echo "== quality scenarios (also in $(BIN)/performance.log)"; grep '^QS ' $(BIN)/performance.log; exit $$(cat $(BIN)/performance.exit)
+
+# The preview of the stage and the portal pages with fixture data (office-hub preview). It needs no
+# hub and no login. make ui-dev serves it on http://127.0.0.1:8099/ and reads the templates and the
+# style sheets from this checkout, so a change shows after a reload. make ui-preview writes the same
+# pages as HTML files to $(BIN)/ui-preview and fails when a page does not render; the CI does this.
+ui-dev:
+	$(GO) run -ldflags "$(LDFLAGS)" ./hub preview -src .
+
+ui-preview: build
+	rm -rf $(BIN)/ui-preview
+	$(BIN)/office-hub preview -src . -out $(BIN)/ui-preview
 
 # The docsite (docs/site/, Starlight): the user guide, the command reference, the developer pages and
 # the architecture. make docs builds it into docs/site/dist/. The command reference comes from the

@@ -29,6 +29,7 @@ jobs:
       code: ${{ steps.filter.outputs.code }}
       images: ${{ steps.filter.outputs.images }}
       docs: ${{ steps.filter.outputs.docs }}
+      ui: ${{ steps.filter.outputs.ui }}
     steps:
       - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v4
@@ -55,6 +56,15 @@ jobs:
               - 'go.mod'
               - 'go.sum'
               - 'Makefile'
+              - '.github/workflows/ci.yml'
+            # The pages of the stage and the portal, and the preview that renders them.
+            ui:
+              - 'hub/stage/**'
+              - 'hub/portal/**'
+              - 'hub/preview.go'
+              - 'tests/contract/preview_test.go'
+              - 'go.mod'
+              - 'go.sum'
               - '.github/workflows/ci.yml'
             # Everything the docsite shows or builds from: its pages, the architecture, and the
             # programs, whose help makes the command reference. Keep in step with docs.yml.
@@ -220,3 +230,41 @@ jobs:
           push: false
           cache-from: type=gha,scope=office-amd64
           cache-to: type=gha,scope=office-amd64,mode=max
+
+  # Renders every fixture page of the stage and the portal (office-hub preview -out) and keeps the
+  # pages as a workflow artifact, so a reviewer can look at a changed template. It needs no hub, no
+  # secret and no Node.js. It fails when a fixture does not render. It is no required check.
+  # The pull request gets no comment: that needs the permission pull-requests: write, which this
+  # workflow does not have. The job summary names the artifact.
+  ui-preview:
+    name: UI preview
+    needs: changes
+    if: needs.changes.outputs.ui == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: whisper.cpp sources (go.mod points to its Go bindings)
+        run: make third_party/whisper.cpp
+      - name: Build office-hub
+        run: go build -o "$RUNNER_TEMP/office-hub" ./hub
+      - name: Render the fixture pages
+        run: '"$RUNNER_TEMP/office-hub" preview -src . -out "$RUNNER_TEMP/ui-preview"'
+      - name: Upload the pages
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-preview
+          path: ${{ runner.temp }}/ui-preview
+          if-no-files-found: error
+          retention-days: 30
+      - name: Say where the pages are
+        run: |
+          {
+            echo "### UI preview"
+            echo
+            echo "$(find "$RUNNER_TEMP/ui-preview" -name '*.html' | wc -l) fixture pages of the stage and the portal rendered."
+            echo "Download the workflow artifact **ui-preview** below, unzip it and open \`index.html\`."
+          } >> "$GITHUB_STEP_SUMMARY"

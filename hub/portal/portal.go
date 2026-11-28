@@ -313,11 +313,16 @@ func (h *Handler) page(w http.ResponseWriter, u *user, active, tenant string, da
 }
 
 func render(w http.ResponseWriter, status int, u *user, active, tenant string, data map[string]any) {
-	data["Me"] = u
-	data["Nav"] = u.nav(active, tenant)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	_ = web.Page.Execute(w, data)
+	_ = web.Page.Execute(w, withFrame(u, active, tenant, data))
+}
+
+// withFrame adds the user and the navigation to the data of a page.
+func withFrame(u *user, active, tenant string, data map[string]any) map[string]any {
+	data["Me"] = u
+	data["Nav"] = u.nav(active, tenant)
+	return data
 }
 
 // csrf is the token that a form carries. It is derived from the access token of the session,

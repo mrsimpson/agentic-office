@@ -34,6 +34,7 @@ package web
 import (
 	"embed"
 	"html/template"
+	"io/fs"
 	"net/url"
 	"strings"
 )
@@ -123,23 +124,39 @@ const CSP = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; for
 //go:embed embed/*
 var files embed.FS
 
-// read returns an embedded file. The files are part of the package, so a missing file is a
-// programming error.
-func read(name string) string {
-	b, err := files.ReadFile("embed/" + name)
-	if err != nil {
-		panic(err)
-	}
-	return string(b)
+// SourceDir is the directory of the embedded files in a checkout of the repository. The preview
+// reads the files from there, so a change shows without a new build.
+const SourceDir = "hub/portal/web/embed"
+
+// Templates are the page templates of the portal, parsed from a set of files.
+type Templates struct {
+	// Page is a page of the portal. Fields: Title, Section, Me, Nav, Mode and the fields of the
+	// mode. The parts of the page (release, wiki and the lists of the wiki) are templates of it.
+	Page *template.Template
+	// ErrorPage is the page for a missing, used or expired session or link. It shows no data.
+	// Fields: Title, Message.
+	ErrorPage *template.Template
 }
 
-var css = read("portal.css")
-
-// Page is a page of the portal. Fields: Title, Section, Me, Nav, Mode and the fields of the
-// mode. The parts of the page (release, wiki and the lists of the wiki) are templates of it.
-var Page = func() *template.Template {
-	t := template.Must(template.New("page").Funcs(template.FuncMap{
-		"css": func() template.CSS { return template.CSS(css) },
+// Load parses the files page.html, error.html, the parts of the page and portal.css in fsys. The
+// files of the package are the files in embed/; the preview loads them from disk.
+func Load(fsys fs.FS) (*Templates, error) {
+	read := func(name string) (string, error) {
+		b, err := fs.ReadFile(fsys, name)
+		return string(b), err
+	}
+	css, err := read("portal.css")
+	if err != nil {
+		return nil, err
+	}
+	// The template package would escape the style sheet as text.
+	cssFunc := func() template.CSS { return template.CSS(css) }
+	text, err := read("page.html")
+	if err != nil {
+		return nil, err
+	}
+	page, err := template.New("page").Funcs(template.FuncMap{
+		"css": cssFunc,
 		"initials": func(name string) string {
 			var out []rune
 			for _, w := range splitWords(name) {
@@ -156,16 +173,52 @@ var Page = func() *template.Template {
 			}
 			return id
 		},
-	}).Parse(read("page.html")))
+	}).Parse(text)
+	if err != nil {
+		return nil, err
+	}
 	for _, part := range []string{"release", "wiki", "wiki-author", "wiki-entries", "wiki-links"} {
-		template.Must(t.New(part).Parse(read(part + ".html")))
+		if text, err = read(part + ".html"); err != nil {
+			return nil, err
+		}
+		if _, err = page.New(part).Parse(text); err != nil {
+			return nil, err
+		}
+	}
+	if text, err = read("error.html"); err != nil {
+		return nil, err
+	}
+	errPage, err := template.New("error").Funcs(template.FuncMap{"css": cssFunc}).Parse(text)
+	if err != nil {
+		return nil, err
+	}
+	return &Templates{Page: page, ErrorPage: errPage}, nil
+}
+
+// Embedded returns the templates that are compiled into the program.
+func Embedded() *Templates { return embedded }
+
+// embedded are the templates compiled into the program. The files are part of the package, so a
+// failure to load them is a programming error.
+var embedded = func() *Templates {
+	sub, err := fs.Sub(files, "embed")
+	if err != nil {
+		panic(err)
+	}
+	t, err := Load(sub)
+	if err != nil {
+		panic(err)
 	}
 	return t
 }()
 
+// Page is a page of the portal. Fields: Title, Section, Me, Nav, Mode and the fields of the
+// mode. The parts of the page (release, wiki and the lists of the wiki) are templates of it.
+var Page = embedded.Page
+
 // ErrorPage is the page for a missing, used or expired session or link. It shows no data. Fields:
 // Title, Message.
-var ErrorPage = template.Must(template.New("error").Funcs(template.FuncMap{"css": func() template.CSS { return template.CSS(css) }}).Parse(read("error.html")))
+var ErrorPage = embedded.ErrorPage
 
 func splitWords(s string) []string {
 	var out []string
