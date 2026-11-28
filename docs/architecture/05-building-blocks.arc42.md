@@ -515,8 +515,9 @@ path: hub/wiki/api
 
 ### Portal
 
-A browser view for every user of the hub (`dec-web-portal`), in the design of the stage. It shows
-what the key of the user may see:
+A browser view for every user of the hub (`dec-web-portal`), in the design of the stage
+(`dec-ui-base`). It opens on the wiki of the tenant; the sessions of the tenant are a page of their
+own. It shows what the key of the user may see:
 
 - every member of a tenant: the sessions that the member may read (`concept-multi-tenancy`),
   read-only, with their transcript and their artifacts; the released artifacts of the tenant; and
@@ -561,8 +562,9 @@ path: hub/portal
 
 ### Stage view
 
-A browser view of one session, opened by a link. The page follows the session through a stream
-of its regions. It can also read one artifact of the session at a time, for the own focus of the
+A browser view of one session, opened by a link, in the design of the portal (`dec-ui-base`). The
+page follows the session through a stream of its regions. The minutes come first. The bots and what
+needs a human come next, and the transcript is there to check the transcription. It can also read one artifact of the session at a time, for the own focus of the
 browser; that read changes nothing in the session.
 
 ```arc42

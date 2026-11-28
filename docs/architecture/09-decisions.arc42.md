@@ -1493,3 +1493,37 @@ date: 2026-11-25
 addresses: qg-usability, qg-confidentiality, risk-shared-agent-definition, risk-team-agent-key
 :::
 ```
+
+## The stage and the portal share one design system, as plain style sheets
+
+**Context:** The stage and the portal each carried their own style sheet inside the page. Buttons
+broke into several rows, and the pages grew hard to read. Both pages are rendered on the server and
+the portal has no scripts (`dec-web-portal`). The DB UX Design System offers components as web
+components that need scripts (Generation 2, frozen, end of life at the end of 2026) and as plain
+style sheets (version 3, maintained). **Decision:** Both pages use the style sheets of DB UX Design
+System version 3 and nothing else of it: classes and data attributes, no scripts, no web components,
+no fonts and no brand assets of the Deutsche Bahn. A theme of our own sets system fonts and a
+neutral colour scheme, so another theme can replace it later. The style sheet is a static address of
+the stage and of the portal; each serves its own copy, and the address needs no token, because a
+stage link carries one and a style sheet holds no session data. The pages allow style sheets from
+their own origin. The stage keeps inline styles as well, because artifacts in a frame bring their
+own. A tool that runs only at development time picks the components that the pages use and writes the
+style sheet into the repository, so the build of the hub needs no Node.js, as with the docsite
+(`dec-docsite`). It is tooling, not a building block, and `dec-languages` stays as it is.
+**Consequences:** Pages keep working without scripts and keep the closed content security policy of
+`dec-web-portal`. The base ships once per page that serves it. A new component needs a new run of
+the tool. **Rejected:** the web components of Generation 2 (end of life, scripts in the portal); a
+single-page application with a frontend build (`dec-web-portal`); one copy of the style sheet in
+every page (size, sent again with every response, and the stage streams its regions); a shared
+building block for the style sheet (a building block and an interface for one static file); building
+the style sheet in the pipeline only (the hub could then not be built from a clean checkout).
+
+```arc42
+:::decision
+id: dec-ui-base
+title: The stage and the portal share one design system, as plain style sheets
+status: proposed
+date: 2026-11-28
+addresses: qg-usability
+:::
+```
