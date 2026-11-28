@@ -368,9 +368,31 @@ func TestStagePageNeedsStageLink(t *testing.T) {
 		u.EscapedPath() != "/stage/"+url.PathEscape(m.sid)+"/events" {
 		t.Errorf("data-events %q does not point to the event stream of the session", events)
 	}
-	for _, id := range []string{"status", "origin", "participants", "artifacts", "artifact", "artifactlog", "utterances"} {
+	for _, id := range []string{"status", "origin", "participants", "artifacts", "artifact", "artifactlog", "needs", "bots", "lastline", "utterances"} {
 		if len(findAll(doc, withAttr("id", id))) != 1 {
 			t.Errorf("page has no region #%s", id)
+		}
+	}
+	// The transcript is a drawer and the artifact log is a collapsed line: both are closed details
+	// elements, and the scroll box and the jump button sit inside the transcript drawer.
+	if d := findAll(doc, withAttr("id", "transcript")); len(d) != 1 || d[0].Data != "details" || attrHas(d[0], "open") ||
+		len(findAll(d[0], withAttr("id", "utterances"))) != 1 || len(findAll(d[0], withAttr("id", "jump"))) != 1 ||
+		len(findAll(d[0], byTag("summary"))) != 1 || len(findAll(d[0], withAttr("id", "lastline"))) != 1 {
+		t.Errorf("the transcript is not a closed drawer with its summary, scroll box and jump button")
+	}
+	if l := findAll(doc, withAttr("id", "artifactlog")); len(l) != 1 || l[0].Parent == nil || l[0].Parent.Data != "details" || attrHas(l[0].Parent, "open") {
+		t.Errorf("the artifact log is not inside a closed details element")
+	}
+	// The stage link has no user (#274): the page is read-only. No form, no field, no submit button,
+	// and every button is a plain button.
+	for _, tag := range []string{"form", "textarea", "input", "select"} {
+		if n := findAll(doc, byTag(tag)); len(n) != 0 {
+			t.Errorf("the page has %d <%s> elements, it must be read-only", len(n), tag)
+		}
+	}
+	for _, b := range findAll(doc, byTag("button")) {
+		if attrOf(b, "type") != "button" {
+			t.Errorf("button %v is not type=button", b.Attr)
 		}
 	}
 	// The participants sit in the header (#251). The transcript is a scroll box of its own, with a
@@ -454,6 +476,12 @@ func TestStagePageNeedsStageLink(t *testing.T) {
 // stage: participants with their capture status and agents marked, raised hands, the shown
 // artifact (and a note for an unknown one), minutes, utterances (off the record ones disappear), and
 // the end of the session.
+// attrHas reports whether the element has the attribute, whatever its value.
+func attrHas(n *html.Node, key string) bool {
+	_, ok := attr(n, key)
+	return ok
+}
+
 // TestStageShowsPortalAddress: a stage link may carry the address of the portal in the parameter
 // "portal". The page shows a plain link to a path on its own server, without a token and without a
 // referrer. Any other value shows no link.
@@ -1155,5 +1183,146 @@ func TestStageOpensAnArtifactForOneBrowser(t *testing.T) {
 		if res.StatusCode != c.want || strings.Contains(body, "Secret") || strings.Contains(body, "Plan") {
 			t.Errorf("%s: status %d, want %d: %s", name, res.StatusCode, c.want, body)
 		}
+	}
+}
+
+// TestStageNeedsAttention: the block "needs attention" lists the raised hands with their topic and
+// the agents whose reply stayed in their own chat. It renders nothing while neither exists. It is
+// read-only: no form, no field and no button in any region.
+func TestStageNeedsAttention(t *testing.T) {
+	m := newStageMeeting(t)
+	ada := m.joinAs("Ada", sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_HUMAN, true)
+	bot := m.joinAs("Notes Bot", sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_AGENT, false)
+	st := openStage(t, m.srv, m.link)
+	empty := func(n *html.Node) bool {
+		return len(findAll(n, withAttr("data-need", ""))) == 0 && text(n) == ""
+	}
+	st.wait("needs", "an empty block", empty)
+	if got := strings.TrimSpace(st.region("needs")); got != "" {
+		t.Errorf("the block without needs renders %q, want nothing", got)
+	}
+
+	if _, err := m.s(ada).RaiseHand(m.ctx(), &sessioncommandsv1.RaiseHandRequest{SessionId: m.sid, CommandId: coreapi.NewCommandID(),
+		ParticipantId: ada, Topic: "the budget <b>plan</b>"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.report(bot, idle, "", true); err != nil {
+		t.Fatal(err)
+	}
+	n := st.wait("needs", "a raised hand and an unspoken reply", func(n *html.Node) bool {
+		return len(findAll(n, withAttr("data-need", "hand"))) == 1 && len(findAll(n, withAttr("data-need", "unspoken"))) == 1
+	})
+	hand := text(findAll(n, withAttr("data-need", "hand"))[0])
+	if !strings.Contains(hand, "Ada") || !strings.Contains(hand, "the budget <b>plan</b>") || len(findAll(n, byTag("b"))) != 0 {
+		t.Errorf("raised hand: %q", hand)
+	}
+	if reply := text(findAll(n, withAttr("data-need", "unspoken"))[0]); !strings.Contains(reply, "Notes Bot") {
+		t.Errorf("unspoken reply: %q", reply)
+	}
+
+	// Ada speaks, so her hand goes down; the bot reports that it waits, so its reply is no longer unspoken.
+	m.say(ada, "The budget plan is ready.")
+	if err := m.report(bot, idle, "", false); err != nil {
+		t.Fatal(err)
+	}
+	st.wait("needs", "an empty block again", empty)
+	if got := strings.TrimSpace(st.region("needs")); got != "" {
+		t.Errorf("the block without needs renders %q, want nothing", got)
+	}
+
+	// Read-only: no region has a form, a field or a button.
+	for _, region := range []string{"status", "origin", "participants", "artifacts", "artifact", "artifactlog", "needs", "bots", "lastline", "utterances"} {
+		frag := parseFragment(t, st.region(region))
+		for _, tag := range []string{"form", "textarea", "input", "select"} {
+			if len(findAll(frag, byTag(tag))) != 0 {
+				t.Errorf("region %s has a <%s>: the stage is read-only", region, tag)
+			}
+		}
+		for _, b := range findAll(frag, byTag("button")) {
+			if attrOf(b, "type") != "button" {
+				t.Errorf("region %s has a button that is not type=button: %v", region, b.Attr)
+			}
+		}
+	}
+}
+
+// TestStageBotFeed: the bot feed lists what the agents said and what each agent does. Its lines
+// carry their own attribute, never the attribute of a transcript line, and what humans say stays
+// out of it. The transcript region keeps every utterance and never carries the attribute of the feed.
+// The last sentence is the summary of the closed transcript drawer.
+func TestStageBotFeed(t *testing.T) {
+	m := newStageMeeting(t)
+	ada := m.joinAs("Ada", sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_HUMAN, true)
+	bot := m.joinAs("Notes Bot", sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_AGENT, false)
+	st := openStage(t, m.srv, m.link)
+	st.wait("bots", "the agent without a line", func(n *html.Node) bool {
+		return len(findAll(n, withAttr("data-bot", bot))) == 1 && len(findAll(n, withAttr("data-bot-line", ""))) == 0
+	})
+
+	m.say(ada, "Please write down the date.")
+	line := m.say(bot, "I added the date to the minutes.")
+	if err := m.report(bot, working, "minutes_update", false); err != nil {
+		t.Fatal(err)
+	}
+	n := st.wait("bots", "the line and the activity of the bot", func(n *html.Node) bool {
+		return len(findAll(n, withAttr("data-bot-line", ""))) == 1 && len(findAll(n, withAttr("data-bot-activity", "working"))) == 1
+	})
+	if l := findAll(n, withAttr("data-bot-line", fmt.Sprint(line.GetId()))); len(l) != 1 || !strings.Contains(text(l[0]), "Notes Bot") ||
+		!strings.Contains(text(l[0]), "I added the date to the minutes.") {
+		t.Errorf("bot line: %q", text(n))
+	}
+	if len(findAll(n, withAttr("data-utterance", ""))) != 0 || strings.Contains(text(n), "write down the date") {
+		t.Errorf("the bot feed holds a transcript line or what a human said: %q", text(n))
+	}
+	u := st.wait("utterances", "both utterances", func(n *html.Node) bool { return len(findAll(n, withAttr("data-utterance", ""))) == 2 })
+	if len(findAll(u, withAttr("data-bot-line", ""))) != 0 {
+		t.Errorf("a line of the transcript carries data-bot-line")
+	}
+	st.wait("lastline", "the last sentence", func(n *html.Node) bool {
+		return strings.Contains(text(n), "Notes Bot") && strings.Contains(text(n), "I added the date to the minutes.")
+	})
+}
+
+// TestStageMinutesTab: the minutes are the first tab, a real tab like the others. The tab carries a
+// version of the minutes, so a page that shows them for its own focus learns about a change. The
+// artifact address with the reserved path "minutes" answers the minutes, also while another
+// artifact is in the shared focus.
+func TestStageMinutesTab(t *testing.T) {
+	m := newStageMeeting(t)
+	st := openStage(t, m.srv, m.link)
+	bot := m.joinAs("Minute Bot", sessionstreamv1.ParticipantKind_PARTICIPANT_KIND_AGENT, false)
+	if _, err := m.actors[bot].Document.CreateDocument(m.ctx(), &documentv1.CreateDocumentRequest{Path: "documents/a.md", Content: "# A\n",
+		CommandId: coreapi.NewCommandID(), SessionId: m.sid}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.s(bot).FocusArtifact(m.ctx(), &sessioncommandsv1.FocusArtifactRequest{SessionId: m.sid, CommandId: coreapi.NewCommandID(),
+		ParticipantId: bot, ArtifactId: "documents/a.md"}); err != nil {
+		t.Fatal(err)
+	}
+	version := func(n *html.Node) string {
+		tabs := findAll(n, withAttr("role", "tab"))
+		if len(tabs) < 2 || attrOf(tabs[0], "data-artifact") != "minutes" {
+			return ""
+		}
+		return attrOf(tabs[0], "data-version")
+	}
+	n := st.wait("artifacts", "the minutes as the first tab with a version, the document selected", func(n *html.Node) bool {
+		sel := findAll(n, func(n *html.Node) bool { return attrOf(n, "aria-selected") == "true" })
+		return version(n) != "" && len(sel) == 1 && attrOf(sel[0], "data-artifact") == "documents/a.md"
+	})
+	first := findAll(n, withAttr("role", "tab"))[0]
+	if !strings.HasPrefix(text(first), "Minutes") || attrOf(first, "aria-selected") != "false" || first.Data != "button" || attrOf(first, "type") != "button" {
+		t.Errorf("the minutes tab: <%s %v> %q", first.Data, first.Attr, text(first))
+	}
+	before := version(n)
+
+	if _, err := m.s(bot).UpdateMinutes(m.ctx(), &sessioncommandsv1.UpdateMinutesRequest{SessionId: m.sid, CommandId: coreapi.NewCommandID(),
+		ParticipantId: bot, Text: "# Weekly\n\n- Ada opened the meeting\n"}); err != nil {
+		t.Fatal(err)
+	}
+	st.wait("artifacts", "a new version of the minutes", func(n *html.Node) bool { v := version(n); return v != "" && v != before })
+	res, body := get(t, m.srv, artifactURL(t, m.link, "minutes"))
+	if res.StatusCode != http.StatusOK || !strings.Contains(body, "data-minutes") || !strings.Contains(body, "Ada opened the meeting") {
+		t.Errorf("own focus on the minutes while a document is in focus: status %d, %s", res.StatusCode, body)
 	}
 }

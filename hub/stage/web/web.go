@@ -57,7 +57,7 @@ func (a Asset) Path() string { return AssetPrefix + a.Name }
 // Regions are the regions of the page. Each region is an element with this ID. Every event of the
 // event stream is named after one and carries its inner HTML; the stream sends a region again only
 // when its HTML changed.
-var Regions = []string{"status", "origin", "participants", "artifacts", "artifact", "artifactlog", "utterances"}
+var Regions = []string{"status", "origin", "participants", "artifacts", "artifact", "artifactlog", "needs", "bots", "lastline", "utterances"}
 
 //go:embed embed/*
 var files embed.FS

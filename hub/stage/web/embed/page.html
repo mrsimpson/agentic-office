@@ -3,22 +3,27 @@
 <meta name="referrer" content="no-referrer">
 <title>{{.Session}} · Agentic office stage</title><link rel="stylesheet" href="{{asset "base.css"}}"><link rel="stylesheet" href="{{asset "stage.css"}}"></head>
 <body>
-<header><div class="brand"><div class="logo"></div><div><div class="eyebrow">Agentic office</div><h1>Session <span id="session">{{.Session}}</span></h1></div></div><section id="participants" aria-label="Participants">{{.Regions.participants}}</section><div class="side">{{with .Portal}}<a id="portal" href="{{.}}" rel="noreferrer" target="_blank">Open in portal</a>{{end}}<div id="status">{{.Regions.status}}</div></div></header>
+<header><div class="brand"><span class="logo" aria-hidden="true"></span><div><div class="eyebrow">Agentic office</div><h1>Session <span id="session">{{.Session}}</span></h1></div></div><div id="status">{{.Regions.status}}</div><section id="participants" aria-label="Participants">{{.Regions.participants}}</section>{{with .Portal}}<a id="portal" class="db-button" data-size="small" data-wrap="false" href="{{.}}" rel="noreferrer" target="_blank">Open in portal</a>{{end}}</header>
 <div id="origin">{{.Regions.origin}}</div>
 <noscript><p class="note">This page needs JavaScript for live updates.</p></noscript>
 <main id="stage" class="stage" data-events="{{.Events}}" data-artifact="{{.Artifact}}">
 <div class="left">
-<div class="viewer">
 <section id="artifacts" aria-label="Artifacts of the session">{{.Regions.artifacts}}</section>
+<div class="pane">
 <section id="artifact" aria-label="Artifact in focus">{{.Regions.artifact}}</section>
+<details class="artifact-log"><summary>Artifact log</summary><div id="artifactlog">{{.Regions.artifactlog}}</div></details>
 </div>
-<section id="artifactlog" class="artifact-log" aria-label="Artifact log">{{.Regions.artifactlog}}</section>
 </div>
 <div class="right">
-<section class="transcript" aria-label="Transcript"><h2>Transcript</h2>
+<section id="needs" aria-label="Needs attention" aria-live="polite">{{.Regions.needs}}</section>
+<section id="bots" aria-label="Bots">{{.Regions.bots}}</section>
+<details id="transcript" class="transcript">
+<summary><span class="rail-title">Transcript</span><span id="lastline" class="lastline">{{.Regions.lastline}}</span></summary>
+<div class="drawer">
 <div id="utterances" class="scroll" aria-live="polite" tabindex="0">{{.Regions.utterances}}</div>
-<button id="jump" type="button" hidden>New messages &#8595;</button>
-</section>
+<button id="jump" class="db-button" data-variant="brand" data-size="small" data-wrap="false" type="button" hidden>New messages &#8595;</button>
+</div>
+</details>
 </div>
 </main>
 <script>{{.Script}}</script>

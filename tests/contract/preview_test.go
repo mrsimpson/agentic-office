@@ -22,7 +22,8 @@ import (
 // page must hold. The markers (data-* attributes) are the ones that the contract tests of the
 // stage and the portal read, so the fixtures keep the shape of the real pages.
 var previewAnchors = map[string][]string{
-	"stage-live.html":                 {"data-participant=", "data-hand=", `data-activity="working"`, `data-artifact="slides/8"`, "<iframe", "data-utterance="},
+	"stage-live.html":                 {"data-participant=", "data-hand=", `data-activity="working"`, `data-artifact="slides/8"`, "<iframe", "data-utterance=", "data-bot-line=", `data-need="hand"`, `data-need="unspoken"`},
+	"stage-live-quiet.html":           {"data-bot-line=", `data-bot-activity="working"`},
 	"stage-live-note.html":            {"data-participant=", `data-artifact="data/report.csv"`},
 	"stage-agent-unspoken.html":       {`data-activity="unspoken"`, `data-kind="agent"`},
 	"stage-empty.html":                {"data-participant=", `data-placeholder="minutes"`},

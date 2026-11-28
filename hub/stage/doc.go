@@ -21,7 +21,7 @@
 //     staging area of another session.
 //   - The page is rendered on the server with an empty view. A small inline script opens the
 //     event stream. Every event of the stream is named after a region of the page (status,
-//     origin, participants, hands, artifact, minutes, utterances) and carries the inner HTML of that
+//     origin, participants, artifacts, artifact, artifactlog, needs, bots, lastline, utterances) and carries the inner HTML of that
 //     region, rendered on the server. The script only replaces the region. The first message
 //     sends every region; later messages send only regions that changed, so a shown artifact is
 //     not reloaded when someone speaks. A reconnect starts from the beginning of the log.
@@ -44,7 +44,14 @@
 //   - Staged artifacts (concept-session-release): the stage reads as the stage of its session. A
 //     staged file or deck of its own session shows its content, read from the staging area; a
 //     staged file of another session shows its stub, and a staged deck of another session a note.
-//   - Minutes: the text of the last minutes.updated. Utterances: the last 500 that are not
+//   - Needs attention (region needs): the raised hands with their topic and the agents whose
+//     last reply stayed in their own chat. The region is empty, and the page shows nothing, while
+//     neither exists. The bot feed (region bots) lists each agent with its activity and the latest
+//     utterances of agents; its lines carry data-bot-line, not data-utterance. The page is
+//     read-only: no form, no field, no submit button.
+//   - Minutes: the text of the last minutes.updated. The minutes are the first tab; the address
+//     of an artifact answers the minutes for the reserved path "minutes", and the tab carries a
+//     version of the text so a page that shows the minutes for its own focus reloads them. Utterances: the last 500 that are not
 //     off the record, with corrections applied, in a transcript that scrolls. An imported utterance shows its original time
 //     (UTC). A off the record utterance disappears.
 //   - Activities (dec-agent-activity): next to the stream of the log, the stage watches the
