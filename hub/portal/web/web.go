@@ -25,14 +25,19 @@
 //	POST /portal/admin/keys/revoke        revokes a key
 //	GET  /portal/admin/tenants            the tenants of the hub
 //	GET  /portal/admin/admins             the system admins
+//	GET  /portal/assets/<name>            a style sheet of the pages (Asset); no login
 //
-// The navigation shows only what the key may see. The pages have no scripts and no external
-// assets. The session is a cookie (CookieName) that scripts cannot read. The
-// Content-Security-Policy (CSP) allows only inline styles.
+// The navigation shows only what the key may see. The pages have no scripts. They link two style
+// sheets of their own origin (the base of the design system and the page) and no other asset. The
+// session is a cookie (CookieName) that scripts cannot read. The Content-Security-Policy (CSP)
+// allows only style sheets of the same origin.
 package web
 
 import (
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
+	"fmt"
 	"html/template"
 	"io/fs"
 	"net/url"
@@ -60,7 +65,27 @@ const (
 	AdminsPath  = "/portal/admin/admins"
 	// CookieName is the cookie with the access token of the user.
 	CookieName = "office_portal"
+	// AssetPrefix is where the static files of the pages are served. They need no login: they hold
+	// no data of a user.
+	AssetPrefix = "/portal/assets/"
 )
+
+// Asset is a static file that the pages link: a style sheet, or the notice of the third-party
+// licences that the base style sheet needs.
+type Asset struct {
+	// Name is the last part of the address. A style sheet has a hash of its content in its name, so
+	// a changed file has a new address and a browser never uses a stale copy.
+	Name string
+	// Type is the media type of the answer.
+	Type string
+	// Body is the content.
+	Body []byte
+	// Immutable says that the name carries a hash of the content, so the file may be cached for ever.
+	Immutable bool
+}
+
+// Path returns the address of the asset.
+func (a Asset) Path() string { return AssetPrefix + a.Name }
 
 // TenantPath is the start page of a tenant.
 func TenantPath(tenant string) string { return TenantPrefix + url.PathEscape(tenant) + "/" }
@@ -119,7 +144,7 @@ func WikiBrokenPath(tenant string) string { return WikiPath(tenant) + "/broken" 
 func WikiQueuePath(tenant string) string { return WikiPath(tenant) + "/queue" }
 
 // CSP is the Content-Security-Policy of every page. The pages cannot be framed.
-const CSP = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+const CSP = "default-src 'none'; style-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 
 //go:embed embed/*
 var files embed.FS
@@ -136,27 +161,62 @@ type Templates struct {
 	// ErrorPage is the page for a missing, used or expired session or link. It shows no data.
 	// Fields: Title, Message.
 	ErrorPage *template.Template
+	// Assets are the static files of the pages, served at AssetPrefix.
+	Assets []Asset
 }
 
-// Load parses the files page.html, error.html, the parts of the page and portal.css in fsys. The
-// files of the package are the files in embed/; the preview loads them from disk.
+// Asset returns the asset with this name (the last part of its address).
+func (t *Templates) Asset(name string) (Asset, bool) {
+	for _, a := range t.Assets {
+		if a.Name == name {
+			return a, true
+		}
+	}
+	return Asset{}, false
+}
+
+// styleSheets are the style sheets of the pages, in the order in which the pages link them: the
+// base of the design system first, then the page, which may override the base.
+var styleSheets = []string{"base.css", "portal.css"}
+
+// Load parses the files page.html, error.html and the parts of the page in fsys and reads the
+// style sheets (base.css, portal.css) and third-party-notices.txt as assets. The files of the
+// package are the files in embed/; the preview loads them from disk.
 func Load(fsys fs.FS) (*Templates, error) {
 	read := func(name string) (string, error) {
 		b, err := fs.ReadFile(fsys, name)
 		return string(b), err
 	}
-	css, err := read("portal.css")
+	var assets []Asset
+	paths := map[string]string{} // source file name -> address
+	for _, file := range styleSheets {
+		body, err := fs.ReadFile(fsys, file)
+		if err != nil {
+			return nil, err
+		}
+		sum := sha256.Sum256(body)
+		a := Asset{Name: strings.TrimSuffix(file, ".css") + "-" + hex.EncodeToString(sum[:6]) + ".css",
+			Type: "text/css; charset=utf-8", Body: body, Immutable: true}
+		assets = append(assets, a)
+		paths[file] = a.Path()
+	}
+	notice, err := fs.ReadFile(fsys, "third-party-notices.txt")
 	if err != nil {
 		return nil, err
 	}
-	// The template package would escape the style sheet as text.
-	cssFunc := func() template.CSS { return template.CSS(css) }
+	assets = append(assets, Asset{Name: "third-party-notices.txt", Type: "text/plain; charset=utf-8", Body: notice})
+	assetFunc := func(file string) (string, error) {
+		if p, ok := paths[file]; ok {
+			return p, nil
+		}
+		return "", fmt.Errorf("no style sheet %q", file)
+	}
 	text, err := read("page.html")
 	if err != nil {
 		return nil, err
 	}
 	page, err := template.New("page").Funcs(template.FuncMap{
-		"css": cssFunc,
+		"asset": assetFunc,
 		"initials": func(name string) string {
 			var out []rune
 			for _, w := range splitWords(name) {
@@ -188,11 +248,11 @@ func Load(fsys fs.FS) (*Templates, error) {
 	if text, err = read("error.html"); err != nil {
 		return nil, err
 	}
-	errPage, err := template.New("error").Funcs(template.FuncMap{"css": cssFunc}).Parse(text)
+	errPage, err := template.New("error").Funcs(template.FuncMap{"asset": assetFunc}).Parse(text)
 	if err != nil {
 		return nil, err
 	}
-	return &Templates{Page: page, ErrorPage: errPage}, nil
+	return &Templates{Page: page, ErrorPage: errPage, Assets: assets}, nil
 }
 
 // Embedded returns the templates that are compiled into the program.
@@ -215,6 +275,9 @@ var embedded = func() *Templates {
 // Page is a page of the portal. Fields: Title, Section, Me, Nav, Mode and the fields of the
 // mode. The parts of the page (release, wiki and the lists of the wiki) are templates of it.
 var Page = embedded.Page
+
+// Assets are the static files of the pages that are compiled into the program.
+var Assets = embedded.Assets
 
 // ErrorPage is the page for a missing, used or expired session or link. It shows no data. Fields:
 // Title, Message.

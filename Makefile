@@ -17,7 +17,7 @@ export CGO_LDFLAGS := -O2 -g -L$(WHISPER_BUILD)/src -L$(WHISPER_BUILD)/ggml/src 
 # Models of the ears: a multilingual Whisper model and the Silero VAD model.
 MODEL_DIR ?= $(or $(XDG_DATA_HOME),$(HOME)/.local/share)/agentic-office/models
 
-.PHONY: all build arch test contract e2e e2e-all e2e-vet performance ui-dev ui-preview docs docs-serve lint generate check-generated whisper models clean
+.PHONY: all build arch test contract e2e e2e-all e2e-vet performance ui-dev ui-preview ui-css docs docs-serve lint generate check-generated whisper models clean
 all: build
 
 build:
@@ -76,6 +76,15 @@ ui-dev:
 ui-preview: build
 	rm -rf $(BIN)/ui-preview
 	$(BIN)/office-hub preview -src . -out $(BIN)/ui-preview
+
+# The base style sheet of the stage and the portal (DB UX Design System version 3, dec-ui-base). The
+# tool in scripts/ui-css (Node.js, development time only) picks the components, drops the fonts,
+# adds our theme and writes base.css and third-party-notices.txt into hub/stage/web/embed and
+# hub/portal/web/embed. The output is committed, so building the hub needs no Node.js. Run it after
+# a change of the pinned packages, of the component list or of theme.css, and commit the result.
+ui-css:
+	cd scripts/ui-css && npm ci --no-audit --no-fund
+	cd scripts/ui-css && node build.js
 
 # The docsite (docs/site/, Starlight): the user guide, the command reference, the developer pages and
 # the architecture. make docs builds it into docs/site/dist/. The command reference comes from the

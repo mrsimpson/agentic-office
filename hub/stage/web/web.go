@@ -8,18 +8,23 @@
 //	GET /stage/<escaped session>/artifact?token=<token>&path=<path>
 //	                                                   the artifact region for one artifact of the
 //	                                                   session, for the own focus of a browser
+//	GET /stage/assets/<name>                           a style sheet of the page (Assets); no token
 //
 // The page has regions (Regions). Every event of the stream is named after a region and carries
 // the inner HTML of that region; the one inline script (Script) only replaces the region. An
-// event "end" ends the stream. The page has no external assets; its Content-Security-Policy
-// (PageCSP) allows only the inline styles, the inline script by its hash and the event stream of
-// the same origin. An error page (ErrorPage, ErrorCSP) shows no session data.
+// event "end" ends the stream. The page links two style sheets of its own origin (Assets): the
+// base of the design system and the page. Its Content-Security-Policy (PageCSP) allows style sheets
+// of the same origin and inline styles (artifacts in a frame bring their own), the inline script by
+// its hash and the event stream of the same origin. An error page (ErrorPage, ErrorCSP) shows no
+// session data.
 package web
 
 import (
 	"crypto/sha256"
 	"embed"
 	"encoding/base64"
+	"encoding/hex"
+	"fmt"
 	"html/template"
 	"io/fs"
 	"strings"
@@ -27,6 +32,27 @@ import (
 
 // PathPrefix is where the stage is mounted. Identity creates links <public-url>/stage/<session>.
 const PathPrefix = "/stage/"
+
+// AssetPrefix is where the static files of the page are served. They need no token: they hold no
+// session data.
+const AssetPrefix = PathPrefix + "assets/"
+
+// Asset is a static file that the page links: a style sheet, or the notice of the third-party
+// licences that the base style sheet needs.
+type Asset struct {
+	// Name is the last part of the address. A style sheet has a hash of its content in its name, so
+	// a changed file has a new address and a browser never uses a stale copy.
+	Name string
+	// Type is the media type of the answer.
+	Type string
+	// Body is the content.
+	Body []byte
+	// Immutable says that the name carries a hash of the content, so the file may be cached for ever.
+	Immutable bool
+}
+
+// Path returns the address of the asset.
+func (a Asset) Path() string { return AssetPrefix + a.Name }
 
 // Regions are the regions of the page. Each region is an element with this ID. Every event of the
 // event stream is named after one and carries its inner HTML; the stream sends a region again only
@@ -53,21 +79,56 @@ type Templates struct {
 	Regions *template.Template
 	// Script is the one inline script of the page.
 	Script string
+	// Assets are the static files of the page, served at AssetPrefix.
+	Assets []Asset
 }
 
-// Load parses the files page.html, error.html, regions.html, stage.css and script.js in fsys.
-// The files of the package are the files in embed/; the preview loads them from disk.
+// Asset returns the asset with this name (the last part of its address).
+func (t *Templates) Asset(name string) (Asset, bool) {
+	for _, a := range t.Assets {
+		if a.Name == name {
+			return a, true
+		}
+	}
+	return Asset{}, false
+}
+
+// styleSheets are the style sheets of the page, in the order in which the page links them: the
+// base of the design system first, then the page, which may override the base.
+var styleSheets = []string{"base.css", "stage.css"}
+
+// Load parses the files page.html, error.html, regions.html and script.js in fsys and reads the
+// style sheets (base.css, stage.css) and third-party-notices.txt as assets. The files of the
+// package are the files in embed/; the preview loads them from disk.
 func Load(fsys fs.FS) (*Templates, error) {
 	read := func(name string) (string, error) {
 		b, err := fs.ReadFile(fsys, name)
 		return string(b), err
 	}
-	css, err := read("stage.css")
+	t := &Templates{}
+	paths := map[string]string{} // source file name -> address
+	for _, file := range styleSheets {
+		body, err := fs.ReadFile(fsys, file)
+		if err != nil {
+			return nil, err
+		}
+		sum := sha256.Sum256(body)
+		a := Asset{Name: strings.TrimSuffix(file, ".css") + "-" + hex.EncodeToString(sum[:6]) + ".css",
+			Type: "text/css; charset=utf-8", Body: body, Immutable: true}
+		t.Assets = append(t.Assets, a)
+		paths[file] = a.Path()
+	}
+	notice, err := fs.ReadFile(fsys, "third-party-notices.txt")
 	if err != nil {
 		return nil, err
 	}
-	// The template package would escape the style sheet as text.
-	funcs := template.FuncMap{"css": func() template.CSS { return template.CSS(css) }}
+	t.Assets = append(t.Assets, Asset{Name: "third-party-notices.txt", Type: "text/plain; charset=utf-8", Body: notice})
+	funcs := template.FuncMap{"asset": func(file string) (string, error) {
+		if p, ok := paths[file]; ok {
+			return p, nil
+		}
+		return "", fmt.Errorf("no style sheet %q", file)
+	}}
 	parse := func(name string, funcs template.FuncMap) (*template.Template, error) {
 		text, err := read(name)
 		if err != nil {
@@ -75,7 +136,6 @@ func Load(fsys fs.FS) (*Templates, error) {
 		}
 		return template.New(strings.TrimSuffix(name, ".html")).Funcs(funcs).Parse(text)
 	}
-	t := &Templates{}
 	if t.Page, err = parse("page.html", funcs); err != nil {
 		return nil, err
 	}
@@ -131,12 +191,17 @@ var scriptHash = func() string {
 // event stream), Regions (the inner HTML of every region, by name) and Script.
 var Page = embedded.Page
 
-// PageCSP is the Content-Security-Policy of the page.
-var PageCSP = "default-src 'none'; style-src 'unsafe-inline'; script-src " + scriptHash +
+// PageCSP is the Content-Security-Policy of the page. Style sheets come from the same origin; the
+// inline styles stay because the artifacts that the page shows in a frame bring their own style
+// blocks (a frame with srcdoc takes the policy of the page).
+var PageCSP = "default-src 'none'; style-src 'self' 'unsafe-inline'; script-src " + scriptHash +
 	"; connect-src 'self'; base-uri 'none'; form-action 'none'"
 
 // ErrorCSP is the Content-Security-Policy of the error page.
-const ErrorCSP = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"
+const ErrorCSP = "default-src 'none'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'none'"
+
+// Assets are the static files of the page that are compiled into the program.
+var Assets = embedded.Assets
 
 // RegionTemplates render the inner HTML of each region (one template per name in Regions) from
 // the view of a session.

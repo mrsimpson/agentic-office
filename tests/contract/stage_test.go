@@ -386,9 +386,12 @@ func TestStagePageNeedsStageLink(t *testing.T) {
 	} else if _, hidden := attr(j[0], "hidden"); !hidden {
 		t.Errorf("the jump button shows before anything is new")
 	}
-	// No external assets: no element loads anything from an address.
+	// No external assets: the only files that the page loads are its two style sheets of the same
+	// origin (TestStageServesItsStyleSheets checks them).
 	for _, n := range findAll(doc, func(n *html.Node) bool { _, s := attr(n, "src"); _, h := attr(n, "href"); return s || h }) {
-		t.Errorf("page loads an asset: <%s %v>", n.Data, n.Attr)
+		if n.Data != "link" || attrOf(n, "rel") != "stylesheet" || !strings.HasPrefix(attrOf(n, "href"), "/stage/assets/") {
+			t.Errorf("page loads an asset: <%s %v>", n.Data, n.Attr)
+		}
 	}
 	// Without the parameter "portal", the page has no link at all.
 	if p := findAll(doc, withAttr("id", "portal")); len(p) != 0 {

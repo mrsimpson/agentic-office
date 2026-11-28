@@ -1,0 +1,37 @@
+/* Our own theme for the DB UX Design System base: system fonts and a neutral colour scheme.
+   A theme of the DB can replace this file later. It uses only the custom properties of the base. */
+
+:root {
+  /* The base defines no font family; DB themes bring their own fonts. We use the system fonts. */
+  --db-font-family-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --db-font-family-head: var(--db-font-family-sans);
+
+  /* The brand scale follows the neutral scale, so buttons, links and focus rings are ink on paper. */
+  --db-brand-0: var(--db-neutral-0);
+  --db-brand-1: var(--db-neutral-1);
+  --db-brand-2: var(--db-neutral-2);
+  --db-brand-3: var(--db-neutral-3);
+  --db-brand-4: var(--db-neutral-4);
+  --db-brand-5: var(--db-neutral-5);
+  --db-brand-6: var(--db-neutral-6);
+  --db-brand-7: var(--db-neutral-7);
+  --db-brand-8: var(--db-neutral-8);
+  --db-brand-9: var(--db-neutral-9);
+  --db-brand-10: var(--db-neutral-10);
+  --db-brand-11: var(--db-neutral-11);
+  --db-brand-12: var(--db-neutral-12);
+  --db-brand-13: var(--db-neutral-13);
+  --db-brand-14: var(--db-neutral-14);
+
+  /* The origin colour is the fill of a primary button: dark ink on a light page, light ink on a
+     dark page. The base picks the light or the dark value with light-dark(). */
+  --db-brand-origin-base: #111111;
+  --db-brand-origin-light-default: #111111;
+  --db-brand-origin-light-hovered: #3d3d40;
+  --db-brand-origin-light-pressed: #2a2a2d;
+  --db-brand-on-origin-light-default: #ffffff;
+  --db-brand-origin-dark-default: #ececec;
+  --db-brand-origin-dark-hovered: #c9c9ce;
+  --db-brand-origin-dark-pressed: #d9d9dd;
+  --db-brand-on-origin-dark-default: #0c0c0d;
+}

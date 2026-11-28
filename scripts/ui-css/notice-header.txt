@@ -1,0 +1,20 @@
+Third-party notices for the base style sheet
+
+The base style sheet (base-<hash>.css, next to this file) contains parts of these packages of the
+DB UX Design System, version 3 (https://github.com/db-ux-design-system/core-web):
+
+@PACKAGES@
+
+Both packages are licensed under the Apache License, Version 2.0 (full text below). They have no
+NOTICE file. Copyright (c) DB Systel GmbH.
+
+We changed the files. We selected the components that the pages use, removed all font and icon
+data, removed comments and white space, and added a theme file of our own (system fonts and a
+neutral colour scheme). The script that does this is scripts/ui-css in the repository.
+
+The source code of the DB UX Design System is licensed under the Apache License. The design assets
+of Deutsche Bahn (fonts, icons, trademarks, brandings) are licensed separately and are NOT part of
+this style sheet. This product ships none of them.
+
+------------------------------------------------------------------------------------------------
+

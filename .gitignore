@@ -8,3 +8,5 @@ docs/site/dist/
 docs/site/.astro/
 docs/site/src/content/docs/
 docs/site/public/
+# The tool that builds the base style sheet (scripts/ui-css): its dependencies.
+scripts/ui-css/node_modules/

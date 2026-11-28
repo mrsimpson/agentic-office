@@ -59,6 +59,12 @@
 //     control character), the header shows it as the plain link "Open in portal". Any other value
 //     shows no link. The link carries no token and sends no referrer. The stage knows nothing of
 //     the portal; the portal asks for its own sign-in.
-//   - No external assets, no frontend build. A Content-Security-Policy allows only the inline
-//     styles, the one inline script (by hash) and the event stream of the same origin.
+//   - Static files (dec-ui-base): the page links two style sheets of the same origin, the base of
+//     the design system and its own, at /stage/assets/<name>. They need no token because they
+//     hold no session data. The name of a style sheet holds a hash of its content, so the answer is
+//     cached for a year and a changed file has a new address. An unknown name answers 404. The
+//     notice of the third-party licences is served there too.
+//   - No external assets, no frontend build. A Content-Security-Policy allows style sheets of the
+//     same origin, inline styles (artifacts in a frame bring their own), the one inline script (by
+//     hash) and the event stream of the same origin.
 package stage

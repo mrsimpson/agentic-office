@@ -48,9 +48,10 @@ templates and the style sheets from the source tree (-src, the root of a checkou
 change, and a small script in each page reloads the page when a file changed. Start it from a
 checkout with "make ui-dev". Open the address in a browser: the start page lists every page.
 
-Writing: -out writes every page to a file, plus index.html that links them, and exits. It
-exits with an error when a page does not render, so a broken template cannot go unnoticed. Links
-between the pages point to the files.
+Writing: -out writes every page to a file, plus index.html that links them, and the style
+sheets that the pages link (below stage/assets and portal/assets), and exits. It exits with an
+error when a page does not render, so a broken template cannot go unnoticed. Links between the
+pages point to the files, links to the style sheets to their relative path.
 
 Without the source tree (no hub/stage/web/embed below -src), the preview uses the templates that
 are built into the program, and the pages do not reload.
@@ -63,6 +64,13 @@ type previewPage struct {
 	Name, Title, Path string
 	HTML              []byte
 	Portal            bool
+}
+
+// previewAsset is a static file of a page, as the real stage or portal serves it.
+type previewAsset struct {
+	Path string // the address, for example /stage/assets/base-0123456789ab.css
+	Type string // the media type
+	Body []byte
 }
 
 // previewSource says where the templates come from.
@@ -105,18 +113,18 @@ func (s previewSource) version() string {
 	return strconv.FormatInt(newest, 10)
 }
 
-// render renders every fixture page. It returns the pages that rendered and one error that
-// lists every page that did not.
-func (s previewSource) render() ([]previewPage, error) {
+// render renders every fixture page. It returns the pages that rendered, the static files that
+// the pages link and one error that lists every page that did not render.
+func (s previewSource) render() ([]previewPage, []previewAsset, error) {
 	var errs []error
 	st, pt := stageweb.Embedded(), portalweb.Embedded()
 	if s.onDisk() {
 		var err error
 		if st, err = stageweb.Load(os.DirFS(s.stage)); err != nil {
-			return nil, fmt.Errorf("stage templates in %s: %w", s.stage, err)
+			return nil, nil, fmt.Errorf("stage templates in %s: %w", s.stage, err)
 		}
 		if pt, err = portalweb.Load(os.DirFS(s.portal)); err != nil {
-			return nil, fmt.Errorf("portal templates in %s: %w", s.portal, err)
+			return nil, nil, fmt.Errorf("portal templates in %s: %w", s.portal, err)
 		}
 	}
 	var pages []previewPage
@@ -133,7 +141,14 @@ func (s previewSource) render() ([]previewPage, error) {
 	if len(pages) == 0 {
 		errs = append(errs, errors.New("no page rendered"))
 	}
-	return pages, errors.Join(errs...)
+	var assets []previewAsset
+	for _, a := range st.Assets {
+		assets = append(assets, previewAsset{Path: a.Path(), Type: a.Type, Body: a.Body})
+	}
+	for _, a := range pt.Assets {
+		assets = append(assets, previewAsset{Path: a.Path(), Type: a.Type, Body: a.Body})
+	}
+	return pages, assets, errors.Join(errs...)
 }
 
 // indexTemplate is the start page of the preview. It is not a page of the product.
@@ -229,6 +244,7 @@ type previewServer struct {
 	mu      sync.Mutex
 	version string
 	pages   []previewPage
+	assets  map[string]previewAsset // by address
 	byName  map[string]previewPage
 	routes  map[string]previewPage
 	err     error
@@ -240,14 +256,19 @@ func (s *previewServer) current() *previewServer {
 	defer s.mu.Unlock()
 	if v := s.src.version(); s.byName == nil || v != s.version {
 		s.version = v
-		s.pages, s.err = s.src.render()
+		var assets []previewAsset
+		s.pages, assets, s.err = s.src.render()
+		s.assets = map[string]previewAsset{}
+		for _, a := range assets {
+			s.assets[a.Path] = a
+		}
 		s.byName = map[string]previewPage{}
 		for _, p := range s.pages {
 			s.byName[p.Name] = p
 		}
 		s.routes = previewRoutes(s.pages)
 	}
-	return &previewServer{src: s.src, version: s.version, pages: s.pages, byName: s.byName, routes: s.routes, err: s.err}
+	return &previewServer{src: s.src, version: s.version, pages: s.pages, assets: s.assets, byName: s.byName, routes: s.routes, err: s.err}
 }
 
 func (s *previewServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -271,6 +292,12 @@ func (s *previewServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			html = withReload(html)
 		}
 		_, _ = w.Write(html)
+	}
+	// The static files of the pages, at the addresses of the real stage and portal.
+	if a, ok := cur.assets[r.URL.Path]; ok {
+		w.Header().Set("Content-Type", a.Type)
+		_, _ = w.Write(a.Body)
+		return
 	}
 	path := routePath(r.URL.Path)
 	if path == "/" || path == "/index.html" {
@@ -298,13 +325,29 @@ func (s *previewServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, msg, http.StatusNotFound)
 }
 
-// writePreview writes every page and index.html to dir. Links between pages point to the files.
-func writePreview(dir string, pages []previewPage) error {
+// previewAssetFile returns the place of a static file in the folder that writePreview fills: the
+// address of the real page below the folder, so /stage/assets/x.css becomes stage/assets/x.css.
+// The pages link it by this relative path.
+func previewAssetFile(address string) string { return strings.TrimPrefix(address, "/") }
+
+// writePreview writes every page, the static files that they link and index.html to dir. Links
+// between pages point to the files, links to static files to their relative path.
+func writePreview(dir string, pages []previewPage, assets []previewAsset) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 	// Replace the address of a page in a link by its file.
 	var pairs []string
+	for _, a := range assets {
+		file := previewAssetFile(a.Path)
+		if err := os.MkdirAll(filepath.Join(dir, filepath.Dir(filepath.FromSlash(file))), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(file)), a.Body, 0o644); err != nil {
+			return err
+		}
+		pairs = append(pairs, `href="`+a.Path+`"`, `href="`+file+`"`)
+	}
 	for p, page := range previewRoutes(pages) {
 		pairs = append(pairs, `href="`+template.HTMLEscapeString(p)+`"`, `href="`+page.Name+`"`)
 		if !strings.Contains(p, "?") && p != portalweb.HomePath {
@@ -361,8 +404,8 @@ func preview(args []string) {
 	}
 
 	if *out != "" {
-		pages, renderErr := source.render()
-		if err := writePreview(*out, pages); err != nil {
+		pages, assets, renderErr := source.render()
+		if err := writePreview(*out, pages, assets); err != nil {
 			log.Fatal(err)
 		}
 		fmt.Printf("wrote %d pages and index.html to %s\n", len(pages), *out)

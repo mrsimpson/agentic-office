@@ -74,4 +74,11 @@
 //     RevokeKey. A user keeps at least one key that works: the last key cannot be revoked.
 //   - Every form carries a token that is derived from the session of the user, and the portal
 //     refuses a post whose Origin is another server.
+//   - Static files (dec-ui-base): every page links two style sheets of the same origin, the base
+//     of the design system and its own, at /portal/assets/<name>. They need no login and no
+//     cookie, because they hold no data of a user. The name of a style sheet holds a hash of its
+//     content, so the answer is cached for a year and a changed file has a new address. An unknown
+//     name answers 404. The notice of the third-party licences is served there too. The pages
+//     have no inline style: the Content-Security-Policy allows style sheets of the same origin
+//     only.
 package portal

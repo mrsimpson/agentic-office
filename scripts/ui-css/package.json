@@ -1,0 +1,13 @@
+{
+  "name": "ui-css",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Builds the base style sheet of the stage and the portal (make ui-css). Tooling, not a building block.",
+  "scripts": {
+    "build": "node build.js"
+  },
+  "dependencies": {
+    "@db-ux/core-components": "6.5.0",
+    "@db-ux/core-foundations": "6.5.0"
+  }
+}
