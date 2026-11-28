@@ -491,11 +491,20 @@ func (v *view) Utterances() []*utteranceView {
 
 // render returns the inner HTML of a region.
 func (v *view) render(region string) string {
-	var b bytes.Buffer
-	if err := web.RegionTemplates.ExecuteTemplate(&b, region, v); err != nil {
+	html, err := v.renderRegion(web.RegionTemplates, region)
+	if err != nil {
 		return template.HTMLEscapeString("render " + region + ": " + err.Error())
 	}
-	return strings.TrimSpace(b.String())
+	return html
+}
+
+// renderRegion renders a region with the given region templates.
+func (v *view) renderRegion(t *template.Template, region string) (string, error) {
+	var b bytes.Buffer
+	if err := t.ExecuteTemplate(&b, region, v); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(b.String()), nil
 }
 
 // renderAll returns the inner HTML of every region.

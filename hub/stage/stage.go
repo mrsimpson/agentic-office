@@ -154,11 +154,16 @@ func (h *Handler) fail(w http.ResponseWriter, status int, title, msg string) {
 func (h *Handler) page(w http.ResponseWriter, r *http.Request, sid, token string) {
 	w.Header().Set("Content-Security-Policy", web.PageCSP)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = executePage(w, web.Page, sid, token, portalLink(r.URL.Query().Get("portal")), newView().renderAll(), template.JS(web.Script))
+}
+
+// executePage writes the page of a session with the HTML of its regions.
+func executePage(w io.Writer, page *template.Template, sid, token, portal string, regions map[string]template.HTML, script template.JS) error {
 	q := "?" + url.Values{"token": {token}}.Encode()
 	events := web.PathPrefix + url.PathEscape(sid) + "/events" + q
 	artifact := web.PathPrefix + url.PathEscape(sid) + "/artifact" + q
-	_ = web.Page.Execute(w, map[string]any{"Session": sid, "Events": events, "Artifact": artifact,
-		"Portal": portalLink(r.URL.Query().Get("portal")), "Regions": newView().renderAll(), "Script": template.JS(web.Script)})
+	return page.Execute(w, map[string]any{"Session": sid, "Events": events, "Artifact": artifact,
+		"Portal": portal, "Regions": regions, "Script": script})
 }
 
 // coalesce is how long the stream waits for more events before it sends the changed regions.
