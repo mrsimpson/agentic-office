@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>{{.Session}} · Agentic office stage</title><style>{{css}}</style></head>
+<body>
+<header><div class="brand"><div class="logo"></div><div><div class="eyebrow">Agentic office</div><h1>Session <span id="session">{{.Session}}</span></h1></div></div><section id="participants" aria-label="Participants">{{.Regions.participants}}</section><div class="side">{{with .Portal}}<a id="portal" href="{{.}}" rel="noreferrer" target="_blank">Open in portal</a>{{end}}<div id="status">{{.Regions.status}}</div></div></header>
+<div id="origin">{{.Regions.origin}}</div>
+<noscript><p class="note">This page needs JavaScript for live updates.</p></noscript>
+<main id="stage" class="stage" data-events="{{.Events}}" data-artifact="{{.Artifact}}">
+<div class="left">
+<div class="viewer">
+<section id="artifacts" aria-label="Artifacts of the session">{{.Regions.artifacts}}</section>
+<section id="artifact" aria-label="Artifact in focus">{{.Regions.artifact}}</section>
+</div>
+<section id="artifactlog" class="artifact-log" aria-label="Artifact log">{{.Regions.artifactlog}}</section>
+</div>
+<div class="right">
+<section class="transcript" aria-label="Transcript"><h2>Transcript</h2>
+<div id="utterances" class="scroll" aria-live="polite" tabindex="0">{{.Regions.utterances}}</div>
+<button id="jump" type="button" hidden>New messages &#8595;</button>
+</section>
+</div>
+</main>
+<script>{{.Script}}</script>
+</body></html>

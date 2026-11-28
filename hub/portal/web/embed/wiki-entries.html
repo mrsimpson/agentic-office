@@ -1,0 +1,4 @@
+{{if .}}<table class="wiki"><tr><th>Artifact</th><th>Summary</th><th>Tags</th></tr>
+{{range .}}<tr data-entry="{{.Path}}"><td><a class="name" href="{{.Href}}">{{.Title}}</a>{{if .Source}} <span class="badge imported">source</span>{{end}}<br><small><code>{{.Path}}</code></small></td>
+<td>{{.Summary}}</td><td><div class="chips">{{range .Tags}}<a class="chip" href="{{.Href}}" data-tag="{{.Tag}}">{{.Tag}}</a>{{end}}</div></td></tr>
+{{end}}</table>{{end}}

@@ -1,0 +1,40 @@
+
+{{define "status"}}<span data-status="{{.Status}}">{{.StatusText}}</span>{{end}}
+
+{{define "origin"}}{{with .Imported}}<p class="imported" data-imported="{{if .Complete}}complete{{else}}importing{{end}}">Imported from <span class="source">{{.Source}}</span>{{if .Title}}: <span class="title">{{.Title}}</span>{{end}}, by {{.By}}.{{if not .Complete}} The import is not complete yet.{{end}}
+The office did not see this conversation happen. The hub's signature proves who imported it, not who said what.</p>{{end}}{{end}}
+
+{{define "avatar"}}<span class="avatar{{if .Agent}} agent{{end}}" data-initials="{{.Initials}}" aria-hidden="true"></span>{{end}}
+
+{{define "name"}}<span class="name">{{.Name}}</span>{{if .Agent}} <span class="badge agent" data-kind="agent">agent</span>{{end}}{{end}}
+
+{{define "participants"}}<h2 class="sr-only">Participants</h2>
+{{if .Participants}}<ul class="people">
+{{range .Participants}}<li class="person {{.Status}}" tabindex="0" data-participant="{{.ID}}" data-kind="{{if .Agent}}agent{{else}}human{{end}}" data-capture="{{.Status}}"{{if .HandNumber}} data-hand="{{.HandNumber}}"{{end}}>{{template "avatar" .}}{{if .HandNumber}}<span class="hand" aria-hidden="true">{{.HandNumber}}</span>{{end}}{{with .Activity}}<span class="act-dot {{.State}}" aria-hidden="true"></span>{{end}}<span class="card"><span class="nameline">{{template "name" .}}</span><span class="capture {{.Status}}">{{.StatusText}}</span>{{if .HandNumber}}<span class="topic">Raised hand {{.HandNumber}}{{if .HandTopic}}: {{.HandTopic}}{{end}}</span>{{end}}{{with .Activity}}<span class="activity {{.State}}" data-activity="{{.State}}"{{if .Tool}} data-tool="{{.Tool}}"{{end}}>{{.Text}}</span>{{end}}</span></li>
+{{end}}</ul>{{if .HandCount}}<span class="hands-count" data-hands="{{.HandCount}}" title="Raised hands">&#9995; {{.HandCount}}</span>{{end}}{{else}}<p class="empty">Nobody has joined yet.</p>{{end}}{{end}}
+
+{{define "artifact"}}{{if .ShowsMinutes}}{{template "minutes-main" .}}{{else}}{{with .Artifact}}{{if .ID}}<div class="art-head"><span class="eyebrow">Now showing</span><span class="art-id">{{.ID}}</span></div>
+{{end}}{{if .Content}}<iframe title="{{.ID}}" data-artifact="{{.ID}}" sandbox="" referrerpolicy="no-referrer" srcdoc="{{.Content}}"></iframe>
+{{else if .ID}}<p class="note" data-artifact="{{.ID}}">{{.Note}}</p>
+{{else}}<p class="empty">Nothing is shown.</p>{{end}}{{end}}{{end}}{{end}}
+
+{{define "minutes-main"}}<div class="minutes-main">
+{{if .Minutes}}<div class="eyebrow">Minutes</div>
+<div class="minutes-body" data-minutes>{{.MinutesHTML}}</div>
+{{else}}<div class="placeholder" data-placeholder="minutes"><div class="ph-icon" aria-hidden="true"></div>
+<h2>Waiting for the minutes</h2>
+<p>Nobody is taking minutes yet. Ask an agent to join this session and keep them.</p></div>
+{{end}}</div>{{end}}
+
+{{define "artifactlog"}}{{if .ArtifactLog}}<h2>Artifact log</h2>
+<ol>
+{{range .ArtifactLog}}<li data-log="{{.Verb}}"><time datetime="{{.Time.Format "2006-01-02T15:04:05Z07:00"}}">{{.Time.Format "15:04"}}</time><span>{{template "name" .Actor}} <span class="verb">{{.Verb}}</span></span><span class="path">{{.Path}}</span></li>
+{{end}}</ol>{{end}}{{end}}
+
+{{define "artifacts"}}{{if gt (len .Artifacts) 1}}<ul class="tabs" role="tablist">
+{{range .Artifacts}}<li class="tab{{if .Focused}} focused{{end}}" role="tab" tabindex="0" aria-selected="{{.Focused}}" data-artifact="{{.Path}}" title="{{.Path}}">{{.Label}}</li>
+{{end}}</ul>{{end}}{{end}}
+
+{{define "utterances"}}{{if .Utterances}}<ol class="utterances">
+{{range .Utterances}}<li data-utterance="{{.EventID}}" data-participant="{{.Speaker.ID}}">{{template "avatar" .Speaker}}<span class="line">{{template "name" .Speaker}}: {{if not .OriginalTime.IsZero}}<time datetime="{{.OriginalTime.Format "2006-01-02T15:04:05Z07:00"}}">{{.OriginalTime.Format "2006-01-02 15:04"}} UTC</time> {{end}}<span class="text">{{.Text}}</span>{{if .Corrected}} <span class="corrected">(corrected)</span>{{end}}</span></li>
+{{end}}</ol>{{else}}<p class="empty">Nothing said yet.</p>{{end}}{{end}}

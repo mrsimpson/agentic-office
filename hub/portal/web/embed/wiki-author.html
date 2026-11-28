@@ -1,0 +1,1 @@
+{{if .}}<span data-author="{{.ParticipantID}}"{{if .Kind}} data-author-kind="{{.Kind}}"{{end}}>{{.Name}}{{if .ParticipantID}} <small><code>{{.ParticipantID}}</code></small>{{end}}{{if .Kind}} <span class="badge imported">{{.Kind}}</span>{{end}}</span>{{else}}<span data-author="">the hub</span>{{end}}
